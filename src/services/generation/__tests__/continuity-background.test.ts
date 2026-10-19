@@ -8,7 +8,8 @@ import { DbStorage } from "../../../infra/storage/db";
 import { BackgroundReviewRefused, type BackgroundReviewState, type BackgroundReviewTransport } from "../../../infra/generation/types";
 import type { Container } from "../../container";
 import { boardWizardBudgetOf, boardWizardWorldId } from "../board-conditioned-wizard";
-import { askContinuityInBackground, advanceContinuityInBackground } from "../continuity-background";
+import { askContinuityInBackground, advanceContinuityInBackground, reconcileRefusedBackgroundRound } from "../continuity-background";
+import { WorldBudget } from "../world-budget";
 import { LocalPatchRetainedPurchaseStore } from "../local-patch-lifecycle";
 import { purchaseOnce } from "../paid-operation";
 import { prepareVisualReview } from "../visual-review";
@@ -39,10 +40,10 @@ function transport(create: () => Promise<{ responseId: string }>, polls: (() => 
     cancel: async () => { calls.cancel++; } };
   return { fake, calls };
 }
-async function setup(gameId: string, fake: BackgroundReviewTransport, prompt = "Synthetic continuity question") {
+async function setup(gameId: string, fake: BackgroundReviewTransport, prompt = "Synthetic continuity question", tier?: "flex" | "default") {
   await seedApprovedGame(base, db, { gameId, styleVersion: "local-patch-world-v1", status: "TARGETS_GENERATING" });
   const c = { ...base, backgroundReview: fake } as Container;
-  const question = prepareVisualReview({ role: "head-continuity", effort: "high", transport: "responses-background", images: [Buffer.from("synthetic-png")],
+  const question = prepareVisualReview({ role: "head-continuity", effort: "high", transport: "responses-background", ...(tier ? { tier } : {}), images: [Buffer.from("synthetic-png")],
     labels: ["CASE newyork-v12-1:people"], prompt: `${prompt}\nImmutable candidate binding: {"hideId":"newyork-v12-1"}. Evidence attempt: 1.` });
   const worldId = boardWizardWorldId(gameId), requestKey = `self-repair:board:newyork:${question.fingerprint}`;
   const ask = { gameId, worldId, requestKey, question, reserveMicroUsd: 66_000, fence: async () => {},
@@ -172,5 +173,66 @@ describe("Sol continuity in the background: one create, polled by id, every char
     const other = prepareVisualReview({ role: "head-continuity", effort: "high", transport: "responses-background", images: [Buffer.from("other-png")],
       labels: ["CASE newyork-v12-1:people"], prompt: "A different question" });
     await expect(askContinuityInBackground(c, { ...ask, question: other })).rejects.toThrow(/differs from its round's intent/);
+  });
+});
+
+describe("a lean world's background questions (local-patch-lean/v1)", () => {
+  const flexAnswer = (serviceTier: string | null): BackgroundReviewState => ({ status: "completed", reading: { responseId: "resp_synthetic", raw: "{\"cases\":[]}",
+    usage: { input_tokens: 2000, output_tokens: 500 }, model: "gpt-6.1-sol", finishReason: "stop", serviceTier } });
+  it("records its own policy, so the sweep reads its answer under it and prices it by the tier that served it", async () => {
+    const { fake, calls } = transport(async () => ({ responseId: "resp_synthetic" }), [async () => ({ status: "in_progress" }), async () => flexAnswer("flex")]);
+    const { c, ask, budget, worldId, requestKey, replay } = await setup("bg-lean", fake, "Synthetic lean continuity", "flex");
+    expect(await askContinuityInBackground(c, ask)).toMatchObject({ kind: "waiting", running: true });
+    const intent = await db.auditLog.findFirstOrThrow({ where: { entityId: "bg-lean", id: { endsWith: "_intent" } } });
+    expect(JSON.parse(intent.metaJson!).intent.policyVersion).toBe("visual-review-head-continuity-sol-high-background-flex/lean-v1");
+    // The sweep, with no question in hand: the lean policy from the intent, the Flex half price from the response.
+    expect(await advanceContinuityInBackground(c, ask.gameId)).toBe(1);
+    expect(await budget.readRequest(worldId, requestKey)).toMatchObject({ state: "settled", evidence: { amountMicroUsd: 5_000 } });
+    const bought = await replay();
+    if (bought.kind !== "bought") throw Error("not replayed");
+    expect(JSON.parse(bought.bytes.toString())).toMatchObject({ policy: ask.question.policy, wireFault: null, costUnknown: false });
+    expect(calls).toEqual({ create: 1, retrieve: 2, cancel: 0 });
+    // The historical round of another world records no policy: its bytes are as they always were.
+    const historical = transport(async () => ({ responseId: "resp_synthetic" }), [async () => ({ status: "in_progress" })]);
+    const plain = await setup("bg-plain", historical.fake);
+    await askContinuityInBackground(plain.c, plain.ask);
+    const plainIntent = await db.auditLog.findFirstOrThrow({ where: { entityId: "bg-plain", id: { endsWith: "_intent" } } });
+    expect(JSON.parse(plainIntent.metaJson!).intent).not.toHaveProperty("policyVersion");
+  });
+  it("holds an answer whose served tier is unstated or unknown as an unknown charge", async () => {
+    for (const [gameId, tier] of [["bg-lean-null", null], ["bg-lean-priority", "priority"]] as const) {
+      const { fake } = transport(async () => ({ responseId: "resp_synthetic" }), [async () => flexAnswer(tier)]);
+      const { c, ask, budget, worldId, requestKey } = await setup(gameId, fake, "Synthetic lean continuity", "flex");
+      expect(await askContinuityInBackground(c, ask)).toEqual({ kind: "proceed" });
+      expect(await budget.readRequest(worldId, requestKey)).toMatchObject({ state: "unknown" });
+    }
+  });
+  it.each([["after its refusal was recorded", "the round asked again"], ["after its zero receipt was kept", "the sweep"],
+    ["after its refusal was recorded", "the fallback's own check"]] as const)(
+    "finishes a refusal whose create stopped %s, by %s: never a pending reservation, and nothing sent again", async (moment, finisher) => {
+      const gameId = `bg-refused-${moment.includes("receipt") ? "kept" : "recorded"}-${finisher.split(" ").at(-1)}`;
+      const { fake, calls } = transport(async () => { throw new BackgroundReviewRefused(429, null); });
+      const { c, ask, budget, worldId, requestKey, store } = await setup(gameId, fake, "Synthetic lean continuity", "flex");
+      const stop = moment.includes("receipt") ? vi.spyOn(WorldBudget.prototype, "settle").mockRejectedValueOnce(Error("worker stopped"))
+        : vi.spyOn(LocalPatchRetainedPurchaseStore.prototype, "put").mockRejectedValueOnce(Error("worker stopped"));
+      await expect(askContinuityInBackground(c, ask)).rejects.toThrow("worker stopped");
+      stop.mockRestore();
+      expect(await budget.readRequest(worldId, requestKey)).toMatchObject({ state: "pending" });
+      expect(!!await store.get(worldId, requestKey)).toBe(moment.includes("receipt"));
+      if (finisher === "the sweep") await advanceContinuityInBackground(c, gameId);
+      else if (finisher === "the round asked again") expect(await askContinuityInBackground(c, ask)).toMatchObject({ kind: "held", reason: expect.stringContaining("refused (429)") });
+      else expect(await reconcileRefusedBackgroundRound(c, gameId, worldId, requestKey)).toBe(true);
+      expect(await budget.readRequest(worldId, requestKey)).toMatchObject({ state: "settled", evidence: { amountMicroUsd: 0, costBasis: "provider-billed",
+        providerRequestId: expect.stringMatching(/^unsent\//) } });
+      expect(await reconcileRefusedBackgroundRound(c, gameId, worldId, requestKey)).toBe(true);
+      expect(await askContinuityInBackground(c, ask)).toMatchObject({ kind: "held", reason: expect.stringContaining("refused (429)") });
+      expect(calls.create).toBe(1);
+    });
+  it("reconciles nothing for a round that was not refused", async () => {
+    const { fake } = transport(async () => ({ responseId: "resp_synthetic" }), [async () => ({ status: "in_progress" })]);
+    const { c, ask, worldId, requestKey } = await setup("bg-not-refused", fake, "Synthetic lean continuity", "flex");
+    expect(await reconcileRefusedBackgroundRound(c, ask.gameId, worldId, requestKey)).toBe(false);
+    await askContinuityInBackground(c, ask);
+    expect(await reconcileRefusedBackgroundRound(c, ask.gameId, worldId, requestKey)).toBe(false);
   });
 });

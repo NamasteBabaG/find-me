@@ -27,9 +27,18 @@ export const DUAL_REVIEW_LEGACY_RESERVE_MICRO_USD = 300_000;
 /** In micro-USD: Opus 30,000 × 4 + 6,500 × 20 = 250,000; Sol 10,016 × 2.5 + 4,096 × 10 = 66,000. */
 export const DUAL_REVIEW_V3_RESERVE_MICRO_USD: Readonly<Record<DualReviewRole, number>> = Object.freeze({ quality: 250_000, continuity: 66_000 });
 
+/**
+ * A lean world's questions (local-patch-lean/v1), Sol HIGH in the background on the standard card (a Flex request may
+ * be served at the default tier): quality 40,000 input × 2.5 + 10,000 output × 10 = 200,000; continuity 16,000 input
+ * × 2.5 + 8,000 output × 10 = 120,000. Every board's real requests bound at about 28,000 and 9,000 input tokens
+ * (measured on the shipped art). Each is one of the amounts the interruption-recovery gates admit for its role
+ * (`dualReviewReserves`), so a lost lean create is recovered like any other; a request that could cost more is refused.
+ */
+export const LEAN_REVIEW_RESERVE_MICRO_USD: Readonly<Record<DualReviewRole, number>> = Object.freeze({ quality: 200_000, continuity: 120_000 });
+
 /** Every amount a dual review question may have been reserved with, per role. */
 export const dualReviewReserves = (role: DualReviewRole): readonly number[] =>
-  [DUAL_REVIEW_LEGACY_RESERVE_MICRO_USD, DUAL_REVIEW_V3_RESERVE_MICRO_USD[role]];
+  [DUAL_REVIEW_LEGACY_RESERVE_MICRO_USD, DUAL_REVIEW_V3_RESERVE_MICRO_USD[role], LEAN_REVIEW_RESERVE_MICRO_USD[role]];
 export const DUAL_REVIEW_RESERVES_MICRO_USD: readonly number[] =
   [...new Set([...dualReviewReserves("quality"), ...dualReviewReserves("continuity")])];
 

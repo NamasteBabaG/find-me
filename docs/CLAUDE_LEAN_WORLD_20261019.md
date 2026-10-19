@@ -69,7 +69,7 @@ There are two Sol HIGH questions per picture, both asked in the background, both
 - `visualReviewCharge(policy, model, usage, servedTier)` prices a lean answer by the tier its response says served it: `flex` at exactly half of every standard rate, `default` at the standard card.
 - Any other tier, or a missing one, cannot be priced, so the charge is unknown and held.
 - A reservation (no served tier) is the standard card, because a Flex request may be served at the default tier.
-- A lean question reserves exactly its own `visualReviewMaxCharge`, capped at the v3 quality reserve. Above that cap it is refused.
+- A lean question reserves its role's lean amount, `LEAN_REVIEW_RESERVE_MICRO_USD` (quality $0.20, continuity $0.12; Codex P1-2 below), and is refused if its own request could cost more.
 
 **Background rounds.**
 
@@ -101,9 +101,10 @@ There are two Sol HIGH questions per picture, both asked in the background, both
 
 **What counts.**
 
-- A row FAILED at its second painting whose last review refused only who the child is gets a third normal painting. This is `leanSubjectOnlyRefusal`:
-  - its quality answer passed (a subject stage exists only after one does);
-  - its v2 subject stage named v2 check codes or `collectionVariety`;
+- A row FAILED at its second painting whose last review refused only who the child is gets a third normal painting. This is `leanSubjectOnlyRefusal` (`lean-repair.ts`, made strict after Codex P1-1):
+  - its quality answer is acceptable;
+  - its continuity answer, read beside the refusal, passes;
+  - its v2 subject reading is a definite refusal (located failures, or a collection-variety refusal of a pass);
   - all about the same pixels.
 
 **How it works.**
@@ -182,6 +183,40 @@ Measured on the pilot ledger:
   - sends a twice-broken join to self-repair with exactly one diagnosis;
   - publishes all 27 under the lean policies, each priced by its served tier;
   - stays under three dollars with nothing pending or unknown.
+
+## Codex review round 11 (19 October): HOLD with three P1s, all fixed
+
+**P1-1. The no-diagnosis shortcut admitted continuity failures and subject uncertainty.**
+
+- A lean subject refusal now reads the continuity answer that was sent beside it before the refusal is recorded (`leanContinuityBeside`):
+  - it waits while that answer is still running;
+  - a broken join adds its located defect to the refused verdict;
+  - an answer that cannot be read leaves the refusal without a passing continuity stage.
+- `leanSubjectOnlyRefusal` (now in `lean-repair.ts`) re-reads every part from the receipt, under the reader each stage names, about exactly these pixels. It requires all of:
+  - an acceptable quality answer (the bundle's quality part);
+  - a readable, passing continuity answer;
+  - a definite subject refusal: located failures, or a pass the collection refused for variety. Uncertainty does not count.
+- Anything else goes to self-repair and its diagnosis.
+- `lean-repair.test.ts` covers each case Codex named: continuity missing, broken or unreadable, subject `unsure`, a quality defect, another picture, a v1 policy, a pose code.
+
+**P1-2. Lean reservations could not pass the interruption-recovery gates.**
+
+- A lean question now reserves its role's amount from `LEAN_REVIEW_RESERVE_MICRO_USD`: $0.20 for the bundle and $0.12 for continuity.
+  - Both are added to each role's set of recoverable amounts (`dualReviewReserves`), which both recovery gates read, so a lost lean create is recovered like any other.
+  - Every historical amount is still admitted, and nothing else is.
+- **Why not the historical $0.25/$0.30.** The first fix used those flat amounts. Measured on the shipped art, the real maximums are about $0.17 (bundle, about 28,000 input tokens bounded) and $0.10 (continuity, about 9,000). Flat amounts tied up about $0.55 a picture in flight, against $0.32 now. In the synthetic world, a slice reviewing many boards then hit the $4 ceiling and waited.
+- Each amount is above the most its request can be billed. A request that could cost more is refused before anything is reserved.
+- `local-patch-lean-world.test.ts` loses one lean create and shows the world finish: the charge stays unknown in full, and the ordinary review recovery continues it.
+
+**P1-3. A crash after a recorded Flex refusal could strand its reservation.**
+
+- `settleRefusal` finishes a refused round from its recorded event: the zero receipt (if it was not kept) and the settlement. It is idempotent.
+- It runs in three places:
+  - in the create;
+  - when the round is asked again;
+  - in the sweep (`reconcileRefusedBackgroundRound`).
+- The lean fallback to the default tier requires that reconciliation to have settled the Flex reservation.
+- `continuity-background.test.ts` stops a create after its refusal was recorded, and after its receipt was kept, and shows each finished: once by the round asked again, once by the sweep, with nothing sent twice.
 
 ## Known limits
 

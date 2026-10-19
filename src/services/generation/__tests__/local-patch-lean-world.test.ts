@@ -116,16 +116,18 @@ function painter(gameId: string, prompts: Map<string, string>, qualities: Map<st
     } };
 }
 
-/** Sol, answering in the background: the bundle (quality and subject together) or the continuity question. */
-function sol() {
+/** Sol, answering in the background: the bundle (quality and subject together) or the continuity question.
+ * `lose`: that appearance's first bundle create never answers (a lost create: an unknown charge). */
+function sol(options: { lose?: string } = {}) {
   const creates: { hideId: string; kind: "bundle" | "continuity"; tier: unknown; attempts: number }[] = [];
   const polls = new Map<string, { hideId: string; kind: "bundle" | "continuity"; tier: unknown; n: number; reads: number }>();
-  const bundles = new Map<string, number>(), refused = new Set<string>();
+  const bundles = new Map<string, number>(), refused = new Set<string>(), lost = new Set<string>();
   const fake: BackgroundReviewTransport = { namespace: "openai:find-me-existing",
     create: async body => {
       const prompt = (body.input as { content: { text?: string }[] }[])[0]!.content[0]!.text!, bound = boundHide(prompt);
       const kind = prompt.includes(SUBJECT_QUALITY_BUNDLE_VERSION) ? "bundle" as const : "continuity" as const;
       creates.push({ hideId: bound.hideId, kind, tier: body.service_tier, attempts: bound.attempts });
+      if (bound.hideId === options.lose && kind === "bundle" && !lost.has(bound.hideId)) { lost.add(bound.hideId); throw Error("socket hang up"); }
       // Flex capacity is unavailable once, for one appearance's quality question: documented, nothing created.
       if (bound.hideId === REFUSED.id && kind === "bundle" && body.service_tier === "flex" && !refused.has(bound.hideId)) {
         refused.add(bound.hideId); throw new BackgroundReviewRefused(429, null);
@@ -247,17 +249,41 @@ describe("local-patch-lean/v1 on a whole paid world", () => {
     const ledger = await budget.audit(worldId);
     expect(ledger).toMatchObject({ held: false, pendingRequestKeys: [], unknownRequestKeys: [], capMicroUsd: 4_000_000 });
     expect(ledger.committedMicroUsd).toBeLessThanOrEqual(3_000_000);
-    // Each lean question reserved what its own request could cost at the standard card, never Opus's flat amount.
+    // Each lean question reserved its role's lean amount (one every interruption recovery admits): 0.20 for a bundle, 0.12 for continuity.
     const snapshot = JSON.parse((await db.worldBudgetLedger.findUniqueOrThrow({ where: { worldId } })).snapshotJson) as { requests: { requestKey: string; reserveMicroUsd: number; state: string; evidence?: { amountMicroUsd: number } }[] };
-    const asked = snapshot.requests.filter(r => r.requestKey.startsWith("self-repair:board:"));
+    const asked = snapshot.requests.filter(r => r.requestKey.startsWith("self-repair:board:") && !r.requestKey.includes(":diagnosis:"));
     expect(asked.length).toBeGreaterThan(54);
-    for (const r of asked) expect(r.reserveMicroUsd).toBeLessThan(250_000);
+    for (const r of asked) expect([200_000, 120_000]).toContain(r.reserveMicroUsd);
+    expect(new Set(asked.map(r => r.reserveMicroUsd))).toEqual(new Set([200_000, 120_000]));
     expect(snapshot.requests.filter(r => r.state === "settled" && r.evidence?.amountMicroUsd === 0)).toHaveLength(1);
     // Without its pin the same answers are not a lean world's: publication refuses Sol's lean policies.
     const row = rows.find(r => JSON.parse(r.judgeJson!).hide === THIRD.id)!;
     await db.auditLog.delete({ where: { id: leanReleaseAuditId(gameId) } });
     expect(await allowedDualPublication(db, publicationBinding(gameId, row))).toBe(false);
     expect(fetch).not.toHaveBeenCalled();
+  }, 1_500_000);
+
+  it("recovers a lost lean create like any other interrupted review, and still finishes the world (Codex P1, 19 October)", async () => {
+    const gameId = "lean-world-lost"; await leanWorld(gameId);
+    const provider = sol({ lose: THIRD.id }), container = { ...c, visualReview: { request: vi.fn() }, backgroundReview: provider.fake } as Container;
+    const diagnose = vi.fn(async (wire: SelfRepairWire) => {
+      const mask = maskForHide(SEAM), core = { left: mask.left + 12, top: 40, width: 40, height: 60 };
+      return { verdict: null, raw: JSON.stringify({ cause: "composition-clipping", action: "recompose-retained", sourceKey: `${SEAM.id}:${SEAM.pose}:render:1`,
+        returnWindow: { left: 16, top: 16, width: 480, height: 736 }, protectedCore: core, faceRect: { left: core.left + 4, top: core.top + 4, width: 30, height: 30 },
+        explanation: "Synthetic diagnosis of the broken join." }), usage: { prompt_tokens: 9000, completion_tokens: 500 },
+        requestId: `req-${gameId}-diagnosis-${wire.prompt.length}`, model: "gpt-5.6-sol", finishReason: "stop", wireFault: null, costUnknown: false };
+    });
+    let result = { pending: true, attention: null as string | null };
+    for (let ticks = 0; ticks < 900 && result.pending; ticks++)
+      result = await runLocalPatchWorldSlice(container, painter(gameId, new Map(), new Map()), gameId, { hardDeadlineAt: Date.now() + 270_000, diagnose });
+    expect(result.attention).toBeNull();
+    expect((await db.game.findUniqueOrThrow({ where: { id: gameId } })).configJson).not.toBeNull();
+    // The lost create's charge stays unknown and reserved in full, continued by the ordinary review recovery.
+    const worldId = boardWizardWorldId(gameId), audit = await boardWizardBudgetOf(c).audit(worldId);
+    expect(audit.unknownRequestKeys).toHaveLength(1);
+    const [lostKey] = audit.unknownRequestKeys;
+    expect(await boardWizardBudgetOf(c).readRequest(worldId, lostKey!)).toMatchObject({ state: "unknown", reserveMicroUsd: 200_000 });
+    expect((await boardWizardBudgetOf(c).readContinuationApproval(worldId, lostKey!))?.version).toMatch(/^world-automatic-review-recovery\/v[12]$/);
   }, 1_500_000);
 
   it("enrolls only a lean world with its child's live photograph, and only before anything is painted", async () => {

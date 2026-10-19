@@ -14,7 +14,7 @@ import { SUBJECT_QUALITY_BUNDLE_VERSION } from "../../domain/generation/subject-
 import { localPatchBoardForVersion } from "../../domain/scene/local-patch-catalog";
 import { subjectPlanOfHide, subjectPlanSha256, subjectUpgradeOf, type SubjectUpgradeReceipt } from "./subject-enrollment";
 import { loadSubjectPhoto, subjectQuestion, combinedQualitySubjectQuestion, SubjectEvidenceUnavailable, subjectV2RefusalCodes, withSubject, withSubjectV2 } from "./local-patch-subject-review";
-import { askContinuityInBackground, backgroundRoundState } from "./continuity-background";
+import { askContinuityInBackground, reconcileRefusedBackgroundRound } from "./continuity-background";
 import { isLeanWorld } from "./lean-release";
 import { localPatchCrowdContinuityPrompt, localPatchHeadContinuityPrompt } from "./local-patch-body-continuity";
 import { prepareVisualReview, sceneQualityQuestion, parseVisualSceneVerdicts, diagnoseVisualSceneAnswer, visualReviewMaxCharge, type PreparedVisualReview } from "./visual-review";
@@ -34,7 +34,7 @@ import { isBackgroundReviewPolicy, isLeanReviewPolicy, type VisualReviewEffort, 
   type VisualReviewTransport } from "../../domain/generation/visual-review-policy";
 import { WorldBudgetError, type BudgetJson } from "./world-budget";
 import type { WorldBudgetRequest } from "../../domain/generation/world-budget";
-import { DUAL_REVIEW_V3_RESERVE_MICRO_USD, dualQuestionReserveMicroUsd, type DualReviewRole } from "../../domain/generation/dual-review-reserve";
+import { LEAN_REVIEW_RESERVE_MICRO_USD, dualQuestionReserveMicroUsd, type DualReviewRole } from "../../domain/generation/dual-review-reserve";
 import { askQualityThroughBatch, qualityBatchKeyOf } from "./quality-batch";
 
 type Prepared = Extract<Awaited<ReturnType<typeof prepareLocalPatchBoardReview>>, { ready: true }>;
@@ -454,13 +454,12 @@ export async function dualQuestionAdmission(budget: Pick<Prepared["budget"], "re
   version: DualVisualReviewVersion, question: PreparedVisualReview): Promise<DualQuestionAdmission> {
   const requestKey = `self-repair:board:${boardId}:${question.fingerprint}`, role: DualReviewRole = question.role === "scene-quality" ? "quality" : "continuity";
   const stored = await budget.readRequest(worldId, requestKey);
-  const most = visualReviewMaxCharge(question);
-  // A lean question (local-patch-lean/v1) reserves exactly the most its own request can be billed at the
-  // standard card, so a lean world is not held back by a flat amount meant for Opus.
-  // Never more than an Opus v3 quality question reserves: a lean request that could cost more is refused below.
-  const reserveMicroUsd = isLeanReviewPolicy(question.policy) ? stored?.reserveMicroUsd ?? (most.ok ? Math.min(most.microUsd, DUAL_REVIEW_V3_RESERVE_MICRO_USD.quality) : 0)
+  // A lean question (local-patch-lean/v1) reserves its role's lean amount, one every interruption-recovery gate
+  // admits; a lean request that could be billed more is refused below, like any other.
+  const reserveMicroUsd = isLeanReviewPolicy(question.policy) ? stored?.reserveMicroUsd ?? LEAN_REVIEW_RESERVE_MICRO_USD[role]
     : dualQuestionReserveMicroUsd(stored?.reserveMicroUsd, version === DUAL_VISUAL_REVIEW_V3, role);
   if (stored) return { requestKey, role, reserveMicroUsd, existing: stored.state, maxChargeMicroUsd: null, refused: null };
+  const most = visualReviewMaxCharge(question);
   const refused = !most.ok ? `the ${role} question cannot be bounded: ${most.reason}`
     : most.microUsd > reserveMicroUsd ? `the ${role} question could be billed up to ${most.microUsd} micro-USD `
       + `(${most.inputTokens} input and ${most.outputTokens} output tokens), more than its ${reserveMicroUsd} reservation` : null;
@@ -514,8 +513,9 @@ async function dualReview(c: Container, prepared: Prepared, deps: LocalPatchBoar
   // the provider refused (documented: nothing created, nothing billed) is asked once more at the default tier.
   const lean = await isLeanWorld(c.db, game.id);
   if (lean && !subjectContext) throw Error("LEAN_REVIEW: a lean world is reviewed only under its subject policy");
+  // Refused, and its reservation already settled at the provider's documented zero: only then the default tier.
   const refusedFlex = async (question: PreparedVisualReview) => question.policy.serviceTier === "flex"
-    && await backgroundRoundState(c.db, game.id, worldId, makeKey(question)) === "refused";
+    && await reconcileRefusedBackgroundRound(c, game.id, worldId, makeKey(question));
   let questions = await dualQuestions(prepared, version, upgrade ? "responses-background" : undefined, subjectContext, lean ? { tier: "flex" } : undefined);
   if (lean && await refusedFlex(questions.q)) questions = await dualQuestions(prepared, version, "responses-background", subjectContext, { tier: "default" });
   const { binding, entry, priorReceipt, q, subjectBundle, qualityAttempt, qualityStrategy, continuityStrategy, subjectStrategy, anatomy: anatomyQuestion } = questions;
@@ -610,6 +610,28 @@ async function dualReview(c: Container, prepared: Prepared, deps: LocalPatchBoar
   let newCostCents = qualityBought.replayed ? 0 : qualityBought.evidence.amountMicroUsd / 10_000;
   const qualityGood = localPatchQualityDisposition(verdicts[hideId] ?? null, 12, { hideId, reader: CURRENT_QUALITY_READER }).state === "acceptable";
   const base = { kind: "reviewed" as const, salvaged: false };
+  /**
+   * A lean world's continuity answer about these pixels, read beside a refusal of who the child is: recorded on the
+   * proof under its reader, and a located defect added to the refused verdict. Waits while it is still running;
+   * an answer that cannot be admitted or read leaves the refusal as it is, without a passing continuity stage.
+   */
+  const leanContinuityBeside = async (refusedVerdicts: LocalPatchBoardJudgeResult["verdicts"]):
+    Promise<Waiting | { kind: "decided"; verdicts: LocalPatchBoardJudgeResult["verdicts"]; costCents: number }> => {
+    const anatomy = await leanAnatomy(), admitted = await dualQuestionAdmission(budget, worldId, prepared.board.board, version, anatomy);
+    if (admitted.refused) return { kind: "decided", verdicts: refusedVerdicts, costCents: 0 };
+    const gate = await askInBackground(anatomy, admitted.reserveMicroUsd);
+    if (gate.kind !== "proceed") return leanGate(gate, anatomy, newCostCents);
+    const bought = await buy(anatomy, admitted.reserveMicroUsd);
+    if (bought.kind !== "bought") return waiting(bought, anatomy, continuityStrategy);
+    const reader = CURRENT_CONTINUITY_READER[version];
+    proof.continuity = { ...stage(bought, anatomy, evidenceReviewAttempt, continuityStrategy), reader };
+    const costCents = bought.replayed ? 0 : bought.evidence.amountMicroUsd / 10_000;
+    if (!visualStageReadable(proof.continuity)) return { kind: "decided", verdicts: refusedVerdicts, costCents };
+    const read = readLocalPatchBodyContinuity(proof.continuity.raw, [`${hideId}:people`], reader);
+    if (!read.ok) proof.continuity.readFault = read.fault;
+    return { kind: "decided", costCents, verdicts: localPatchRuntimeContinuityVerdict(read).disposition === "repair"
+      ? withAnatomy(refusedVerdicts, hideId, "repair", read, CURRENT_QUALITY_READER) : refusedVerdicts };
+  };
   if (!qualityGood) {
     if (verdicts[hideId]) return { ...base, bought: qualityBought, wire: primaryWire, verdicts, proof, newCostCents, evidence: null, diagnosis: null };
     // The quality answer itself could not be used: a wire fault, or a complete
@@ -663,8 +685,17 @@ async function dualReview(c: Container, prepared: Prepared, deps: LocalPatchBoar
     if (reading.disposition !== "pass" || refusal) {
       subject.failedChecks = subjectV2RefusalCodes(reading, refusal);
       if (refusal) subject.collectionRefusal = refusal;
-      return { ...base, bought: qualityBought, wire: primaryWire,
-        verdicts: withSubjectV2(verdicts, hideId, reading, refusal, CURRENT_QUALITY_READER), proof, newCostCents, evidence: null, diagnosis: null };
+      const refusedVerdicts = withSubjectV2(verdicts, hideId, reading, refusal, CURRENT_QUALITY_READER);
+      if (lean) {
+        // local-patch-lean/v1: the continuity answer sent beside it is read before the refusal is recorded, so the
+        // refusal carries what continuity found about these pixels, and a broken join is never repainted as a
+        // refusal of who the child is (lean-repair.ts reads both).
+        const beside = await leanContinuityBeside(refusedVerdicts);
+        if (beside.kind === "waiting") return beside;
+        return { ...base, bought: qualityBought, wire: primaryWire, verdicts: beside.verdicts, proof, newCostCents: newCostCents + beside.costCents,
+          evidence: null, diagnosis: null };
+      }
+      return { ...base, bought: qualityBought, wire: primaryWire, verdicts: refusedVerdicts, proof, newCostCents, evidence: null, diagnosis: null };
     }
   }
   if (!qualityBought.replayed) {

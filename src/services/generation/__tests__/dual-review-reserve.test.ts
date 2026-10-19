@@ -150,8 +150,9 @@ describe("bounded dual review reservations", () => {
   });
 
   it("list every amount an interrupted question may carry into recovery, per role and overall", () => {
-    expect(dualReviewReserves("quality")).toEqual([300_000, 250_000]);
-    expect(dualReviewReserves("continuity")).toEqual([300_000, 66_000]);
-    expect(DUAL_REVIEW_RESERVES_MICRO_USD).toEqual([300_000, 250_000, 66_000]);
+    // A lean world's amounts (local-patch-lean/v1) join each role's set, so its lost creates are recovered too.
+    expect(dualReviewReserves("quality")).toEqual([300_000, 250_000, 200_000]);
+    expect(dualReviewReserves("continuity")).toEqual([300_000, 66_000, 120_000]);
+    expect(DUAL_REVIEW_RESERVES_MICRO_USD).toEqual([300_000, 250_000, 200_000, 66_000, 120_000]);
   });
 });

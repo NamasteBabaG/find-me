@@ -137,6 +137,44 @@ async function recordLost(ctx: Ctx, reason: string): Promise<void> {
   await boardWizardBudgetOf(ctx.c).markUnknown(ctx.worldId, ctx.requestKey, `${ctx.requestKey}: the background create's answer was lost; the charge is unknown and kept in full`);
 }
 
+/**
+ * A documented refusal settled at zero from the provider's own answer: the kept receipt, then the settlement of
+ * the round's reservation. Each step at most once, and a restart after any of them (the refusal recorded, the
+ * receipt kept or not) finishes the same record, so a refused round's reservation is never left pending.
+ */
+async function settleRefusal(ctx: Ctx, namespace: string, status: number, errorType: string | null): Promise<void> {
+  const budget = boardWizardBudgetOf(ctx.c), store = new LocalPatchRetainedPurchaseStore(ctx.c, ctx.gameId, budget);
+  const kept = await store.get(ctx.worldId, ctx.requestKey);
+  let evidence = kept ? kept.evidence : null;
+  if (!kept) {
+    const rawUsage = { status, errorType, basis: "documented refusal before any response was created" };
+    evidence = canonicalChargeEvidence({ providerNamespace: namespace, providerRequestId: `unsent/${ctx.roundId}`,
+      usageId: sha(JSON.stringify(rawUsage)), rawUsage, model: ctx.question.policy.model, amountMicroUsd: 0, costBasis: "provider-billed" });
+    await keep(ctx, replyBytes(ctx, { ...NO_REPLY, wireFault: "http", costUnknown: false }, { backgroundState: "refused", status }), { evidence, unknownReason: null });
+  }
+  if (!evidence || evidence.amountMicroUsd !== 0 || evidence.costBasis !== "provider-billed" || evidence.providerRequestId !== `unsent/${ctx.roundId}`)
+    throw Error("BACKGROUND_REVIEW: a refused round's kept receipt is not its documented zero");
+  await budget.settle(ctx.worldId, ctx.requestKey, evidence, { onlyPending: true });
+}
+
+/**
+ * Finishes the record of a round that ended in a documented refusal (its zero receipt and settlement), as the
+ * create that recorded it would have. True when the round was refused and its reservation is now settled: only
+ * then may a lean world ask the same question at the default tier (local-patch-lean/v1). Never asks the provider.
+ */
+export async function reconcileRefusedBackgroundRound(c: Container, gameId: string, worldId: string, requestKey: string): Promise<boolean> {
+  const roundId = backgroundRoundIdOf(worldId, requestKey), events = await readEvents(c.db, gameId, roundId);
+  if (!events.length) return false;
+  const round = backgroundRoundOf(events), terminal = round.terminal;
+  if (terminal?.kind !== "refused" || round.intent.requestKey !== requestKey || round.intent.worldId !== worldId) return false;
+  const ctx: Ctx = { c, gameId, worldId, roundId, requestKey, reserveMicroUsd: round.intent.reserveMicroUsd, binding: round.intent.binding,
+    question: { fingerprint: round.intent.fingerprint, policy: backgroundPolicyOfIntent(round.intent) }, fence: async () => {} };
+  await settleRefusal(ctx, c.backgroundReview?.namespace ?? OPENAI_BACKGROUND_NAMESPACE, terminal.status, terminal.errorType);
+  return (await boardWizardBudgetOf(c).readRequest(worldId, requestKey))?.state === "settled";
+}
+/** The namespace every OpenAI background transport bills under (OpenAiBackgroundReviews). */
+const OPENAI_BACKGROUND_NAMESPACE = "openai:find-me-existing";
+
 async function create(ctx: Ctx, transport: BackgroundReviewTransport, body: Record<string, unknown>): Promise<BackgroundGate | null> {
   if (!roomFor(ctx, CREATE_NEED_MS)) return waiting("too little of this request is left to create the response");
   const budget = boardWizardBudgetOf(ctx.c);
@@ -160,11 +198,7 @@ async function create(ctx: Ctx, transport: BackgroundReviewTransport, body: Reco
       const { status, errorType } = error;
       await writeEvent(ctx, round => round.terminal ? null : { kind: "refused", status, errorType, at: Date.now() });
       // Documented as created nothing: zero, from the provider's own refusal. The world still parks for a person.
-      const rawUsage = { status, errorType, basis: "documented refusal before any response was created" };
-      const evidence = canonicalChargeEvidence({ providerNamespace: transport.namespace, providerRequestId: `unsent/${ctx.roundId}`,
-        usageId: sha(JSON.stringify(rawUsage)), rawUsage, model: ctx.question.policy.model, amountMicroUsd: 0, costBasis: "provider-billed" });
-      await keep(ctx, replyBytes(ctx, { ...NO_REPLY, wireFault: "http", costUnknown: false }, { backgroundState: "refused", status }), { evidence, unknownReason: null });
-      await budget.settle(ctx.worldId, ctx.requestKey, evidence, { onlyPending: true });
+      await settleRefusal(ctx, transport.namespace, status, errorType);
       return held(`the create was refused (${status}${errorType ? ` ${errorType}` : ""}); quota, credential and policy refusals are never asked again automatically`);
     }
     await recordLost(ctx, error instanceof Error ? error.message : String(error));
@@ -278,7 +312,12 @@ export async function askContinuityInBackground(c: Container, ask: BackgroundAsk
   if (JSON.stringify(round.intent) !== JSON.stringify(intent)) throw Error("BACKGROUND_REVIEW: the question differs from its round's intent");
   for (let turn = 0; turn < 4; turn++) {
     const step = nextBackgroundStep(round, Date.now());
-    if (step.step === "done") return round.terminal?.kind === "refused" ? held(`the create was refused (${round.terminal.status})`) : { kind: "proceed" };
+    if (step.step === "done") {
+      if (round.terminal?.kind !== "refused") return { kind: "proceed" };
+      // A refusal recorded by a create that stopped before its zero settlement is finished here, never left pending.
+      await settleRefusal(ctx, transport?.namespace ?? OPENAI_BACKGROUND_NAMESPACE, round.terminal.status, round.terminal.errorType);
+      return held(`the create was refused (${round.terminal.status})`);
+    }
     if (step.step === "wait") return waiting(step.reason);
     if (!transport) return waiting("the background transport is not configured; the round keeps its reservation");
     let gate: BackgroundGate | null = null;
@@ -289,19 +328,6 @@ export async function askContinuityInBackground(c: Container, ask: BackgroundAsk
     round = backgroundRoundOf(await readEvents(c.db, ask.gameId, ctx.roundId));
   }
   return waiting("the round is still advancing");
-}
-
-/**
- * How the round for this request key stands, read-only: none recorded, still open, or how it
- * ended. A lean world's Flex question whose create the provider refused (documented: nothing
- * was created, nothing billed) is asked once more at the default tier (local-patch-lean/v1).
- */
-export async function backgroundRoundState(db: Pick<Prisma.TransactionClient, "auditLog">, gameId: string, worldId: string, requestKey: string):
-  Promise<"none" | "open" | "refused" | "lost" | "outcome"> {
-  const events = await readEvents(db, gameId, backgroundRoundIdOf(worldId, requestKey));
-  if (!events.length) return "none";
-  const round = backgroundRoundOf(events);
-  return round.terminal?.kind ?? "open";
 }
 
 /**
@@ -339,6 +365,8 @@ export async function advanceContinuityInBackground(c: Container, gameId: string
       throw Error("BACKGROUND_REVIEW: invalid recorded sweep binding");
     const round = backgroundRoundOf(await readEvents(c.db, gameId, intent.roundId));
     const step = nextBackgroundStep(round, Date.now());
+    // A refusal whose zero settlement a stopped create never wrote: finished here, so its reservation never strands.
+    if (round.terminal?.kind === "refused") { await reconcileRefusedBackgroundRound(c, gameId, worldId, intent.requestKey); continue; }
     if (step.step !== "poll" && step.step !== "lost") continue;
     const reserved = await budget.readRequest(worldId, intent.requestKey);
     if (!reserved || reserved.scope !== "judge" || reserved.operationFingerprint !== intent.fingerprint

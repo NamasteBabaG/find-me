@@ -37,7 +37,8 @@ import { LOCAL_PATCH_BOARD_REVIEW_MIN_MS, localPatchBoardAwaitsProvider, localPa
 import { recoverEnrolledReviewInterruptions } from "./subject-upgrade";
 import { advanceContinuityInBackground } from "./continuity-background";
 import { enrollLeanWorld } from "./lean-enrollment";
-import { isLeanWorld, leanSubjectOnlyRefusal } from "./lean-release";
+import { isLeanWorld } from "./lean-release";
+import { leanSubjectOnlyRefusal } from "./lean-repair";
 import {
   LOCAL_PATCH_MAX_ATTEMPTS, LOCAL_PATCH_PROVIDER, LOCAL_PATCH_VARIANT, runLocalPatchHide,
   type LocalPatchHideDeps, type LocalPatchHideOutcome,
@@ -432,7 +433,7 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
   // reasons, as its second was, and no paid diagnosis. Any other refusal, and a third one, goes to self-repair.
   const leanWorld = !!subjectUpgrade && await isLeanWorld(c.db, gameId);
   const leanThirdPainting = (row: { status: string; attempts: number; judgeJson: string | null } | undefined) => leanWorld && !!row
-    && row.status === "FAILED" && row.attempts === LOCAL_PATCH_NORMAL_ATTEMPTS && leanSubjectOnlyRefusal(row.judgeJson);
+    && row.status === "FAILED" && row.attempts === LOCAL_PATCH_NORMAL_ATTEMPTS && leanSubjectOnlyRefusal(row.judgeJson, subjectUpgrade!.ageYears);
   /** A v1 pose-plan refusal awaiting its v2 question about the same pixels (subject-rejudge/v1), read at the enrolled age. */
   const rejudgePending = (row: Parameters<typeof subjectRejudgePending>[0]) => !!subjectUpgrade && subjectRejudgePending(row, subjectUpgrade.ageYears);
   // A board also owes its v2 re-judgments (subject-rejudge/v1), whatever status the board itself carries.

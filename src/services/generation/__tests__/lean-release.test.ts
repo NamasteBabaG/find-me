@@ -16,7 +16,7 @@ import { visualReviewCharge } from "../../../infra/generation/visual-review-pric
 import { solBackgroundReviewBody } from "../../../infra/generation/openai-background-review";
 import { localPatchBoardsForVersion, localPatchBoardForVersion } from "../../../domain/scene/local-patch-catalog";
 import { maskForHide } from "../../../domain/scene/local-patch-hides";
-import { SUBJECT_POLICY_V2, subjectPlanFor } from "../../../domain/generation/subject-policy";
+import { subjectPlanFor } from "../../../domain/generation/subject-policy";
 import { LEAN_WARM_HAT_VERSION, LEAN_WARM_HAT_WARDROBE, SUBJECT_PAINTER_V3, SUBJECT_PAINTER_V4, isPlanLedPainter, subjectRenderDirectionV3,
   subjectRenderDirectionV4, subjectSupportPoseV4 } from "../../../domain/generation/subject-painter";
 import { selfRepairRenderInstructions, type SelfRepairDecision } from "../../../domain/scene/local-patch-self-repair";
@@ -31,7 +31,7 @@ import { activateLocalPatchEmergencyBudget, localPatchEmergencyBudgetAuditId } f
 import { prepareVisualReview, visualReviewMaxCharge } from "../visual-review";
 import { WorldBudgetError } from "../world-budget";
 import {
-  LEAN_WORLD_CAP_MICRO_USD, LOCAL_PATCH_LEAN_RELEASE, isLeanWorld, leanReleaseAuditId, leanReleaseOf, leanReleaseReceipt, leanSubjectOnlyRefusal,
+  LEAN_WORLD_CAP_MICRO_USD, LOCAL_PATCH_LEAN_RELEASE, isLeanWorld, leanReleaseAuditId, leanReleaseOf, leanReleaseReceipt,
   pinLeanRelease, readLeanWorldBudget,
 } from "../lean-release";
 import { bill } from "./local-patch-fixtures";
@@ -156,25 +156,6 @@ describe("the lean painter: a planned look, MEDIUM, and the pushed-back hat", ()
     const decision: SelfRepairDecision = { cause: "drawing-defect", explanation: "Synthetic arms remain at the sides.", action: "redraw-with-new-placement", sourceKey: "synthetic",
       returnWindow: { left: 1, top: 1, width: 510, height: 766 }, protectedCore: { left: 40, top: 80, width: 300, height: 600 }, faceRect: { left: 80, top: 100, width: 70, height: 80 } };
     expect(selfRepairRenderInstructions(decision, "v3")).toContain("the pose follows the SUBJECT DIRECTION");
-  });
-});
-
-describe("a refusal for who the child is only", () => {
-  const receipt = (subject: Record<string, unknown> | null, over: Record<string, unknown> = {}) => JSON.stringify({ reviewState: "board-review-complete",
-    judgedSha256: "a".repeat(64), boardReview: { dual: { imageSha256: "a".repeat(64), ...(subject ? { subject } : {}) } }, ...over });
-  it("is a v2 subject refusal of these same pixels, by a check of the child or the collection's variety", () => {
-    expect(leanSubjectOnlyRefusal(receipt({ subjectPolicy: SUBJECT_POLICY_V2, failedChecks: ["photoLikeness"] }))).toBe(true);
-    expect(leanSubjectOnlyRefusal(receipt({ subjectPolicy: SUBJECT_POLICY_V2, failedChecks: ["collectionVariety"] }))).toBe(true);
-    expect(leanSubjectOnlyRefusal(receipt({ subjectPolicy: SUBJECT_POLICY_V2, failedChecks: ["requiredWardrobe", "perceivedAge"] }))).toBe(true);
-    // Not one: a quality refusal (no subject stage), an empty refusal, a v1 pose code, another picture's stage, an unfinished review.
-    expect(leanSubjectOnlyRefusal(receipt(null))).toBe(false);
-    expect(leanSubjectOnlyRefusal(receipt({ subjectPolicy: SUBJECT_POLICY_V2, failedChecks: [] }))).toBe(false);
-    expect(leanSubjectOnlyRefusal(receipt({ subjectPolicy: SUBJECT_POLICY_V2, failedChecks: ["plannedAction"] }))).toBe(false);
-    expect(leanSubjectOnlyRefusal(receipt({ subjectPolicy: "local-patch-subject/v1", failedChecks: ["photoLikeness"] }))).toBe(false);
-    expect(leanSubjectOnlyRefusal(receipt({ subjectPolicy: SUBJECT_POLICY_V2, failedChecks: ["photoLikeness"] }, { judgedSha256: "b".repeat(64) }))).toBe(false);
-    expect(leanSubjectOnlyRefusal(receipt({ subjectPolicy: SUBJECT_POLICY_V2, failedChecks: ["photoLikeness"] }, { reviewState: "pending-board-review" }))).toBe(false);
-    expect(leanSubjectOnlyRefusal("not json")).toBe(false);
-    expect(leanSubjectOnlyRefusal(null)).toBe(false);
   });
 });
 

@@ -4,7 +4,6 @@ import { env } from "../../lib/env";
 import { LEAN_BOARD_WIZARD_CAP_MICRO_USD, type BoardWizardBudgetCeiling } from "./board-wizard-budget";
 import { leanReviewPolicy } from "../../domain/generation/visual-review-policy";
 import { SUBJECT_PAINTER_V4, LEAN_WARM_HAT_VERSION } from "../../domain/generation/subject-painter";
-import { SUBJECT_CHECKS_V2, SUBJECT_COLLECTION_VARIETY, SUBJECT_POLICY_V2 } from "../../domain/generation/subject-policy";
 import { NEW_QA_WORLD_BUDGET_POLICY } from "../../domain/generation/qa-world-budget-policy";
 import { LOCAL_PATCH_PAINTER_ACTION } from "./painter-release";
 import { QUALITY_CHANNEL_ACTION } from "./quality-channel";
@@ -87,22 +86,6 @@ export async function leanReleaseOf(db: Pick<Prisma.TransactionClient, "auditLog
   return LOCAL_PATCH_LEAN_RELEASE;
 }
 export const isLeanWorld = async (db: Pick<Prisma.TransactionClient, "auditLog">, gameId: string) => (await leanReleaseOf(db, gameId)) !== null;
-
-/**
- * Whether an appearance's last review refused it only for who the child is: its quality answer passed (a subject
- * reading is decided only after one does) and its local-patch-subject/v2 reading, about these same pixels, named
- * a check of the child or the collection's variety. Such a refusal is repainted with the reviewer's located
- * reasons; a diagnosis can add nothing a painter is not already told (local-patch-lean/v1).
- */
-export function leanSubjectOnlyRefusal(judgeJson: string | null): boolean {
-  try {
-    const receipt = JSON.parse(judgeJson ?? "null"), dual = receipt?.boardReview?.dual, subject = dual?.subject;
-    const codes: unknown = subject?.failedChecks;
-    return receipt?.reviewState === "board-review-complete" && typeof receipt.judgedSha256 === "string" && dual?.imageSha256 === receipt.judgedSha256
-      && subject?.subjectPolicy === SUBJECT_POLICY_V2 && Array.isArray(codes) && codes.length > 0
-      && codes.every(code => (SUBJECT_CHECKS_V2 as readonly unknown[]).includes(code) || code === SUBJECT_COLLECTION_VARIETY);
-  } catch { return false; }
-}
 
 /**
  * A lean world's commercial ceiling: four dollars, read from its own pin and nothing else. It never RAISES the
