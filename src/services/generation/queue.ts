@@ -86,9 +86,9 @@ export async function nextPendingGame(c: Container): Promise<string | null> {
 export async function tickGeneration(c: Container, gameId: string | null, budgetMs: number, hardMs = 270_000): Promise<TickResult> {
   const now = Date.now();
   // The scheduled tick first gives one parked world, whose interruption its automatic recovery admits, that recovery
-  // (local-patch-parked-recovery/v1); the selection below never chooses a parked world. A failure here never costs the
-  // turn of the game selected next.
-  if (!gameId) await recoverParkedLocalPatchReviews(c).catch(error =>
+  // (local-patch-parked-recovery/v1); the selection below never chooses a parked world. Bounded so the game selected
+  // next keeps at least 150 s of this request, and a failure here never costs it its turn.
+  if (!gameId) await recoverParkedLocalPatchReviews(c, {}, now, now + Math.max(0, Math.min(120_000, hardMs - 150_000))).catch(error =>
     console.error("[generate] parked-world recovery unavailable", error instanceof Error ? error.message : String(error)));
   const id = gameId ?? (await nextPendingGame(c));
   if (!id) return { gameId: null, status: null, pending: false };

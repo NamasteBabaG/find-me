@@ -107,10 +107,14 @@ export async function backgroundReviewWaiting(db: Pick<Prisma.TransactionClient,
   return waitingRows;
 }
 
+/** The round recorded under this request key (its intent names the appearance and pixels it asked about), or null. */
+export async function backgroundRoundOfKey(db: Pick<Prisma.TransactionClient, "auditLog">, gameId: string, worldId: string, requestKey: string) {
+  const events = await readEvents(db, gameId, backgroundRoundIdOf(worldId, requestKey));
+  return events.length ? backgroundRoundOf(events) : null;
+}
 /** How the round under this request key ended, as recorded; null while it runs or when the key has no round. */
 export async function backgroundRoundTerminal(db: Pick<Prisma.TransactionClient, "auditLog">, gameId: string, worldId: string, requestKey: string) {
-  const events = await readEvents(db, gameId, backgroundRoundIdOf(worldId, requestKey));
-  return events.length ? backgroundRoundOf(events).terminal : null;
+  return (await backgroundRoundOfKey(db, gameId, worldId, requestKey))?.terminal ?? null;
 }
 
 /** Written once, from the round as it stands inside the write (its intent row locked first). A loser gets nothing. */

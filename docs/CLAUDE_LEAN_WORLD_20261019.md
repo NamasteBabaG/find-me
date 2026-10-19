@@ -244,6 +244,22 @@ QA world `game_hzju9scobvssvl0tojca` ran on 1360a90b from 11:27 UTC. Flex in bac
   - It tries in the minute the world parked, then every tenth minute, for 24 hours.
   - A world an operator holds for any other reason is never touched.
   - `admittedInterruption` is now the one place that decides admission. Both the recovery and the scheduler's pre-check call it, so a retained payload never qualifies without its round's own recorded failed outcome.
+- **Codex round 15 (HOLD, three P1s on that path), and the reworked pass:**
+  1. **Unbounded time.** The pass ran before the selection with no deadline and could prepare several boards (40–70 s each).
+     - Now `continueAdmittedReviewInterruptions` locates each unknown answer by its own round's binding (appearance, variant, pixels) and prepares only that appearance.
+     - It starts a preparation only with 75 s of room inside a deadline that leaves the selected game at least 150 s.
+     - It is resumable: a later pass continues the rest.
+  2. **Releasing an unrelated hold.** A successful recovery re-queued any `needs-release` job.
+     - Now only a hold the engine recorded for a held ledger qualifies: the reason names an unknown review answer, or the held ledger.
+     - Every unknown answer holding the ledger must be admitted.
+     - The recovery itself no longer touches the job (`releaseParkedJob: false`). The pass releases it only once the ledger is no longer held, compared on the hold it observed (reason and version), so a hold placed meanwhile stays.
+  3. **Starvation and expiry.** `take: 25` ran before the eligibility checks, and the 24-hour window was permanent.
+     - The query now selects only engine ledger holds (up to 500, oldest first), and there is no window. A world is tried in its parking minute and every tenth minute after, without end.
+  - **The regression test now also covers:**
+    - an operator's hold on the very world, with the same admitted failure in its ledger: untouched;
+    - thirty older parked rows ahead of it: not crowded out;
+    - no room for one preparation: nothing is started;
+    - thirty hours later it is still a candidate.
   - The regression test starts with the failure retained and the job parked, beside an operator-held world, and advances through `tickGeneration(c, null, …)`. Its checks:
     - with the round's recorded end altered, nothing is continued;
     - restored, it is continued, the charge stays unknown in full and the job is queued;

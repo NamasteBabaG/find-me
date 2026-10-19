@@ -1,7 +1,7 @@
 import type { Prisma } from "@prisma/client";
 import type { Container } from "../container";
 import { interruptedLocalPatchReviewRequest } from "../../domain/scene/local-patch-review-request";
-import { boardWizardBudgetOf, boardWizardWorldId } from "./board-conditioned-wizard";
+import { boardWizardBudgetOf } from "./board-conditioned-wizard";
 import type { prepareLocalPatchBoardReview } from "./local-patch-board-review";
 import { fenceLocalPatchImages, LocalPatchRetainedPurchaseStore } from "./local-patch-lifecycle";
 import { sha256Bytes } from "./fixed-sprite";
@@ -57,23 +57,6 @@ export async function admittedInterruption(c: Pick<Container, "db">, gameId: str
   return { shape, reply };
 }
 
-/**
- * Whether a world parked for a person holds an unknown review answer its automatic continuation admits and has not
- * continued yet. A cheap read (ledger, retained records, round records): what lets the scheduled tick give a parked
- * world its recovery without rebuilding any board for a world an operator holds for another reason.
- */
-export async function parkedReviewInterruptionAdmitted(c: Container, gameId: string): Promise<boolean> {
-  const budget = boardWizardBudgetOf(c), worldId = boardWizardWorldId(gameId), audit = await budget.audit(worldId);
-  if (audit.overCapMicroUsd || audit.conflictRequestKeys.length || audit.overrunRequestKeys.length) return false;
-  const store = new LocalPatchRetainedPurchaseStore(c, gameId, budget);
-  for (const requestKey of audit.unknownRequestKeys.filter(key => key.startsWith("self-repair:board:"))) {
-    if (await budget.readContinuationApproval(worldId, requestKey)) continue;
-    const retained = await store.get(worldId, requestKey);
-    if (retained && !retained.evidence && await admittedInterruption(c, gameId, worldId, requestKey, retained)) return true;
-  }
-  return false;
-}
-
 /** A new evidence question, never a re-buy or a quality approval. Only an exact
  * retained no-response transport failure, or a background response its provider
  * ended `failed` with no text and no usage, qualifies (`interruptionShape`). The full unknown charge
@@ -82,18 +65,22 @@ export async function parkedReviewInterruptionAdmitted(c: Container, gameId: str
 export async function recoverPreparedLocalPatchReview(c: Container, prepared: Prepared,
   fence?: (tx: Prisma.TransactionClient) => Promise<void>,
   /** The interrupted question's role and variant, for the image's evidence log. */
-  question: Question = { role: "quality", strategy: "standard/v1" }): Promise<boolean> {
+  question: Question = { role: "quality", strategy: "standard/v1" },
+  /** `releaseParkedJob: false`: continue the question and leave the job as it is; the scheduled tick releases a
+   * parked world itself, only as it observed the hold (local-patch-parked-recovery/v1). */
+  options: { releaseParkedJob?: boolean } = {}): Promise<boolean> {
   const upgrade = await subjectUpgradeOf(c.db, prepared.game.id);
   const enrolled = upgrade?.reviewRecovery === SUBJECT_REVIEW_RECOVERY && upgrade.ownerId === prepared.game.ownerId;
-  if (await recoverInterruptedReview(c, prepared, fence, question, "v1", enrolled)) return true;
-  return enrolled && recoverInterruptedReview(c, prepared, fence, question, "v2", true);
+  const releaseParkedJob = options.releaseParkedJob !== false;
+  if (await recoverInterruptedReview(c, prepared, fence, question, "v1", enrolled, releaseParkedJob)) return true;
+  return enrolled && recoverInterruptedReview(c, prepared, fence, question, "v2", true, releaseParkedJob);
 }
 
 async function recoverInterruptedReview(c: Container, prepared: Prepared, fence: ((tx: Prisma.TransactionClient) => Promise<void>) | undefined,
   question: Question, release: "v1" | "v2",
   /** An enrolled world keeps the last complete proof beside the interruption, so its paid
    * continuity answer about the same pixels can still be reused; a historical world's bytes are unchanged. */
-  keepProof: boolean): Promise<boolean> {
+  keepProof: boolean, releaseParkedJob: boolean): Promise<boolean> {
   const policyId = release === "v1" ? REVIEW_INTERRUPTION_POLICY : REVIEW_INTERRUPTION_POLICY_V2;
   const { game, scene, request, requestKey, fingerprint, worldId, budget } = prepared;
   if (scene.sceneVersion !== 12 || prepared.extraPlan || request.reviewScope !== "ready-only/v1"
@@ -175,7 +162,7 @@ async function recoverInterruptedReview(c: Container, prepared: Prepared, fence:
     await tx.targetInstance.update({ where: { id: selected.row.targetInstanceId }, data: { status: "FAILED" } });
     await tx.auditLog.upsert({ where: { id: approvalId }, update: {}, create: { id: approvalId, actorType: "SYSTEM",
       action: policyId, entityType: "Game", entityId: game.id, metaJson: JSON.stringify(proof) } });
-    await tx.generationJob.updateMany({ where: { id: `job_${game.id}`, status: "FAILED", currentStep: "local-patch:needs-release" },
+    if (releaseParkedJob) await tx.generationJob.updateMany({ where: { id: `job_${game.id}`, status: "FAILED", currentStep: "local-patch:needs-release" },
       data: { status: "QUEUED", currentStep: "local-patch", lastError: null } });
     return true;
   }, { timeout: 30_000 });

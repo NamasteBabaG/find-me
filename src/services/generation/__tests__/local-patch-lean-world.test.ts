@@ -398,8 +398,22 @@ describe("local-patch-lean/v1 on a whole paid world", () => {
     for (const [id, why] of [[gameId, "Continuity question in the background: the world ledger is held; nothing was sent"], [held, "An operator holds this world"]] as const)
       await db.generationJob.update({ where: { id: `job_${id}` }, data: { status: "FAILED", currentStep: "local-patch:needs-release", lastError: why } });
     const job = () => db.generationJob.findUniqueOrThrow({ where: { id: `job_${gameId}` } });
-    const parkedAt = (await job()).updatedAt.getTime();
     const heldBefore = await db.generationJob.findUniqueOrThrow({ where: { id: `job_${held}` } });
+    // An operator's hold on this very world, with the same admitted failure in its ledger: never released or continued.
+    const engineHold = (await job()).lastError!;
+    await db.generationJob.update({ where: { id: `job_${gameId}` }, data: { lastError: "An operator holds this world for another reason" } });
+    await tickGeneration(container, null, 60_000);
+    expect(await job()).toMatchObject({ status: "FAILED", currentStep: "local-patch:needs-release", lastError: "An operator holds this world for another reason" });
+    expect(await budget.readContinuationApproval(worldId, key)).toBeNull();
+    await db.generationJob.update({ where: { id: `job_${gameId}` }, data: { lastError: engineHold } });
+    const parkedAt = (await job()).updatedAt.getTime();
+    // Thirty older parked worlds ahead of it (not enrolled, between their tries) never crowd it out of the scan.
+    for (let n = 0; n < 30; n++) {
+      await db.game.create({ data: { id: `lean-world-crowd-${n}`, status: "TARGETS_GENERATING", styleVersion: LOCAL_PATCH_STYLE } });
+      await db.generationJob.create({ data: { id: `job_lean-world-crowd-${n}`, gameId: `lean-world-crowd-${n}`, status: "FAILED",
+        currentStep: "local-patch:needs-release", lastError: "local-patch: the world ledger is held; reconcile its unresolved charge before continuing",
+        updatedAt: new Date(parkedAt - 61_000 - n) } });
+    }
     // A retained failure alone is not enough: with its round's recorded end altered, the scheduled tick continues nothing.
     const outcomeId = `aud_sb_${backgroundRoundIdOf(worldId, key)}_outcome`, outcome = await db.auditLog.findUniqueOrThrow({ where: { id: outcomeId } });
     await db.auditLog.update({ where: { id: outcomeId }, data: { metaJson: JSON.stringify({ ...JSON.parse(outcome.metaJson!), providerStatus: "completed" }) } });
@@ -407,9 +421,13 @@ describe("local-patch-lean/v1 on a whole paid world", () => {
     expect(await job()).toMatchObject({ status: "FAILED", currentStep: "local-patch:needs-release" });
     expect(await budget.readContinuationApproval(worldId, key)).toBeNull();
     await db.auditLog.update({ where: { id: outcomeId }, data: { metaJson: outcome.metaJson } });
-    // Between its tries, and past its day, the scheduler leaves it alone.
+    // Between its tries the scheduler leaves it alone; without room for one preparation it starts none.
     expect(await recoverParkedLocalPatchReviews(container, {}, parkedAt + 5 * 60_000)).toBeNull();
-    expect(await recoverParkedLocalPatchReviews(container, {}, parkedAt + 25 * 60 * 60_000)).toBeNull();
+    expect(await recoverParkedLocalPatchReviews(container, {}, Date.now(), Date.now() + 10_000)).toBe(gameId);
+    expect(await budget.readContinuationApproval(worldId, key)).toBeNull();
+    expect(await job()).toMatchObject({ status: "FAILED", currentStep: "local-patch:needs-release" });
+    // Its tries never expire: thirty hours on it is still a candidate in its minute (no room here, so nothing is started).
+    expect(await recoverParkedLocalPatchReviews(container, {}, parkedAt + 30 * 60 * 60_000, Date.now() + 10_000)).toBe(gameId);
     expect(await budget.readContinuationApproval(worldId, key)).toBeNull();
     // The scheduled tick (no game named) continues it: the unknown charge kept whole, the job queued again.
     await tickGeneration(container, null, 60_000);

@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { Prisma } from "@prisma/client";
 import type { Container } from "../container";
 import { WORLD_AUTOMATIC_REVIEW_RECOVERY_V2_LIMIT } from "../../domain/generation/world-budget";
-import { BACKGROUND_REVIEW_TRANSPORT } from "../../domain/generation/background-review-round";
+import { BACKGROUND_REVIEW_TRANSPORT, type BackgroundReviewBinding } from "../../domain/generation/background-review-round";
 import { SUBJECT_POLICY_VERSION, SUBJECT_READER_V2, readSubjectAnswer, readSubjectAnswerV2, subjectPlanCanonical, subjectPlansForBoard } from "../../domain/generation/subject-policy";
 import { localPatchBoardForVersion } from "../../domain/scene/local-patch-catalog";
 import { validChildAge } from "../../domain/child-appearance";
@@ -13,7 +13,8 @@ import { dualReviewQuestionCandidates } from "./local-patch-dual-review";
 import { subjectStageRaw, type DualReviewProof } from "./local-patch-dual-evidence";
 import { readLocalPatchExtraAttemptPlan } from "./local-patch-extra-attempt";
 import { LocalPatchRetainedPurchaseStore } from "./local-patch-lifecycle";
-import { recoverPreparedLocalPatchReview } from "./local-patch-review-interruption-recovery";
+import { admittedInterruption, recoverPreparedLocalPatchReview } from "./local-patch-review-interruption-recovery";
+import { backgroundRoundOfKey } from "./continuity-background";
 import { DUAL_VISUAL_REVIEW_V3, dualVisualReviewVersion } from "./visual-review-release";
 import { sha256Bytes } from "./fixed-sprite";
 import {
@@ -241,6 +242,52 @@ export async function applySubjectUpgrade(c: Container, input: { gameId: string;
     return { applied: false, receipt: winner, recovered: await recoverEnrolledReviewInterruptions(c, input.gameId, deps) };
   }
   return { applied: true, receipt, recovered: await recoverEnrolledReviewInterruptions(c, input.gameId, deps) };
+}
+
+/** Room one targeted preparation needs before it starts: one appearance's evidence takes 40 to 70 s on real art. */
+export const PARKED_PREPARE_NEED_MS = 75_000;
+
+/**
+ * local-patch-parked-recovery/v1: every unknown answer holding this enrolled world's ledger is continued, provided the
+ * automatic continuation admits it (`admittedInterruption`). Each answer is located by its own background round: the
+ * appearance, variant and pixels it asked about. Only that appearance is prepared, one at a time, while `deadlineAt`
+ * leaves room. Nothing is bought, and the job is left as it is: the caller releases it only as it observed the hold.
+ * Returns:
+ *  - "blocked": the ledger holds an answer this does not admit or cannot locate on unchanged pixels, so a person decides;
+ *  - "partial": time ran out; a later pass continues the rest;
+ *  - "done": nothing admitted remains uncontinued.
+ */
+export async function continueAdmittedReviewInterruptions(c: Container, gameId: string,
+  deps: Pick<LocalPatchBoardReviewDeps, "readBoardArt">, deadlineAt: number): Promise<"blocked" | "partial" | "done"> {
+  if (!await subjectUpgradeOf(c.db, gameId)) return "blocked";
+  const version = await dualVisualReviewVersion(c.db, gameId);
+  const game = await c.db.game.findUnique({ where: { id: gameId }, include: { scenes: true } });
+  if (!version || !game || game.status !== "TARGETS_GENERATING" || game.deletedAt) return "blocked";
+  const budget = boardWizardBudgetOf(c), worldId = boardWizardWorldId(gameId), audit = await budget.audit(worldId);
+  if (audit.overCapMicroUsd || audit.conflictRequestKeys.length || audit.overrunRequestKeys.length) return "blocked";
+  const store = new LocalPatchRetainedPurchaseStore(c, gameId, budget);
+  const open: { requestKey: string; binding: BackgroundReviewBinding }[] = [];
+  for (const requestKey of audit.unknownRequestKeys) {
+    if (await budget.readContinuationApproval(worldId, requestKey)) continue;
+    const retained = requestKey.startsWith("self-repair:board:") ? await store.get(worldId, requestKey) : null;
+    const round = retained ? await backgroundRoundOfKey(c.db, gameId, worldId, requestKey) : null;
+    if (!retained || retained.evidence || !round || !await admittedInterruption(c, gameId, worldId, requestKey, retained)) return "blocked";
+    open.push({ requestKey, binding: round.intent.binding });
+  }
+  for (const { requestKey, binding } of open) {
+    if (deadlineAt - Date.now() < PARKED_PREPARE_NEED_MS) return "partial";
+    const scene = game.scenes.find(s => requestKey.startsWith(`self-repair:board:${s.sceneSlug}:`));
+    if (!scene) return "blocked";
+    const prepared = await prepareLocalPatchBoardReview(c, { gameId, sceneId: scene.id }, deps,
+      { includePlayerCandidates: true, playerReview: true, onlyHideId: binding.hideId });
+    const entry = prepared.ready ? prepared.entries.find(e => e.hide.id === binding.hideId) : undefined;
+    // Only the pixels the question asked about: another image is another question.
+    if (!prepared.ready || !entry || entry.row.id !== binding.variantId || entry.imageSha256 !== binding.imageSha256) return "blocked";
+    const candidate = (await dualReviewQuestionCandidates(c, prepared, version)).find(item => item.requestKey === requestKey);
+    if (!candidate || !await recoverPreparedLocalPatchReview(c, { ...prepared, requestKey, fingerprint: candidate.fingerprint }, undefined,
+      { role: candidate.role, strategy: candidate.strategy }, { releaseParkedJob: false })) return "blocked";
+  }
+  return "done";
 }
 
 /**

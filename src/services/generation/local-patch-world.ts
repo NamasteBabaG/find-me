@@ -23,7 +23,7 @@ import { needsPlayerReview, playerReviewEnabled } from "./local-patch-player-rev
 import { runLocalPatchSelfRepair, SELF_REPAIR_REQUEST_ACTION, type SelfRepairDeps } from "./local-patch-self-repair";
 import { WorldBudgetError } from "./world-budget";
 import { recoverLocalPatchImageInterruptions } from "./local-patch-interruption-recovery";
-import { parkedReviewInterruptionAdmitted, recoverPreparedLocalPatchReview } from "./local-patch-review-interruption-recovery";
+import { recoverPreparedLocalPatchReview } from "./local-patch-review-interruption-recovery";
 import { activateLocalPatchEmergencyBudget } from "./local-patch-budget-recovery";
 import { localPatchEvidenceRecovery, LOCAL_PATCH_EVIDENCE_RETRY_BACKOFF_MS } from "./local-patch-review-recovery";
 import { localPatchRetainedAnswerUndecided, localPatchContinuityPending } from "./local-patch-dual-evidence";
@@ -34,7 +34,7 @@ import { subjectUpgradeOf } from "./subject-enrollment";
 import { subjectRejudgePending } from "./subject-rejudge";
 import { LOCAL_PATCH_BOARD_REVIEW_MIN_MS, localPatchBoardAwaitsProvider, localPatchProgressOrder, localPatchRestDecision, localPatchRestOf,
   localPatchReviewFits, selfRepairProgress, type LocalPatchRest } from "../../domain/scene/local-patch-progress";
-import { recoverEnrolledReviewInterruptions } from "./subject-upgrade";
+import { continueAdmittedReviewInterruptions, recoverEnrolledReviewInterruptions } from "./subject-upgrade";
 import { advanceContinuityInBackground } from "./continuity-background";
 import { enrollLeanWorld } from "./lean-enrollment";
 import { isLeanWorld } from "./lean-release";
@@ -105,24 +105,33 @@ const PARKED_STEPS = [LOCAL_PATCH_NEEDS_RELEASE, LOCAL_PATCH_RECOVERY_EXHAUSTED]
  * (`nextPendingGame`), so a recovery that only runs inside its own slice needs a person, or its owner's open page,
  * to tick it. On the first lean QA world (19 October) a provider-declared failure parked it with nobody to release it.
  *
- * The scheduled tick gives one parked, enrolled world its review recovery: only one whose ledger holds an unknown
- * answer that the automatic continuation admits and has not continued (a cheap read; `parkedReviewInterruptionAdmitted`).
- * It tries once at parking, then every ten minutes, for a day, so a world the recovery cannot continue costs little.
- * Nothing is bought; an operator hold for any other reason is never touched.
+ * The scheduled tick gives one parked, enrolled world its review recovery (`continueAdmittedReviewInterruptions`):
+ * - Only a hold the engine itself recorded for a held ledger: the job's reason names an unknown review answer, or the
+ *   held ledger. Any other hold, an operator's included, is never touched.
+ * - Every unknown answer holding the ledger must be one the automatic continuation admits; otherwise a person decides.
+ * - Each answer prepares only its own appearance, one at a time, inside `deadlineAt`; a later pass continues the rest.
+ * - The job is released only as it was observed (same hold, same reason, same version) and only once the ledger is no
+ *   longer held. A hold placed meanwhile stays.
+ * - It is tried in the minute the world parked, then every tenth minute, without end, so it never expires; a world it
+ *   cannot continue costs one cheap read, or at most one preparation, per ten minutes.
  */
 export const LOCAL_PATCH_PARKED_RECOVERY_EVERY_MS = 10 * 60_000;
-export const LOCAL_PATCH_PARKED_RECOVERY_WINDOW_MS = 24 * 60 * 60_000;
+/** The engine's own record of why a held review parked a world: an unknown answer's key, or the held ledger itself. */
+const engineLedgerHold = { OR: [{ lastError: { startsWith: "self-repair:board:" } }, { lastError: { contains: "the world ledger is held" } }] };
 export async function recoverParkedLocalPatchReviews(c: Container, deps: Pick<LocalPatchBoardReviewDeps, "readBoardArt"> = {},
-  now = Date.now()): Promise<string | null> {
-  const parked = await c.db.generationJob.findMany({ where: { status: "FAILED", currentStep: LOCAL_PATCH_NEEDS_RELEASE,
-    updatedAt: { gt: new Date(now - LOCAL_PATCH_PARKED_RECOVERY_WINDOW_MS) },
+  now = Date.now(), deadlineAt = now + 120_000): Promise<string | null> {
+  const parked = await c.db.generationJob.findMany({ where: { status: "FAILED", currentStep: LOCAL_PATCH_NEEDS_RELEASE, ...engineLedgerHold,
     game: { styleVersion: LOCAL_PATCH_STYLE, status: "TARGETS_GENERATING", deletedAt: null } },
-    orderBy: { updatedAt: "asc" }, select: { gameId: true, updatedAt: true }, take: 25 });
+    orderBy: { updatedAt: "asc" }, select: { id: true, gameId: true, updatedAt: true, lastError: true }, take: 500 });
   for (const job of parked) {
     // The minute it parked, then every tenth minute after.
     if (Math.floor((now - job.updatedAt.getTime()) / 60_000) % (LOCAL_PATCH_PARKED_RECOVERY_EVERY_MS / 60_000) !== 0) continue;
-    if (!await subjectUpgradeOf(c.db, job.gameId) || !await parkedReviewInterruptionAdmitted(c, job.gameId)) continue;
-    await recoverEnrolledReviewInterruptions(c, job.gameId, deps);
+    if (!await subjectUpgradeOf(c.db, job.gameId)) continue;
+    const continued = await continueAdmittedReviewInterruptions(c, job.gameId, deps, deadlineAt);
+    if (continued === "blocked") continue;
+    if (continued === "done" && !(await boardWizardBudgetOf(c).audit(boardWizardWorldId(job.gameId))).held)
+      await c.db.generationJob.updateMany({ where: { id: job.id, status: "FAILED", currentStep: LOCAL_PATCH_NEEDS_RELEASE,
+        lastError: job.lastError, updatedAt: job.updatedAt }, data: { status: "QUEUED", currentStep: "local-patch", lastError: null } });
     return job.gameId;
   }
   return null;
