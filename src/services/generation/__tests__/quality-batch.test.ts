@@ -364,7 +364,8 @@ describe("Opus scene-quality questions through Message Batches", () => {
     const settle = vi.spyOn(WorldBudget.prototype, "settle").mockRejectedValueOnce(Error("the acknowledgement was lost"));
     await expect(advanceQualityBatches(container, gameId, async () => {})).rejects.toThrow("the acknowledgement was lost");
     settle.mockRestore();
-    const { batchKey } = await syncKeyOf(gameId, board);
+    const intents = (await events(gameId)).map(row => JSON.parse(row.metaJson!)).filter(event => event.kind === "intent");
+    const { batchKey } = intents.find(event => event.intent.customId === answered.requests[0]!.customId).intent as { batchKey: string };
     expect(await w.budget.readRequest(w.worldId, batchKey)).toMatchObject({ state: "pending" });
     // Its two siblings' reads take 30 s of the clock and fail, every time: the poll window is spent on them.
     let now = Date.now();
@@ -403,17 +404,19 @@ describe("Opus scene-quality questions through Message Batches", () => {
     try {
       const { batchKey } = (await events(gameId)).map(row => JSON.parse(row.metaJson!))
         .find(event => event.kind === "intent" && event.intent.customId === last.requests[0]!.customId).intent as { batchKey: string };
+      // A slice every four minutes, as when each one reviews a board (Codex: minutes would start every pass at the
+      // same round); the world's claim counter moves one step per slice whatever the cadence.
       let slices = 0;
-      for (; slices < 4 && (await w.budget.readRequest(w.worldId, batchKey))?.state !== "settled"; slices++) {
+      for (; slices < 6 && (await w.budget.readRequest(w.worldId, batchKey))?.state !== "settled"; slices++) {
         const deadline = now + 270_000, running = new Set<string>();
-        await advanceQualityBatches(container, gameId, async () => {}, deadline, { running, pollDeadlineAt: deadline - 205_000 });
+        await advanceQualityBatches(container, gameId, async () => {}, deadline, { running, pollDeadlineAt: deadline - 205_000, turn: 100 + slices });
         // The pass stopped with room for a review, and named nothing it did not read as running.
         expect(deadline - now).toBeGreaterThanOrEqual(180_000);
         expect(running).toEqual(new Set());
-        now += 60_000; // the next tick, a minute later
+        now = deadline - 270_000 + 240_000;
       }
       expect(await w.budget.readRequest(w.worldId, batchKey)).toMatchObject({ state: "settled" });
-      expect(slices).toBeLessThanOrEqual(3);
+      expect(slices).toBeLessThanOrEqual(4);
     } finally { clock.mockRestore(); fake.status = status; }
     // Nothing is left for a later sweep.
     for (let pass = 0; pass < 3 && !fake.batches.every(b => b.deleted); pass++) {

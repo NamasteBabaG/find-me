@@ -279,16 +279,16 @@ export async function askContinuityInBackground(c: Container, ask: BackgroundAsk
  * `running` receives each response the provider has just said still runs
  * (`variantId:imageSha256`): its board's review has nothing to move until it ends
  * (local-patch-slice-pacing/v1). A round the pass did not read is not named. A world
- * slice passing it also starts a response further on each minute, so one slow every
- * time never keeps the others from their reads.
+ * slice also passes `turn` (its claim counter, one step per slice): the pass starts a
+ * response further on each time, so one slow every time never keeps the others from their reads.
  */
 export async function advanceContinuityInBackground(c: Container, gameId: string,
-  options: { deadlineAt?: number; running?: Set<string> } = {}): Promise<number> {
-  const { running, ...window } = options;
+  options: { deadlineAt?: number; running?: Set<string>; turn?: number } = {}): Promise<number> {
+  const { running, turn, ...window } = options;
   if (!c.backgroundReview) return 0;
   const recorded = await c.db.auditLog.findMany({ where: { action: SOL_BACKGROUND_ACTION, entityType: "Game", entityId: gameId,
     id: { endsWith: "_intent" } }, orderBy: { createdAt: "asc" } });
-  const start = running && recorded.length ? Math.floor(Date.now() / 60_000) % recorded.length : 0;
+  const start = turn !== undefined && recorded.length ? turn % recorded.length : 0;
   const intents = [...recorded.slice(start), ...recorded.slice(0, start)];
   const worldId = `${gameId}:board-wizard`, budget = boardWizardBudgetOf(c);
   let advanced = 0;

@@ -862,10 +862,11 @@ export async function askQualityThroughBatch(c: Container, input: {
  * passes `slice`: `running` receives each round whose batch the provider has just said
  * still runs (`variantId:imageSha256`), its board's review having nothing to move until
  * it ends. Provider calls then stop by `pollDeadlineAt`, leaving the slice room for a
- * review, and start a round further on each minute, so one slow every time never keeps
- * the others out for good; every finished round's record is still applied to the ledger. */
+ * review, and start a round further on at each `turn` (the world's claim counter, one
+ * step per slice), so one slow every time never keeps the others out for good; every
+ * finished round's record is still applied to the ledger. */
 export async function advanceQualityBatches(c: Container, gameId: string, fence: Fence, deadlineAt?: number,
-  slice?: { readonly running: Set<string>; readonly pollDeadlineAt?: number }): Promise<void> {
+  slice?: { readonly running: Set<string>; readonly pollDeadlineAt?: number; readonly turn?: number }): Promise<void> {
   const transport = c.qualityBatch;
   if (!transport) return;
   const rounds = [...await gameRounds(c.db, gameId)];
@@ -878,7 +879,7 @@ export async function advanceQualityBatches(c: Container, gameId: string, fence:
   // before the housekeeping of finished rounds can take the pass's time (local-patch-slice-pacing/v1).
   const parsed = rounds.map(([roundId, events]) => ({ roundId, round: qualityBatchRoundOf(events) }));
   const turn = <T,>(items: readonly T[]) => {
-    const start = slice && items.length ? Math.floor(Date.now() / SWEEP_ROTATION_MS) % items.length : 0;
+    const start = slice?.turn !== undefined && items.length ? slice.turn % items.length : 0;
     return [...items.slice(start), ...items.slice(0, start)];
   };
   const pollUntil = slice?.pollDeadlineAt ?? deadlineAt;

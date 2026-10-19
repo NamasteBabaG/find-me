@@ -170,11 +170,13 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
     : options.hardDeadlineAt - LOCAL_PATCH_BOARD_REVIEW_MIN_MS - LOCAL_PATCH_PHASE_MARGIN_MS;
   // Existing provider work is reconciled before a held job or sibling scheduling can
   // defer it beyond the background response's short retention. No new request here.
-  // A job parked for a person reviews nothing this slice: its responses get the whole slice.
+  // A job parked for a person reviews nothing this slice: its responses get the whole slice. The world's claim
+  // counter, one step per slice, decides where each pass starts.
   if (automatic && await subjectUpgradeOf(c.db, gameId)) {
-    const step = (await c.db.generationJob.findUnique({ where: { id: `job_${gameId}` }, select: { currentStep: true } }))?.currentStep;
-    await advanceContinuityInBackground(c, gameId, { deadlineAt: step && PARKED_STEPS.includes(step) ? options.hardDeadlineAt : pollDeadlineAt,
-      running: stillRunning });
+    const ahead = await c.db.generationJob.findUnique({ where: { id: `job_${gameId}` }, select: { currentStep: true, attempts: true } });
+    const parked = !!ahead?.currentStep && PARKED_STEPS.includes(ahead.currentStep);
+    await advanceContinuityInBackground(c, gameId, { deadlineAt: parked ? options.hardDeadlineAt : pollDeadlineAt, running: stillRunning,
+      turn: ahead?.attempts ?? 0 });
   }
   // A v7 hide buys only its image. Reuse the dispatch boundary's conservative
   // minimum, then let it recheck after reservation and bound the actual call.
@@ -455,7 +457,8 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
     // deadline, or settled and linked once its batch has ended. Nothing is bought.
     // A round it cannot advance stops the slice with its reason, as a review does.
     if (dual) {
-      try { await advanceQualityBatches(c, gameId, fence, options.hardDeadlineAt, { running: stillRunning, ...(pollDeadlineAt === undefined ? {} : { pollDeadlineAt }) }); }
+      try { await advanceQualityBatches(c, gameId, fence, options.hardDeadlineAt, { running: stillRunning, turn: claim,
+        ...(pollDeadlineAt === undefined ? {} : { pollDeadlineAt }) }); }
       catch (error) {
         await c.db.generationJob.updateMany({ where: { id: job.id, attempts: claim, status: "RUNNING" },
           data: { status: "FAILED", lastError: (error instanceof Error ? error.message : String(error)).slice(0, 500) } });
