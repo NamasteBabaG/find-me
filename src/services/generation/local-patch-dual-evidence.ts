@@ -1,6 +1,6 @@
 import type { Prisma } from "@prisma/client";
 import type { VisualReviewPolicy } from "../../domain/generation/visual-review-policy";
-import { visualReviewPolicy } from "../../domain/generation/visual-review-policy";
+import { LEAN_REVIEW_POLICIES, visualReviewPolicy } from "../../domain/generation/visual-review-policy";
 import {
   CONTINUITY_READER_BOUNDED, CONTINUITY_READER_CROWD, CONTINUITY_READER_STRICT, localPatchRuntimeContinuityVerdict,
   readLocalPatchBodyContinuity, type ContinuityReader, type ContinuityReadFault, type ContinuityReading,
@@ -193,11 +193,13 @@ export function localPatchContinuityPending(row: { status: string; judgeJson?: s
  */
 export async function verifiedDualStage(db: Prisma.TransactionClient, worldId: string, stage: DualReviewStage,
   role: "scene-quality" | "head-continuity",
-  /** An enrolled world's continuity may also be the background question's answer. */
-  options: { allowBackground?: boolean } = {}): Promise<{ bytes: Buffer; evidence: WorldChargeEvidence } | null> {
+  /** An enrolled world's continuity may also be the background question's answer; a lean world's
+   * (local-patch-lean/v1) answers are its own Sol policies of this role, at either tier. */
+  options: { allowBackground?: boolean; allowLean?: boolean } = {}): Promise<{ bytes: Buffer; evidence: WorldChargeEvidence } | null> {
   const equal = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
   const allowed = [visualReviewPolicy(role, "high"), ...(options.allowBackground && role === "head-continuity"
-    ? [visualReviewPolicy(role, "high", undefined, "responses-background")] : [])];
+    ? [visualReviewPolicy(role, "high", undefined, "responses-background")] : []),
+    ...(options.allowLean ? LEAN_REVIEW_POLICIES.filter(policy => policy.role === role) : [])];
   if (!allowed.some(policy => equal(stage.policy, policy)) || !visualStageReadable(stage)
     || !Number.isSafeInteger(stage.attempt) || stage.attempt < 1
     || !/^self-repair:board:[a-z]+:[a-f0-9]{64}$/.test(stage.requestKey)

@@ -2,9 +2,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   game: vi.fn(), asset: vi.fn(), job: vi.fn(), user: vi.fn(), denied: vi.fn(), link: vi.fn(), proof: vi.fn(), hash: vi.fn(), wizard: vi.fn(), ledger: vi.fn(),
-  approved: vi.fn(), emergencyBudget: vi.fn(), newQaBudget: vi.fn(),
+  approved: vi.fn(), emergencyBudget: vi.fn(), newQaBudget: vi.fn(), leanBudget: vi.fn(),
   token: null as string | null, admin: false,
 }));
+vi.mock("@/services/generation/lean-release", () => ({ readLeanWorldBudget: mocks.leanBudget }));
 vi.mock("@/lib/server/qa-access", () => ({ qaAccessDenied: mocks.denied }));
 vi.mock("@/lib/server/session", () => ({ currentUser: mocks.user, draftTokenFromCookie: async () => mocks.token, isAdminEmail: () => mocks.admin }));
 vi.mock("@/services/container", () => ({ getContainer: () => ({ db: { game: { findUnique: mocks.game }, asset: { findUnique: mocks.asset }, generationJob: { findUnique: mocks.job }, worldBudgetLedger: { findUnique: mocks.ledger } }, email: { id: "console" } }) }));
@@ -44,7 +45,7 @@ beforeEach(() => {
   mocks.job.mockResolvedValue({ gameId: game.id, status: "DONE", stepsJson: "{}" });
   mocks.proof.mockReturnValue(null); mocks.hash.mockReturnValue("synthetic-hash"); mocks.link.mockResolvedValue({ url: "/synthetic-play" });
   mocks.ledger.mockResolvedValue(null); mocks.approved.mockResolvedValue(true); mocks.emergencyBudget.mockResolvedValue(null);
-  mocks.newQaBudget.mockResolvedValue(null);
+  mocks.newQaBudget.mockResolvedValue(null); mocks.leanBudget.mockResolvedValue(null);
 });
 async function response() { return GET(new Request("https://example.invalid/api/games/synthetic/status"), { params: Promise.resolve({ gameId: "synthetic" }) }); }
 function assembled(status = "MANUAL_REVIEW") {
@@ -181,6 +182,20 @@ describe("fixed-world creation status boundary", () => {
     mocks.ledger.mockResolvedValue({ snapshotJson: JSON.stringify(snapshot) });
     mocks.newQaBudget.mockResolvedValue({ worldId: snapshot.worldId, capMicroUsd: 6_000_000, authorizationSha256: "b".repeat(64) });
     expect(await (await response()).json()).toMatchObject({ pending: false, state: "held", qaCost: { spentCents: 610, capCents: 600, held: true } });
+  });
+  it("shows a lean world's four-dollar ceiling first, and holds it above that ceiling (local-patch-lean/v1)", async () => {
+    mocks.game.mockResolvedValue({ ...game, status: "TARGETS_GENERATING", styleVersion: "local-patch-world-v1" });
+    for (const [spent, held] of [[3_900_000, false], [4_100_000, true]] as const) {
+      const snapshot = spentTo(spent);
+      mocks.ledger.mockResolvedValue({ snapshotJson: JSON.stringify(snapshot) });
+      mocks.leanBudget.mockResolvedValue({ worldId: snapshot.worldId, capMicroUsd: 4_000_000, authorizationSha256: "c".repeat(64) });
+      mocks.newQaBudget.mockResolvedValue({ worldId: snapshot.worldId, capMicroUsd: 6_000_000, authorizationSha256: "b".repeat(64) });
+      expect(await (await response()).json()).toMatchObject({ qaCost: { spentCents: spent / 10_000, capCents: 400, held },
+        ...(held ? { pending: false, state: "held" } : { pending: true, state: "working" }) });
+    }
+    // No later policy is consulted once the lean ceiling answers.
+    expect(mocks.newQaBudget).not.toHaveBeenCalled();
+    expect(mocks.emergencyBudget).not.toHaveBeenCalled();
   });
   it("does not fabricate budget permission when the six-dollar policy fails verification", async () => {
     mocks.game.mockResolvedValue({ ...game, status: "TARGETS_GENERATING", styleVersion: "local-patch-world-v1" });

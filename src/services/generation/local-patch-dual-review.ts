@@ -14,7 +14,8 @@ import { SUBJECT_QUALITY_BUNDLE_VERSION } from "../../domain/generation/subject-
 import { localPatchBoardForVersion } from "../../domain/scene/local-patch-catalog";
 import { subjectPlanOfHide, subjectPlanSha256, subjectUpgradeOf, type SubjectUpgradeReceipt } from "./subject-enrollment";
 import { loadSubjectPhoto, subjectQuestion, combinedQualitySubjectQuestion, SubjectEvidenceUnavailable, subjectV2RefusalCodes, withSubject, withSubjectV2 } from "./local-patch-subject-review";
-import { askContinuityInBackground } from "./continuity-background";
+import { askContinuityInBackground, backgroundRoundState } from "./continuity-background";
+import { isLeanWorld } from "./lean-release";
 import { localPatchCrowdContinuityPrompt, localPatchHeadContinuityPrompt } from "./local-patch-body-continuity";
 import { prepareVisualReview, sceneQualityQuestion, parseVisualSceneVerdicts, diagnoseVisualSceneAnswer, visualReviewMaxCharge, type PreparedVisualReview } from "./visual-review";
 import type { LocalPatchJudgeResult, LocalPatchBoardJudgeResult, QualityReader, QualityReadFault } from "./local-patch-judge";
@@ -29,10 +30,11 @@ import { recoverPreparedLocalPatchReview } from "./local-patch-review-interrupti
 import { localPatchEvidenceHistory, localPatchEvidenceRecovery, evidenceKindOfWireFault } from "./local-patch-review-recovery";
 import { DUAL_VISUAL_REVIEW_V2, DUAL_VISUAL_REVIEW_V3, DUAL_VISUAL_REVIEW_VERSION, dualVisualReviewVersion, qualityQuestionFor, QUALITY_QUESTION_OBJECT_JOINS, type DualVisualReviewVersion } from "./visual-review-release";
 import { prepareJoinDetails } from "./local-patch-integration-evidence";
-import { isBackgroundReviewPolicy, type VisualReviewEffort, type VisualReviewJudge, type VisualReviewTransport } from "../../domain/generation/visual-review-policy";
-import type { BudgetJson } from "./world-budget";
+import { isBackgroundReviewPolicy, isLeanReviewPolicy, type VisualReviewEffort, type VisualReviewJudge, type VisualReviewTier,
+  type VisualReviewTransport } from "../../domain/generation/visual-review-policy";
+import { WorldBudgetError, type BudgetJson } from "./world-budget";
 import type { WorldBudgetRequest } from "../../domain/generation/world-budget";
-import { dualQuestionReserveMicroUsd, type DualReviewRole } from "../../domain/generation/dual-review-reserve";
+import { DUAL_REVIEW_V3_RESERVE_MICRO_USD, dualQuestionReserveMicroUsd, type DualReviewRole } from "../../domain/generation/dual-review-reserve";
 import { askQualityThroughBatch, qualityBatchKeyOf } from "./quality-batch";
 
 type Prepared = Extract<Awaited<ReturnType<typeof prepareLocalPatchBoardReview>>, { ready: true }>;
@@ -64,7 +66,9 @@ function qualityAddendum(strategy: EvidenceStrategy): string {
 export async function runtimeContinuityQuestion(prepared: Prepared, binding: object, attempt: number,
   version: DualVisualReviewVersion = DUAL_VISUAL_REVIEW_VERSION, strategy: EvidenceStrategy = STANDARD,
   /** An enrolled world's new question is asked in the background: the same words, a different operation. */
-  transport?: VisualReviewTransport) {
+  transport?: VisualReviewTransport,
+  /** A lean world's question (local-patch-lean/v1): the same words, at this tier, under its lean policy. */
+  tier?: VisualReviewTier) {
   const hide = prepared.request.hides[0]!;
   if (!hide.closeupPng || hide.boundaryComparisons?.length !== 4) throw Error("Dual review requires all four continuous joins and the final head detail");
   const id = `${hide.hideId}:people`;
@@ -80,7 +84,7 @@ export async function runtimeContinuityQuestion(prepared: Prepared, binding: obj
   }
   const question = version === DUAL_VISUAL_REVIEW_V2 ? localPatchCrowdContinuityPrompt(id, CROWD_FOCUS)
     : localPatchHeadContinuityPrompt([{ id, focus: CROWD_FOCUS }]) + V1_CROWD_INSPECTION;
-  return prepareVisualReview({ role: "head-continuity", effort: "high", images, labels, ...(transport ? { transport } : {}),
+  return prepareVisualReview({ role: "head-continuity", effort: "high", images, labels, ...(transport ? { transport } : {}), ...(tier ? { tier } : {}),
     prompt: question + continuityAddendum(strategy, version) + `\nImmutable candidate binding: ${JSON.stringify(binding)}. Evidence attempt: ${attempt}.` });
 }
 
@@ -271,7 +275,9 @@ const SHORT_WHEN_PASSING = "\nANSWER LENGTH: for every check that passes, keep e
 /** Who answers the quality question, at what effort, in what length. Absent: today's
  * question exactly (Opus, HIGH, full answer). Anything else is a separate experiment. */
 export type DualQualityVariant = { readonly judge?: VisualReviewJudge; readonly effort?: VisualReviewEffort;
-  readonly answer?: typeof QUALITY_ANSWER_SHORT_WHEN_PASSING };
+  readonly answer?: typeof QUALITY_ANSWER_SHORT_WHEN_PASSING;
+  /** A lean world (local-patch-lean/v1): Sol HIGH, asked in the background at this tier. */
+  readonly tier?: VisualReviewTier };
 
 /** The quality question about one appearance: the scene question, its recovery
  * strategy's addendum and the immutable binding, byte for byte as it is bought. */
@@ -279,6 +285,7 @@ export function dualQualityQuestion(request: Prepared["request"], binding: objec
   variant: DualQualityVariant = {}) {
   const quality = sceneQualityQuestion(request, variant.effort ?? "high");
   return prepareVisualReview({ ...quality, ...(variant.judge ? { judge: variant.judge } : {}),
+    ...(variant.tier ? { judge: "gpt-6.1-sol" as const, transport: "responses-background" as const, tier: variant.tier } : {}),
     prompt: quality.prompt + qualityAddendum(strategy) + (variant.answer === QUALITY_ANSWER_SHORT_WHEN_PASSING ? SHORT_WHEN_PASSING : "")
       + `\nImmutable candidate binding: ${JSON.stringify(binding)}. Evidence attempt: ${attempt}.` });
 }
@@ -300,7 +307,9 @@ async function questionStarted(prepared: Pick<Prepared, "budget" | "worldId" | "
 /** The questions a dual review asks about one prepared appearance, built exactly
  * as they are bought. Read-only: the purchase and the dry-run planner share it. */
 type SubjectQuestionContext = { upgrade: SubjectUpgradeReceipt; plan: SubjectPlan; photoPng: Buffer };
-async function dualQuestions(prepared: Prepared, version: DualVisualReviewVersion, transport?: VisualReviewTransport, subject?: SubjectQuestionContext) {
+async function dualQuestions(prepared: Prepared, version: DualVisualReviewVersion, transport?: VisualReviewTransport, subject?: SubjectQuestionContext,
+  /** A lean world (local-patch-lean/v1): the tier its quality question is asked at. A reused answer keeps the tier it was bought at. */
+  lean?: { readonly tier: VisualReviewTier }) {
   const { request, entries, evidenceReviewAttempt } = prepared;
   const binding = dualBinding(prepared, version), hideId = binding.hideId, entry = entries.find(e => e.hide.id === hideId)!;
   const priorReceipt = JSON.parse(entry.row.judgeJson!);
@@ -325,7 +334,8 @@ async function dualQuestions(prepared: Prepared, version: DualVisualReviewVersio
     && !(oldQuality.subjectBundle && recovery?.retry && recovery.role === "quality");
   const qualityAttempt = reuse ? oldQuality!.attempt : evidenceReviewAttempt;
   const qualityStrategy = reuse ? oldQuality!.strategy ?? STANDARD : strategyFor("quality");
-  const quality = dualQualityQuestion(request, binding, qualityAttempt, qualityStrategy);
+  const qualityTier = lean ? reuse && oldQuality!.policy.serviceTier ? oldQuality!.policy.serviceTier : lean.tier : undefined;
+  const quality = dualQualityQuestion(request, binding, qualityAttempt, qualityStrategy, qualityTier ? { tier: qualityTier } : {});
   // A reused bundle is rebuilt under the policy it was bought with, so it replays; a new one asks v2.
   const bundlePolicy = reuse && oldQuality?.subjectBundle ? oldQuality.subjectBundle.subjectPolicy ?? SUBJECT_POLICY_VERSION : SUBJECT_POLICY_V2;
   let combined = subject && (!reuse || oldQuality?.subjectBundle)
@@ -342,7 +352,8 @@ async function dualQuestions(prepared: Prepared, version: DualVisualReviewVersio
   // size recovery of the quality role is that question's recovery too.
   const subjectStrategy = reuse ? strategyFor("quality") : STANDARD;
   return { binding, entry, priorReceipt, reuse, quality, q, subjectBundle: combined?.binding, qualityAttempt, qualityStrategy, continuityStrategy, subjectStrategy,
-    anatomy: (via: VisualReviewTransport | undefined = transport) => runtimeContinuityQuestion(prepared, binding, evidenceReviewAttempt, version, continuityStrategy, via) };
+    anatomy: (via: VisualReviewTransport | undefined = transport, tier?: VisualReviewTier) =>
+      runtimeContinuityQuestion(prepared, binding, evidenceReviewAttempt, version, continuityStrategy, via, tier) };
 }
 
 /**
@@ -399,6 +410,13 @@ export async function dualReviewQuestionCandidates(c: Pick<Container, "db" | "st
           "quality", questions.subjectStrategy, "subject", policy));
       }
       if (!found.some(f => f.fingerprint === combined.q.fingerprint)) found.push(of(combined.q, "quality", combined.qualityStrategy));
+      // A lean world's questions (local-patch-lean/v1): Sol's bundle and continuity, at either tier.
+      if (await isLeanWorld(c.db, prepared.game.id)) for (const tier of ["flex", "default"] as const) {
+        const leanQuestions = await dualQuestions(asked, version, "responses-background", { upgrade, plan, photoPng }, { tier });
+        if (!found.some(f => f.fingerprint === leanQuestions.q.fingerprint)) found.push(of(leanQuestions.q, "quality", leanQuestions.qualityStrategy, "bundle", SUBJECT_POLICY_V2));
+        const anatomy = await leanQuestions.anatomy("responses-background", tier);
+        if (!found.some(f => f.fingerprint === anatomy.fingerprint)) found.push(of(anatomy, "continuity", leanQuestions.continuityStrategy));
+      }
     } catch (error) { if (!(error instanceof SubjectEvidenceUnavailable)) throw error; }
   }
   return found;
@@ -407,10 +425,10 @@ export async function dualReviewQuestionCandidates(c: Pick<Container, "db" | "st
 /** A continuity answer already paid for about exactly these pixels, geometry and identity,
  * that still proves its own settled bill and passes under the reader its stage names. */
 async function reusableContinuity(db: Prisma.TransactionClient, worldId: string, version: DualVisualReviewVersion,
-  prior: DualReviewProof | undefined, binding: RetainedBinding): Promise<{ stage: ContinuityStage; bought: Bought } | null> {
+  prior: DualReviewProof | undefined, binding: RetainedBinding, lean = false): Promise<{ stage: ContinuityStage; bought: Bought } | null> {
   if (!prior?.continuity || prior.version !== version || prior.hideId !== binding.hideId || prior.imageSha256 !== binding.imageSha256
     || prior.geometrySha256 !== binding.geometrySha256 || prior.identitySha256 !== binding.identitySha256) return null;
-  const verified = await verifiedDualStage(db, worldId, prior.continuity, "head-continuity", { allowBackground: true });
+  const verified = await verifiedDualStage(db, worldId, prior.continuity, "head-continuity", { allowBackground: true, allowLean: lean });
   const read = verified ? readContinuityStage(prior.continuity, binding.hideId, version) : null;
   if (!verified || !read || localPatchRuntimeContinuityVerdict(read).disposition !== "pass") return null;
   return { stage: prior.continuity, bought: { kind: "bought", bytes: verified.bytes, evidence: verified.evidence, replayed: true, settledFromRetained: false } };
@@ -436,9 +454,13 @@ export async function dualQuestionAdmission(budget: Pick<Prepared["budget"], "re
   version: DualVisualReviewVersion, question: PreparedVisualReview): Promise<DualQuestionAdmission> {
   const requestKey = `self-repair:board:${boardId}:${question.fingerprint}`, role: DualReviewRole = question.role === "scene-quality" ? "quality" : "continuity";
   const stored = await budget.readRequest(worldId, requestKey);
-  const reserveMicroUsd = dualQuestionReserveMicroUsd(stored?.reserveMicroUsd, version === DUAL_VISUAL_REVIEW_V3, role);
-  if (stored) return { requestKey, role, reserveMicroUsd, existing: stored.state, maxChargeMicroUsd: null, refused: null };
   const most = visualReviewMaxCharge(question);
+  // A lean question (local-patch-lean/v1) reserves exactly the most its own request can be billed at the
+  // standard card, so a lean world is not held back by a flat amount meant for Opus.
+  // Never more than an Opus v3 quality question reserves: a lean request that could cost more is refused below.
+  const reserveMicroUsd = isLeanReviewPolicy(question.policy) ? stored?.reserveMicroUsd ?? (most.ok ? Math.min(most.microUsd, DUAL_REVIEW_V3_RESERVE_MICRO_USD.quality) : 0)
+    : dualQuestionReserveMicroUsd(stored?.reserveMicroUsd, version === DUAL_VISUAL_REVIEW_V3, role);
+  if (stored) return { requestKey, role, reserveMicroUsd, existing: stored.state, maxChargeMicroUsd: null, refused: null };
   const refused = !most.ok ? `the ${role} question cannot be bounded: ${most.reason}`
     : most.microUsd > reserveMicroUsd ? `the ${role} question could be billed up to ${most.microUsd} micro-USD `
       + `(${most.inputTokens} input and ${most.outputTokens} output tokens), more than its ${reserveMicroUsd} reservation` : null;
@@ -487,10 +509,30 @@ async function dualReview(c: Container, prepared: Prepared, deps: LocalPatchBoar
       return { kind: "waiting", outcome: { state: "held", reason: error.message, replayed: false, costCents: 0 } };
     }
   }
-  const { binding, entry, priorReceipt, q, subjectBundle, qualityAttempt, qualityStrategy, continuityStrategy, subjectStrategy, anatomy: anatomyQuestion }
-    = await dualQuestions(prepared, version, upgrade ? "responses-background" : undefined, subjectContext);
-  const hideId = binding.hideId;
   const makeKey = (question: PreparedVisualReview) => `self-repair:board:${prepared.board.board}:${question.fingerprint}`;
+  // local-patch-lean/v1: Sol HIGH answers both questions in the background, on Flex; a Flex question whose create
+  // the provider refused (documented: nothing created, nothing billed) is asked once more at the default tier.
+  const lean = await isLeanWorld(c.db, game.id);
+  if (lean && !subjectContext) throw Error("LEAN_REVIEW: a lean world is reviewed only under its subject policy");
+  const refusedFlex = async (question: PreparedVisualReview) => question.policy.serviceTier === "flex"
+    && await backgroundRoundState(c.db, game.id, worldId, makeKey(question)) === "refused";
+  let questions = await dualQuestions(prepared, version, upgrade ? "responses-background" : undefined, subjectContext, lean ? { tier: "flex" } : undefined);
+  if (lean && await refusedFlex(questions.q)) questions = await dualQuestions(prepared, version, "responses-background", subjectContext, { tier: "default" });
+  const { binding, entry, priorReceipt, q, subjectBundle, qualityAttempt, qualityStrategy, continuityStrategy, subjectStrategy, anatomy: anatomyQuestion } = questions;
+  const hideId = binding.hideId;
+  /** A lean world's continuity question, at its tier by the same rule. */
+  const leanAnatomy = async () => {
+    const flex = await anatomyQuestion("responses-background", "flex");
+    return await refusedFlex(flex) ? anatomyQuestion("responses-background", "default") : flex;
+  };
+  const askInBackground = (question: PreparedVisualReview, reserveMicroUsd: number) => askContinuityInBackground(c, { gameId: game.id, worldId,
+    requestKey: makeKey(question), question, reserveMicroUsd, fence: deps.fence, ...(deadlineAt === undefined ? {} : { deadlineAt }),
+    binding: { hideId, variantId: entry.row.id, imageSha256: binding.imageSha256, geometrySha256: binding.geometrySha256, identitySha256: binding.identitySha256 } });
+  /** A lean Flex question just refused waits one slice and is asked at the default tier; never a hold for a person. */
+  const leanGate = async (gate: Awaited<ReturnType<typeof askContinuityInBackground>>, question: PreparedVisualReview, costCents: number): Promise<Waiting> =>
+    ({ kind: "waiting", outcome: gate.kind === "held" && await refusedFlex(question)
+      ? { state: "pending", reason: `${makeKey(question)}: the provider refused the Flex request (nothing was created or billed); it is asked at the default tier next`, replayed: false, costCents }
+      : { state: gate.kind === "held" ? "held" : "pending", reason: gate.kind === "proceed" ? "" : gate.reason, replayed: false, costCents } });
   // Refused before its request is recorded, reserved or sent: the world parks
   // with the exact reason, and nothing is spent.
   const refused = (admitted: DualQuestionAdmission): Waiting => ({ kind: "waiting", outcome: { state: "held",
@@ -534,14 +576,28 @@ async function dualReview(c: Container, prepared: Prepared, deps: LocalPatchBoar
   };
   const qualityAdmitted = await dualQuestionAdmission(budget, worldId, prepared.board.board, version, q);
   if (qualityAdmitted.refused) return refused(qualityAdmitted);
-  // A game pinned to Message Batches asks this question there first. Nothing below
-  // changes: the answer arrives under this same key, settled at the batch price,
-  // and `buy` replays it like any answer already paid for; a documented-unbilled
-  // result leaves the key free, and `buy` asks synchronously as for any game.
-  const batched = await askQualityThroughBatch(c, { gameId: game.id, worldId, sceneId: prepared.scene.id, board: prepared.board.board,
-    hideId, variantId: entry.row.id, imageSha256: binding.imageSha256, question: q, syncKey: makeKey(q),
-    reserveMicroUsd: qualityAdmitted.reserveMicroUsd, fence: deps.fence, deadlineAt });
-  if (batched.kind !== "proceed") return { kind: "waiting", outcome: { state: batched.kind === "held" ? "held" : "pending", reason: batched.reason, replayed: false, costCents: 0 } };
+  if (lean) {
+    if (!subjectBundle || !isLeanReviewPolicy(q.policy)) throw Error("LEAN_REVIEW: a lean question asks the quality and subject readings together, of Sol");
+    const asked = await askInBackground(q, qualityAdmitted.reserveMicroUsd);
+    // The continuity question goes out beside it, so a picture is decided in one slice once both answers
+    // are kept; its own admission and round, bought even when the quality answer refuses.
+    const anatomy = await leanAnatomy(), anatomyAdmitted = await dualQuestionAdmission(budget, worldId, prepared.board.board, version, anatomy);
+    // Only a head start: a ceiling that cannot take it yet leaves it for its own turn below, after the quality answer.
+    if (!anatomyAdmitted.refused && asked.kind !== "held") {
+      try { await askInBackground(anatomy, anatomyAdmitted.reserveMicroUsd); }
+      catch (error) { if (!(error instanceof WorldBudgetError && error.code === "cap_exceeded")) throw error; }
+    }
+    if (asked.kind !== "proceed") return leanGate(asked, q, 0);
+  } else {
+    // A game pinned to Message Batches asks this question there first. Nothing below
+    // changes: the answer arrives under this same key, settled at the batch price,
+    // and `buy` replays it like any answer already paid for; a documented-unbilled
+    // result leaves the key free, and `buy` asks synchronously as for any game.
+    const batched = await askQualityThroughBatch(c, { gameId: game.id, worldId, sceneId: prepared.scene.id, board: prepared.board.board,
+      hideId, variantId: entry.row.id, imageSha256: binding.imageSha256, question: q, syncKey: makeKey(q),
+      reserveMicroUsd: qualityAdmitted.reserveMicroUsd, fence: deps.fence, deadlineAt });
+    if (batched.kind !== "proceed") return { kind: "waiting", outcome: { state: batched.kind === "held" ? "held" : "pending", reason: batched.reason, replayed: false, costCents: 0 } };
+  }
   const qualityBought = await buy(q, qualityAdmitted.reserveMicroUsd);
   if (qualityBought.kind !== "bought") return waiting(qualityBought, q, qualityStrategy);
   // Decided now, so read by the current reader, which the stage names for every later reading.
@@ -694,22 +750,20 @@ async function dualReview(c: Container, prepared: Prepared, deps: LocalPatchBoar
   // An enrolled world re-assessing an appearance keeps the continuity answer it already
   // paid for about exactly these pixels; it is never asked again, and never reused for others.
   if (upgrade) {
-    const reused = await reusableContinuity(c.db, worldId, version, priorReceipt.dualContinuityCheckpoint as DualReviewProof | undefined, binding)
-      ?? await reusableContinuity(c.db, worldId, version, priorReceipt.boardReview?.dual as DualReviewProof | undefined, binding);
+    const reused = await reusableContinuity(c.db, worldId, version, priorReceipt.dualContinuityCheckpoint as DualReviewProof | undefined, binding, lean)
+      ?? await reusableContinuity(c.db, worldId, version, priorReceipt.boardReview?.dual as DualReviewProof | undefined, binding, lean);
     if (reused) {
       proof.continuity = reused.stage;
       return subjectGate({ ...base, bought: reused.bought, wire: primaryWire, verdicts, proof, newCostCents });
     }
   }
-  const anatomy = await anatomyQuestion();
+  const anatomy = lean ? await leanAnatomy() : await anatomyQuestion();
   const anatomyAdmitted = await dualQuestionAdmission(budget, worldId, prepared.board.board, version, anatomy);
   if (anatomyAdmitted.refused) return refused(anatomyAdmitted);
   if (isBackgroundReviewPolicy(anatomy.policy)) {
-    const asked = await askContinuityInBackground(c, { gameId: game.id, worldId, requestKey: makeKey(anatomy), question: anatomy,
-      reserveMicroUsd: anatomyAdmitted.reserveMicroUsd, fence: deps.fence, ...(deadlineAt === undefined ? {} : { deadlineAt }),
-      binding: { hideId, variantId: entry.row.id, imageSha256: binding.imageSha256, geometrySha256: binding.geometrySha256, identitySha256: binding.identitySha256 } });
-    if (asked.kind !== "proceed") return { kind: "waiting", outcome: { state: asked.kind === "held" ? "held" : "pending", reason: asked.reason,
-      replayed: false, costCents: newCostCents } };
+    const asked = await askInBackground(anatomy, anatomyAdmitted.reserveMicroUsd);
+    if (asked.kind !== "proceed") return lean ? leanGate(asked, anatomy, newCostCents)
+      : { kind: "waiting", outcome: { state: asked.kind === "held" ? "held" : "pending", reason: asked.reason, replayed: false, costCents: newCostCents } };
   }
   const anatomyBought = await buy(anatomy, anatomyAdmitted.reserveMicroUsd);
   if (anatomyBought.kind !== "bought") return waiting(anatomyBought, anatomy, continuityStrategy);
@@ -728,6 +782,8 @@ async function dualReview(c: Container, prepared: Prepared, deps: LocalPatchBoar
   const verdict = localPatchRuntimeContinuityVerdict(read);
   if (verdict.disposition === "pass") {
     if (!upgrade) return { ...result, evidence: null, diagnosis: null };
+    // A lean world's subject reading came with its quality answer: nothing more is asked, so it is decided now.
+    if (lean && proof.subject?.combined === SUBJECT_QUALITY_BUNDLE_VERSION) return subjectGate(result);
     // Persist the independently paid continuity before starting a subject question.
     // A waiting batch, unreadable subject answer or interrupted worker must reuse it.
     await c.db.$transaction(async tx => {

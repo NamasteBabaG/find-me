@@ -29,7 +29,8 @@ const checked = (responseId: string) => {
 };
 
 /** The exact background body of one prepared Sol question: the synchronous question's
- * model, effort, output cap, JSON answer and evidence order, each label adjacent to its image. */
+ * model, effort, output cap, JSON answer and evidence order, each label adjacent to its image.
+ * A lean question (local-patch-lean/v1) asks the tier its policy names; every other the default. */
 export function solBackgroundReviewBody(question: { policy: VisualReviewPolicy; effort: VisualReviewEffort; prompt: string;
   images: readonly Buffer[]; labels: readonly string[] }): Record<string, unknown> {
   const { policy } = question;
@@ -37,7 +38,7 @@ export function solBackgroundReviewBody(question: { policy: VisualReviewPolicy; 
     || !question.prompt.trim() || !question.images.length || question.images.length !== question.labels.length)
     throw Error("BACKGROUND_REVIEW: only a prepared Sol background question has a background body");
   return {
-    model: policy.model, background: true, store: false, service_tier: "default",
+    model: policy.model, background: true, store: false, service_tier: policy.serviceTier ?? "default",
     reasoning: { effort: policy.effort }, max_output_tokens: policy.maxOutputTokens,
     text: { format: { type: "json_object" } },
     input: [{ role: "user", content: [{ type: "input_text", text: question.prompt },

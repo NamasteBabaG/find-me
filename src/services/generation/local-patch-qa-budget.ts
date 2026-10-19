@@ -5,7 +5,7 @@ import { NEW_QA_WORLD_BUDGET_POLICY, NEW_QA_WORLD_CAP_MICRO_USD, NEW_QA_WORLD_BU
   QA_PILOT_COMPLETION_POLICY, QA_PILOT_COMPLETION_WORLDS, newQaWorldBudgetEnabled } from "../../domain/generation/qa-world-budget-policy";
 import { boardConditioningHash } from "./board-conditioned-source";
 import { DUAL_VISUAL_REVIEW_V3, dualVisualReviewVersion, type DualVisualReviewVersion } from "./visual-review-release";
-import type { BoardWizardBudgetExtension } from "./board-wizard-budget";
+import type { BoardWizardBudgetGrant } from "./board-wizard-budget";
 
 export const newQaWorldBudgetAuditId = (worldId: string) => "aud_lp6_" + boardConditioningHash(worldId);
 const worldOf = (gameId: string) => gameId + ":board-wizard";
@@ -31,7 +31,7 @@ export async function pinNewQaWorldBudget(tx: Prisma.TransactionClient, gameId: 
 
 /** Exact immutable pin + current QA/payment/ownership lifecycle. A caller's cap,
  * job capsule, deployment flag or another world's pin is never an authorization. */
-export async function readNewQaWorldBudget(c: Container, worldId: string): Promise<BoardWizardBudgetExtension | null> {
+export async function readNewQaWorldBudget(c: Container, worldId: string): Promise<BoardWizardBudgetGrant | null> {
   if (env().APP_ENV !== "qa" || c.storage?.id !== "db" || !worldId.endsWith(":board-wizard")) return null;
   const row = await c.db.auditLog.findUnique({ where: { id: newQaWorldBudgetAuditId(worldId) } });
   if (!row) return null;

@@ -3,6 +3,7 @@ import { pinVisualReviewRelease } from "./generation/visual-review-release";
 import { pinNewQaWorldBudget } from "./generation/local-patch-qa-budget";
 import { pinLocalPatchPainter } from "./generation/painter-release";
 import { pinQualityChannel } from "./generation/quality-channel";
+import { pinLeanRelease } from "./generation/lean-release";
 import { createHash } from "node:crypto";
 import { validChildAge } from "@/domain/child-appearance";
 import { boardSlugs } from "@/domain/world";
@@ -125,14 +126,17 @@ export async function beginWorldPurchase(c: Container, input: WorldPurchaseInput
         await tx.game.create({ data: { id: gameId, ownerId: input.ownerId, familyChildId: child.id, childProfileId: childId,
           draftToken, status: "DRAFT", locale: input.locale, ...(styleVersion ? { styleVersion } : {}), ...(requested ? { searchLevel: requested } : {}), packageTier: "ONE_WORLD", sceneCount: boards.length,
           title: input.locale === "he" ? `איפה ${child.displayName}?` : `Where's ${child.displayName}?` } });
+        // A lean draft (local-patch-lean/v1) takes its own painter, judges and four-dollar ceiling instead.
+        const lean = styleVersion === "local-patch-world-v1" ? c.leanRelease : undefined;
         if (styleVersion === "local-patch-world-v1" && c.pinDualVisualReview) {
           if (!c.visualReview) throw Error("Dual visual review credentials are not configured");
           await pinVisualReviewRelease(tx, gameId, c.dualVisualReviewRelease);
-          await pinNewQaWorldBudget(tx, gameId, c.storage?.id ?? "", c.dualVisualReviewRelease);
+          if (!lean) await pinNewQaWorldBudget(tx, gameId, c.storage?.id ?? "", c.dualVisualReviewRelease);
         }
         if (styleVersion === "local-patch-world-v1") {
-          await pinLocalPatchPainter(tx, gameId, c.localPatchPainter);
-          await pinQualityChannel(tx, gameId, c.qualityChannel);
+          await pinLocalPatchPainter(tx, gameId, lean ? undefined : c.localPatchPainter);
+          await pinQualityChannel(tx, gameId, lean ? undefined : c.qualityChannel);
+          await pinLeanRelease(tx, gameId, lean);
         }
         if (choice.shown) await pinSearchLevelChoice(tx, gameId);
         await tx.gameScene.createMany({ data: boards.map((slug, orderIndex) => ({ id: newId("gsc"), gameId, sceneSlug: slug, sceneVersion: sceneBySlug(slug, version).version, orderIndex })) });

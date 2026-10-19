@@ -2,17 +2,25 @@ import { QA_PILOT_COMPLETION_CAP_MICRO_USD } from "../../domain/generation/qa-wo
 import { auditWorldBudget, WorldBudget, WorldBudgetError, type WorldBudgetAudit, type WorldBudgetRepository, type WorldReservationInput, type WorldLinkInput, type WorldChargeEvidence, type WorldBudgetOptions, type WorldUnknownContinuationInput, type WorldAutomaticImageRecoveryInput, type WorldAutomaticReviewRecoveryInput, type WorldAutomaticReviewRecoveryV2Input } from "./world-budget";
 
 export const BOARD_WIZARD_CAP_MICRO_USD = 4_000_000;
+/** A lean world's ceiling (local-patch-lean/v1): four dollars, never extended. The owner's, 19 October 2026: the
+ * target stays under three, and a world a few cents over it must never stop for them. */
+export const LEAN_BOARD_WIZARD_CAP_MICRO_USD = 4_000_000;
 /** Read-only consumers must show the SAME commercial ceiling as reservations,
  * not the generic ledger's wider5USD maximum. This never grants an extension. */
 export function applyBoardWizardBudgetCap(audit: WorldBudgetAudit, capMicroUsd = BOARD_WIZARD_CAP_MICRO_USD): WorldBudgetAudit {
-  if (capMicroUsd !== BOARD_WIZARD_CAP_MICRO_USD && capMicroUsd !== 5_000_000 && capMicroUsd !== 6_000_000 && capMicroUsd !== QA_PILOT_COMPLETION_CAP_MICRO_USD)
+  if (capMicroUsd !== BOARD_WIZARD_CAP_MICRO_USD && capMicroUsd !== LEAN_BOARD_WIZARD_CAP_MICRO_USD && capMicroUsd !== 5_000_000
+    && capMicroUsd !== 6_000_000 && capMicroUsd !== QA_PILOT_COMPLETION_CAP_MICRO_USD)
     throw new Error("Unsupported verified QA budget cap");
   const overCapMicroUsd = Math.max(0, audit.committedMicroUsd - capMicroUsd), remainingMicroUsd = Math.max(0, capMicroUsd - audit.committedMicroUsd);
   const held = audit.held || overCapMicroUsd > 0;
   return { ...audit, capMicroUsd, overCapMicroUsd, remainingMicroUsd, held, canReserve: !held && remainingMicroUsd > 0,
     state: held ? "held" : remainingMicroUsd === 0 ? "exhausted" : "open" };
 }
-export interface BoardWizardBudgetExtension { worldId: string; capMicroUsd: 5_000_000 | 6_000_000 | typeof QA_PILOT_COMPLETION_CAP_MICRO_USD; authorizationSha256: string }
+/** A verified grant above the default ceiling. */
+export interface BoardWizardBudgetGrant { worldId: string; capMicroUsd: 5_000_000 | 6_000_000 | typeof QA_PILOT_COMPLETION_CAP_MICRO_USD; authorizationSha256: string }
+/** A lean world's lower ceiling (local-patch-lean/v1): never a grant. */
+export interface BoardWizardBudgetCeiling { worldId: string; capMicroUsd: typeof LEAN_BOARD_WIZARD_CAP_MICRO_USD; authorizationSha256: string }
+export type BoardWizardBudgetExtension = BoardWizardBudgetGrant | BoardWizardBudgetCeiling;
 export type BoardWizardBudgetExtensionResolver = (worldId: string) => Promise<BoardWizardBudgetExtension | null>;
 /** Narrower commercial cap, enforced INSIDE the same serializable transaction.
  * Actual settlements/imports are never discarded, including provider overruns. */
@@ -21,8 +29,8 @@ export function boardWizardBudget(repository: WorldBudgetRepository, attempt = 1
   const capFor = async (worldId: string) => {
     const extension = await resolveExtension?.(worldId);
     if (!extension) return BOARD_WIZARD_CAP_MICRO_USD;
-    if (extension.worldId !== worldId || (extension.capMicroUsd !== 5_000_000 && extension.capMicroUsd !== 6_000_000
-      && extension.capMicroUsd !== QA_PILOT_COMPLETION_CAP_MICRO_USD) || !/^[a-f0-9]{64}$/.test(extension.authorizationSha256)) {
+    if (extension.worldId !== worldId || (extension.capMicroUsd !== LEAN_BOARD_WIZARD_CAP_MICRO_USD && extension.capMicroUsd !== 5_000_000
+      && extension.capMicroUsd !== 6_000_000 && extension.capMicroUsd !== QA_PILOT_COMPLETION_CAP_MICRO_USD) || !/^[a-f0-9]{64}$/.test(extension.authorizationSha256)) {
       throw new WorldBudgetError("invalid_input", "Verified budget extension does not bind this exact world");
     }
     return extension.capMicroUsd;

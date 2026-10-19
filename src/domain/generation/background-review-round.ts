@@ -34,6 +34,8 @@ export type BackgroundReviewIntent = {
   readonly version: typeof BACKGROUND_REVIEW_ROUND_VERSION; readonly roundId: string; readonly gameId: string; readonly worldId: string;
   readonly requestKey: string; readonly fingerprint: string; readonly bodySha256: string; readonly reserveMicroUsd: number;
   readonly binding: BackgroundReviewBinding;
+  /** A lean world's question (local-patch-lean/v1) names its exact policy; absent on every Sol continuity round before it. */
+  readonly policyVersion?: string;
 };
 export type BackgroundOutcomeState = "answered" | "unusable" | "unpriced" | "missing";
 export type BackgroundReviewEvent =

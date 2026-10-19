@@ -22,6 +22,7 @@ import { auditWorldBudget } from "@/services/generation/world-budget";
 import { applyBoardWizardBudgetCap } from "@/services/generation/board-wizard-budget";
 import { readLocalPatchEmergencyBudget } from "@/services/generation/local-patch-budget-recovery";
 import { readNewQaWorldBudget } from "@/services/generation/local-patch-qa-budget";
+import { readLeanWorldBudget } from "@/services/generation/lean-release";
 
 export const runtime = "nodejs";
 
@@ -113,7 +114,7 @@ export async function GET(req: Request, ctx: { params: Promise<{ gameId: string 
       // asset costs here would count the same image purchase a second time.
       // The ceiling the ledger itself enforces, in the engine's own order: a new
       // QA world's six-dollar policy, then the standing five-dollar grant, else four.
-      const extension = await readNewQaWorldBudget(c, worldId) ?? await readLocalPatchEmergencyBudget(c, worldId);
+      const extension = await readLeanWorldBudget(c, worldId) ?? await readNewQaWorldBudget(c, worldId) ?? await readLocalPatchEmergencyBudget(c, worldId);
       const ledgerCap = extension?.capMicroUsd === 6_000_000 || extension?.capMicroUsd === 12_000_000 ? extension.capMicroUsd : undefined;
       const audit = applyBoardWizardBudgetCap(auditWorldBudget(snapshot, ledgerCap), extension?.capMicroUsd);
       qaCost = { spentCents: audit.settledMicroUsd / 10_000, reservedCents: audit.reservedMicroUsd / 10_000,

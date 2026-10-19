@@ -1,4 +1,4 @@
-import { isBackgroundReviewPolicy, type VisualReviewPolicy } from "../../domain/generation/visual-review-policy";
+import { isBackgroundReviewPolicy, VISUAL_REVIEW_SOL_TIERS_PRICING_VERSION, type VisualReviewPolicy } from "../../domain/generation/visual-review-policy";
 
 const whole = (v: unknown): v is number => typeof v === "number" && Number.isSafeInteger(v) && v >= 0;
 const record = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v);
@@ -6,8 +6,27 @@ const unknown = () => ({ costCents: 0, costUnknown: true });
 /** Standard global rates checked 2026-10-08. All reasoning is in output usage.
  * MED/HIGH change token consumption, not the rate card. No historical repricing.
  * https://developers.openai.com/api/docs/models/gpt-6.1-sol
- * https://platform.claude.com/docs/en/models/opus-5-5/overview */
-export function visualReviewCharge(policy: VisualReviewPolicy, model: string | null, usage: Record<string, unknown> | null) {
+ * https://platform.claude.com/docs/en/models/opus-5-5/overview
+ *
+ * A lean policy (visual-review-sol-tiers-2026-10-19) is priced by the tier that served
+ * it, as its response states: `flex` at exactly half of every standard rate, `default`
+ * at the standard card; any other or a missing tier cannot be priced. `servedTier`
+ * undefined asks for the most it could be billed (a reservation): the standard card. */
+export function visualReviewCharge(policy: VisualReviewPolicy, model: string | null, usage: Record<string, unknown> | null,
+  servedTier?: string | null) {
+  if (policy.pricingVersion === VISUAL_REVIEW_SOL_TIERS_PRICING_VERSION) {
+    if (model !== policy.model || !usage || policy.provider !== "openai" || model !== "gpt-6.1-sol" || !isBackgroundReviewPolicy(policy)) return unknown();
+    const tier = servedTier === undefined ? "default" : servedTier;
+    if (tier !== "flex" && tier !== "default") return unknown();
+    const input = usage.input_tokens, output = usage.output_tokens;
+    if (usage.input_tokens_details != null && !record(usage.input_tokens_details)) return unknown();
+    const cached = (usage.input_tokens_details as Record<string, unknown> | undefined)?.cached_tokens ?? 0;
+    if (!whole(input) || !whole(output) || !whole(cached) || cached > input || input > 272_000) return unknown();
+    // The standard card below, halved exactly for Flex (every standard rate is even).
+    const standard = (input - cached) * 250 + cached * 10 + output * 1000;
+    if (!Number.isSafeInteger(standard)) return unknown();
+    return { costCents: (tier === "flex" ? standard / 2 : standard) / 1_000_000, costUnknown: false };
+  }
   if (model !== policy.model || !usage || policy.pricingVersion !== "visual-review-standard-2026-10-08") return unknown();
   if (policy.provider === "openai" && model === "gpt-6.1-sol" && isBackgroundReviewPolicy(policy)) {
     // A Responses usage object names the same tokens differently; the same rate card

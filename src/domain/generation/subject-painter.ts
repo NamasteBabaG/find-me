@@ -7,10 +7,18 @@ export const SUBJECT_PAINTER_V2 = "local-patch-subject-paint/v2" as const;
 /** The painter of local-patch-subject/v2 (18 October 2026): the plan is a suggestion for variety,
  * the photograph's face and hair and the stated age are the requirement. New purchases only. */
 export const SUBJECT_PAINTER_V3 = "local-patch-subject-paint/v3" as const;
-export type SubjectPainterVersion = typeof SUBJECT_PAINTER_V2 | typeof SUBJECT_PAINTER_V3;
-/** The recipe of both painters lets the subject direction, not the support pose, speak for the arms, head and face. */
+/** A lean world's painter (local-patch-lean/v1, 19 October 2026): v3's requirement, and the appearance's planned
+ * look as the look to draw, so the world is varied by its plan rather than by refusals; the judge still never
+ * requires it (local-patch-subject/v2). New purchases in lean worlds only. */
+export const SUBJECT_PAINTER_V4 = "local-patch-subject-paint/v4" as const;
+export type SubjectPainterVersion = typeof SUBJECT_PAINTER_V2 | typeof SUBJECT_PAINTER_V3 | typeof SUBJECT_PAINTER_V4;
+/** The recipe of every plan-led painter lets the subject direction, not the support pose, speak for the arms, head and face. */
 export const isPlanLedPainter = (version: string | undefined): version is SubjectPainterVersion =>
-  version === SUBJECT_PAINTER_V2 || version === SUBJECT_PAINTER_V3;
+  version === SUBJECT_PAINTER_V2 || version === SUBJECT_PAINTER_V3 || version === SUBJECT_PAINTER_V4;
+/** The Antarctica hat as experiment E6a painted it 3 of 3 at the first painting (content v13's wardrobe lead,
+ * 15 October): pushed back, with the face, eyebrows, hairline and hair at the brim visible. */
+export const LEAN_WARM_HAT_VERSION = "lean-warm-hat/v1" as const;
+export const LEAN_WARM_HAT_WARDROBE = "Insulated polar coat with its hood down behind the neck, gloves, snow trousers and boots in the board's own colours, and a warm knitted winter hat in a board colour worn pushed back off the forehead. The whole face, both eyebrows, the hairline and the canonical hair at the brim and sides stay visible; the hat never covers the eyes or forehead and never replaces the hair.";
 const SUPPORT_POSE: Readonly<Record<LocalPatchPose, string>> = Object.freeze({
   standing: "The child is STANDING with weight on both feet.",
   walking: "The child is WALKING mid-stride, one foot ahead and the other behind.",
@@ -25,6 +33,9 @@ export const subjectSupportPose = (pose: LocalPatchPose) => SUPPORT_POSE[pose]
 /** v3's support: the authored support is required; the rest of the pose is the subject direction's natural choice. */
 export const subjectSupportPoseV3 = (pose: LocalPatchPose) => SUPPORT_POSE[pose]
   + " Arms, hands, head, gaze and expression follow the SUBJECT DIRECTION: a natural pose for this moment in the scene.";
+/** v4's support: the authored support is required; head, gaze and expression are the planned look, arms and hands natural. */
+export const subjectSupportPoseV4 = (pose: LocalPatchPose) => SUPPORT_POSE[pose]
+  + " Head, gaze and expression follow the SUBJECT DIRECTION's planned look; arms and hands are natural for this moment in the scene.";
 
 export function subjectRenderDirectionV2(plan: SubjectPlan, ageYears: number, repairCodes: readonly SubjectCheck[] = []): string {
   return subjectRenderDirection(plan, ageYears, repairCodes)
@@ -61,6 +72,32 @@ export function subjectRenderDirectionV3(plan: SubjectPlan, ageYears: number,
     lines.push(`REPAIR: the previous painting of this appearance was refused for ${codes.join(", ")}. Correct exactly that and keep every other requirement.`);
     if (codes.includes("collectionVariety")) lines.push(`VARIETY REPAIR: this world already shows the refused painting's look on a third of its appearances. Use the suggested head (${plan.head}) and expression (${plan.expression}), engaged with the scene.`);
     if (codes.includes("perceivedAge")) lines.push(`AGE REPAIR: the refused painting looked older than ${ageYears}; draw a clearly younger face and body.`);
+    for (const line of repair.located) lines.push(`The reviewer located on the refused painting: "${line}"`);
+  }
+  return lines.join(" ");
+}
+
+/**
+ * What a lean world's painter (v4) is told about one appearance: v3's fixed requirement (the photograph's face
+ * and hair, the stated age), the plan's look as THE look to draw (each appearance of the world has its own, so
+ * the collection is varied by design), the pushed-back winter hat where the board needs one, and, for a
+ * repainting, the refused codes and the defects the reviewer located.
+ */
+export function subjectRenderDirectionV4(plan: SubjectPlan, ageYears: number,
+  repair: { readonly codes: readonly SubjectRepairCodeV2[]; readonly located: readonly string[] } = { codes: [], located: [] }): string {
+  if (!validChildAge(ageYears)) throw Error("SUBJECT_PLAN: a confirmed age is required");
+  const lines = [`SUBJECT DIRECTION ${SUBJECT_PAINTER_V4} (${SUBJECT_POLICY_V2}) for ${plan.hideId}.`,
+    "WHO: the child of the original photograph, the same face as the canonical illustrated portrait: eye shape and spacing, nose, mouth, jaw, cheeks and hairline. Keep the canonical HAIR exactly: its length, fringe, layers and the strands over the ears and down the neck, in its own colour. Never crop, shorten, tidy or restyle the hair.",
+    `AGE: the child is exactly ${ageYears} years old. A child's face for that age (rounder cheeks, shorter nose, larger eyes relative to the face, soft jaw) and a body of that age; never older, never a teenager or adult proportions.`,
+    `LOOK: this appearance's own planned look, so the world's appearances differ from one another: head ${plan.head}; ${plan.gaze}; expression ${plan.expression}; ${plan.action}. The child takes part in the scene, doing or watching something in it, never facing the viewer like the portrait. Keep the authored support and safe placement.`,
+    "Draw in the board's own illustration style and light; the photograph controls likeness and age only, never pose, clothing, texture or lighting."];
+  if (plan.warmHat) lines.push(`WARM HAT (${LEAN_WARM_HAT_VERSION}): a warm knitted winter hat worn pushed back off the forehead. The whole face, both eyebrows, the hairline and the canonical hair at the brim and sides stay visible; the hat never covers the eyes or forehead and never replaces the hair.`);
+  const codes = [...new Set(repair.codes)];
+  if (codes.length) {
+    lines.push(`REPAIR: the previous painting of this appearance was refused for ${codes.join(", ")}. Correct exactly that and keep every other requirement.`);
+    if (codes.includes("collectionVariety")) lines.push("VARIETY REPAIR: the refused painting repeated a look this world already shows on a third of its appearances. Draw exactly the planned look above.");
+    if (codes.includes("perceivedAge")) lines.push(`AGE REPAIR: the refused painting looked older than ${ageYears}; draw a clearly younger face and body.`);
+    if (codes.includes("requiredWardrobe")) lines.push("HAT REPAIR: the refused painting had no clear warm hat; paint the pushed-back knitted hat above, with the face and hairline visible.");
     for (const line of repair.located) lines.push(`The reviewer located on the refused painting: "${line}"`);
   }
   return lines.join(" ");

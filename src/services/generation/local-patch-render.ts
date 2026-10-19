@@ -1,5 +1,5 @@
 import { isCollectionVersion } from "../../domain/scene/local-patch-versions";
-import { SUBJECT_PAINTER_V2, SUBJECT_PAINTER_V3, isPlanLedPainter, type SubjectPainterVersion } from "../../domain/generation/subject-painter";
+import { SUBJECT_PAINTER_V2, SUBJECT_PAINTER_V3, SUBJECT_PAINTER_V4, isPlanLedPainter, type SubjectPainterVersion } from "../../domain/generation/subject-painter";
 import { localPatchReturnRegion, AUTHORED_PATCH_COMPOSITION_VERSION, type LocalPatchCompositionVersion } from "../../domain/scene/local-patch-return-region";
 import { createHash } from "node:crypto";
 import sharp from "sharp";
@@ -384,7 +384,8 @@ async function renderLocalPatchHideInner(deps: LocalPatchRenderDeps, input: Loca
       hideId: hide.id, recoveryDirective: input.recoveryDirective, paintRecipe: input.paintRecipe, ...(subjectPainter ? { subjectPainter } : {}) })
       + (input.adaptiveRecovery ? `\n\n${adaptiveRecoveryPrompt(input.adaptiveRecovery, hide)}` : "")
       // v2 keeps its own boolean wording byte for byte; v3 has its own.
-      + (recovery ? `\n\n${selfRepairRenderInstructions(recovery, subjectPainter === SUBJECT_PAINTER_V3 ? "v3" : subjectPainter === SUBJECT_PAINTER_V2)}` : "");
+      // v4 repairs in v3's words: the pose follows the subject direction.
+      + (recovery ? `\n\n${selfRepairRenderInstructions(recovery, subjectPainter === SUBJECT_PAINTER_V3 || subjectPainter === SUBJECT_PAINTER_V4 ? "v3" : subjectPainter === SUBJECT_PAINTER_V2)}` : "");
     return input.paintRecipe === "scene-integration-v4" ? referenceNeutralHairDirections(recipePrompt)
       : input.paintRecipe === "scene-integration-v5" || input.paintRecipe === "scene-integration-v6" || input.paintRecipe === "scene-integration-v7"
         || input.paintRecipe === "scene-integration-v8"

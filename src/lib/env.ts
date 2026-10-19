@@ -46,6 +46,11 @@ const EnvSchema = z.object({
    * per game: synchronously, or by Anthropic's Message Batches at half price with a
    * six-hour deadline. Qualified only on QA with dual-high-v3; never retroactive. */
   LOCAL_PATCH_QUALITY_CHANNEL: z.enum(["sync", "anthropic-batch-v1"]).default("sync"),
+  /** local-patch-lean/v1 for NEW local-patch drafts, pinned per game: MEDIUM paintings, Sol 6.1 as the
+   * only judge on Flex, planned variety, the pushed-back Antarctica hat, no paid diagnosis for a subject
+   * refusal and a world aiming under three dollars within a four-dollar ceiling. It replaces the LOW painter, Message Batches and six-dollar pins
+   * for the draft it is pinned to. Qualified only on QA with v19 and dual-high-v3; never retroactive. */
+  LOCAL_PATCH_LEAN: z.enum(["off", "lean-v1"]).default("off"),
   /** Explorers/Detectives cards under the child's name. On qa/production they
    * appear only while a Detectives world can actually be sold
    * (content/worlds/detective-releases.ts); development shows them for review. */

@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { isBackgroundReviewPolicy, visualReviewPolicy, VISUAL_REVIEW_DEFAULT_EFFORT, type VisualReviewEffort, type VisualReviewJudge, type VisualReviewPolicy, type VisualReviewRole, type VisualReviewTransport } from "../../domain/generation/visual-review-policy";
+import { isBackgroundReviewPolicy, visualReviewPolicy, VISUAL_REVIEW_DEFAULT_EFFORT, type VisualReviewEffort, type VisualReviewJudge, type VisualReviewPolicy, type VisualReviewRole, type VisualReviewTier, type VisualReviewTransport } from "../../domain/generation/visual-review-policy";
 import { visualReviewInputBound } from "../../domain/generation/visual-review-input-bound";
 import { requestAnthropicVisualReview } from "../../infra/generation/anthropic-visual-review";
 import { visualReviewCharge } from "../../infra/generation/visual-review-pricing";
@@ -15,6 +15,8 @@ export type VisualReviewQuestion = {
   readonly judge?: VisualReviewJudge;
   /** Absent: one synchronous request, as every historical question. */
   readonly transport?: VisualReviewTransport;
+  /** A lean world's question (local-patch-lean/v1): Sol HIGH in the background at this tier. Absent: every other question. */
+  readonly tier?: VisualReviewTier;
   readonly prompt: string;
   readonly images: readonly Buffer[];
   readonly labels: readonly string[];
@@ -25,7 +27,7 @@ const sha = (value: string | Buffer) => createHash("sha256").update(value).diges
 /** Policy, labels and every image participate in the paid identity. A new
  * model/effort must never replay a historical judgement under its new name. */
 export function prepareVisualReview(question: VisualReviewQuestion): PreparedVisualReview {
-  const policy = visualReviewPolicy(question.role, question.effort, question.judge, question.transport);
+  const policy = visualReviewPolicy(question.role, question.effort, question.judge, question.transport, question.tier);
   if (!question.prompt.trim() || question.images.length < 1 || question.images.length > 30
     || question.labels.length !== question.images.length || question.labels.some(l => !l.trim())
     || question.images.some(b => !b.length || b.length > 5 * 1024 * 1024)) throw Error("Invalid visual review evidence");

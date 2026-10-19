@@ -21,4 +21,14 @@ describe("health reports deployment config using its pinned-review contract", ()
     const body = await (await GET(new Request("https://qa.example.invalid/api/health"))).json();
     expect(body.worldBudget).toEqual({ newQaPolicy:null, historicalDefaultCapMicroUsd:5_000_000 });
   });
+  it("says whether new drafts are pinned lean, and fails health when lean cannot run (local-patch-lean/v1)", async () => {
+    const health = async () => { const response = await GET(new Request("https://qa.example.invalid/api/health")); return { status: response.status, body: await response.json() }; };
+    expect((await health()).body.lean).toEqual({ newGames: "off", qualified: true, configured: true });
+    Object.assign(f.environment, { LOCAL_PATCH_LEAN: "lean-v1", GENERATION_PROVIDER: "openai" });
+    expect(await health()).toMatchObject({ status: 200, body: { ok: true, lean: { newGames: "lean-v1", qualified: true, configured: true, worldCapMicroUsd: 4_000_000 } } });
+    Object.assign(f.environment, { LOCAL_PATCH_PROMPT_RELEASE: "v18" });
+    expect(await health()).toMatchObject({ status: 503, body: { ok: false, lean: { qualified: false } } });
+    Object.assign(f.environment, { LOCAL_PATCH_PROMPT_RELEASE: "v19", OPENAI_API_KEY: "" });
+    expect(await health()).toMatchObject({ status: 503, body: { ok: false, lean: { configured: false } } });
+  });
 });

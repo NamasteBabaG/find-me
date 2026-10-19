@@ -11,6 +11,7 @@ import { poseOnlyV1Refusal, readSubjectAnswer, readSubjectAnswerV2, SUBJECT_POLI
   SUBJECT_READER_V2 } from "../../domain/generation/subject-policy";
 import { SUBJECT_QUALITY_BUNDLE_VERSION } from "../../domain/generation/subject-quality-bundle";
 import { subjectPlanOfHide, subjectPlanSha256, subjectUpgradeOf, type SubjectUpgradeReceipt } from "./subject-enrollment";
+import { isLeanWorld } from "./lean-release";
 
 const equal = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
 
@@ -41,9 +42,12 @@ export async function allowedDualPublication(db: Prisma.TransactionClient, input
     // An enrolled world: its continuity may be a background answer, and every appearance
     // also needs its own subject approval. A pass written before the enrollment has none.
     const upgrade = await subjectUpgradeOf(db, input.gameId);
-    if (!await verifiedDualStage(db, worldId, proof.quality, "scene-quality")
-      || !await verifiedDualStage(db, worldId, proof.continuity, "head-continuity", { allowBackground: !!upgrade })) return false;
-    if (upgrade && !await allowedSubject(db, worldId, upgrade, proof, input)) return false;
+    // A lean world (local-patch-lean/v1) is judged by Sol alone, under its own policies, and is always enrolled.
+    const lean = await isLeanWorld(db, input.gameId);
+    if (lean && !upgrade) return false;
+    if (!await verifiedDualStage(db, worldId, proof.quality, "scene-quality", { allowLean: lean })
+      || !await verifiedDualStage(db, worldId, proof.continuity, "head-continuity", { allowBackground: !!upgrade, allowLean: lean })) return false;
+    if (upgrade && !await allowedSubject(db, worldId, upgrade, proof, input, lean)) return false;
     // Each answer is read by the reader its decision names, never a newer one.
     const quality = readQualityStage(proof.quality, input.hideId);
     const continuity = readContinuityStage(proof.continuity, input.hideId, version);
@@ -59,7 +63,7 @@ export async function allowedDualPublication(db: Prisma.TransactionClient, input
  * policy decides by: all eight under v1; under v2 the five of who the child is, with no
  * collection refusal. Each stage is read only by its own policy's reader. */
 async function allowedSubject(db: Prisma.TransactionClient, worldId: string, upgrade: SubjectUpgradeReceipt, proof: DualReviewProof,
-  input: LocalPatchPublicationBinding): Promise<boolean> {
+  input: LocalPatchPublicationBinding, lean = false): Promise<boolean> {
   const subject = proof.subject, plan = subjectPlanOfHide(input.hideId);
   const v2 = subject?.subjectPolicy === SUBJECT_POLICY_V2 && subject.reader === SUBJECT_READER_V2;
   if (!subject || !plan || !(v2 || subject.subjectPolicy === SUBJECT_POLICY_VERSION && subject.reader === SUBJECT_READER)
@@ -68,7 +72,9 @@ async function allowedSubject(db: Prisma.TransactionClient, worldId: string, upg
   const game = await db.game.findUnique({ where: { id: input.gameId }, include: { childProfile: true } });
   if (!game || game.ownerId !== upgrade.ownerId || game.childProfile?.ageYears !== upgrade.ageYears
     || game.childProfile.identityAssetId !== upgrade.identityAssetId) return false;
-  if (!await verifiedDualStage(db, worldId, subject, "scene-quality")) return false;
+  if (!await verifiedDualStage(db, worldId, subject, "scene-quality", { allowLean: lean })) return false;
+  // A lean world's subject reading always came with its quality answer (one Sol request).
+  if (lean && subject.combined !== SUBJECT_QUALITY_BUNDLE_VERSION) return false;
   if (subject.combined && (!proof.quality.subjectBundle || proof.quality.subjectBundle.version !== subject.combined
     || proof.quality.subjectBundle.photoSha256 !== subject.photoSha256 || proof.quality.subjectBundle.planSha256 !== subject.planSha256
     || (proof.quality.subjectBundle.subjectPolicy ?? SUBJECT_POLICY_VERSION) !== subject.subjectPolicy

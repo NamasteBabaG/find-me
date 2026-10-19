@@ -36,6 +36,8 @@ import { LOCAL_PATCH_BOARD_REVIEW_MIN_MS, localPatchBoardAwaitsProvider, localPa
   localPatchReviewFits, selfRepairProgress, type LocalPatchRest } from "../../domain/scene/local-patch-progress";
 import { recoverEnrolledReviewInterruptions } from "./subject-upgrade";
 import { advanceContinuityInBackground } from "./continuity-background";
+import { enrollLeanWorld } from "./lean-enrollment";
+import { isLeanWorld, leanSubjectOnlyRefusal } from "./lean-release";
 import {
   LOCAL_PATCH_MAX_ATTEMPTS, LOCAL_PATCH_PROVIDER, LOCAL_PATCH_VARIANT, runLocalPatchHide,
   type LocalPatchHideDeps, type LocalPatchHideOutcome,
@@ -85,6 +87,7 @@ export const LOCAL_PATCH_QUALITY_FAILED = "local-patch:quality-failed";
 /** Operational budget outage: stay in generation, retry with backoff, never ask the parent to approve pictures. */
 export const LOCAL_PATCH_RECOVERY_BUDGET_WAIT = "local-patch:recovery-budget-wait";
 export const LOCAL_PATCH_RECOVERY_BACKOFF_MS = 60 * 60_000;
+export const LEAN_RECOVERY_BACKOFF_MS = 3 * 60_000;
 export const LOCAL_PATCH_EVIDENCE_RETRY_WAIT = "local-patch:evidence-retry-wait";
 /**
  * No automatic action remains within policy: every unfinished appearance has
@@ -208,7 +211,10 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
     }
     job = await c.db.generationJob.findUniqueOrThrow({ where: { id: job.id } });
   }
-  if (job.currentStep === LOCAL_PATCH_RECOVERY_BUDGET_WAIT && job.updatedAt.getTime() > Date.now() - LOCAL_PATCH_RECOVERY_BACKOFF_MS)
+  // A lean world waits minutes, not an hour, for its in-flight answers to settle under its ceiling:
+  // a Sol answer settles in minutes (local-patch-lean/v1).
+  if (job.currentStep === LOCAL_PATCH_RECOVERY_BUDGET_WAIT && job.updatedAt.getTime() > Date.now()
+    - (await isLeanWorld(c.db, gameId) ? LEAN_RECOVERY_BACKOFF_MS : LOCAL_PATCH_RECOVERY_BACKOFF_MS))
     return { ...empty, pending: true, claimed: false, paused: false };
   if (job.currentStep === LOCAL_PATCH_EVIDENCE_RETRY_WAIT && job.updatedAt.getTime() > Date.now() - LOCAL_PATCH_EVIDENCE_RETRY_BACKOFF_MS)
     return { ...empty, pending: true, claimed: false, paused: false };
@@ -298,6 +304,22 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
     await parkExhausted(reason);
     return { parked: reason };
   };
+
+  // local-patch-lean/v1: a lean world enrolls itself in the subject policy before anything is painted, and
+  // never paints without it: a refusal parks the world with its reason, having bought nothing.
+  if (automatic) {
+    let enrollment: Awaited<ReturnType<typeof enrollLeanWorld>>;
+    try { enrollment = await enrollLeanWorld(c, gameId, fence); }
+    catch (error) {
+      await c.db.generationJob.updateMany({ where: { id: job.id, attempts: claim, status: "RUNNING" },
+        data: { status: "FAILED", lastError: (error instanceof Error ? error.message : String(error)).slice(0, 500) } });
+      throw error;
+    }
+    if (enrollment.state === "refused") {
+      await parkExhausted(enrollment.reason);
+      return { ...empty, pending: false, claimed: true, paused: false, attention: enrollment.reason };
+    }
+  }
 
   // A staged correction is a separate REVIEW-ONLY state. Never let an older
   // failure, a rejected sibling, or an interrupted tick fall into image retries.
@@ -405,6 +427,12 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
   const awaitingBoards = new Set<string>();
   // Scheduling only: publication re-verifies every subject stage, bill and binding.
   const subjectUpgrade = automatic && !extraPlan ? await subjectUpgradeOf(c.db, gameId) : null;
+  // local-patch-lean/v1: an appearance whose second painting was refused only for who the child is (its quality and
+  // continuity answers passed; the subject reading refused) is painted a third time with the reviewer's located
+  // reasons, as its second was, and no paid diagnosis. Any other refusal, and a third one, goes to self-repair.
+  const leanWorld = !!subjectUpgrade && await isLeanWorld(c.db, gameId);
+  const leanThirdPainting = (row: { status: string; attempts: number; judgeJson: string | null } | undefined) => leanWorld && !!row
+    && row.status === "FAILED" && row.attempts === LOCAL_PATCH_NORMAL_ATTEMPTS && leanSubjectOnlyRefusal(row.judgeJson);
   /** A v1 pose-plan refusal awaiting its v2 question about the same pixels (subject-rejudge/v1), read at the enrolled age. */
   const rejudgePending = (row: Parameters<typeof subjectRejudgePending>[0]) => !!subjectUpgrade && subjectRejudgePending(row, subjectUpgrade.ageYears);
   // A board also owes its v2 re-judgments (subject-rejudge/v1), whatever status the board itself carries.
@@ -578,7 +606,7 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
   };
   const automaticWork = automatic && !extraPlan ? work.filter(item => {
     const row = stateOf(item.sceneId, item.hide.targetId);
-    return needsSelfRepair(row) && !(game.scenes.find(scene => scene.id === item.sceneId)?.sceneVersion === 12
+    return needsSelfRepair(row) && !leanThirdPainting(row) && !(game.scenes.find(scene => scene.id === item.sceneId)?.sceneVersion === 12
       && (localPatchEvidenceRecovery(row!) || playerReviewEnabled() && needsPlayerReview(row!)))
       // Re-asked under v2 about the same pixels before any repair (subject-rejudge/v1).
       && !rejudgePending(row!);
@@ -662,7 +690,7 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
       if (options.hardDeadlineAt !== undefined && options.hardDeadlineAt - Date.now() < minHideMs) break;
       let outcome: LocalPatchHideOutcome;
       try { outcome = await runLocalPatchHide(c, { ...deps, fence }, { gameId, board: item.board, hide: item.hide,
-        finalRepair: !!extraPlan || plan.finalRepair,
+        finalRepair: !!extraPlan || plan.finalRepair || leanThirdPainting(stateOf(item.sceneId, item.hide.targetId)),
         ...(extraPlan ? { extraAttemptAuthorizationId: extraPlan.authorizationId } : {}),
         ...(options.hardDeadlineAt === undefined ? {} : { deadlineAt: options.hardDeadlineAt }) }); }
       catch (error) {

@@ -5,7 +5,7 @@ import {
   BACKGROUND_REVIEW_ROUND_VERSION, BACKGROUND_REVIEW_TRANSPORT, backgroundEventName, backgroundRoundOf, nextBackgroundStep,
   type BackgroundOutcomeState, type BackgroundReviewBinding, type BackgroundReviewEvent, type BackgroundReviewIntent, type BackgroundReviewRound,
 } from "../../domain/generation/background-review-round";
-import { isBackgroundReviewPolicy, visualReviewPolicy } from "../../domain/generation/visual-review-policy";
+import { isBackgroundReviewPolicy, isLeanReviewPolicy, leanReviewPolicyOf, visualReviewPolicy, type VisualReviewPolicy } from "../../domain/generation/visual-review-policy";
 import { solBackgroundReviewBody } from "../../infra/generation/openai-background-review";
 import { visualReviewCharge } from "../../infra/generation/visual-review-pricing";
 import { BackgroundReviewRefused, type BackgroundReviewReading, type BackgroundReviewTransport } from "../../infra/generation/types";
@@ -52,6 +52,19 @@ type Ctx = Omit<BackgroundAsk, "question"> & {
   readonly c: Container; readonly roundId: string;
 };
 const roomFor = (ctx: Pick<Ctx, "deadlineAt">, needMs: number) => ctx.deadlineAt === undefined || ctx.deadlineAt - Date.now() >= needMs;
+/** The Sol continuity question every enrolled world asks in the background (sol-background-round/v1). */
+const historicalPolicy = () => visualReviewPolicy("head-continuity", "high", undefined, "responses-background");
+/**
+ * The policy a recorded round was created with: a lean question names its exact version
+ * (local-patch-lean/v1); every other round is the historical Sol continuity question.
+ * A named version that is not a known lean policy is refused, never read as the nearest one.
+ */
+export function backgroundPolicyOfIntent(intent: Pick<BackgroundReviewIntent, "policyVersion">): VisualReviewPolicy {
+  if (intent.policyVersion === undefined) return historicalPolicy();
+  const lean = leanReviewPolicyOf(intent.policyVersion);
+  if (!lean) throw Error("BACKGROUND_REVIEW: a recorded round names an unknown policy");
+  return lean;
+}
 
 /** Every event of one round, in rule order. A record that cannot be read is refused, not skipped. */
 async function readEvents(db: Pick<Prisma.TransactionClient, "auditLog">, gameId: string, roundId: string): Promise<BackgroundReviewEvent[]> {
@@ -166,8 +179,12 @@ async function create(ctx: Ctx, transport: BackgroundReviewTransport, body: Reco
 function readTerminal(ctx: Ctx, status: "completed" | "failed" | "cancelled" | "incomplete", reading: BackgroundReviewReading) {
   const { policy } = ctx.question;
   const rightModel = isTheModelWeAsked(reading.model, policy.model);
-  const charge = visualReviewCharge(policy, reading.model, reading.usage);
-  const tierKnown = reading.serviceTier === null || reading.serviceTier === "default";
+  // A lean question is priced by the tier its response says served it (flex or default), and
+  // only then; the historical question by the default card, as before.
+  const lean = isLeanReviewPolicy(policy);
+  const charge = lean ? visualReviewCharge(policy, reading.model, reading.usage, reading.serviceTier) : visualReviewCharge(policy, reading.model, reading.usage);
+  const tierKnown = lean ? reading.serviceTier === "flex" || reading.serviceTier === "default"
+    : reading.serviceTier === null || reading.serviceTier === "default";
   const wireFault: LocalPatchJudgeResult["wireFault"] = status === "failed" || status === "cancelled" ? "http" : status === "incomplete" ? "truncated"
     : !rightModel ? "wrong-model" : reading.raw === null ? "no-content" : reading.finishReason !== "stop" ? "truncated" : null;
   const reply: LocalPatchJudgeResult = { verdict: null, raw: reading.raw, usage: reading.usage, requestId: reading.responseId, model: reading.model,
@@ -237,13 +254,17 @@ async function poll(ctx: Ctx, transport: BackgroundReviewTransport, responseId: 
  */
 export async function askContinuityInBackground(c: Container, ask: BackgroundAsk): Promise<BackgroundGate> {
   const { question } = ask;
-  if (!isBackgroundReviewPolicy(question.policy) || question.role !== "head-continuity") throw Error("BACKGROUND_REVIEW: only a Sol background continuity question");
-  if (JSON.stringify(question.policy) !== JSON.stringify(visualReviewPolicy("head-continuity", "high", undefined, "responses-background")))
+  // The historical Sol continuity contract, or exactly one of a lean world's policies (local-patch-lean/v1).
+  const lean = isLeanReviewPolicy(question.policy) ? leanReviewPolicyOf(question.policy.version) : null;
+  if (!isBackgroundReviewPolicy(question.policy) || (lean ? lean.role !== question.role : question.role !== "head-continuity"))
+    throw Error("BACKGROUND_REVIEW: only a Sol background continuity question");
+  if (JSON.stringify(question.policy) !== JSON.stringify(lean ?? historicalPolicy()))
     throw Error("BACKGROUND_REVIEW: v1 records only the pinned Sol HIGH background contract");
   const ctx: Ctx = { ...ask, c, roundId: backgroundRoundIdOf(ask.worldId, ask.requestKey) };
   const body = solBackgroundReviewBody(question);
   const intent: BackgroundReviewIntent = { version: BACKGROUND_REVIEW_ROUND_VERSION, roundId: ctx.roundId, gameId: ask.gameId, worldId: ask.worldId,
-    requestKey: ask.requestKey, fingerprint: question.fingerprint, bodySha256: sha(JSON.stringify(body)), reserveMicroUsd: ask.reserveMicroUsd, binding: ask.binding };
+    requestKey: ask.requestKey, fingerprint: question.fingerprint, bodySha256: sha(JSON.stringify(body)), reserveMicroUsd: ask.reserveMicroUsd, binding: ask.binding,
+    ...(lean ? { policyVersion: lean.version } : {}) };
   const transport = c.backgroundReview;
   let events = await readEvents(c.db, ask.gameId, ctx.roundId);
   if (!events.length) {
@@ -268,6 +289,19 @@ export async function askContinuityInBackground(c: Container, ask: BackgroundAsk
     round = backgroundRoundOf(await readEvents(c.db, ask.gameId, ctx.roundId));
   }
   return waiting("the round is still advancing");
+}
+
+/**
+ * How the round for this request key stands, read-only: none recorded, still open, or how it
+ * ended. A lean world's Flex question whose create the provider refused (documented: nothing
+ * was created, nothing billed) is asked once more at the default tier (local-patch-lean/v1).
+ */
+export async function backgroundRoundState(db: Pick<Prisma.TransactionClient, "auditLog">, gameId: string, worldId: string, requestKey: string):
+  Promise<"none" | "open" | "refused" | "lost" | "outcome"> {
+  const events = await readEvents(db, gameId, backgroundRoundIdOf(worldId, requestKey));
+  if (!events.length) return "none";
+  const round = backgroundRoundOf(events);
+  return round.terminal?.kind ?? "open";
 }
 
 /**
@@ -300,7 +334,8 @@ export async function advanceContinuityInBackground(c: Container, gameId: string
     if (event?.kind !== "intent" || !intent || intent.version !== BACKGROUND_REVIEW_ROUND_VERSION || intent.gameId !== gameId || intent.worldId !== worldId
       || intent.roundId !== backgroundRoundIdOf(worldId, intent.requestKey) || row.id !== eventId(intent.roundId, "intent")
       || row.actorType !== "SYSTEM" || row.actorId !== null || !/^[a-f0-9]{64}$/.test(intent.fingerprint)
-      || !/^[a-f0-9]{64}$/.test(intent.bodySha256) || !intent.requestKey.endsWith(`:${intent.fingerprint}`))
+      || !/^[a-f0-9]{64}$/.test(intent.bodySha256) || !intent.requestKey.endsWith(`:${intent.fingerprint}`)
+      || (intent.policyVersion !== undefined && !leanReviewPolicyOf(intent.policyVersion)))
       throw Error("BACKGROUND_REVIEW: invalid recorded sweep binding");
     const round = backgroundRoundOf(await readEvents(c.db, gameId, intent.roundId));
     const step = nextBackgroundStep(round, Date.now());
@@ -310,7 +345,7 @@ export async function advanceContinuityInBackground(c: Container, gameId: string
       || reserved.reserveMicroUsd !== intent.reserveMicroUsd || reserved.conflicts.length)
       throw Error("BACKGROUND_REVIEW: recorded response has no matching reservation");
     const ctx: Ctx = { c, gameId, worldId, roundId: intent.roundId, requestKey: intent.requestKey, reserveMicroUsd: intent.reserveMicroUsd,
-      binding: intent.binding, question: { fingerprint: intent.fingerprint, policy: visualReviewPolicy("head-continuity", "high", undefined, "responses-background") },
+      binding: intent.binding, question: { fingerprint: intent.fingerprint, policy: backgroundPolicyOfIntent(intent) },
       fence: async () => {}, ...window };
     if (step.step === "lost") await recordLost(ctx, "the create was claimed and its answer never arrived within its grace");
     else {

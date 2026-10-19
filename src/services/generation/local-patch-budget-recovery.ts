@@ -3,9 +3,10 @@ import { z } from "zod";
 import type { Container } from "../container";
 import { env } from "../../lib/env";
 import { readNewQaWorldBudget } from "./local-patch-qa-budget";
+import { isLeanWorld } from "./lean-release";
 import { PrismaWorldBudgetStore, WORLD_BUDGET_LEDGER_MAX_REVISION } from "../../infra/db/prisma-world-budget-store";
 import { boardConditioningHash } from "./board-conditioned-source";
-import type { BoardWizardBudgetExtension } from "./board-wizard-budget";
+import type { BoardWizardBudgetGrant } from "./board-wizard-budget";
 import { auditWorldBudget, WorldBudgetError, type WorldReservationInput } from "./world-budget";
 import { fenceLocalPatchImages } from "./local-patch-lifecycle";
 
@@ -40,7 +41,7 @@ const eligible = (game: { status: string; styleVersion: string | null; deletedAt
 
 /** Reads only an immutable policy receipt. Accounting reads after delivery keep
  * showing the same ceiling; deletion, refund and ownership changes revoke it. */
-export async function readLocalPatchEmergencyBudget(c: Container, worldId: string): Promise<BoardWizardBudgetExtension | null> {
+export async function readLocalPatchEmergencyBudget(c: Container, worldId: string): Promise<BoardWizardBudgetGrant | null> {
   if (env().APP_ENV !== "qa" || c.storage.id !== "db") return null;
   const row = await c.db.auditLog.findUnique({ where: { id: localPatchEmergencyBudgetAuditId(worldId) } });
   if (!row) return null;
@@ -70,6 +71,8 @@ export async function activateLocalPatchEmergencyBudget(c: Container, gameId: st
     const game = await tx.game.findUniqueOrThrow({ where: { id: gameId }, include: { childProfile: true, scenes: true, orders: true } });
     if (!eligible(game) || game.status !== (stage === "identity" ? "AVATAR_GENERATING" : "TARGETS_GENERATING") || game.configJson || game.readyAt) return false;
     if (await readNewQaWorldBudget({ ...c, db: tx as Container["db"] }, worldId)) return false;
+    // A lean world's four dollars is the owner's hard ceiling (local-patch-lean/v1): never extended.
+    if (await isLeanWorld(tx, gameId)) return false;
     const previous = await tx.auditLog.findUnique({ where: { id: auditId } });
     // A single immutable grant is never stacked. A concurrent acknowledgement
     // uses the existing receipt, with no second dollar or new reservation.

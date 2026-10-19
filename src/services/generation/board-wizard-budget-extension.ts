@@ -5,7 +5,7 @@ import { env } from "../../lib/env";
 import { PrismaWorldBudgetStore, WORLD_BUDGET_LEDGER_MAX_REVISION } from "../../infra/db/prisma-world-budget-store";
 import { boardConditioningHash } from "./board-conditioned-source";
 import { auditWorldBudget } from "./world-budget";
-import type { BoardWizardBudgetExtension } from "./board-wizard-budget";
+import type { BoardWizardBudgetGrant } from "./board-wizard-budget";
 
 export const BOARD_WIZARD_BUDGET_EXTENSION_ACTION = "board-wizard:budget-extension-authorized";
 export const BOARD_WIZARD_BUDGET_EXTENSION_VERSION = "explicit-user-qa-world-five-dollar-extension/v1";
@@ -41,7 +41,7 @@ function checkedReceipt(raw: unknown) {
 }
 
 /** Trusted, QA-only resolver. No capsule cap can authorize its own increase. */
-export async function readBoardWizardBudgetExtension(c: Container, worldId: string): Promise<BoardWizardBudgetExtension | null> {
+export async function readBoardWizardBudgetExtension(c: Container, worldId: string): Promise<BoardWizardBudgetGrant | null> {
   demand(env().APP_ENV === "qa" && c.storage.id === "db", "Extension lookup is restricted to durable QA storage");
   const row = await c.db.auditLog.findUnique({ where: { id: boardWizardBudgetExtensionAuditId(worldId) } });
   if (!row) return null;

@@ -1,5 +1,7 @@
 import sharp from "sharp";
-import { SUBJECT_PAINTER_V2, SUBJECT_PAINTER_V3, locatedDefects, subjectRenderDirectionV2, subjectRenderDirectionV3 } from "../../domain/generation/subject-painter";
+import { LEAN_WARM_HAT_WARDROBE, SUBJECT_PAINTER_V2, SUBJECT_PAINTER_V3, SUBJECT_PAINTER_V4, locatedDefects, subjectRenderDirectionV2, subjectRenderDirectionV3,
+  subjectRenderDirectionV4 } from "../../domain/generation/subject-painter";
+import { isLeanWorld } from "./lean-release";
 import type { Container } from "../container";
 import {
   SUBJECT_CHECKS, SUBJECT_CHECKS_V2, SUBJECT_COLLECTION_VARIETY, SUBJECT_POLICY_V2, SUBJECT_POLICY_VERSION, SUBJECT_READER_V2, SUBJECT_REPAIR_ROUTE,
@@ -77,7 +79,9 @@ export function combinedQualitySubjectQuestion(quality: PreparedVisualReview, pl
     : label.includes(`EVIDENCE_ID=${plan.hideId}:after `) ? `${label} | EVIDENCE_ID=${plan.hideId}:closeup = RIGHT native head inset.` : label);
   const binding: SubjectQualityBundleBinding = { version: SUBJECT_QUALITY_BUNDLE_VERSION, photoSha256: upgrade.photoSha256,
     planSha256: subjectPlanSha256(plan), ...(policy === SUBJECT_POLICY_V2 ? { subjectPolicy: SUBJECT_POLICY_V2 } : {}) };
-  const question = prepareVisualReview({ role: "scene-quality", effort: "high", images: [...quality.images, photoPng],
+  // A lean world's bundle (local-patch-lean/v1) is asked of the same judge, transport and tier as its quality question.
+  const question = prepareVisualReview({ role: "scene-quality", effort: "high",
+    ...(quality.tier ? { judge: quality.judge, transport: quality.transport, tier: quality.tier } : {}), images: [...quality.images, photoPng],
     labels: [...labels, subjectLabels[0]!], prompt: quality.prompt
       + `\nMANDATORY CHILD INSPECTION (last image = original photo):\n${policy === SUBJECT_POLICY_V2
         ? subjectReviewPromptV2(plan, upgrade.ageYears, "bundle-member") : subjectReviewPrompt(plan, upgrade.ageYears, "bundle-member")}`
@@ -165,10 +169,22 @@ export async function subjectDirectionFor(c: Pick<Container, "db" | "storage">, 
   const historical = references + " Render the planned action and expression in the scene's illustration style.";
   const mediumV1 = escalated || refusal.v1Codes.some(code => faceCodes.includes(code));
   const mediumV3 = escalated || refusal.codes.some(code => faceCodes.includes(code));
-  return { ...direction(subjectRenderDirectionV3(plan, upgrade.ageYears, { codes: refusal.codes, located: refusal.located })
-      + references + " Render a natural pose and expression in the scene's illustration style.", mediumV3), painterVersion: SUBJECT_PAINTER_V3,
-    legacy: [{ ...direction(subjectRenderDirectionV2(plan, upgrade.ageYears, refusal.v1Codes) + historical, mediumV1), painterVersion: SUBJECT_PAINTER_V2 },
-      direction(subjectRenderDirection(plan, upgrade.ageYears, refusal.v1Codes) + historical, mediumV1)] };
+  const v3 = { ...direction(subjectRenderDirectionV3(plan, upgrade.ageYears, { codes: refusal.codes, located: refusal.located })
+    + references + " Render a natural pose and expression in the scene's illustration style.", mediumV3), painterVersion: SUBJECT_PAINTER_V3 };
+  const legacy = [{ ...direction(subjectRenderDirectionV2(plan, upgrade.ageYears, refusal.v1Codes) + historical, mediumV1), painterVersion: SUBJECT_PAINTER_V2 },
+    direction(subjectRenderDirection(plan, upgrade.ageYears, refusal.v1Codes) + historical, mediumV1)];
+  // local-patch-lean/v1: every painting MEDIUM, the planned look and the pushed-back hat (v4). Its own
+  // wardrobe replaces the enrolled one; the earlier directions stay only to replay a started purchase.
+  if (await isLeanWorld(c.db, gameId)) {
+    const lean = (text: string) => {
+      const policySha256 = localPatchRenderPolicySha256(LOCAL_PATCH_IMAGE_POLICY), hat = plan.warmHat ? LEAN_WARM_HAT_WARDROBE : undefined;
+      return { text, ...(hat ? { wardrobe: hat } : {}), photoPng, photoSha256, policySha256, quality: "medium" as const,
+        sha256: sha256Bytes(Buffer.from(JSON.stringify([text, hat ?? null, photoSha256, policySha256, "medium"]))) };
+    };
+    return { ...lean(subjectRenderDirectionV4(plan, upgrade.ageYears, { codes: refusal.codes, located: refusal.located })
+      + references + " Render the planned look in the scene's illustration style."), painterVersion: SUBJECT_PAINTER_V4, legacy: [v3, ...legacy] };
+  }
+  return { ...v3, legacy };
 }
 
 /**

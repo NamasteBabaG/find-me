@@ -10,6 +10,7 @@ import { visualReviewPolicy } from "@/domain/generation/visual-review-policy";
 import { DUAL_VISUAL_REVIEW_V3 } from "@/services/generation/visual-review-release";
 import { lowPainterQualified } from "@/services/generation/painter-release";
 import { qualityBatchQualified } from "@/services/generation/quality-channel";
+import { LEAN_WORLD_CAP_MICRO_USD, leanReleaseQualified } from "@/services/generation/lean-release";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -41,8 +42,14 @@ export async function GET(req: Request) {
   const batchQualified = !batchRequested || qualityBatchQualified({ appEnv: e.APP_ENV,
     reviewRelease: e.LOCAL_PATCH_VISUAL_REVIEW === "dual-high-v3" ? DUAL_VISUAL_REVIEW_V3 : undefined });
   const batchConfigured = !batchRequested || (e.GENERATION_PROVIDER === "openai" && !!e.ANTHROPIC_API_KEY?.trim());
+  // local-patch-lean/v1 outside its qualified configuration refuses every new draft; without Sol's background transport
+  // a lean world cannot enroll or be judged.
+  const leanRequested = e.APP_ENV === "qa" && e.LOCAL_PATCH_LEAN === "lean-v1";
+  const leanQualified = !leanRequested || leanReleaseQualified({ appEnv: e.APP_ENV, promptRelease: e.LOCAL_PATCH_PROMPT_RELEASE,
+    reviewRelease: e.LOCAL_PATCH_VISUAL_REVIEW === "dual-high-v3" ? DUAL_VISUAL_REVIEW_V3 : undefined });
+  const leanConfigured = !leanRequested || (e.GENERATION_PROVIDER === "openai" && !!e.OPENAI_API_KEY?.trim());
   const ok = db.ok && !(e.APP_ENV === "qa" && e.LOCAL_PATCH_VISUAL_REVIEW !== "legacy" && !dualConfigured) && !painterUnqualified
-    && batchQualified && batchConfigured;
+    && batchQualified && batchConfigured && leanQualified && leanConfigured;
   const body = {
     ok,
     db,
@@ -62,6 +69,9 @@ export async function GET(req: Request) {
     painter: { newGames: e.APP_ENV === "qa" ? e.LOCAL_PATCH_PAINTER ?? "by-version" : "by-version", qualified: !painterUnqualified },
     // How NEW local-patch drafts have their Opus quality questions delivered; existing games keep their own.
     qualityChannel: { newGames: batchRequested ? "anthropic-batch-v1" : "sync", qualified: batchQualified, configured: batchConfigured },
+    // Whether NEW local-patch drafts are pinned lean (local-patch-lean/v1), instead of the painter and channel above.
+    lean: { newGames: leanRequested ? "lean-v1" : "off", qualified: leanQualified, configured: leanConfigured,
+      ...(leanRequested ? { worldCapMicroUsd: LEAN_WORLD_CAP_MICRO_USD } : {}) },
     worldBudget: { newQaPolicy: newQaWorldBudgetEnabled({ appEnv: e.APP_ENV, storageId: e.STORAGE_PROVIDER ?? "",
       promptRelease: e.LOCAL_PATCH_PROMPT_RELEASE, reviewRelease: e.LOCAL_PATCH_VISUAL_REVIEW === "dual-high-v3" ? DUAL_VISUAL_REVIEW_V3 : undefined })
       ? { version: NEW_QA_WORLD_BUDGET_POLICY, capMicroUsd: NEW_QA_WORLD_CAP_MICRO_USD } : null, historicalDefaultCapMicroUsd: 5_000_000 },
