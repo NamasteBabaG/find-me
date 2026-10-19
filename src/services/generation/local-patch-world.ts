@@ -34,8 +34,8 @@ import { subjectUpgradeOf } from "./subject-enrollment";
 import { subjectRejudgePending } from "./subject-rejudge";
 import { LOCAL_PATCH_BOARD_REVIEW_MIN_MS, localPatchBoardAwaitsProvider, localPatchProgressOrder, localPatchRestDecision, localPatchRestOf,
   localPatchReviewFits, selfRepairProgress, type LocalPatchRest } from "../../domain/scene/local-patch-progress";
-import { continueAdmittedReviewInterruptions, openAdmittedInterruptions, recoverEnrolledReviewInterruptions, reviewContinuationRecorded,
-  type ContinuationWhy } from "./subject-upgrade";
+import { continueAdmittedReviewInterruptions, openAdmittedInterruptions, recoverEnrolledReviewInterruptions, resumptionAfterContinuation,
+  reviewContinuationRecorded, type ContinuationWhy } from "./subject-upgrade";
 import { advanceContinuityInBackground } from "./continuity-background";
 import { enrollLeanWorld } from "./lean-enrollment";
 import { isLeanWorld } from "./lean-release";
@@ -143,8 +143,9 @@ async function resumeParkedInterruption(c: Container, gameId: string, observed: 
     if (continued === "blocked" && !why.transient) return explain(why.reason ?? `${named}: not continued`);
     if (continued !== "done") return;
   }
-  const audit = await boardWizardBudgetOf(c).audit(boardWizardWorldId(gameId));
-  if (audit.held) return explain(`its review interruptions are continued, and the world ledger is still held (unknown: ${audit.unknownRequestKeys.join(", ") || "none"})`);
+  const next = await resumptionAfterContinuation(c, gameId);
+  if (next.action === "explain") return explain(next.reason);
+  if (next.action === "retry") return;
   await c.db.generationJob.updateMany({ where: unchanged, data: { status: "QUEUED", currentStep: "local-patch", lastError: null } });
 }
 

@@ -345,6 +345,19 @@ export async function continueAdmittedReviewInterruptions(c: Container, gameId: 
 export type ContinuationWhy = { reason?: string; transient?: boolean };
 
 /**
+ * What a resumption does once every interruption it saw was continued, read fresh: release the hold when the ledger is
+ * free; explain it only when a permanent blocker is found now; otherwise wait for another turn. The ledger can be held
+ * again by an interruption that arrived meanwhile (a concurrent tick's background sweep marks another answer unknown,
+ * Codex round 21): one the continuation admits is continued by a later turn, never explained as a stop.
+ */
+export async function resumptionAfterContinuation(c: Container, gameId: string)
+  : Promise<{ action: "release" } | { action: "retry" } | { action: "explain"; reason: string }> {
+  if (!(await boardWizardBudgetOf(c).audit(boardWizardWorldId(gameId))).held) return { action: "release" };
+  const why: ContinuationWhy = {};
+  return await openAdmittedInterruptions(c, gameId, why) === "blocked" && why.reason ? { action: "explain", reason: why.reason } : { action: "retry" };
+}
+
+/**
  * An enrolled world's interrupted dual-review questions, found again by rebuilding
  * each board's current candidate questions (read-only) and continued through the
  * ordinary recovery (v1 while its two records last, then v2). Nothing is bought; a

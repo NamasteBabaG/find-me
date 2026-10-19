@@ -24,7 +24,7 @@ import { allowedDualPublication } from "../local-patch-dual-publication";
 import { LEAN_RECOVERY_BACKOFF_MS, LOCAL_PATCH_STYLE, runLocalPatchWorldSlice } from "../local-patch-world";
 import { tickGeneration } from "../queue";
 import { advanceContinuityInBackground, backgroundRoundIdOf } from "../continuity-background";
-import { continueAdmittedReviewInterruptions, openAdmittedInterruptions } from "../subject-upgrade";
+import { continueAdmittedReviewInterruptions, openAdmittedInterruptions, resumptionAfterContinuation } from "../subject-upgrade";
 import { LOCAL_PATCH_PARKED_WAKE_ACTION, PARKED_WAKE_SPACING_MS, claimParkedWake, nextParkedWake } from "../local-patch-parked-wake";
 import { DUAL_VISUAL_REVIEW_V3, pinVisualReviewRelease } from "../visual-review-release";
 import { sha256Bytes } from "../fixed-sprite";
@@ -593,6 +593,16 @@ describe("local-patch-lean/v1 on a whole paid world", () => {
     expect((await job()).lastError).toBe(`local-patch-continue-in-slice/v1: the world's automatic review continuations are spent (2/2 under v1, `
       + `${WORLD_AUTOMATIC_REVIEW_RECOVERY_V2_LIMIT}/${WORLD_AUTOMATIC_REVIEW_RECOVERY_V2_LIMIT} under v2); ${uncoveredKey} stays reserved in full until a person reconciles or authorizes it`);
     expect(await nextParkedWake(c)).toBeNull();
+    // Codex round 21: a resumption that finds the ledger held again after its continuation (here by an answer the
+    // continuation admits but has not continued, exactly what a concurrent tick's sweep can add meanwhile) waits for
+    // another turn and explains nothing; only a permanent blocker read fresh is explained.
+    expect(await resumptionAfterContinuation(c, gameId)).toEqual({ action: "retry" });
+    const uncoveredOutcome = `aud_sb_${backgroundRoundIdOf(worldId, uncoveredKey)}_outcome`;
+    const recordedOutcome = await db.auditLog.findUniqueOrThrow({ where: { id: uncoveredOutcome } });
+    await db.auditLog.update({ where: { id: uncoveredOutcome }, data: { metaJson: JSON.stringify({ ...JSON.parse(recordedOutcome.metaJson!), providerStatus: "completed" }) } });
+    expect(await resumptionAfterContinuation(c, gameId)).toEqual({ action: "explain",
+      reason: `${uncoveredKey} is an unknown charge the automatic continuation does not admit (Background review charge could not be verified); a person reconciles or authorizes it` });
+    await db.auditLog.update({ where: { id: uncoveredOutcome }, data: { metaJson: recordedOutcome.metaJson } });
   }, 1_500_000);
 
   it("admits only no answer at all, or a background response its provider ended failed with no text and no usage", () => {
