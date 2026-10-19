@@ -237,6 +237,19 @@ QA world `game_hzju9scobvssvl0tojca` ran on 1360a90b from 11:27 UTC. Flex in bac
 - **Fix:** the recovery (`interruptionShape`) also admits a background response its provider ended `failed`, with no text and no usage. The shape must match exactly what its round recorded: the same response id, `unpriced`, provider status `failed`.
 - The charge stays unknown and counted in full, under the same per-world limits (two continuations under v1, four more under v2), and the same pixels are asked again.
 - Anything else stays parked: a failure with usage or text, another status, another reason.
+- **Codex round 14 (HOLD, P1): a parked world is invisible to the scheduled tick.**
+  - `nextPendingGame` never selects a parked world, and the recovery ran only inside the world's own slice, so it needed a person, or the owner's open page, to tick the world by id.
+  - **Fix (local-patch-parked-recovery/v1):** before its selection, the scheduled tick (`tickGeneration` with no game) runs `recoverParkedLocalPatchReviews`, which gives one parked, enrolled world its review recovery.
+  - Only a world whose ledger holds an unknown answer that `admittedInterruption` admits and that is not yet continued qualifies. This is a cheap read: ledger, retained record and round record, and no board is rebuilt to decide it.
+  - It tries in the minute the world parked, then every tenth minute, for 24 hours.
+  - A world an operator holds for any other reason is never touched.
+  - `admittedInterruption` is now the one place that decides admission. Both the recovery and the scheduler's pre-check call it, so a retained payload never qualifies without its round's own recorded failed outcome.
+  - The regression test starts with the failure retained and the job parked, beside an operator-held world, and advances through `tickGeneration(c, null, …)`. Its checks:
+    - with the round's recorded end altered, nothing is continued;
+    - restored, it is continued, the charge stays unknown in full and the job is queued;
+    - the cadence and the 24-hour window hold;
+    - the operator's hold is unchanged;
+    - the world finishes.
 
 **Tests:**
 - a world whose one continuity answer stays running: both siblings are asked after it and decided before it answers;

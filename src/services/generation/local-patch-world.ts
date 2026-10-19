@@ -23,7 +23,7 @@ import { needsPlayerReview, playerReviewEnabled } from "./local-patch-player-rev
 import { runLocalPatchSelfRepair, SELF_REPAIR_REQUEST_ACTION, type SelfRepairDeps } from "./local-patch-self-repair";
 import { WorldBudgetError } from "./world-budget";
 import { recoverLocalPatchImageInterruptions } from "./local-patch-interruption-recovery";
-import { recoverPreparedLocalPatchReview } from "./local-patch-review-interruption-recovery";
+import { parkedReviewInterruptionAdmitted, recoverPreparedLocalPatchReview } from "./local-patch-review-interruption-recovery";
 import { activateLocalPatchEmergencyBudget } from "./local-patch-budget-recovery";
 import { localPatchEvidenceRecovery, LOCAL_PATCH_EVIDENCE_RETRY_BACKOFF_MS } from "./local-patch-review-recovery";
 import { localPatchRetainedAnswerUndecided, localPatchContinuityPending } from "./local-patch-dual-evidence";
@@ -99,6 +99,34 @@ export const LOCAL_PATCH_EVIDENCE_RETRY_WAIT = "local-patch:evidence-retry-wait"
  */
 export const LOCAL_PATCH_RECOVERY_EXHAUSTED = "local-patch:recovery-exhausted";
 const PARKED_STEPS = [LOCAL_PATCH_NEEDS_RELEASE, LOCAL_PATCH_RECOVERY_EXHAUSTED];
+
+/**
+ * local-patch-parked-recovery/v1. A world parked for a person is not a candidate of the scheduled selection
+ * (`nextPendingGame`), so a recovery that only runs inside its own slice needs a person, or its owner's open page,
+ * to tick it. On the first lean QA world (19 October) a provider-declared failure parked it with nobody to release it.
+ *
+ * The scheduled tick gives one parked, enrolled world its review recovery: only one whose ledger holds an unknown
+ * answer that the automatic continuation admits and has not continued (a cheap read; `parkedReviewInterruptionAdmitted`).
+ * It tries once at parking, then every ten minutes, for a day, so a world the recovery cannot continue costs little.
+ * Nothing is bought; an operator hold for any other reason is never touched.
+ */
+export const LOCAL_PATCH_PARKED_RECOVERY_EVERY_MS = 10 * 60_000;
+export const LOCAL_PATCH_PARKED_RECOVERY_WINDOW_MS = 24 * 60 * 60_000;
+export async function recoverParkedLocalPatchReviews(c: Container, deps: Pick<LocalPatchBoardReviewDeps, "readBoardArt"> = {},
+  now = Date.now()): Promise<string | null> {
+  const parked = await c.db.generationJob.findMany({ where: { status: "FAILED", currentStep: LOCAL_PATCH_NEEDS_RELEASE,
+    updatedAt: { gt: new Date(now - LOCAL_PATCH_PARKED_RECOVERY_WINDOW_MS) },
+    game: { styleVersion: LOCAL_PATCH_STYLE, status: "TARGETS_GENERATING", deletedAt: null } },
+    orderBy: { updatedAt: "asc" }, select: { gameId: true, updatedAt: true }, take: 25 });
+  for (const job of parked) {
+    // The minute it parked, then every tenth minute after.
+    if (Math.floor((now - job.updatedAt.getTime()) / 60_000) % (LOCAL_PATCH_PARKED_RECOVERY_EVERY_MS / 60_000) !== 0) continue;
+    if (!await subjectUpgradeOf(c.db, job.gameId) || !await parkedReviewInterruptionAdmitted(c, job.gameId)) continue;
+    await recoverEnrolledReviewInterruptions(c, job.gameId, deps);
+    return job.gameId;
+  }
+  return null;
+}
 
 export type LocalPatchSliceResult = {
   readonly gameId: string;

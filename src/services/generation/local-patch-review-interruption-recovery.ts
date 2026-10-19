@@ -1,7 +1,7 @@
 import type { Prisma } from "@prisma/client";
 import type { Container } from "../container";
 import { interruptedLocalPatchReviewRequest } from "../../domain/scene/local-patch-review-request";
-import { boardWizardBudgetOf } from "./board-conditioned-wizard";
+import { boardWizardBudgetOf, boardWizardWorldId } from "./board-conditioned-wizard";
 import type { prepareLocalPatchBoardReview } from "./local-patch-board-review";
 import { fenceLocalPatchImages, LocalPatchRetainedPurchaseStore } from "./local-patch-lifecycle";
 import { sha256Bytes } from "./fixed-sprite";
@@ -35,6 +35,43 @@ export function interruptionShape(unknownReason: string | null, reply: Record<st
     && reply.providerStatus === "failed" && reply.wireFault === "http" && reply.costUnknown === true && reply.finishReason === "failed"
     && reply.raw === null && reply.usage === null && typeof reply.requestId === "string" && reply.requestId === reply.responseId) return "provider-failed";
   return null;
+}
+
+/**
+ * The interruption a retained unknown answer records, when the automatic continuation admits it: its exact shape and,
+ * for a provider-declared failure, the failed outcome its own background round recorded for that same response.
+ * Reads only; never a provider. A retained payload alone never satisfies it.
+ */
+export async function admittedInterruption(c: Pick<Container, "db">, gameId: string, worldId: string, requestKey: string,
+  retained: { readonly unknownReason: string | null; readonly bytes: Buffer }): Promise<{ shape: "timeout" | "provider-failed"; reply: Record<string, unknown> } | null> {
+  let reply: Record<string, unknown> | null;
+  try { reply = JSON.parse(retained.bytes.toString()); } catch { return null; }
+  const shape = interruptionShape(retained.unknownReason, reply);
+  if (!shape || !reply) return null;
+  // A background response the provider ended `failed` is admitted only as its round recorded it: that response, unpriced.
+  if (shape === "provider-failed") {
+    const terminal = await backgroundRoundTerminal(c.db, gameId, worldId, requestKey);
+    if (terminal?.kind !== "outcome" || terminal.state !== "unpriced" || terminal.providerStatus !== "failed"
+      || terminal.responseId !== reply.requestId) return null;
+  }
+  return { shape, reply };
+}
+
+/**
+ * Whether a world parked for a person holds an unknown review answer its automatic continuation admits and has not
+ * continued yet. A cheap read (ledger, retained records, round records): what lets the scheduled tick give a parked
+ * world its recovery without rebuilding any board for a world an operator holds for another reason.
+ */
+export async function parkedReviewInterruptionAdmitted(c: Container, gameId: string): Promise<boolean> {
+  const budget = boardWizardBudgetOf(c), worldId = boardWizardWorldId(gameId), audit = await budget.audit(worldId);
+  if (audit.overCapMicroUsd || audit.conflictRequestKeys.length || audit.overrunRequestKeys.length) return false;
+  const store = new LocalPatchRetainedPurchaseStore(c, gameId, budget);
+  for (const requestKey of audit.unknownRequestKeys.filter(key => key.startsWith("self-repair:board:"))) {
+    if (await budget.readContinuationApproval(worldId, requestKey)) continue;
+    const retained = await store.get(worldId, requestKey);
+    if (retained && !retained.evidence && await admittedInterruption(c, gameId, worldId, requestKey, retained)) return true;
+  }
+  return false;
 }
 
 /** A new evidence question, never a re-buy or a quality approval. Only an exact
@@ -77,18 +114,11 @@ async function recoverInterruptedReview(c: Container, prepared: Prepared, fence:
     || held.operationFingerprint !== fingerprint || !dualReviewReserves(question.role).includes(held.reserveMicroUsd) || held.conflicts.length) return false;
   const retained = await new LocalPatchRetainedPurchaseStore(c, game.id, budget).get(worldId, requestKey);
   if (!retained || retained.evidence || retained.operationFingerprint !== fingerprint) return false;
-  let reply: Record<string, unknown>;
-  try { reply = JSON.parse(retained.bytes.toString()); } catch { return false; }
   // HTTP errors, authentication/quota refusals, unpriced usable answers, wrong
   // models and malformed successful replies are not transport interruptions.
-  const shape = interruptionShape(retained.unknownReason, reply);
-  if (!shape) return false;
-  // A background response the provider ended `failed` is admitted only as its round recorded it: that response, unpriced.
-  if (shape === "provider-failed") {
-    const terminal = await backgroundRoundTerminal(c.db, game.id, worldId, requestKey);
-    if (terminal?.kind !== "outcome" || terminal.state !== "unpriced" || terminal.providerStatus !== "failed"
-      || terminal.responseId !== reply.requestId) return false;
-  }
+  const admitted = await admittedInterruption(c, game.id, worldId, requestKey, retained);
+  if (!admitted) return false;
+  const { shape, reply } = admitted;
   const wireFault = shape === "timeout" ? "timeout" : "http";
   const proof = { policyId, gameId: game.id, ownerId: game.ownerId, sceneId: scene.id,
     variantId: selected.row.id, hideId: selected.hide.id, assetId: selected.asset.id, imageSha256: selected.imageSha256,

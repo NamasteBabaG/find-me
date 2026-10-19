@@ -21,7 +21,9 @@ import { readBoardConditionedCatalog } from "../board-conditioned-catalog";
 import type { LocalPatchHideDeps } from "../local-patch-hide";
 import type { DualReviewProof } from "../local-patch-dual-evidence";
 import { allowedDualPublication } from "../local-patch-dual-publication";
-import { LOCAL_PATCH_STYLE, runLocalPatchWorldSlice } from "../local-patch-world";
+import { LOCAL_PATCH_STYLE, recoverParkedLocalPatchReviews, runLocalPatchWorldSlice } from "../local-patch-world";
+import { tickGeneration } from "../queue";
+import { advanceContinuityInBackground, backgroundRoundIdOf } from "../continuity-background";
 import { DUAL_VISUAL_REVIEW_V3, pinVisualReviewRelease } from "../visual-review-release";
 import { sha256Bytes } from "../fixed-sprite";
 import { SYSTEM_ENROLLMENT_OPERATOR, subjectUpgradeOf } from "../subject-enrollment";
@@ -369,6 +371,57 @@ describe("local-patch-lean/v1 on a whole paid world", () => {
     const receipt = JSON.parse(row.judgeJson!);
     expect(receipt.reviewInterruption).toMatchObject({ providerFailed: PROVIDER_FAILED_SHAPE, wireFault: "http", responseId: expect.stringMatching(/^resp_lean/) });
     expect(receipt.evidenceAttempts).toEqual(expect.arrayContaining([expect.objectContaining({ kind: "transport", code: "http" })]));
+  }, 1_500_000);
+
+  it("lets the scheduled tick continue a world parked by a provider-declared failure, and never an operator's hold (Codex P1, 19 October)", async () => {
+    const gameId = "lean-world-parked", held = "lean-world-held";
+    await leanWorld(gameId); await leanWorld(held);
+    const busy = new Set([boardOf(THIRD.id).board, boardOf(REFUSED.id).board, boardOf(SEAM.id).board]);
+    const FAILED = BOARDS.find(b => !busy.has(b.board))!.hides[1]!;
+    const provider = sol({ fail: FAILED.id }), container = { ...c, visualReview: { request: vi.fn() }, backgroundReview: provider.fake } as Container;
+    const diagnose = vi.fn(async (wire: SelfRepairWire) => {
+      const mask = maskForHide(SEAM), core = { left: mask.left + 12, top: 40, width: 40, height: 60 };
+      return { verdict: null, raw: JSON.stringify({ cause: "composition-clipping", action: "recompose-retained", sourceKey: `${SEAM.id}:${SEAM.pose}:render:1`,
+        returnWindow: { left: 16, top: 16, width: 480, height: 736 }, protectedCore: core, faceRect: { left: core.left + 4, top: core.top + 4, width: 30, height: 30 },
+        explanation: "Synthetic diagnosis of the broken join." }), usage: { prompt_tokens: 9000, completion_tokens: 500 },
+        requestId: `req-${gameId}-diagnosis-${wire.prompt.length}`, model: "gpt-5.6-sol", finishReason: "stop", wireFault: null, costUnknown: false };
+    });
+    const slice = () => runLocalPatchWorldSlice(container, painter(gameId, new Map(), new Map()), gameId, { hardDeadlineAt: Date.now() + 270_000, diagnose });
+    // Up to the failing bundle's create, and no further: nothing has read its end yet.
+    for (let ticks = 0; ticks < 300 && !provider.creates.some(cr => cr.hideId === FAILED.id && cr.kind === "bundle"); ticks++) await slice();
+    const worldId = boardWizardWorldId(gameId), budget = boardWizardBudgetOf(c);
+    const unknownKey = async () => (await budget.audit(worldId)).unknownRequestKeys.find(key => key.startsWith("self-repair:board:"));
+    for (let reads = 0; reads < 5 && !await unknownKey(); reads++) await advanceContinuityInBackground(container, gameId);
+    const key = (await unknownKey())!;
+    expect(key).toBeDefined();
+    // Both parked as a held review parks a world; the second by an operator, for another reason, with nothing to continue.
+    for (const [id, why] of [[gameId, "Continuity question in the background: the world ledger is held; nothing was sent"], [held, "An operator holds this world"]] as const)
+      await db.generationJob.update({ where: { id: `job_${id}` }, data: { status: "FAILED", currentStep: "local-patch:needs-release", lastError: why } });
+    const job = () => db.generationJob.findUniqueOrThrow({ where: { id: `job_${gameId}` } });
+    const parkedAt = (await job()).updatedAt.getTime();
+    const heldBefore = await db.generationJob.findUniqueOrThrow({ where: { id: `job_${held}` } });
+    // A retained failure alone is not enough: with its round's recorded end altered, the scheduled tick continues nothing.
+    const outcomeId = `aud_sb_${backgroundRoundIdOf(worldId, key)}_outcome`, outcome = await db.auditLog.findUniqueOrThrow({ where: { id: outcomeId } });
+    await db.auditLog.update({ where: { id: outcomeId }, data: { metaJson: JSON.stringify({ ...JSON.parse(outcome.metaJson!), providerStatus: "completed" }) } });
+    await tickGeneration(container, null, 60_000);
+    expect(await job()).toMatchObject({ status: "FAILED", currentStep: "local-patch:needs-release" });
+    expect(await budget.readContinuationApproval(worldId, key)).toBeNull();
+    await db.auditLog.update({ where: { id: outcomeId }, data: { metaJson: outcome.metaJson } });
+    // Between its tries, and past its day, the scheduler leaves it alone.
+    expect(await recoverParkedLocalPatchReviews(container, {}, parkedAt + 5 * 60_000)).toBeNull();
+    expect(await recoverParkedLocalPatchReviews(container, {}, parkedAt + 25 * 60 * 60_000)).toBeNull();
+    expect(await budget.readContinuationApproval(worldId, key)).toBeNull();
+    // The scheduled tick (no game named) continues it: the unknown charge kept whole, the job queued again.
+    await tickGeneration(container, null, 60_000);
+    expect((await budget.readContinuationApproval(worldId, key))?.version).toMatch(/^world-automatic-review-recovery\/v[12]$/);
+    expect(await budget.readRequest(worldId, key)).toMatchObject({ state: "unknown", reserveMicroUsd: 200_000 });
+    expect(await job()).toMatchObject({ status: "QUEUED", currentStep: "local-patch" });
+    // The operator's hold is untouched.
+    expect(await db.generationJob.findUniqueOrThrow({ where: { id: `job_${held}` } })).toEqual(heldBefore);
+    // And the world finishes with its ordinary slices.
+    const ready = async () => (await db.game.findUniqueOrThrow({ where: { id: gameId } })).configJson !== null;
+    for (let ticks = 0; ticks < 900 && !await ready(); ticks++) await slice();
+    expect(await ready()).toBe(true);
   }, 1_500_000);
 
   it("admits only no answer at all, or a background response its provider ended failed with no text and no usage", () => {
