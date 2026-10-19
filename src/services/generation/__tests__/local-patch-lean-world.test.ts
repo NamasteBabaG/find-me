@@ -425,7 +425,8 @@ describe("local-patch-lean/v1 on a whole paid world", () => {
     // the scheduled tick never chooses it, and a tick naming it neither continues nor releases.
     await park("An operator holds this world for another reason");
     expect(await nextParkedWake(container)).toBeNull();
-    expect(await tickGeneration(container, null, 60_000)).toMatchObject({ gameId: null });
+    // Other worlds of this file may still be pending: the scheduled tick may choose one of them, never this one.
+    expect((await tickGeneration(container, null, 60_000)).gameId).not.toBe(gameId);
     await slice();
     expect(await job()).toMatchObject({ status: "FAILED", currentStep: "local-patch:needs-release", lastError: "An operator holds this world for another reason" });
     expect(await approval()).toBeNull();
