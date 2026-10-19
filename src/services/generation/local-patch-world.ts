@@ -163,12 +163,19 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
     throw new Error("LOCAL_PATCH_WORLD: all nine boards must belong to one complete world");
   }
   // local-patch-slice-pacing/v1: the provider passes below name each question whose answer the provider has just
-  // said is still running; nothing in its board can move before it ends.
+  // said is still running (nothing in its board can move before it ends), take turns among their rounds, and stop
+  // with room for one board review.
   const stillRunning = new Set<string>();
+  const pollDeadlineAt = options.hardDeadlineAt === undefined ? undefined
+    : options.hardDeadlineAt - LOCAL_PATCH_BOARD_REVIEW_MIN_MS - LOCAL_PATCH_PHASE_MARGIN_MS;
   // Existing provider work is reconciled before a held job or sibling scheduling can
   // defer it beyond the background response's short retention. No new request here.
-  if (automatic && await subjectUpgradeOf(c.db, gameId))
-    await advanceContinuityInBackground(c, gameId, { deadlineAt: options.hardDeadlineAt, running: stillRunning });
+  // A job parked for a person reviews nothing this slice: its responses get the whole slice.
+  if (automatic && await subjectUpgradeOf(c.db, gameId)) {
+    const step = (await c.db.generationJob.findUnique({ where: { id: `job_${gameId}` }, select: { currentStep: true } }))?.currentStep;
+    await advanceContinuityInBackground(c, gameId, { deadlineAt: step && PARKED_STEPS.includes(step) ? options.hardDeadlineAt : pollDeadlineAt,
+      running: stillRunning });
+  }
   // A v7 hide buys only its image. Reuse the dispatch boundary's conservative
   // minimum, then let it recheck after reservation and bound the actual call.
   const minHideMs = advisory ? LOCAL_PATCH_MIN_PROVIDER_MS.render + LOCAL_PATCH_PHASE_MARGIN_MS : LOCAL_PATCH_MIN_SLICE_MS;
@@ -414,7 +421,10 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
     // Free work first, all of it: an answer already paid for, whose question now
     // uses a corrected reader, is decided before anything is reserved or bought.
     // A world never waits for budget while a retained answer could decide it.
-    if (dual) for (const scene of game.scenes) {
+    // An enrolled world decides a retained answer with its subject review on the
+    // ordinary route; the free reading refuses it after rebuilding the board's
+    // evidence, so it is not asked here (local-patch-slice-pacing/v1).
+    if (dual && !subjectUpgrade) for (const scene of game.scenes) {
       if (scene.sceneVersion !== 12) continue;
       for (let turn = 0; turn < 3 && rows.some(row => row.targetInstance.gameSceneId === scene.id && localPatchRetainedAnswerUndecided(row)); turn++) {
         // Out of time is not out of options: yield the claim with the rest of the
@@ -445,10 +455,7 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
     // deadline, or settled and linked once its batch has ended. Nothing is bought.
     // A round it cannot advance stops the slice with its reason, as a review does.
     if (dual) {
-      // Open rounds keep the whole slice; finished rounds' housekeeping stops with room for one review.
-      const housekeepingDeadlineAt = options.hardDeadlineAt === undefined ? undefined
-        : options.hardDeadlineAt - LOCAL_PATCH_BOARD_REVIEW_MIN_MS - LOCAL_PATCH_PHASE_MARGIN_MS;
-      try { await advanceQualityBatches(c, gameId, fence, options.hardDeadlineAt, { running: stillRunning, ...(housekeepingDeadlineAt === undefined ? {} : { housekeepingDeadlineAt }) }); }
+      try { await advanceQualityBatches(c, gameId, fence, options.hardDeadlineAt, { running: stillRunning, ...(pollDeadlineAt === undefined ? {} : { pollDeadlineAt }) }); }
       catch (error) {
         await c.db.generationJob.updateMany({ where: { id: job.id, attempts: claim, status: "RUNNING" },
           data: { status: "FAILED", lastError: (error instanceof Error ? error.message : String(error)).slice(0, 500) } });

@@ -20,6 +20,7 @@ import { deleteGame } from "../../game.service";
 import { createDraft } from "../../create-flow.service";
 import { boardWizardBudgetOf, boardWizardWorldId } from "../board-conditioned-wizard";
 import type { WorldChargeEvidence } from "../world-budget";
+import { WorldBudget } from "../../../domain/generation/world-budget";
 import { reviewBoardWizardIdentity } from "../board-wizard-identity-gate";
 import { readBoardConditionedCatalog } from "../board-conditioned-catalog";
 import { reviewLocalPatchBoard } from "../local-patch-board-review";
@@ -351,15 +352,48 @@ describe("Opus scene-quality questions through Message Batches", () => {
     expect(fake.batches.every(b => b.deleted)).toBe(true);
   }, 600_000);
 
-  it("gives open rounds the whole slice: a later answer is settled behind reads that keep failing slowly, whatever the housekeeping deadline", async () => {
+  it("applies a finished round's record to the ledger behind open reads that keep failing slowly, with no review (Codex, 19 October)", async () => {
+    const gameId = "batch-ledger-behind-slow", w = await world(gameId), board = BOARDS[0]!;
+    for (const hide of board.hides) await runLocalPatchHide(c, painter(gameId), { gameId, board, hide });
+    const fake = new FakeBatches(opus()), container = { ...c, visualReview: { request: sol(gameId) }, qualityBatch: fake } as Container;
+    for (let i = 0; i < 3; i++) await review(container, gameId, board);
+    expect(fake.batches).toHaveLength(3);
+    // The first batch ends; its outcome is recorded, and the worker stops before the ledger counts it.
+    const answered = fake.batches[0]!;
+    answered.status = "ended"; answered.results = answered.requests.map(r => fake.answer(r.params, r.customId));
+    const settle = vi.spyOn(WorldBudget.prototype, "settle").mockRejectedValueOnce(Error("the acknowledgement was lost"));
+    await expect(advanceQualityBatches(container, gameId, async () => {})).rejects.toThrow("the acknowledgement was lost");
+    settle.mockRestore();
+    const { batchKey } = await syncKeyOf(gameId, board);
+    expect(await w.budget.readRequest(w.worldId, batchKey)).toMatchObject({ state: "pending" });
+    // Its two siblings' reads take 30 s of the clock and fail, every time: the poll window is spent on them.
+    let now = Date.now();
+    const clock = vi.spyOn(Date, "now").mockImplementation(() => now);
+    const status = fake.status.bind(fake);
+    fake.status = async (id: string) => { if (id === answered.id) return status(id); fake.calls.push("status"); now += 30_000; throw Error("read timed out"); };
+    try {
+      const deadline = now + 270_000;
+      await advanceQualityBatches(container, gameId, async () => {}, deadline, { running: new Set(), pollDeadlineAt: deadline - 205_000 });
+      expect(await w.budget.readRequest(w.worldId, batchKey)).toMatchObject({ state: "settled" });
+      expect(deadline - now).toBeGreaterThanOrEqual(180_000);
+    } finally { clock.mockRestore(); fake.status = status; }
+    for (let pass = 0; pass < 3 && !fake.batches.every(b => b.deleted); pass++) {
+      fake.end();
+      await advanceQualityBatches(container, gameId, async () => {});
+      await sweepQualityBatches(container, { deadlineAt: Date.now() + 270_000 });
+    }
+    expect(fake.batches.every(b => b.deleted)).toBe(true);
+  }, 300_000);
+
+  it("takes turns among open rounds whose reads keep failing slowly: a later answer is settled, and every slice keeps room for a review", async () => {
     const gameId = "batch-open-fairness", w = await world(gameId), [first, second] = [BOARDS[0]!, BOARDS[1]!];
     for (const hide of first.hides) await runLocalPatchHide(c, painter(gameId), { gameId, board: first, hide });
-    await runLocalPatchHide(c, painter(gameId), { gameId, board: second, hide: second.hides[0]! });
+    for (const hide of second.hides.slice(0, 2)) await runLocalPatchHide(c, painter(gameId), { gameId, board: second, hide });
     const fake = new FakeBatches(opus()), container = { ...c, visualReview: { request: sol(gameId) }, qualityBatch: fake } as Container;
     for (let i = 0; i < 3; i++) await review(container, gameId, first);
-    await review(container, gameId, second);
-    expect(fake.batches).toHaveLength(4);
-    // The newest batch has ended; reading any of the three before it takes 30 s of the clock and fails, every time.
+    for (let i = 0; i < 2; i++) await review(container, gameId, second);
+    expect(fake.batches).toHaveLength(5);
+    // The newest batch has ended; reading any of the four before it takes 30 s of the clock and fails, every time.
     const last = fake.batches.at(-1)!;
     last.status = "ended"; last.results = last.requests.map(r => fake.answer(r.params, r.customId));
     let now = Date.now();
@@ -367,10 +401,19 @@ describe("Opus scene-quality questions through Message Batches", () => {
     const status = fake.status.bind(fake);
     fake.status = async (id: string) => { if (id === last.id) return status(id); fake.calls.push("status"); now += 30_000; throw Error("read timed out"); };
     try {
-      const running = new Set<string>();
-      await advanceQualityBatches(container, gameId, async () => {}, now + 270_000, { running, housekeepingDeadlineAt: now + 65_000 });
-      expect(running).toEqual(new Set());
-      expect(await w.budget.readRequest(w.worldId, (await syncKeyOf(gameId, second)).batchKey)).toMatchObject({ state: "settled" });
+      const { batchKey } = (await events(gameId)).map(row => JSON.parse(row.metaJson!))
+        .find(event => event.kind === "intent" && event.intent.customId === last.requests[0]!.customId).intent as { batchKey: string };
+      let slices = 0;
+      for (; slices < 4 && (await w.budget.readRequest(w.worldId, batchKey))?.state !== "settled"; slices++) {
+        const deadline = now + 270_000, running = new Set<string>();
+        await advanceQualityBatches(container, gameId, async () => {}, deadline, { running, pollDeadlineAt: deadline - 205_000 });
+        // The pass stopped with room for a review, and named nothing it did not read as running.
+        expect(deadline - now).toBeGreaterThanOrEqual(180_000);
+        expect(running).toEqual(new Set());
+        now += 60_000; // the next tick, a minute later
+      }
+      expect(await w.budget.readRequest(w.worldId, batchKey)).toMatchObject({ state: "settled" });
+      expect(slices).toBeLessThanOrEqual(3);
     } finally { clock.mockRestore(); fake.status = status; }
     // Nothing is left for a later sweep.
     for (let pass = 0; pass < 3 && !fake.batches.every(b => b.deleted); pass++) {

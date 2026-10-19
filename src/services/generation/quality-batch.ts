@@ -861,10 +861,11 @@ export async function askQualityThroughBatch(c: Container, input: {
  * finished round gets its housekeeping. A world slice (local-patch-slice-pacing/v1)
  * passes `slice`: `running` receives each round whose batch the provider has just said
  * still runs (`variantId:imageSha256`), its board's review having nothing to move until
- * it ends; and finished rounds' housekeeping stops by `housekeepingDeadlineAt`, leaving
- * the slice room for a review. Open rounds keep the whole `deadlineAt`, before any housekeeping. */
+ * it ends. Provider calls then stop by `pollDeadlineAt`, leaving the slice room for a
+ * review, and start a round further on each minute, so one slow every time never keeps
+ * the others out for good; every finished round's record is still applied to the ledger. */
 export async function advanceQualityBatches(c: Container, gameId: string, fence: Fence, deadlineAt?: number,
-  slice?: { readonly running: Set<string>; readonly housekeepingDeadlineAt?: number }): Promise<void> {
+  slice?: { readonly running: Set<string>; readonly pollDeadlineAt?: number }): Promise<void> {
   const transport = c.qualityBatch;
   if (!transport) return;
   const rounds = [...await gameRounds(c.db, gameId)];
@@ -876,19 +877,27 @@ export async function advanceQualityBatches(c: Container, gameId: string, fence:
   // Open rounds first, each kind in its own order: an answer that has arrived is settled, and a running one polled,
   // before the housekeeping of finished rounds can take the pass's time (local-patch-slice-pacing/v1).
   const parsed = rounds.map(([roundId, events]) => ({ roundId, round: qualityBatchRoundOf(events) }));
-  for (const { roundId, round } of parsed.filter(entry => !entry.round.terminal)) {
-    if (deadlineAt !== undefined && deadlineAt - Date.now() < POLL_NEED_MS) return;
-    const ctx: Context = { c, transport, gameId, fence, question: null, stopping: false, deadlineAt };
+  const turn = <T,>(items: readonly T[]) => {
+    const start = slice && items.length ? Math.floor(Date.now() / SWEEP_ROTATION_MS) % items.length : 0;
+    return [...items.slice(start), ...items.slice(0, start)];
+  };
+  const pollUntil = slice?.pollDeadlineAt ?? deadlineAt;
+  for (const { roundId, round } of turn(parsed.filter(entry => !entry.round.terminal))) {
+    if (pollUntil !== undefined && pollUntil - Date.now() < POLL_NEED_MS) break;
+    const ctx: Context = { c, transport, gameId, fence, question: null, stopping: false, deadlineAt: pollUntil };
     let gate: QualityBatchGate | null = null;
     try { gate = await advance(ctx, roundId); }
     // A full world waits for capacity at the review that needs it, which parks or waits as it does today.
     catch (error) { if (!(error instanceof WorldBudgetError)) throw error; }
     if (slice && gate?.kind === "waiting" && gate.running) slice.running.add(`${round.intent.variantId}:${round.intent.imageSha256}`);
   }
-  const housekeepingDeadlineAt = slice?.housekeepingDeadlineAt ?? deadlineAt;
-  for (const { round } of parsed.filter(entry => entry.round.terminal)) {
-    if (housekeepingDeadlineAt !== undefined && housekeepingDeadlineAt - Date.now() < POLL_NEED_MS) return;
-    await maintain({ c, transport, gameId, fence, question: null, stopping: false, deadlineAt: housekeepingDeadlineAt }, round, false, keys);
+  for (const { round } of turn(parsed.filter(entry => entry.round.terminal))) {
+    if (deadlineAt !== undefined && deadlineAt - Date.now() < POLL_NEED_MS) return;
+    // Within the window, the whole housekeeping; past it, the ledger is still made to match the round's record and every
+    // bill on record counted, with no provider call: searches, late copies and deletions wait for the next pass or the sweep.
+    if (pollUntil === undefined || pollUntil - Date.now() >= POLL_NEED_MS)
+      await maintain({ c, transport, gameId, fence, question: null, stopping: false, deadlineAt: pollUntil }, round, false, keys);
+    else await applyRecord({ c, transport, gameId, fence, question: null, stopping: false, deadlineAt }, round, keys);
   }
 }
 

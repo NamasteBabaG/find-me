@@ -278,14 +278,18 @@ export async function askContinuityInBackground(c: Container, ask: BackgroundAsk
  * by askContinuityInBackground; no image or prompt needs to be invented to poll.
  * `running` receives each response the provider has just said still runs
  * (`variantId:imageSha256`): its board's review has nothing to move until it ends
- * (local-patch-slice-pacing/v1). A round the pass did not read is not named.
+ * (local-patch-slice-pacing/v1). A round the pass did not read is not named. A world
+ * slice passing it also starts a response further on each minute, so one slow every
+ * time never keeps the others from their reads.
  */
 export async function advanceContinuityInBackground(c: Container, gameId: string,
   options: { deadlineAt?: number; running?: Set<string> } = {}): Promise<number> {
   const { running, ...window } = options;
   if (!c.backgroundReview) return 0;
-  const intents = await c.db.auditLog.findMany({ where: { action: SOL_BACKGROUND_ACTION, entityType: "Game", entityId: gameId,
+  const recorded = await c.db.auditLog.findMany({ where: { action: SOL_BACKGROUND_ACTION, entityType: "Game", entityId: gameId,
     id: { endsWith: "_intent" } }, orderBy: { createdAt: "asc" } });
+  const start = running && recorded.length ? Math.floor(Date.now() / 60_000) % recorded.length : 0;
+  const intents = [...recorded.slice(start), ...recorded.slice(0, start)];
   const worldId = `${gameId}:board-wizard`, budget = boardWizardBudgetOf(c);
   let advanced = 0;
   for (const row of intents) {

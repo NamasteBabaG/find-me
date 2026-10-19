@@ -19,8 +19,8 @@ import { boardsOfWorlds } from "../../world-catalog.service";
 import { boardWizardBudgetOf, boardWizardWorldId } from "../board-conditioned-wizard";
 import { reviewBoardWizardIdentity } from "../board-wizard-identity-gate";
 import { readBoardConditionedCatalog } from "../board-conditioned-catalog";
-import type { LocalPatchHideDeps } from "../local-patch-hide";
-import { subjectStageRaw, type DualReviewProof, type SubjectStage } from "../local-patch-dual-evidence";
+import { readShippedBoardArt, runLocalPatchHide, type LocalPatchHideDeps } from "../local-patch-hide";
+import { localPatchRetainedAnswerUndecided, subjectStageRaw, type DualReviewProof, type SubjectStage } from "../local-patch-dual-evidence";
 import { hasLocalPatchPublicationPolicy } from "../local-patch-publication-policy";
 import { LOCAL_PATCH_RECOVERY_EXHAUSTED, LOCAL_PATCH_STYLE, runLocalPatchWorldSlice } from "../local-patch-world";
 import { DUAL_VISUAL_REVIEW_V3, pinVisualReviewRelease } from "../visual-review-release";
@@ -30,7 +30,7 @@ import { subjectPlanSha256 } from "../subject-enrollment";
 import { SUBJECT_REJUDGE_VERSION } from "../subject-rejudge";
 import type { SelfRepairWire } from "../local-patch-self-repair";
 import { localPatchHideEvidenceIds } from "../local-patch-judge";
-import { prepareLocalPatchBoardReview } from "../local-patch-board-review";
+import { prepareLocalPatchBoardReview, reviewLocalPatchBoard } from "../local-patch-board-review";
 import { dualReviewQuestionCandidates } from "../local-patch-dual-review";
 import { visualReviewPolicy } from "../../../domain/generation/visual-review-policy";
 import { visualReviewCharge } from "../../../infra/generation/visual-review-pricing";
@@ -38,7 +38,7 @@ import { DUAL_REVIEW_V3_RESERVE_MICRO_USD } from "../../../domain/generation/dua
 import { purchaseOnce } from "../paid-operation";
 import { LocalPatchRetainedPurchaseStore } from "../local-patch-lifecycle";
 import { bill, paintedOk, seedApprovedGame } from "./local-patch-fixtures";
-import { GOOD_V12_VERDICT, boundHide, longAnswer, publicationBinding } from "./local-patch-dual-fixtures";
+import { GOOD_V12_VERDICT, asDeployedReaderRefusal, boundHide, longAnswer, publicationBinding } from "./local-patch-dual-fixtures";
 
 /**
  * local-patch-subject/v2 on a whole paid world (synthetic child, age 8; no real photograph, no provider).
@@ -401,6 +401,50 @@ describe("local-patch-subject/v2 on a whole paid world", () => {
     expect(background.creates.length).toBeGreaterThan(0);
     expect(fetch).not.toHaveBeenCalled();
   }, 1_500_000);
+
+  it("never rebuilds an enrolled world's evidence for a free reading it would refuse: the slice goes on to its review (Codex, 19 October)", async () => {
+    const gameId = "subject-v2-free-reading"; const seeded = await world(gameId);
+    const board = EARLY, deps = painter(gameId, new Map());
+    let calls = 0;
+    const request = vi.fn<NonNullable<Container["visualReview"]>["request"]>(async question => {
+      const bound = boundHide(question.prompt), id = `req-${gameId}-${++calls}`;
+      const opus = (raw: string) => ({ verdict: null, model: "claude-opus-5-5", requestId: id, finishReason: "end_turn", wireFault: null, costUnknown: false,
+        usage: { input_tokens: 2000, output_tokens: 500 }, raw });
+      if (question.prompt.includes(SUBJECT_POLICY_V2)) return opus(JSON.stringify(subjectAnswer(bound.hideId, 2)));
+      if (question.role === "scene-quality") return opus("```json\n" + JSON.stringify({ hides: [{ hideId: bound.hideId,
+        evidenceIds: localPatchHideEvidenceIds(bound.hideId), verdict: GOOD_V12_VERDICT }] }) + "\n```");
+      return { verdict: null, model: "gpt-6.1-sol", requestId: id, finishReason: "stop", wireFault: null, costUnknown: false,
+        usage: { prompt_tokens: 2000, completion_tokens: 500 }, raw: longAnswer(bound.hideId, 400, 400, 160) };
+    });
+    const container = { ...c, visualReview: { request } } as Container;
+    // One board answered by both reviewers before enrollment.
+    for (const hide of board.hides) await runLocalPatchHide(c, deps, { gameId, board, hide });
+    for (let question = 0; question < 2 * board.hides.length; question++)
+      await reviewLocalPatchBoard(container, { gameId, sceneId: `gsc-${gameId}-${board.board}` }, { fence: async () => {} });
+    const answered = (await db.targetVariantAsset.findMany({ where: { targetInstance: { gameScene: { gameId } } } }))
+      .filter(row => row.status === "GENERATED" && JSON.parse(row.judgeJson!).boardReview?.dual);
+    expect(answered.length).toBeGreaterThan(0);
+    // Enrolled; then one answer refused by a deployed reader: what a free reading decides in a world that is not enrolled.
+    const after = { ...container, backgroundReview: fakeBackground().fake } as Container;
+    const plan = await planSubjectUpgrade(after, { gameId, ownerId: seeded.userId });
+    await applySubjectUpgrade(after, { gameId, ownerId: seeded.userId, operatorId: "operator-synthetic", expectedPlanSha256: plan.planSha256 });
+    expect(localPatchRetainedAnswerUndecided(await asDeployedReaderRefusal(db, gameId, answered[0]!))).toBe(true);
+    let now = Date.now();
+    const clock = vi.spyOn(Date, "now").mockImplementation(() => now);
+    const reviews: { kind: string }[] = [];
+    const log = vi.spyOn(console, "info").mockImplementation((...args: unknown[]) => {
+      if (args[0] === "[local-patch] board review") reviews.push(args[1] as { kind: string });
+    });
+    try {
+      // Rebuilding a board's evidence takes 100 s of the clock.
+      const slow: LocalPatchHideDeps = { ...deps, readBoardArt: async (art, sha) => { now += 100_000; return readShippedBoardArt(art, sha); } };
+      const deadline = now + 270_000;
+      await runLocalPatchWorldSlice(after, slow, gameId, { hardDeadlineAt: deadline });
+      expect(reviews.filter(r => r.kind === "retained")).toHaveLength(0);
+      expect(reviews.filter(r => r.kind === "first").length).toBeGreaterThan(0);
+      expect(now).toBeLessThanOrEqual(deadline);
+    } finally { clock.mockRestore(); log.mockRestore(); }
+  }, 600_000);
 });
 
 /** A synthetic background provider: each response runs for one poll, then completes with a coherent anatomy answer. */
