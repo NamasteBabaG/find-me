@@ -256,7 +256,7 @@ QA world `game_hzju9scobvssvl0tojca` ran on 1360a90b from 11:27 UTC. Flex in bac
   - **Round 16, two failures on one image:** a lean bundle and its continuity question are asked side by side and can fail together. `recoverPreparedLocalPatchReviews` authorizes each question on its own and records them all on the image in one transaction (`reviewInterruptions` keeps every one), so neither is stranded by the other's round.
     - The image's evidence log gets **one** transport entry for that round, not one per question. Two consecutive transport entries mean a provider outage and wait an hour (`local-patch-evidence-recovery/v2`), and the rest of the engine already writes one entry per failed round. Written per question, one double failure waited an hour. The entry is the question the policy had escalated, if any (at most one role is escalated per round), so the next round keeps that question's strategy. A single question is logged exactly as before.
   - **A provider-declared failure is admitted only on this path** (`admitProviderFailed`, which requires `releaseParkedJob: false`). Every older caller admits the no-response shape alone, exactly as deployed. Its unconditional re-queue therefore reaches nothing new; it is a pre-existing limit, recorded below.
-  - **A world parked before this existed (the QA world since 12:21)** is resumed only by a tick that names it, its owner's page (`resumeParkedInterruption`), and only when:
+  - **A world parked before this existed (the QA world since 12:21)** is resumed only by a tick that names it (`/api/jobs/tick?gameId=…` from its owner's session; the progress page does not tick a world it shows as held) through `resumeParkedInterruption`, and only when:
     - the hold the engine recorded names one of its own review interruptions (`<requestKey>: …`): one still open, or one an earlier pass already continued and recorded on its image. Round 17: a pass may continue one image and stop before the next, or before the release; the next tick finishes that same resumption from the recorded continuation;
     - every unknown answer holding the ledger is admitted;
     - after the continuation nothing is open and the ledger is no longer held.
@@ -281,6 +281,19 @@ QA world `game_hzju9scobvssvl0tojca` ran on 1360a90b from 11:27 UTC. Flex in bac
 
 For fixes 1 and 2, each of five mutants is caught by its own test: the fix removed, the deadline swapped or applied to all, an ended round still named, an unreadable record skipped. Five admission mutants of fix 3 are caught by their own tests (93f78a1f): the shape not admitted, the round cross-check removed, a failure with usage admitted, the evidence code, and the no-response shape broken.
 
+Mutants of local-patch-continue-in-slice/v1, each run against its own test (5f2eb0fc, then 0d07806e):
+- **Caught:**
+  - a blocked continuation yields again (the seventh-failure test);
+  - one evidence entry per question (the double failure waits the hour);
+  - no deferral while a sibling question is asked (caught once the continuity failed a read after its bundle; with both failures in the same read it survived, which is why the test changed);
+  - the complete-board held review parks (the already-failed test);
+  - any approval counts as continued (the refused-fence step);
+  - the anchor forgetting a recorded continuation (the re-parked step);
+  - a named tick resuming any hold (the operator's hold step).
+- **Not caught by any test:**
+  - the first review phase's held review parking, and the held ledger parking at the end of the slice. No test reaches either park point with an admitted interruption: every failure in the tests is found either at the top of a slice, where the continuation resolves it first, or in the complete-board phase. Both use the same `continuable()` gate as the complete-board phase, which is tested.
+  - deferring on an intent that was never sent (`inFlightOnly` dropped). No test has an unsent intent about an image that is waiting to be continued.
+
 **Still open:**
 - **The provider's error code for a failed response is not kept.** The adapter reads status and usage only, so a Flex capacity failure cannot be told from any other.
 - **The ready email's provider error is not kept either** (`local-patch-notifications.ts`). On QA the pilot world's mail failed only for its non-Guy recipient, and the cause is unrecorded.
@@ -289,7 +302,8 @@ For fixes 1 and 2, each of five mutants is caught by its own test: the fix remov
 
 - Flex in background mode is undocumented. On the first QA world it worked at half price, but one answer in about fifteen was still queued at 25 minutes and one ended `failed`.
 - **Pre-existing, unchanged:** the world slice's `needs-release` branch and the subject upgrade re-queue any parked job once an admitted no-response timeout is continued, without comparing the hold they observed (Codex round 16). A provider-declared failure never takes that path.
-- **A world parked before local-patch-continue-in-slice/v1** resumes only through a tick that names it (its owner's page). The scheduled tick never chooses a parked world.
+- **A world parked before local-patch-continue-in-slice/v1** resumes only through a tick that names it: `/api/jobs/tick?gameId=…` opened from its owner's (or an administrator's) session. The progress page shows a parked world as held and does not tick it, and the scheduled tick never chooses a parked world.
+- **A person's approval on an interrupted no-response review** (Codex round 18, P2): the older recovery helper no longer appends an automatic approval beside it and records the image's next evidence round, so that image stays held. No supported local-patch operator entry point produces this state, and the publication gate already refuses an ordinary operator continuation (`local-patch-interruption-recovery.ts`). If that workflow is ever wanted, it needs its own image transition under the person's authority.
 - The waiting and held reasons of a lean quality round still read "Continuity question in the background: …". This is cosmetic.
 - A lean world's continuity answer is bought even when its quality answer refuses (about $0.016). That is the price of deciding in one slice.
 - The read-only evidence planner (`local-patch-evidence-plan.ts`, `nextDualReviewPurchase`) still describes a non-lean world's next question (Opus quality, then continuity) for a lean world. It decides nothing and buys nothing, but its figures for a lean world are not the lean ones.
