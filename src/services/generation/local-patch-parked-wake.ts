@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { Prisma } from "@prisma/client";
 import type { Container } from "../container";
-import { LOCAL_PATCH_NEEDS_RELEASE, LOCAL_PATCH_STYLE } from "./local-patch-world";
+import { LOCAL_PATCH_INTERRUPTION_HOLD, LOCAL_PATCH_NEEDS_RELEASE, LOCAL_PATCH_STYLE } from "./local-patch-world";
 import { subjectUpgradeOf } from "./subject-enrollment";
 
 /**
@@ -12,24 +12,22 @@ import { subjectUpgradeOf } from "./subject-enrollment";
  * interruption the automatic continuation admits, or one already continued and recorded on its image, and the job is
  * re-queued only compared on the hold it observed. Nothing is released here and nothing is bought here.
  *
- *  - Only the hold the engine writes when an interrupted review answer's charge cannot be stated (`<requestKey>: … its
- *    charge cannot be stated (…)`), of an enrolled local-patch world in generation. An operator's hold, a refused
+ *  - Only the hold the engine writes when an interrupted review answer's charge cannot be stated
+ *    (`LOCAL_PATCH_INTERRUPTION_HOLD`), of an enrolled local-patch world in generation. An operator's hold, a refused
  *    enrollment, a question refused before its reservation and a spent continuation are never woken.
+ *  - A slice that refuses for a reason waiting cannot change replaces that hold with exactly why
+ *    (`resumeParkedInterruption`), so a refused hold is never woken again. Only time running out, a question still in
+ *    flight, or a turn whose slice never ran (no painter, the owner's spend guard, no room) leaves it for another turn.
  *  - At most `PARKED_WAKE_ATTEMPTS` turns per hold, at least `PARKED_WAKE_SPACING_MS` apart. A hold is the job, its
  *    reason and the moment it was written: a new park is a new hold.
  *  - Each turn is claimed by a receipt whose id is the hold and the attempt number, so two scheduled ticks never take
  *    the same turn, and a turn is counted before its slice runs.
+ *  - Every parked interruption hold is looked at, newest first: an exhausted one never hides a later one.
  */
 export const LOCAL_PATCH_PARKED_WAKE_POLICY = "local-patch-parked-wake/v1" as const;
 export const LOCAL_PATCH_PARKED_WAKE_ACTION = "generation:parked-wake";
 export const PARKED_WAKE_ATTEMPTS = 3;
 export const PARKED_WAKE_SPACING_MS = 10 * 60_000;
-/** Holds looked at per scheduled tick, newest first: an exhausted old hold never crowds out a new one. */
-const PARKED_WAKE_SCAN = 50;
-/** The hold the engine itself writes when a review answer's charge cannot be stated (`paid-operation.ts`):
- * `<requestKey>: the result is kept but its charge cannot be stated (…)`, or `…: the provider answered and its charge
- * cannot be stated (…)`. A review refused before anything was reserved names its key too, and is not this. */
-const ENGINE_INTERRUPTION_HOLD = /^self-repair:board:[a-z0-9-]+:[0-9a-f]{64}: (the result is kept but|the provider answered and) its charge cannot be stated \(/;
 
 export type ParkedWake = { readonly gameId: string; readonly jobId: string; readonly holdSha256: string; readonly attempt: number };
 
@@ -42,11 +40,11 @@ const receiptPrefix = (holdSha256: string) => `aud_wake_${holdSha256.slice(0, 40
 /** The parked world whose turn it is, or null. Reads only. */
 export async function nextParkedWake(c: Pick<Container, "db">, now = Date.now()): Promise<ParkedWake | null> {
   const jobs = await c.db.generationJob.findMany({
-    where: { status: "FAILED", currentStep: LOCAL_PATCH_NEEDS_RELEASE, lastError: { startsWith: "self-repair:board:" },
+    where: { status: "FAILED", currentStep: LOCAL_PATCH_NEEDS_RELEASE, lastError: { startsWith: "self-repair:board:", contains: " its charge cannot be stated (" },
       game: { status: "TARGETS_GENERATING", deletedAt: null, styleVersion: LOCAL_PATCH_STYLE } },
-    orderBy: { updatedAt: "desc" }, take: PARKED_WAKE_SCAN, select: { id: true, gameId: true, lastError: true, updatedAt: true } });
+    orderBy: { updatedAt: "desc" }, select: { id: true, gameId: true, lastError: true, updatedAt: true } });
   for (const job of jobs) {
-    if (!ENGINE_INTERRUPTION_HOLD.test(job.lastError ?? "") || !await subjectUpgradeOf(c.db, job.gameId)) continue;
+    if (!LOCAL_PATCH_INTERRUPTION_HOLD.test(job.lastError ?? "") || !await subjectUpgradeOf(c.db, job.gameId)) continue;
     const holdSha256 = parkedHoldSha256(job);
     const turns = await c.db.auditLog.findMany({ where: { id: { startsWith: receiptPrefix(holdSha256) }, action: LOCAL_PATCH_PARKED_WAKE_ACTION },
       select: { createdAt: true } });

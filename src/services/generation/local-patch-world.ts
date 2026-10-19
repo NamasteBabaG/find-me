@@ -101,6 +101,12 @@ export const LOCAL_PATCH_EVIDENCE_RETRY_WAIT = "local-patch:evidence-retry-wait"
 export const LOCAL_PATCH_RECOVERY_EXHAUSTED = "local-patch:recovery-exhausted";
 const PARKED_STEPS = [LOCAL_PATCH_NEEDS_RELEASE, LOCAL_PATCH_RECOVERY_EXHAUSTED];
 export const LOCAL_PATCH_CONTINUE_IN_SLICE = "local-patch-continue-in-slice/v1";
+/**
+ * The hold the engine itself writes when a review answer's charge cannot be stated (`paid-operation.ts`):
+ * `<requestKey>: the result is kept but its charge cannot be stated (…)`, or `…: the provider answered and its charge
+ * cannot be stated (…)`. A review refused before anything was reserved names its key too, and is not this.
+ */
+export const LOCAL_PATCH_INTERRUPTION_HOLD = /^self-repair:board:[a-z0-9-]+:[0-9a-f]{64}: (the result is kept but|the provider answered and) its charge cannot be stated \(/;
 
 /**
  * local-patch-continue-in-slice/v1 (Codex rounds 14 to 16). An enrolled world whose ledger is held only by review answers
@@ -108,22 +114,35 @@ export const LOCAL_PATCH_CONTINUE_IN_SLICE = "local-patch-continue-in-slice/v1";
  * stays a candidate of the scheduled selection; the next slice starts by continuing them
  * (`continueAdmittedReviewInterruptions`) under its own claim, so no parked job is ever released.
  *
- * A world parked before this existed is resumed only by a tick that names it (its owner's page), and only when the hold
- * the engine recorded names one of its own review interruptions (`<requestKey>: …`): one still open, or one an earlier
- * pass already continued and recorded on its image (that pass may have stopped before the next image or the release).
- * The job is re-queued only once nothing is open and the ledger is no longer held, compared on the hold it observed,
- * so a hold placed meanwhile stays.
+ * A world parked before this existed is resumed in its own slice (a tick that names it, or the scheduled tick's
+ * local-patch-parked-wake/v1 turn), and only when the hold the engine recorded names one of its own review interruptions
+ * (`<requestKey>: …`): one still open, or one an earlier pass already continued and recorded on its image (that pass may
+ * have stopped before the next image or the release). The job is re-queued only once nothing is open and the ledger is
+ * no longer held, compared on the hold it observed, so a hold placed meanwhile stays.
+ *
+ * A refusal that waiting cannot change replaces the engine's own interruption hold with exactly why (Codex round 19), on
+ * the same comparison: the park then says what a person must reconcile or authorize, and is never woken again. Time
+ * running out, or a question still in flight, leaves the hold for the next turn. Any other hold is left as it is.
  */
 async function resumeParkedInterruption(c: Container, gameId: string, observed: { id: string; lastError: string | null; updatedAt: Date },
   deps: Pick<LocalPatchBoardReviewDeps, "readBoardArt">, deadlineAt: number): Promise<void> {
-  const open = await openAdmittedInterruptions(c, gameId);
-  if (open === "blocked") return;
+  const unchanged = { id: observed.id, status: "FAILED", currentStep: LOCAL_PATCH_NEEDS_RELEASE, lastError: observed.lastError, updatedAt: observed.updatedAt };
+  const explain = async (reason: string) => { if (LOCAL_PATCH_INTERRUPTION_HOLD.test(observed.lastError ?? ""))
+    await c.db.generationJob.updateMany({ where: unchanged, data: { lastError: `${LOCAL_PATCH_CONTINUE_IN_SLICE}: ${reason}`.slice(0, 500) } }); };
+  const why: ContinuationWhy = {};
+  const open = await openAdmittedInterruptions(c, gameId, why);
+  if (open === "blocked") return explain(why.reason ?? "the automatic continuation cannot serve this world");
   const named = observed.lastError?.split(": ")[0] ?? "";
-  if (![...open.values()].some(item => item.requestKeys.includes(named)) && !await reviewContinuationRecorded(c, gameId, named)) return;
-  if (open.size && await continueAdmittedReviewInterruptions(c, gameId, deps, deadlineAt) !== "done") return;
-  if ((await boardWizardBudgetOf(c).audit(boardWizardWorldId(gameId))).held) return;
-  await c.db.generationJob.updateMany({ where: { id: observed.id, status: "FAILED", currentStep: LOCAL_PATCH_NEEDS_RELEASE,
-    lastError: observed.lastError, updatedAt: observed.updatedAt }, data: { status: "QUEUED", currentStep: "local-patch", lastError: null } });
+  if (![...open.values()].some(item => item.requestKeys.includes(named)) && !await reviewContinuationRecorded(c, gameId, named))
+    return explain(`${named} is neither an interruption the automatic continuation admits nor one it already continued and recorded`);
+  if (open.size) {
+    const continued = await continueAdmittedReviewInterruptions(c, gameId, deps, deadlineAt, undefined, why);
+    if (continued === "blocked") return explain(why.reason ?? `${named}: not continued`);
+    if (continued !== "done") return;
+  }
+  const audit = await boardWizardBudgetOf(c).audit(boardWizardWorldId(gameId));
+  if (audit.held) return explain(`its review interruptions are continued, and the world ledger is still held (unknown: ${audit.unknownRequestKeys.join(", ") || "none"})`);
+  await c.db.generationJob.updateMany({ where: unchanged, data: { status: "QUEUED", currentStep: "local-patch", lastError: null } });
 }
 
 export type LocalPatchSliceResult = {

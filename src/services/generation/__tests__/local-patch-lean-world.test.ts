@@ -430,19 +430,30 @@ describe("local-patch-lean/v1 on a whole paid world", () => {
     expect(await job()).toMatchObject({ status: "FAILED", currentStep: "local-patch:needs-release", lastError: "An operator holds this world for another reason" });
     expect(await approval()).toBeNull();
     expect(await turns()).toHaveLength(0);
-    // Parked as the deployed engine parked the QA world, its hold naming the interrupted question, but with its round's
-    // recorded end altered: the scheduled tick chooses it and its slice refuses, nothing continued or released. At most
-    // three turns for one hold, ten minutes apart, then the scheduled tick leaves it.
+    // Parked as the deployed engine parked the QA world, its hold naming the interrupted question. A turn whose slice never
+    // runs (here claimed and nothing more, as on a deployment that cannot dispatch it) is counted all the same: at most
+    // three per hold, ten minutes apart, then the scheduled tick leaves it.
+    await park(engineHold);
+    for (const attempt of [1, 2, 3]) {
+      const turn = (await nextParkedWake(container))!;
+      expect(turn).toMatchObject({ gameId, attempt });
+      expect(await claimParkedWake(container, turn)).toBe(true);
+      expect(await nextParkedWake(container)).toBeNull();
+      await later();
+    }
+    expect(await nextParkedWake(container)).toBeNull();
+    expect(await job()).toMatchObject({ status: "FAILED", currentStep: "local-patch:needs-release", lastError: engineHold });
+    // Parked again (a new hold), with its round's recorded end altered: one turn, and its slice refuses for a reason
+    // waiting cannot change. The hold now says exactly why; nothing is continued or released, and it is never woken again.
     await park(engineHold);
     const outcomeId = `aud_sb_${backgroundRoundIdOf(worldId, key)}_outcome`, outcome = await db.auditLog.findUniqueOrThrow({ where: { id: outcomeId } });
     await db.auditLog.update({ where: { id: outcomeId }, data: { metaJson: JSON.stringify({ ...JSON.parse(outcome.metaJson!), providerStatus: "completed" }) } });
     expect(await scheduled()).toMatchObject({ gameId, attempt: 1 });
-    expect(await nextParkedWake(container)).toBeNull();
-    for (const attempt of [2, 3]) { await later(); expect(await scheduled()).toMatchObject({ gameId, attempt }); }
+    expect(await job()).toMatchObject({ status: "FAILED", currentStep: "local-patch:needs-release",
+      lastError: `local-patch-continue-in-slice/v1: ${key} is an unknown charge the automatic continuation does not admit (Background review charge could not be verified); a person reconciles or authorizes it` });
+    expect(await approval()).toBeNull();
     await later();
     expect(await nextParkedWake(container)).toBeNull();
-    expect(await job()).toMatchObject({ status: "FAILED", currentStep: "local-patch:needs-release", lastError: engineHold });
-    expect(await approval()).toBeNull();
     await db.auditLog.update({ where: { id: outcomeId }, data: { metaJson: outcome.metaJson } });
     // A pass that wrote the approval and then lost its claim (its fence refuses the image's write): the approval stands,
     // its image never recorded it, and it stays open for the next pass, never skipped (Codex round 17).
@@ -454,7 +465,8 @@ describe("local-patch-lean/v1 on a whole paid world", () => {
     expect(await recorded()).toBe(false);
     const open = await openAdmittedInterruptions(container, gameId);
     expect(open !== "blocked" && [...open.values()].flatMap(item => item.requestKeys)).toEqual([key]);
-    expect(await job()).toMatchObject({ status: "FAILED", currentStep: "local-patch:needs-release", lastError: engineHold });
+    // The job is untouched by that pass: still parked, with the reason the refused turn wrote.
+    expect(await job()).toMatchObject({ status: "FAILED", currentStep: "local-patch:needs-release", lastError: expect.stringMatching(/^local-patch-continue-in-slice\/v1: /) });
     // Its own record intact and parked again by the engine (a new hold, its own turns): the scheduled tick takes one turn,
     // once, and the world's slice finishes that continuation (the same approval, recorded on its image; the unknown
     // charge kept whole) and re-queues it.
