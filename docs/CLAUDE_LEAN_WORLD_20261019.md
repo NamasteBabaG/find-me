@@ -256,25 +256,37 @@ QA world `game_hzju9scobvssvl0tojca` ran on 1360a90b from 11:27 UTC. Flex in bac
   - **Round 16, two failures on one image:** a lean bundle and its continuity question are asked side by side and can fail together. `recoverPreparedLocalPatchReviews` authorizes each question on its own and records them all on the image in one transaction (`reviewInterruptions` keeps every one), so neither is stranded by the other's round.
     - The image's evidence log gets **one** transport entry for that round, not one per question. Two consecutive transport entries mean a provider outage and wait an hour (`local-patch-evidence-recovery/v2`), and the rest of the engine already writes one entry per failed round. Written per question, one double failure waited an hour. The entry is the question the policy had escalated, if any (at most one role is escalated per round), so the next round keeps that question's strategy. A single question is logged exactly as before.
   - **A provider-declared failure is admitted only on this path** (`admitProviderFailed`, which requires `releaseParkedJob: false`). Every older caller admits the no-response shape alone, exactly as deployed. Its unconditional re-queue therefore reaches nothing new; it is a pre-existing limit, recorded below.
-  - **A world parked before this existed (the QA world since 12:21)** is resumed only by a tick that names it (`/api/jobs/tick?gameId=…` from its owner's session; the progress page does not tick a world it shows as held) through `resumeParkedInterruption`, and only when:
+  - **A world parked before this existed (the QA world since 12:21)** is resumed through `resumeParkedInterruption`, in its own slice, only when:
     - the hold the engine recorded names one of its own review interruptions (`<requestKey>: …`): one still open, or one an earlier pass already continued and recorded on its image. Round 17: a pass may continue one image and stop before the next, or before the release; the next tick finishes that same resumption from the recorded continuation;
     - every unknown answer holding the ledger is admitted;
     - after the continuation nothing is open and the ledger is no longer held.
     The job is re-queued compared on the hold it observed (reason and version), so a hold placed meanwhile stays. A hold that names nothing the engine continued (an operator's) is never released.
+  - **Who runs that slice: local-patch-parked-wake/v1** (`local-patch-parked-wake.ts`). After 0d07806e was deployed, the QA world still waited: the scheduled selection never chooses a parked world, and the progress page does not tick a world it shows as held. Only `/api/jobs/tick?gameId=…` opened from the owner's session reached it. The scheduled tick now gives such a world its own whole turn (`nextParkedWake`, `claimParkedWake`, in `tickGeneration` before the ordinary selection):
+    - **only the engine's own interruption hold** (`self-repair:board:<board>:<fingerprint>: …`) of an enrolled local-patch world in generation. An operator's hold, a refused enrollment and an exhausted continuation (below) name no request key and are never woken;
+    - **bounded per hold:** at most three turns, at least ten minutes apart. A hold is the job, its reason and the moment it was written, so a new park is a new hold. Holds are scanned newest first (50 per tick), so an exhausted old hold never crowds out a new one;
+    - **idempotent:** a turn is claimed by a receipt whose id is the hold and the attempt number (`aud_wake_<hold>_<n>`, action `generation:parked-wake`), written before the slice runs. Two scheduled ticks never take the same turn, and a turn is counted even if its slice fails;
+    - **everything else is the world's own slice:** the anchor, the admission, the continuation (reservations, history and limits unchanged) and the release compared on the hold. Nothing is released, bought or reset by the wake itself.
+    The progress page still never ticks a held world. It shows the world as held until the scheduled tick (within a minute) wakes it, so a wake its slice refuses costs at most three turns.
+  - **A park the automatic continuation cannot get past says exactly why** (`local-patch-continue-in-slice/v1: …` instead of "the world ledger is held"). Examples:
+    - the continuations are spent: "(2/2 under v1, 4/4 under v2); `<key>` stays reserved in full until a person reconciles or authorizes it";
+    - an unknown charge it does not admit, with its recorded reason;
+    - an image that changed since its question was asked;
+    - a question that cannot be rebuilt on the same pixels.
+
+    That reason never matches the engine's interruption hold, so the scheduled tick does not wake it: it is a person's decision, and the admin page shows the reason.
 
 **Tests:**
 - a world whose one continuity answer stays running: both siblings are asked after it and decided before it answers;
 - a world whose bundle the provider ends `failed`: only ordinary slices, never parked, READY, the $0.20 kept unknown;
 - a world whose bundle and continuity question both end `failed`, the continuity a read later: never parked, no hour's outage wait, READY; both continued and recorded on the image in one step, one evidence entry for the round;
 - a world whose bundle has already ended `failed` when the review of the board just completed first reads it: never parked, READY;
-- a world with seven failed bundles (two continuations under v1, four under v2): the first six are continued, and the seventh parks it for a person within a slice, never yielding again;
-- a world already parked by the engine on such a failure:
-  - the scheduled tick never chooses it;
-  - a tick naming it, under an operator's hold on that same world, neither continues nor releases anything;
-  - with its round's recorded end altered, nothing happens;
+- a world with seven failed bundles (two continuations under v1, four under v2): the first six are continued, and the seventh parks it for a person within a slice, never yielding again. The park reason names the spent limits and the reserved key, and the scheduled tick never wakes it;
+- a world already parked by the engine on such a failure, woken only through the scheduled path (`nextParkedWake`, `claimParkedWake`, then its slice; `tickGeneration` itself chooses it):
+  - under an operator's hold on that same world, the scheduled tick never chooses it, and a tick naming it neither continues nor releases anything;
+  - with its round's recorded end altered: chosen three times, ten minutes apart, never a fourth; nothing continued or released;
   - a pass whose fence refuses the image's write leaves its approval written and unrecorded, still open;
-  - with the record intact, the tick naming it finishes that same approval (one approval, recorded) and re-queues it;
-  - parked again on the same hold with its continuation recorded and nothing open, the tick naming it releases it;
+  - parked again (a new hold): one turn, taken once; the slice finishes that same approval (one approval, recorded) and re-queues it;
+  - parked again with its continuation recorded and nothing open: the scheduled tick chooses it, and its slice releases it;
   - it then finishes, never parked again;
 - the shape rules, one by one;
 - the deadline per policy.
@@ -302,7 +314,8 @@ Mutants of local-patch-continue-in-slice/v1, each run against its own test (5f2e
 
 - Flex in background mode is undocumented. On the first QA world it worked at half price, but one answer in about fifteen was still queued at 25 minutes and one ended `failed`.
 - **Pre-existing, unchanged:** the world slice's `needs-release` branch and the subject upgrade re-queue any parked job once an admitted no-response timeout is continued, without comparing the hold they observed (Codex round 16). A provider-declared failure never takes that path.
-- **A world parked before local-patch-continue-in-slice/v1** resumes only through a tick that names it: `/api/jobs/tick?gameId=…` opened from its owner's (or an administrator's) session. The progress page shows a parked world as held and does not tick it, and the scheduled tick never chooses a parked world.
+- **A parked world** is woken by the scheduled tick only when its hold is the engine's own interruption hold (local-patch-parked-wake/v1, three turns per hold). Any other hold waits for a person, or for a tick that names it (`/api/jobs/tick?gameId=…` from the owner's or an administrator's session). The progress page never ticks a world it shows as held.
+- Parked-wake turns that the world's slice refuses (an altered record, an unknown it does not admit) leave the world parked with its hold unchanged. After three turns only a person, or a new hold, moves it.
 - **A person's approval on an interrupted no-response review** (Codex round 18, P2): the older recovery helper no longer appends an automatic approval beside it and records the image's next evidence round, so that image stays held. No supported local-patch operator entry point produces this state, and the publication gate already refuses an ordinary operator continuation (`local-patch-interruption-recovery.ts`). If that workflow is ever wanted, it needs its own image transition under the person's authority.
 - The waiting and held reasons of a lean quality round still read "Continuity question in the background: …". This is cosmetic.
 - A lean world's continuity answer is bought even when its quality answer refuses (about $0.016). That is the price of deciding in one slice.

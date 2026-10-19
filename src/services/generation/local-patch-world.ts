@@ -34,7 +34,8 @@ import { subjectUpgradeOf } from "./subject-enrollment";
 import { subjectRejudgePending } from "./subject-rejudge";
 import { LOCAL_PATCH_BOARD_REVIEW_MIN_MS, localPatchBoardAwaitsProvider, localPatchProgressOrder, localPatchRestDecision, localPatchRestOf,
   localPatchReviewFits, selfRepairProgress, type LocalPatchRest } from "../../domain/scene/local-patch-progress";
-import { continueAdmittedReviewInterruptions, openAdmittedInterruptions, recoverEnrolledReviewInterruptions, reviewContinuationRecorded } from "./subject-upgrade";
+import { continueAdmittedReviewInterruptions, openAdmittedInterruptions, recoverEnrolledReviewInterruptions, reviewContinuationRecorded,
+  type ContinuationWhy } from "./subject-upgrade";
 import { advanceContinuityInBackground } from "./continuity-background";
 import { enrollLeanWorld } from "./lean-enrollment";
 import { isLeanWorld } from "./lean-release";
@@ -99,6 +100,7 @@ export const LOCAL_PATCH_EVIDENCE_RETRY_WAIT = "local-patch:evidence-retry-wait"
  */
 export const LOCAL_PATCH_RECOVERY_EXHAUSTED = "local-patch:recovery-exhausted";
 const PARKED_STEPS = [LOCAL_PATCH_NEEDS_RELEASE, LOCAL_PATCH_RECOVERY_EXHAUSTED];
+export const LOCAL_PATCH_CONTINUE_IN_SLICE = "local-patch-continue-in-slice/v1";
 
 /**
  * local-patch-continue-in-slice/v1 (Codex rounds 14 to 16). An enrolled world whose ledger is held only by review answers
@@ -439,13 +441,16 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
   const extraPlan = await readLocalPatchExtraAttemptPlan(c, gameId);
   // local-patch-continue-in-slice/v1. A ledger held only by review answers the automatic continuation admits does not
   // park the world: it yields, queued (a candidate of the scheduled selection), and its next slice continues them first.
-  // A continuation this slice already tried and could not complete parks the world, never yields it again.
+  // A continuation this slice already tried and could not complete parks the world, never yields it again, and the park
+  // says exactly why (`blockedWhy`): a person reads what to reconcile or authorize, never only that the ledger is held.
   let continuationBlocked = false;
+  const blockedWhy: ContinuationWhy = {};
   const continuable = async () => {
     if (!automatic || extraPlan || continuationBlocked) return false;
-    const open = await openAdmittedInterruptions(c, gameId);
+    const open = await openAdmittedInterruptions(c, gameId, blockedWhy);
     return open !== "blocked" && open.size > 0;
   };
+  const parkReason = (fallback: string) => blockedWhy.reason ? `${LOCAL_PATCH_CONTINUE_IN_SLICE}: ${blockedWhy.reason}`.slice(0, 500) : fallback;
   const yieldToContinue = async () => {
     await c.db.$transaction(async tx => { await fence(tx); await tx.generationJob.update({ where: { id: job.id },
       data: { status: "QUEUED", currentStep: "local-patch", lastError: null } }); });
@@ -455,7 +460,7 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
   // ledger is not held: an approval whose image never recorded it (its pass stopped) is finished here.
   if (automatic && !extraPlan && await subjectUpgradeOf(c.db, gameId)) {
     const continued = await continueAdmittedReviewInterruptions(c, gameId, { readBoardArt: deps.readBoardArt },
-      (options.hardDeadlineAt ?? Date.now() + 270_000) - LOCAL_PATCH_PHASE_MARGIN_MS, fence);
+      (options.hardDeadlineAt ?? Date.now() + 270_000) - LOCAL_PATCH_PHASE_MARGIN_MS, fence, blockedWhy);
     if (continued === "partial") return yieldToContinue();
     continuationBlocked = continued === "blocked";
   }
@@ -602,7 +607,7 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
         reviewedScenes.add(scene.id);
         if (review.state === "held") {
           if (await continuable()) return yieldToContinue();
-          const attention = review.reason ?? "Review charge requires reconciliation";
+          const attention = parkReason(review.reason ?? "Review charge requires reconciliation");
           await c.db.$transaction(async tx => { await fence(tx); await tx.generationJob.update({ where: { id: job.id },
             data: { status: "FAILED", currentStep: LOCAL_PATCH_NEEDS_RELEASE, lastError: attention } }); });
           return { ...empty, claimed: true, pending: false, paused: false, attention };
@@ -834,7 +839,7 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
           if (reviewed.state === "held") {
             // Held only by interruptions the automatic continuation admits: queued for the next slice, never parked.
             if (await continuable()) return { ...await yieldToContinue(), outcomes, blocked };
-            attention = reviewed.reason ?? "local-patch: grouped review requires charge reconciliation";
+            attention = parkReason(reviewed.reason ?? "local-patch: grouped review requires charge reconciliation");
             await c.db.$transaction(async tx => {
               await fence(tx);
               await tx.generationJob.update({ where: { id: job.id }, data: {
@@ -879,7 +884,7 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
   // Held only by interruptions the automatic continuation admits: queued for the next slice, never parked.
   if (held && !attention && await continuable()) return { ...await yieldToContinue(), outcomes, blocked };
   if (held && !attention) {
-    attention = "local-patch: the world ledger is held; reconcile its unresolved charge before continuing";
+    attention = parkReason("local-patch: the world ledger is held; reconcile its unresolved charge before continuing");
     await c.db.$transaction(async tx => {
       await fence(tx);
       await tx.generationJob.update({ where: { id: job.id }, data: {

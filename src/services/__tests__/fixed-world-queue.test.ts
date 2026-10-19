@@ -11,7 +11,8 @@ import { LOCAL_PATCH_NEEDS_RELEASE, LOCAL_PATCH_RECOVERY_EXHAUSTED, LOCAL_PATCH_
 
 function setup(styleVersion = FIXED_WORLD_STYLE_VERSION, status = "PAID") {
   const db = { game: { findFirst: vi.fn().mockResolvedValue(null), findUnique: vi.fn().mockResolvedValue({ styleVersion, status }) },
-    generationJob: { findUnique: vi.fn().mockResolvedValue(null) } };
+    // No parked world to wake (local-patch-parked-wake/v1).
+    generationJob: { findUnique: vi.fn().mockResolvedValue(null), findMany: vi.fn().mockResolvedValue([]) } };
   return { db, c: { db } as unknown as Container };
 }
 beforeEach(() => { run.mockReset().mockResolvedValue(undefined); wizard.enabled = false; wizard.run.mockReset().mockResolvedValue({ pending: true }); });

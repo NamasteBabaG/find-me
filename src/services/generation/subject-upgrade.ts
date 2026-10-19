@@ -255,13 +255,17 @@ export const CONTINUE_PREPARE_NEED_MS = 75_000;
  * not admit (`admittedInterruption`) or cannot locate, so a person decides; an empty map when none is open.
  * A continuation is complete only once its image recorded it (`continuationRecorded`): an automatic approval written
  * by a pass that then stopped, or whose fence refused the image's write, stays open and is finished, never skipped.
- * Any other approval (a person's) is a decision already made.
+ * Any other approval (a person's) is a decision already made. `why.reason` names exactly what blocks it.
  */
-export async function openAdmittedInterruptions(c: Container, gameId: string)
+export async function openAdmittedInterruptions(c: Container, gameId: string, why: ContinuationWhy = {})
   : Promise<Map<string, { binding: BackgroundReviewBinding; requestKeys: string[] }> | "blocked"> {
+  const blocked = (reason: string) => { why.reason = reason; return "blocked" as const; };
+  // Not a world this continuation serves: nothing of it is blocked, so no reason replaces the world's own.
   if (!await subjectUpgradeOf(c.db, gameId)) return "blocked";
   const budget = boardWizardBudgetOf(c), worldId = boardWizardWorldId(gameId), audit = await budget.audit(worldId);
-  if (audit.overCapMicroUsd || audit.conflictRequestKeys.length || audit.overrunRequestKeys.length) return "blocked";
+  if (audit.overCapMicroUsd) return blocked(`the world ledger is over its cap by ${audit.overCapMicroUsd} micro-USD`);
+  if (audit.conflictRequestKeys.length) return blocked(`charge evidence conflicts on ${audit.conflictRequestKeys.join(", ")}`);
+  if (audit.overrunRequestKeys.length) return blocked(`charges exceed their reservations on ${audit.overrunRequestKeys.join(", ")}`);
   const store = new LocalPatchRetainedPurchaseStore(c, gameId, budget);
   const open = new Map<string, { binding: BackgroundReviewBinding; requestKeys: string[] }>();
   for (const requestKey of audit.unknownRequestKeys) {
@@ -269,7 +273,10 @@ export async function openAdmittedInterruptions(c: Container, gameId: string)
     if (approval && (!isAutomaticReviewApproval(approval) || await continuationRecorded(c, gameId, approval))) continue;
     const retained = requestKey.startsWith("self-repair:board:") ? await store.get(worldId, requestKey) : null;
     const round = retained ? await backgroundRoundOfKey(c.db, gameId, worldId, requestKey) : null;
-    if (!retained || retained.evidence || !round || !await admittedInterruption(c, gameId, worldId, requestKey, retained)) return "blocked";
+    if (!retained || retained.evidence || !round || !await admittedInterruption(c, gameId, worldId, requestKey, retained))
+      return blocked(`${requestKey} is an unknown charge the automatic continuation does not admit (${!retained ? "no retained review answer"
+        : retained.evidence ? "its retained answer carries a bill" : !round ? "no background round" : retained.unknownReason ?? "no reason recorded"})`
+        + "; a person reconciles or authorizes it");
     const image = `${round.intent.binding.variantId}:${round.intent.binding.imageSha256}`;
     open.set(image, { binding: round.intent.binding, requestKeys: [...(open.get(image)?.requestKeys ?? []), requestKey] });
   }
@@ -289,18 +296,20 @@ export async function reviewContinuationRecorded(c: Container, gameId: string, r
 /**
  * Every open interruption of this world (`openAdmittedInterruptions`) continued: each image's interrupted questions
  * together, only that appearance prepared, one image at a time while `deadlineAt` leaves room. Nothing is bought, and
- * the job is left as it is. Returns "blocked" (a person decides), "none" (nothing open), "partial" (time ran out; the
- * next pass continues the rest) or "done". `fence`: the claim of the slice that continues, checked inside each write.
+ * the job is left as it is. Returns "blocked" (a person decides; `why.reason` says exactly why), "none" (nothing
+ * open), "partial" (time ran out; the next pass continues the rest) or "done". `fence`: the claim of the slice that
+ * continues, checked inside each write.
  */
 export async function continueAdmittedReviewInterruptions(c: Container, gameId: string,
   deps: Pick<LocalPatchBoardReviewDeps, "readBoardArt">, deadlineAt: number,
-  fence?: (tx: Prisma.TransactionClient) => Promise<void>): Promise<"blocked" | "none" | "partial" | "done"> {
-  const open = await openAdmittedInterruptions(c, gameId);
+  fence?: (tx: Prisma.TransactionClient) => Promise<void>, why: ContinuationWhy = {}): Promise<"blocked" | "none" | "partial" | "done"> {
+  const blocked = (reason: string) => { why.reason = reason; return "blocked" as const; };
+  const open = await openAdmittedInterruptions(c, gameId, why);
   if (open === "blocked") return "blocked";
   if (!open.size) return "none";
   const version = await dualVisualReviewVersion(c.db, gameId);
   const game = await c.db.game.findUnique({ where: { id: gameId }, include: { scenes: true } });
-  if (!version || !game || game.status !== "TARGETS_GENERATING" || game.deletedAt) return "blocked";
+  if (!version || !game || game.status !== "TARGETS_GENERATING" || game.deletedAt) return blocked("the game is no longer a paid world in generation under a dual review release");
   // A question still asked about the same image ends first: an image's interruptions are continued together, never one
   // ahead of a sibling question of its own round. Meanwhile the world stays queued and its slices poll that round, as
   // for any question in flight (cancelled at its deadline, ended by whatever the provider reports, or `missing`).
@@ -310,20 +319,26 @@ export async function continueAdmittedReviewInterruptions(c: Container, gameId: 
     if (asking.has(image)) { deferred = true; continue; }
     if (deadlineAt - Date.now() < CONTINUE_PREPARE_NEED_MS) return "partial";
     const scene = game.scenes.find(s => requestKeys[0]!.startsWith(`self-repair:board:${s.sceneSlug}:`));
-    if (!scene || requestKeys.some(key => !key.startsWith(`self-repair:board:${scene.sceneSlug}:`))) return "blocked";
+    if (!scene || requestKeys.some(key => !key.startsWith(`self-repair:board:${scene.sceneSlug}:`)))
+      return blocked(`${requestKeys.join(", ")} name no single board of this world`);
     const prepared = await prepareLocalPatchBoardReview(c, { gameId, sceneId: scene.id }, deps,
       { includePlayerCandidates: true, playerReview: true, onlyHideId: binding.hideId });
     const entry = prepared.ready ? prepared.entries.find(e => e.hide.id === binding.hideId) : undefined;
     // Only the pixels the questions asked about: another image is another question.
-    if (!prepared.ready || !entry || entry.row.id !== binding.variantId || entry.imageSha256 !== binding.imageSha256) return "blocked";
+    if (!prepared.ready || !entry || entry.row.id !== binding.variantId || entry.imageSha256 !== binding.imageSha256)
+      return blocked(`${requestKeys.join(", ")}: the appearance ${binding.hideId} is no longer the image those questions asked about`);
     const candidates = await dualReviewQuestionCandidates(c, prepared, version);
     const questions = requestKeys.map(requestKey => candidates.find(item => item.requestKey === requestKey));
-    if (questions.some(q => !q) || !await recoverPreparedLocalPatchReviews(c, prepared,
+    if (questions.some(q => !q)) return blocked(`${requestKeys.join(", ")}: the interrupted questions cannot be rebuilt on the same pixels`);
+    if (!await recoverPreparedLocalPatchReviews(c, prepared,
       questions.map(q => ({ requestKey: q!.requestKey, fingerprint: q!.fingerprint, role: q!.role, strategy: q!.strategy })),
-      fence, { releaseParkedJob: false, admitProviderFailed: true })) return "blocked";
+      fence, { releaseParkedJob: false, admitProviderFailed: true, why })) return blocked(why.reason ?? `${requestKeys.join(", ")}: not continued`);
   }
   return deferred ? "partial" : "done";
 }
+
+/** Why the automatic continuation cannot go on, in words a person can act on. */
+export type ContinuationWhy = { reason?: string };
 
 /**
  * An enrolled world's interrupted dual-review questions, found again by rebuilding

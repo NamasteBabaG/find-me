@@ -85,9 +85,10 @@ export async function recoverPreparedLocalPatchReviews(c: Container, prepared: P
   questions: readonly InterruptedQuestion[], fence?: (tx: Prisma.TransactionClient) => Promise<void>,
   /** `admitProviderFailed`: only the continuation that re-queues nothing it did not observe admits a provider-declared
    * failure (local-patch-continue-in-slice/v1); every other caller admits the no-response shape alone, as before. */
-  options: { releaseParkedJob?: boolean; admitProviderFailed?: boolean } = {}): Promise<boolean> {
-  if (!questions.length || new Set(questions.map(q => q.requestKey)).size !== questions.length) return false;
-  if (options.admitProviderFailed && options.releaseParkedJob !== false) return false;
+  options: { releaseParkedJob?: boolean; admitProviderFailed?: boolean; why?: { reason?: string } } = {}): Promise<boolean> {
+  const refuse = (reason: string) => { if (options.why) options.why.reason = reason; return false; };
+  if (!questions.length || new Set(questions.map(q => q.requestKey)).size !== questions.length) return refuse("no distinct interrupted questions to continue");
+  if (options.admitProviderFailed && options.releaseParkedJob !== false) return refuse("a provider-declared failure is continued only without releasing the job");
   const upgrade = await subjectUpgradeOf(c.db, prepared.game.id);
   const enrolled = upgrade?.reviewRecovery === SUBJECT_REVIEW_RECOVERY && upgrade.ownerId === prepared.game.ownerId;
   const counts = await prepared.budget.countContinuationApprovals(prepared.worldId);
@@ -96,16 +97,21 @@ export async function recoverPreparedLocalPatchReviews(c: Container, prepared: P
   const planned: Planned[] = [];
   for (const question of questions) {
     const prior = await prepared.budget.readContinuationApproval(prepared.worldId, question.requestKey);
-    const release = prior?.version === REVIEW_APPROVAL_V1 ? "v1" : prior?.version === REVIEW_APPROVAL_V2 ? (enrolled ? "v2" : null) : prior ? null
-      : freeV1 > 0 ? (freeV1--, "v1") : freeV2 > 0 ? (freeV2--, "v2") : null;
-    const one = release ? await checkInterruption(c, prepared, question, release, !!options.admitProviderFailed) : null;
-    if (!one) return false;
+    if (prior && prior.version !== REVIEW_APPROVAL_V1 && !(prior.version === REVIEW_APPROVAL_V2 && enrolled))
+      return refuse(`${question.requestKey} already carries a ${prior.version} approval that this continuation does not finish`);
+    const release = prior?.version === REVIEW_APPROVAL_V1 ? "v1" : prior ? "v2" : freeV1 > 0 ? (freeV1--, "v1") : freeV2 > 0 ? (freeV2--, "v2") : null;
+    if (!release) return refuse(`the world's automatic review continuations are spent (${counts[REVIEW_APPROVAL_V1] ?? 0}/${WORLD_AUTOMATIC_REVIEW_RECOVERY_V1_LIMIT} under v1`
+      + `${enrolled ? `, ${counts[REVIEW_APPROVAL_V2] ?? 0}/${WORLD_AUTOMATIC_REVIEW_RECOVERY_V2_LIMIT} under v2` : ""}); ${question.requestKey} stays reserved in full`
+      + " until a person reconciles or authorizes it");
+    const one = await checkInterruption(c, prepared, question, release, !!options.admitProviderFailed);
+    if (!one) return refuse(`${question.requestKey}: its record no longer matches an interruption this continuation admits on these pixels`);
     planned.push(one);
   }
-  for (const one of planned) if (!await writeApproval(c, prepared, one)) return false;
+  for (const one of planned) if (!await writeApproval(c, prepared, one)) return refuse(`${one.authorized.question.requestKey}: the world ledger refused its continuation`);
   // An enrolled world keeps the last complete proof beside the interruption, so its paid continuity answer about
   // the same pixels can still be reused; a historical world's bytes are unchanged.
-  return recordInterruptions(c, prepared, planned.map(one => one.authorized), fence, enrolled, options.releaseParkedJob !== false);
+  return await recordInterruptions(c, prepared, planned.map(one => one.authorized), fence, enrolled, options.releaseParkedJob !== false)
+    || refuse(`${questions.map(q => q.requestKey).join(", ")}: the image changed while its continuation was recorded`);
 }
 
 export type InterruptedQuestion = Question & { readonly requestKey: string; readonly fingerprint: string };

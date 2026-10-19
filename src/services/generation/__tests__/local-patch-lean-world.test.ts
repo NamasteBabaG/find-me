@@ -25,6 +25,7 @@ import { LEAN_RECOVERY_BACKOFF_MS, LOCAL_PATCH_STYLE, runLocalPatchWorldSlice } 
 import { tickGeneration } from "../queue";
 import { advanceContinuityInBackground, backgroundRoundIdOf } from "../continuity-background";
 import { continueAdmittedReviewInterruptions, openAdmittedInterruptions } from "../subject-upgrade";
+import { LOCAL_PATCH_PARKED_WAKE_ACTION, PARKED_WAKE_SPACING_MS, claimParkedWake, nextParkedWake } from "../local-patch-parked-wake";
 import { DUAL_VISUAL_REVIEW_V3, pinVisualReviewRelease } from "../visual-review-release";
 import { sha256Bytes } from "../fixed-sprite";
 import { SYSTEM_ENROLLMENT_OPERATOR, subjectUpgradeOf } from "../subject-enrollment";
@@ -383,7 +384,7 @@ describe("local-patch-lean/v1 on a whole paid world", () => {
     expect(receipt.evidenceAttempts).toEqual(expect.arrayContaining([expect.objectContaining({ kind: "transport", code: "http" })]));
   }, 1_500_000);
 
-  it("resumes a world the engine parked on an admitted failure only by a tick that names it, and never an operator's hold (Codex rounds 14-16)", async () => {
+  it("wakes a world the engine parked on an admitted failure from the scheduled tick, three turns per hold, never an operator's hold (local-patch-parked-wake/v1)", async () => {
     const gameId = "lean-world-parked";
     await leanWorld(gameId);
     const busy = new Set([boardOf(THIRD.id).board, boardOf(REFUSED.id).board, boardOf(SEAM.id).board]);
@@ -409,21 +410,37 @@ describe("local-patch-lean/v1 on a whole paid world", () => {
     const park = (lastError: string) => db.generationJob.update({ where: { id: `job_${gameId}` }, data: { status: "FAILED", currentStep: "local-patch:needs-release", lastError } });
     const job = () => db.generationJob.findUniqueOrThrow({ where: { id: `job_${gameId}` } });
     const approval = () => budget.readContinuationApproval(worldId, key);
-    await park(engineHold);
-    // The scheduled tick never chooses a parked world.
-    await tickGeneration(container, null, 60_000);
-    expect(await job()).toMatchObject({ status: "FAILED", currentStep: "local-patch:needs-release", lastError: engineHold });
-    expect(await approval()).toBeNull();
-    // An operator's hold on this very world, with the same admitted failure in its ledger: a tick naming it neither continues nor releases.
+    // A scheduled turn: the queue's choice and claim (`nextParkedWake`, `claimParkedWake`, exactly what tickGeneration
+    // takes before it runs a world's slice), then that world's own slice. Ten minutes pass for every turn already taken.
+    const scheduled = async () => {
+      const wake = await nextParkedWake(container);
+      if (!wake || wake.gameId !== gameId || !await claimParkedWake(container, wake)) return null;
+      await slice();
+      return wake;
+    };
+    const turns = () => db.auditLog.findMany({ where: { action: LOCAL_PATCH_PARKED_WAKE_ACTION, entityId: gameId } });
+    const later = async () => { for (const turn of await turns()) await db.auditLog.update({ where: { id: turn.id },
+      data: { createdAt: new Date(turn.createdAt.getTime() - PARKED_WAKE_SPACING_MS - 1_000) } }); };
+    // An operator's hold on this very world, with the same admitted failure in its ledger, names no interrupted question:
+    // the scheduled tick never chooses it, and a tick naming it neither continues nor releases.
     await park("An operator holds this world for another reason");
+    expect(await nextParkedWake(container)).toBeNull();
+    expect(await tickGeneration(container, null, 60_000)).toMatchObject({ gameId: null });
     await slice();
     expect(await job()).toMatchObject({ status: "FAILED", currentStep: "local-patch:needs-release", lastError: "An operator holds this world for another reason" });
     expect(await approval()).toBeNull();
-    // A retained failure alone is not enough: with its round's recorded end altered, nothing is continued or released.
+    expect(await turns()).toHaveLength(0);
+    // Parked as the deployed engine parked the QA world, its hold naming the interrupted question, but with its round's
+    // recorded end altered: the scheduled tick chooses it and its slice refuses, nothing continued or released. At most
+    // three turns for one hold, ten minutes apart, then the scheduled tick leaves it.
     await park(engineHold);
     const outcomeId = `aud_sb_${backgroundRoundIdOf(worldId, key)}_outcome`, outcome = await db.auditLog.findUniqueOrThrow({ where: { id: outcomeId } });
     await db.auditLog.update({ where: { id: outcomeId }, data: { metaJson: JSON.stringify({ ...JSON.parse(outcome.metaJson!), providerStatus: "completed" }) } });
-    await slice();
+    expect(await scheduled()).toMatchObject({ gameId, attempt: 1 });
+    expect(await nextParkedWake(container)).toBeNull();
+    for (const attempt of [2, 3]) { await later(); expect(await scheduled()).toMatchObject({ gameId, attempt }); }
+    await later();
+    expect(await nextParkedWake(container)).toBeNull();
     expect(await job()).toMatchObject({ status: "FAILED", currentStep: "local-patch:needs-release", lastError: engineHold });
     expect(await approval()).toBeNull();
     await db.auditLog.update({ where: { id: outcomeId }, data: { metaJson: outcome.metaJson } });
@@ -438,17 +455,25 @@ describe("local-patch-lean/v1 on a whole paid world", () => {
     const open = await openAdmittedInterruptions(container, gameId);
     expect(open !== "blocked" && [...open.values()].flatMap(item => item.requestKeys)).toEqual([key]);
     expect(await job()).toMatchObject({ status: "FAILED", currentStep: "local-patch:needs-release", lastError: engineHold });
-    // Its own record intact: the tick naming it finishes that continuation (the same approval, recorded on its image;
-    // the unknown charge kept whole) and re-queues it.
+    // Its own record intact and parked again by the engine (a new hold, its own turns): the scheduled tick takes one turn,
+    // once, and the world's slice finishes that continuation (the same approval, recorded on its image; the unknown
+    // charge kept whole) and re-queues it.
+    await park(engineHold);
+    const wake = (await nextParkedWake(container))!;
+    expect(wake).toMatchObject({ gameId, attempt: 1 });
+    expect(await claimParkedWake(container, wake)).toBe(true);
+    expect(await claimParkedWake(container, wake)).toBe(false);
     await slice();
     expect(await approval()).toEqual(written);
     expect(await budget.countContinuationApprovals(worldId)).toEqual({ [written.version]: 1 });
     expect(await recorded()).toBe(true);
     expect(await budget.readRequest(worldId, key)).toMatchObject({ state: "unknown", reserveMicroUsd: 200_000 });
     expect((await job()).currentStep).not.toBe("local-patch:needs-release");
-    // A pass that recorded it and stopped before releasing: the engine's hold, nothing open. The tick naming it finishes
-    // that same resumption from the recorded continuation.
+    // A pass that recorded it and stopped before releasing: the engine's hold, nothing open. The scheduled tick chooses it
+    // (here without a painter, so tickGeneration stops after its claim and the world's slice follows), and that slice
+    // finishes the same resumption from the recorded continuation.
     await park(engineHold);
+    expect(await tickGeneration(container, null, 60_000)).toMatchObject({ gameId });
     await slice();
     expect((await job()).currentStep).not.toBe("local-patch:needs-release");
     expect(await approval()).toEqual(written);
@@ -548,6 +573,11 @@ describe("local-patch-lean/v1 on a whole paid world", () => {
     const approvals = await Promise.all(audit.unknownRequestKeys.map(key => budget.readContinuationApproval(worldId, key)));
     expect(approvals.filter(Boolean)).toHaveLength(covered);
     expect((await db.game.findUniqueOrThrow({ where: { id: gameId } })).configJson).toBeNull();
+    // The park says exactly why, names the answer still reserved, and is not a hold the scheduled tick wakes.
+    const uncoveredKey = audit.unknownRequestKeys[approvals.findIndex(one => !one)]!;
+    expect((await job()).lastError).toBe(`local-patch-continue-in-slice/v1: the world's automatic review continuations are spent (2/2 under v1, `
+      + `${WORLD_AUTOMATIC_REVIEW_RECOVERY_V2_LIMIT}/${WORLD_AUTOMATIC_REVIEW_RECOVERY_V2_LIMIT} under v2); ${uncoveredKey} stays reserved in full until a person reconciles or authorizes it`);
+    expect(await nextParkedWake(c)).toBeNull();
   }, 1_500_000);
 
   it("admits only no answer at all, or a background response its provider ended failed with no text and no usage", () => {

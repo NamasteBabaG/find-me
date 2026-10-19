@@ -6,6 +6,7 @@ import { BOARD_WIZARD_STYLE, boardWizardEnabled, runBoardConditionedWizardSlice 
 import { LOCAL_PATCH_LEASE_MS, LOCAL_PATCH_NEEDS_RELEASE, LOCAL_PATCH_QUALITY_FAILED, LOCAL_PATCH_RECOVERY_EXHAUSTED, LOCAL_PATCH_RECOVERY_BUDGET_WAIT, LOCAL_PATCH_RECOVERY_BACKOFF_MS, LOCAL_PATCH_EVIDENCE_RETRY_WAIT, LOCAL_PATCH_STYLE, localPatchPainterForGame, runLocalPatchWorldSlice } from "./local-patch-world";
 import { LOCAL_PATCH_EVIDENCE_RETRY_BACKOFF_MS } from "./local-patch-review-recovery";
 import { LOCAL_PATCH_SPEND_PAUSED, LOCAL_PATCH_SPEND_PAUSE_RECHECK_MS, pauseLocalPatchForSpendGuard } from "./local-patch-spend-pause";
+import { claimParkedWake, nextParkedWake } from "./local-patch-parked-wake";
 import { selfRepairEnabled } from "../../domain/scene/local-patch-self-repair";
 import { transitionGame } from "../game-status";
 import { SYSTEM } from "../audit.service";
@@ -85,7 +86,10 @@ export async function nextPendingGame(c: Container): Promise<string | null> {
  */
 export async function tickGeneration(c: Container, gameId: string | null, budgetMs: number, hardMs = 270_000): Promise<TickResult> {
   const now = Date.now();
-  const id = gameId ?? (await nextPendingGame(c));
+  // local-patch-parked-wake/v1: a world the engine parked on one of its own review interruptions gets this whole turn, at
+  // most three times per hold and ten minutes apart; its own slice decides, compared on the hold it observed.
+  const wake = gameId ? null : await nextParkedWake(c, now);
+  const id = gameId ?? (wake && await claimParkedWake(c, wake) ? wake.gameId : null) ?? (await nextPendingGame(c));
   if (!id) return { gameId: null, status: null, pending: false };
   const before = await c.db.game.findUnique({ where: { id }, select: { status: true, styleVersion: true, scenes: { select: { sceneVersion: true } } } });
   if (!before) return { gameId: id, status: null, pending: false };
