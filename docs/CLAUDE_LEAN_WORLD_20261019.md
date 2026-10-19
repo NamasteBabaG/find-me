@@ -237,43 +237,43 @@ QA world `game_hzju9scobvssvl0tojca` ran on 1360a90b from 11:27 UTC. Flex in bac
 - **Fix:** the recovery (`interruptionShape`) also admits a background response its provider ended `failed`, with no text and no usage. The shape must match exactly what its round recorded: the same response id, `unpriced`, provider status `failed`.
 - The charge stays unknown and counted in full, under the same per-world limits (two continuations under v1, four more under v2), and the same pixels are asked again.
 - Anything else stays parked: a failure with usage or text, another status, another reason.
-- **Codex round 14 (HOLD, P1): a parked world is invisible to the scheduled tick.**
-  - `nextPendingGame` never selects a parked world, and the recovery ran only inside the world's own slice, so it needed a person, or the owner's open page, to tick the world by id.
-  - **Fix (local-patch-parked-recovery/v1):** before its selection, the scheduled tick (`tickGeneration` with no game) runs `recoverParkedLocalPatchReviews`, which gives one parked, enrolled world its review recovery.
-  - Only a world whose ledger holds an unknown answer that `admittedInterruption` admits and that is not yet continued qualifies. This is a cheap read: ledger, retained record and round record, and no board is rebuilt to decide it.
-  - It tries in the minute the world parked, then every tenth minute, for 24 hours.
-  - A world an operator holds for any other reason is never touched.
-  - `admittedInterruption` is now the one place that decides admission. Both the recovery and the scheduler's pre-check call it, so a retained payload never qualifies without its round's own recorded failed outcome.
-- **Codex round 15 (HOLD, three P1s on that path), and the reworked pass:**
-  1. **Unbounded time.** The pass ran before the selection with no deadline and could prepare several boards (40–70 s each).
-     - Now `continueAdmittedReviewInterruptions` locates each unknown answer by its own round's binding (appearance, variant, pixels) and prepares only that appearance.
-     - It starts a preparation only with 75 s of room inside a deadline that leaves the selected game at least 150 s.
-     - It is resumable: a later pass continues the rest.
-  2. **Releasing an unrelated hold.** A successful recovery re-queued any `needs-release` job.
-     - Now only a hold the engine recorded for a held ledger qualifies: the reason names an unknown review answer, or the held ledger.
-     - Every unknown answer holding the ledger must be admitted.
-     - The recovery itself no longer touches the job (`releaseParkedJob: false`). The pass releases it only once the ledger is no longer held, compared on the hold it observed (reason and version), so a hold placed meanwhile stays.
-  3. **Starvation and expiry.** `take: 25` ran before the eligibility checks, and the 24-hour window was permanent.
-     - The query now selects only engine ledger holds (up to 500, oldest first), and there is no window. A world is tried in its parking minute and every tenth minute after, without end.
-  - **The regression test now also covers:**
-    - an operator's hold on the very world, with the same admitted failure in its ledger: untouched;
-    - thirty older parked rows ahead of it: not crowded out;
-    - no room for one preparation: nothing is started;
-    - thirty hours later it is still a candidate.
-  - The regression test starts with the failure retained and the job parked, beside an operator-held world, and advances through `tickGeneration(c, null, …)`. Its checks:
-    - with the round's recorded end altered, nothing is continued;
-    - restored, it is continued, the charge stays unknown in full and the job is queued;
-    - the cadence and the 24-hour window hold;
-    - the operator's hold is unchanged;
-    - the world finishes.
+- **How the world goes on: local-patch-continue-in-slice/v1** (Codex rounds 14 to 16).
+  - **Round 14 (P1):** a parked world is never chosen by the scheduled selection, so a recovery that runs only inside the world's own slice needed a person, or the owner's open page, to tick it.
+  - **Rounds 15 and 16:** a scheduled-tick pass over parked worlds was tried, then dropped. Releasing jobs parked for a person raised one problem after another:
+    - its time inside another game's turn;
+    - telling the engine's own holds from an operator's;
+    - fairness between parked worlds;
+    - races with the owner's tick.
+  - **The answer is the one round 14 offered:** a world whose ledger is held only by interruptions the continuation admits never parks.
+    - `openAdmittedInterruptions` (a cheap read) groups the uncontinued unknown answers by the image each asked about, using its background round's binding. Every one must be admitted, or it is "blocked" and a person decides.
+    - At a park point (a held review, or the held ledger at the end of a slice), such a world yields, queued: a candidate of the scheduled selection, under its own claim.
+    - The next slice starts with `continueAdmittedReviewInterruptions`, while it has time, under its own claim (each write checks the slice's fence). It prepares one image at a time, alone (75 s of room needed), on unchanged pixels only, and continues that image's interrupted questions together.
+    - An image with a background question still asked (its create claimed) is deferred, so its interruptions are continued together once its whole round has ended. Every slice first advances the world's background rounds, and a claimed Flex round ends within 10 minutes (answered, refused, cancelled or lost), so a deferral always ends. An intent the held ledger refused to send was never claimed, and never defers.
+    - A continuation a slice could not complete ("blocked") parks the world at that slice's park point instead of yielding again.
+    - No parked job is released anywhere on this path.
+  - **Round 16, two failures on one image:** a lean bundle and its continuity question are asked side by side and can fail together. `recoverPreparedLocalPatchReviews` authorizes each question on its own and records them all on the image in one transaction (`reviewInterruptions` keeps every one), so neither is stranded by the other's round.
+    - The image's evidence log gets **one** transport entry for that round, not one per question. Two consecutive transport entries mean a provider outage and wait an hour (`local-patch-evidence-recovery/v2`), and the rest of the engine already writes one entry per failed round. Written per question, one double failure waited an hour. The entry is the question the policy had escalated, if any (at most one role is escalated per round), so the next round keeps that question's strategy. A single question is logged exactly as before.
+  - **A provider-declared failure is admitted only on this path** (`admitProviderFailed`, which requires `releaseParkedJob: false`). Every older caller admits the no-response shape alone, exactly as deployed. Its unconditional re-queue therefore reaches nothing new; it is a pre-existing limit, recorded below.
+  - **A world parked before this existed (the QA world since 12:21)** is resumed only by a tick that names it, its owner's page (`resumeParkedInterruption`), and only when:
+    - the hold the engine recorded names one of its open interruptions (`<requestKey>: …`);
+    - every unknown answer holding the ledger is admitted;
+    - after the continuation the ledger is no longer held.
+    The job is re-queued compared on the hold it observed (reason and version), so a hold placed meanwhile stays.
 
 **Tests:**
 - a world whose one continuity answer stays running: both siblings are asked after it and decided before it answers;
-- a world whose bundle the provider ends `failed`: only scheduled ticks run, the world parks for at most one tick, finishes READY, and keeps the $0.20 unknown;
+- a world whose bundle the provider ends `failed`: only ordinary slices, never parked, READY, the $0.20 kept unknown;
+- a world whose bundle and continuity question both end `failed`: never parked, no hour's outage wait, READY; both continued and recorded on the image in one step, one evidence entry for the round;
+- a world with seven failed bundles (two continuations under v1, four under v2): the first six are continued, and the seventh parks it for a person within a slice, never yielding again;
+- a world already parked by the engine on such a failure:
+  - the scheduled tick never chooses it;
+  - a tick naming it, under an operator's hold on that same world, neither continues nor releases anything;
+  - with its round's recorded end altered, nothing happens;
+  - with the record intact it is continued, re-queued and finishes, never parked again;
 - the shape rules, one by one;
 - the deadline per policy.
 
-For fixes 1 and 2, each of five mutants is caught by its own test: the fix removed, the deadline swapped or applied to all, an ended round still named, an unreadable record skipped. The mutants of fix 3 are run after this commit.
+For fixes 1 and 2, each of five mutants is caught by its own test: the fix removed, the deadline swapped or applied to all, an ended round still named, an unreadable record skipped. Five admission mutants of fix 3 are caught by their own tests (93f78a1f): the shape not admitted, the round cross-check removed, a failure with usage admitted, the evidence code, and the no-response shape broken.
 
 **Still open:**
 - **The provider's error code for a failed response is not kept.** The adapter reads status and usage only, so a Flex capacity failure cannot be told from any other.
@@ -282,6 +282,8 @@ For fixes 1 and 2, each of five mutants is caught by its own test: the fix remov
 ## Known limits
 
 - Flex in background mode is undocumented. On the first QA world it worked at half price, but one answer in about fifteen was still queued at 25 minutes and one ended `failed`.
+- **Pre-existing, unchanged:** the world slice's `needs-release` branch and the subject upgrade re-queue any parked job once an admitted no-response timeout is continued, without comparing the hold they observed (Codex round 16). A provider-declared failure never takes that path.
+- **A world parked before local-patch-continue-in-slice/v1** resumes only through a tick that names it (its owner's page). The scheduled tick never chooses a parked world.
 - The waiting and held reasons of a lean quality round still read "Continuity question in the background: …". This is cosmetic.
 - A lean world's continuity answer is bought even when its quality answer refuses (about $0.016). That is the price of deciding in one slice.
 - The read-only evidence planner (`local-patch-evidence-plan.ts`, `nextDualReviewPurchase`) still describes a non-lean world's next question (Opus quality, then continuity) for a lean world. It decides nothing and buys nothing, but its figures for a lean world are not the lean ones.

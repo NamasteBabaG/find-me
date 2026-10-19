@@ -65,48 +65,72 @@ export async function admittedInterruption(c: Pick<Container, "db">, gameId: str
 export async function recoverPreparedLocalPatchReview(c: Container, prepared: Prepared,
   fence?: (tx: Prisma.TransactionClient) => Promise<void>,
   /** The interrupted question's role and variant, for the image's evidence log. */
-  question: Question = { role: "quality", strategy: "standard/v1" },
-  /** `releaseParkedJob: false`: continue the question and leave the job as it is; the scheduled tick releases a
-   * parked world itself, only as it observed the hold (local-patch-parked-recovery/v1). */
-  options: { releaseParkedJob?: boolean } = {}): Promise<boolean> {
-  const upgrade = await subjectUpgradeOf(c.db, prepared.game.id);
-  const enrolled = upgrade?.reviewRecovery === SUBJECT_REVIEW_RECOVERY && upgrade.ownerId === prepared.game.ownerId;
-  const releaseParkedJob = options.releaseParkedJob !== false;
-  if (await recoverInterruptedReview(c, prepared, fence, question, "v1", enrolled, releaseParkedJob)) return true;
-  return enrolled && recoverInterruptedReview(c, prepared, fence, question, "v2", true, releaseParkedJob);
+  question: Question = { role: "quality", strategy: "standard/v1" }): Promise<boolean> {
+  return recoverPreparedLocalPatchReviews(c, prepared, [{ ...question, requestKey: prepared.requestKey, fingerprint: prepared.fingerprint }], fence);
 }
 
-async function recoverInterruptedReview(c: Container, prepared: Prepared, fence: ((tx: Prisma.TransactionClient) => Promise<void>) | undefined,
-  question: Question, release: "v1" | "v2",
-  /** An enrolled world keeps the last complete proof beside the interruption, so its paid
-   * continuity answer about the same pixels can still be reused; a historical world's bytes are unchanged. */
-  keepProof: boolean, releaseParkedJob: boolean): Promise<boolean> {
+/**
+ * Every interrupted question about ONE image's unchanged pixels, continued together: a lean world asks its bundle and
+ * its continuity question side by side, and both can be interrupted in the same round. Continuing one alone would
+ * record that round on the image and make the other's question unreachable (Codex round 16).
+ * Each question is authorized on its own (v1 while its two records last, then v2), and one transaction records them
+ * all on the image. `releaseParkedJob: false` leaves the job as it is, for a caller that releases only the hold it
+ * observed; it never re-queues a job that is not parked.
+ */
+export async function recoverPreparedLocalPatchReviews(c: Container, prepared: Prepared,
+  questions: readonly InterruptedQuestion[], fence?: (tx: Prisma.TransactionClient) => Promise<void>,
+  /** `admitProviderFailed`: only the continuation that re-queues nothing it did not observe admits a provider-declared
+   * failure (local-patch-continue-in-slice/v1); every other caller admits the no-response shape alone, as before. */
+  options: { releaseParkedJob?: boolean; admitProviderFailed?: boolean } = {}): Promise<boolean> {
+  if (!questions.length || new Set(questions.map(q => q.requestKey)).size !== questions.length) return false;
+  if (options.admitProviderFailed && options.releaseParkedJob !== false) return false;
+  const upgrade = await subjectUpgradeOf(c.db, prepared.game.id);
+  const enrolled = upgrade?.reviewRecovery === SUBJECT_REVIEW_RECOVERY && upgrade.ownerId === prepared.game.ownerId;
+  const authorized: Authorized[] = [];
+  for (const question of questions) {
+    const one = await authorizeInterruption(c, prepared, question, "v1", !!options.admitProviderFailed)
+      ?? (enrolled ? await authorizeInterruption(c, prepared, question, "v2", !!options.admitProviderFailed) : null);
+    if (!one) return false;
+    authorized.push(one);
+  }
+  // An enrolled world keeps the last complete proof beside the interruption, so its paid continuity answer about
+  // the same pixels can still be reused; a historical world's bytes are unchanged.
+  return recordInterruptions(c, prepared, authorized, fence, enrolled, options.releaseParkedJob !== false);
+}
+
+export type InterruptedQuestion = Question & { readonly requestKey: string; readonly fingerprint: string };
+type Authorized = { question: InterruptedQuestion; policyId: string; approvalId: string; proof: Record<string, unknown>;
+  reserveMicroUsd: number; shape: "timeout" | "provider-failed"; wireFault: "timeout" | "http" };
+
+const paidGame = (value: { ownerId: string | null; orders: { userId: string | null; paymentStatus: string; paidAt: Date | null; refundedAt: Date | null }[] }) =>
+  value.orders.some(o => o.userId === value.ownerId && o.paymentStatus === "PAID" && o.paidAt && !o.refundedAt)
+  && !value.orders.some(o => o.paymentStatus === "REFUNDED" || o.refundedAt);
+
+async function authorizeInterruption(c: Container, prepared: Prepared, question: InterruptedQuestion, release: "v1" | "v2",
+  admitProviderFailed: boolean): Promise<Authorized | null> {
   const policyId = release === "v1" ? REVIEW_INTERRUPTION_POLICY : REVIEW_INTERRUPTION_POLICY_V2;
-  const { game, scene, request, requestKey, fingerprint, worldId, budget } = prepared;
+  const { game, scene, request, worldId, budget } = prepared, { requestKey, fingerprint } = question;
   if (scene.sceneVersion !== 12 || prepared.extraPlan || request.reviewScope !== "ready-only/v1"
-    || request.hides.length !== 1 || !interruptedLocalPatchReviewRequest(requestKey, fingerprint)) return false;
+    || request.hides.length !== 1 || !interruptedLocalPatchReviewRequest(requestKey, fingerprint)) return null;
   const selected = prepared.entries.find(e => e.hide.id === request.hides[0]!.hideId);
-  if (!selected || prepared.protectedRows.has(selected.row.id)) return false;
+  if (!selected || prepared.protectedRows.has(selected.row.id)) return null;
   const live = await c.db.game.findUnique({ where: { id: game.id }, include: { scenes: true, orders: true } });
-  const paid = (value: NonNullable<typeof live>) => value.orders.some(o => o.userId === value.ownerId
-    && o.paymentStatus === "PAID" && o.paidAt && !o.refundedAt)
-    && !value.orders.some(o => o.paymentStatus === "REFUNDED" || o.refundedAt);
   if (!live || live.ownerId !== game.ownerId || live.deletedAt || live.configJson || live.readyAt
     || live.status !== "TARGETS_GENERATING" || live.styleVersion !== "local-patch-world-v1"
-    || live.scenes.length !== 9 || live.scenes.some(s => s.sceneVersion !== 12) || !paid(live)) return false;
+    || live.scenes.length !== 9 || live.scenes.some(s => s.sceneVersion !== 12) || !paidGame(live)) return null;
   const audit = await budget.audit(worldId);
-  if (audit.overCapMicroUsd || audit.conflictRequestKeys.length || audit.overrunRequestKeys.length) return false;
+  if (audit.overCapMicroUsd || audit.conflictRequestKeys.length || audit.overrunRequestKeys.length) return null;
   const held = await budget.readRequest(worldId, requestKey);
   if (!held || held.state !== "unknown" || held.origin !== "reserved" || held.scope !== "judge"
-    || held.operationFingerprint !== fingerprint || !dualReviewReserves(question.role).includes(held.reserveMicroUsd) || held.conflicts.length) return false;
+    || held.operationFingerprint !== fingerprint || !dualReviewReserves(question.role).includes(held.reserveMicroUsd) || held.conflicts.length) return null;
   const retained = await new LocalPatchRetainedPurchaseStore(c, game.id, budget).get(worldId, requestKey);
-  if (!retained || retained.evidence || retained.operationFingerprint !== fingerprint) return false;
+  if (!retained || retained.evidence || retained.operationFingerprint !== fingerprint) return null;
   // HTTP errors, authentication/quota refusals, unpriced usable answers, wrong
   // models and malformed successful replies are not transport interruptions.
   const admitted = await admittedInterruption(c, game.id, worldId, requestKey, retained);
-  if (!admitted) return false;
+  if (!admitted || admitted.shape === "provider-failed" && !admitProviderFailed) return null;
   const { shape, reply } = admitted;
-  const wireFault = shape === "timeout" ? "timeout" : "http";
+  const wireFault = shape === "timeout" ? "timeout" as const : "http" as const;
   const proof = { policyId, gameId: game.id, ownerId: game.ownerId, sceneId: scene.id,
     variantId: selected.row.id, hideId: selected.hide.id, assetId: selected.asset.id, imageSha256: selected.imageSha256,
     geometrySha256: selected.geometrySha256, identitySha256: sha256Bytes(prepared.sheet), attempts: selected.row.attempts,
@@ -132,36 +156,48 @@ async function recoverInterruptedReview(c: Container, prepared: Prepared, fence:
         .authorizeAutomaticReviewRecoveryV2(worldId, recovery);
     }
   } catch (error) {
-    if (error instanceof WorldBudgetError && ["invalid_input", "invalid_snapshot", "world_held"].includes(error.code)) return false;
+    if (error instanceof WorldBudgetError && ["invalid_input", "invalid_snapshot", "world_held"].includes(error.code)) return null;
     throw error;
   }
+  return { question, policyId, approvalId, proof, reserveMicroUsd: held.reserveMicroUsd, shape, wireFault };
+}
+
+/** One transaction: every authorized question recorded on its image, which goes back to its evidence questions. */
+async function recordInterruptions(c: Container, prepared: Prepared, authorized: readonly Authorized[],
+  fence: ((tx: Prisma.TransactionClient) => Promise<void>) | undefined, keepProof: boolean, releaseParkedJob: boolean): Promise<boolean> {
+  const { game, request } = prepared, selected = prepared.entries.find(e => e.hide.id === request.hides[0]!.hideId)!, first = authorized[0]!;
   return c.db.$transaction(async tx => {
     await fenceLocalPatchImages(tx, game.id); await fence?.(tx);
     const currentGame = await tx.game.findUniqueOrThrow({ where: { id: game.id }, include: { scenes: true, orders: true } });
     if (currentGame.status !== "TARGETS_GENERATING" || currentGame.ownerId !== game.ownerId || currentGame.configJson
-      || currentGame.deletedAt || currentGame.readyAt || !paid(currentGame)
+      || currentGame.deletedAt || currentGame.readyAt || !paidGame(currentGame)
       || currentGame.scenes.length !== 9 || currentGame.scenes.some(s => s.sceneVersion !== 12))
       throw Error("Interrupted review game changed before recovery");
-    const prior = JSON.parse(selected.row.judgeJson!);
-    // The interrupted round counts against this image's fixed evidence total.
+    const prior = JSON.parse(selected.row.judgeJson!), at = new Date().toISOString();
+    // The interrupted round counts against this image's fixed evidence total, once: questions interrupted side by side in
+    // one round are one failed round, not an outage of two (two consecutive transport entries wait an hour). Every
+    // interrupted question is kept in `reviewInterruptions`, with its own continuation. The round is logged under the
+    // question the policy had escalated, if any (at most one role per round), so its next question keeps that strategy.
+    const logged = authorized.find(one => one.question.strategy !== "standard/v1") ?? first;
     const evidenceAttempts = [...(Array.isArray(prior.evidenceAttempts) ? prior.evidenceAttempts : []), { attempt: prepared.evidenceReviewAttempt,
-      role: question.role, kind: "transport", code: wireFault, path: null, strategy: question.strategy, at: new Date().toISOString(), imageSha256: selected.imageSha256 }];
+      role: logged.question.role, kind: "transport", code: logged.wireFault, path: null, strategy: logged.question.strategy, at, imageSha256: selected.imageSha256 }];
     const changed = await tx.targetVariantAsset.updateMany({ where: { id: selected.row.id, status: selected.row.status,
       assetId: selected.asset.id, attempts: selected.row.attempts, judgeJson: selected.row.judgeJson,
       rectJson: selected.row.rectJson, hitRectJson: selected.row.hitRectJson, headAnchorJson: selected.row.headAnchorJson },
-      data: { status: "FAILED", lastError: shape === "timeout" ? "quality-unresolved: review transport interrupted; inspect the same pixels again"
+      data: { status: "FAILED", lastError: authorized.every(one => one.shape === "timeout") ? "quality-unresolved: review transport interrupted; inspect the same pixels again"
           : "quality-unresolved: the provider ended the review failed; inspect the same pixels again",
         judgeJson: JSON.stringify({ ...prior, reviewState: "board-review-complete", verdict: null, evidenceAttempts,
-          wireFault, reviewInterruption: { ...proof, recoveryId: approvalId, reservedMicroUsd: held.reserveMicroUsd },
-          boardReview: { version: prepared.reviewVersion, fingerprint, requestKey, reviewScope: "ready-only/v1",
+          wireFault: first.wireFault, reviewInterruption: { ...first.proof, recoveryId: first.approvalId, reservedMicroUsd: first.reserveMicroUsd },
+          ...(authorized.length > 1 ? { reviewInterruptions: authorized.map(one => ({ ...one.proof, recoveryId: one.approvalId, reservedMicroUsd: one.reserveMicroUsd })) } : {}),
+          boardReview: { version: prepared.reviewVersion, fingerprint: first.question.fingerprint, requestKey: first.question.requestKey, reviewScope: "ready-only/v1",
             ...(request.assessmentMode ? { assessmentMode: request.assessmentMode } : {}),
             reviewedHideIds: [selected.hide.id], evidenceReviewAttempt: prepared.evidenceReviewAttempt,
-            evidenceReviewedAt: new Date().toISOString(), raw: null, model: null, costUnknown: true,
+            evidenceReviewedAt: at, raw: null, model: null, costUnknown: true,
             ...(keepProof && prior.boardReview?.dual ? { dual: prior.boardReview.dual } : {}) } }) } });
     if (changed.count !== 1) return false;
     await tx.targetInstance.update({ where: { id: selected.row.targetInstanceId }, data: { status: "FAILED" } });
-    await tx.auditLog.upsert({ where: { id: approvalId }, update: {}, create: { id: approvalId, actorType: "SYSTEM",
-      action: policyId, entityType: "Game", entityId: game.id, metaJson: JSON.stringify(proof) } });
+    for (const one of authorized) await tx.auditLog.upsert({ where: { id: one.approvalId }, update: {}, create: { id: one.approvalId, actorType: "SYSTEM",
+      action: one.policyId, entityType: "Game", entityId: game.id, metaJson: JSON.stringify(one.proof) } });
     if (releaseParkedJob) await tx.generationJob.updateMany({ where: { id: `job_${game.id}`, status: "FAILED", currentStep: "local-patch:needs-release" },
       data: { status: "QUEUED", currentStep: "local-patch", lastError: null } });
     return true;

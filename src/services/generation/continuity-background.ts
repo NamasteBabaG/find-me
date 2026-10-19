@@ -90,7 +90,10 @@ function eventsOfRows(rows: readonly RoundRow[], gameId: string, roundId: string
  * unsent: the rule a Message Batches round already follows (`qualityBatchWaiting`). On the first lean QA world
  * (19 October) one Flex answer ran 25 minutes, and its two siblings, painted beside it, waited the whole time.
  */
-export async function backgroundReviewWaiting(db: Pick<Prisma.TransactionClient, "auditLog">, gameId: string): Promise<Set<string>> {
+export async function backgroundReviewWaiting(db: Pick<Prisma.TransactionClient, "auditLog">, gameId: string,
+  /** `inFlightOnly`: only a round whose create was claimed, so it is bound to end (answered, refused, cancelled at its
+   * deadline, or lost after its create grace). An intent the held ledger refused to send is not in flight. */
+  options: { inFlightOnly?: boolean } = {}): Promise<Set<string>> {
   const rows = await db.auditLog.findMany({ where: { action: SOL_BACKGROUND_ACTION, entityType: "Game", entityId: gameId },
     select: { id: true, actorType: true, actorId: true, metaJson: true } });
   const byRound = new Map<string, RoundRow[]>();
@@ -102,7 +105,8 @@ export async function backgroundReviewWaiting(db: Pick<Prisma.TransactionClient,
   const waitingRows = new Set<string>();
   for (const [roundId, roundRows] of byRound) {
     const round = backgroundRoundOf(eventsOfRows(roundRows, gameId, roundId));
-    if (!round.terminal) waitingRows.add(`${round.intent.binding.variantId}:${round.intent.binding.imageSha256}`);
+    if (!round.terminal && (!options.inFlightOnly || round.claimAt !== null))
+      waitingRows.add(`${round.intent.binding.variantId}:${round.intent.binding.imageSha256}`);
   }
   return waitingRows;
 }

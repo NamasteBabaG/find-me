@@ -3,7 +3,7 @@ import type { Container } from "../container";
 import { LEASE_MS as PIPELINE_LEASE_MS, RESUMABLE_STATUSES, runGenerationPipeline } from "./pipeline";
 import { FIXED_WORLD_STYLE_PREFIX, isFixedWorldStyle } from "./fixed-world-stage-record";
 import { BOARD_WIZARD_STYLE, boardWizardEnabled, runBoardConditionedWizardSlice } from "./board-conditioned-wizard";
-import { LOCAL_PATCH_LEASE_MS, LOCAL_PATCH_NEEDS_RELEASE, LOCAL_PATCH_QUALITY_FAILED, LOCAL_PATCH_RECOVERY_EXHAUSTED, LOCAL_PATCH_RECOVERY_BUDGET_WAIT, LOCAL_PATCH_RECOVERY_BACKOFF_MS, LOCAL_PATCH_EVIDENCE_RETRY_WAIT, LOCAL_PATCH_STYLE, localPatchPainterForGame, recoverParkedLocalPatchReviews, runLocalPatchWorldSlice } from "./local-patch-world";
+import { LOCAL_PATCH_LEASE_MS, LOCAL_PATCH_NEEDS_RELEASE, LOCAL_PATCH_QUALITY_FAILED, LOCAL_PATCH_RECOVERY_EXHAUSTED, LOCAL_PATCH_RECOVERY_BUDGET_WAIT, LOCAL_PATCH_RECOVERY_BACKOFF_MS, LOCAL_PATCH_EVIDENCE_RETRY_WAIT, LOCAL_PATCH_STYLE, localPatchPainterForGame, runLocalPatchWorldSlice } from "./local-patch-world";
 import { LOCAL_PATCH_EVIDENCE_RETRY_BACKOFF_MS } from "./local-patch-review-recovery";
 import { LOCAL_PATCH_SPEND_PAUSED, LOCAL_PATCH_SPEND_PAUSE_RECHECK_MS, pauseLocalPatchForSpendGuard } from "./local-patch-spend-pause";
 import { selfRepairEnabled } from "../../domain/scene/local-patch-self-repair";
@@ -85,11 +85,6 @@ export async function nextPendingGame(c: Container): Promise<string | null> {
  */
 export async function tickGeneration(c: Container, gameId: string | null, budgetMs: number, hardMs = 270_000): Promise<TickResult> {
   const now = Date.now();
-  // The scheduled tick first gives one parked world, whose interruption its automatic recovery admits, that recovery
-  // (local-patch-parked-recovery/v1); the selection below never chooses a parked world. Bounded so the game selected
-  // next keeps at least 150 s of this request, and a failure here never costs it its turn.
-  if (!gameId) await recoverParkedLocalPatchReviews(c, {}, now, now + Math.max(0, Math.min(120_000, hardMs - 150_000))).catch(error =>
-    console.error("[generate] parked-world recovery unavailable", error instanceof Error ? error.message : String(error)));
   const id = gameId ?? (await nextPendingGame(c));
   if (!id) return { gameId: null, status: null, pending: false };
   const before = await c.db.game.findUnique({ where: { id }, select: { status: true, styleVersion: true, scenes: { select: { sceneVersion: true } } } });

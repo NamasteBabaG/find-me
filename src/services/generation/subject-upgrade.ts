@@ -13,8 +13,8 @@ import { dualReviewQuestionCandidates } from "./local-patch-dual-review";
 import { subjectStageRaw, type DualReviewProof } from "./local-patch-dual-evidence";
 import { readLocalPatchExtraAttemptPlan } from "./local-patch-extra-attempt";
 import { LocalPatchRetainedPurchaseStore } from "./local-patch-lifecycle";
-import { admittedInterruption, recoverPreparedLocalPatchReview } from "./local-patch-review-interruption-recovery";
-import { backgroundRoundOfKey } from "./continuity-background";
+import { admittedInterruption, recoverPreparedLocalPatchReview, recoverPreparedLocalPatchReviews } from "./local-patch-review-interruption-recovery";
+import { backgroundReviewWaiting, backgroundRoundOfKey } from "./continuity-background";
 import { DUAL_VISUAL_REVIEW_V3, dualVisualReviewVersion } from "./visual-review-release";
 import { sha256Bytes } from "./fixed-sprite";
 import {
@@ -245,49 +245,68 @@ export async function applySubjectUpgrade(c: Container, input: { gameId: string;
 }
 
 /** Room one targeted preparation needs before it starts: one appearance's evidence takes 40 to 70 s on real art. */
-export const PARKED_PREPARE_NEED_MS = 75_000;
+export const CONTINUE_PREPARE_NEED_MS = 75_000;
 
 /**
- * local-patch-parked-recovery/v1: every unknown answer holding this enrolled world's ledger is continued, provided the
- * automatic continuation admits it (`admittedInterruption`). Each answer is located by its own background round: the
- * appearance, variant and pixels it asked about. Only that appearance is prepared, one at a time, while `deadlineAt`
- * leaves room. Nothing is bought, and the job is left as it is: the caller releases it only as it observed the hold.
- * Returns:
- *  - "blocked": the ledger holds an answer this does not admit or cannot locate on unchanged pixels, so a person decides;
- *  - "partial": time ran out; a later pass continues the rest;
- *  - "done": nothing admitted remains uncontinued.
+ * local-patch-continue-in-slice/v1. The interrupted review answers holding this enrolled world's ledger, grouped by
+ * the image each asked about (its background round's binding: appearance, variant, pixels). A cheap read: ledger,
+ * retained records, round records. "blocked" when any uncontinued unknown answer is one the automatic continuation does
+ * not admit (`admittedInterruption`) or cannot locate, so a person decides; an empty map when none is open.
  */
-export async function continueAdmittedReviewInterruptions(c: Container, gameId: string,
-  deps: Pick<LocalPatchBoardReviewDeps, "readBoardArt">, deadlineAt: number): Promise<"blocked" | "partial" | "done"> {
+export async function openAdmittedInterruptions(c: Container, gameId: string)
+  : Promise<Map<string, { binding: BackgroundReviewBinding; requestKeys: string[] }> | "blocked"> {
   if (!await subjectUpgradeOf(c.db, gameId)) return "blocked";
-  const version = await dualVisualReviewVersion(c.db, gameId);
-  const game = await c.db.game.findUnique({ where: { id: gameId }, include: { scenes: true } });
-  if (!version || !game || game.status !== "TARGETS_GENERATING" || game.deletedAt) return "blocked";
   const budget = boardWizardBudgetOf(c), worldId = boardWizardWorldId(gameId), audit = await budget.audit(worldId);
   if (audit.overCapMicroUsd || audit.conflictRequestKeys.length || audit.overrunRequestKeys.length) return "blocked";
   const store = new LocalPatchRetainedPurchaseStore(c, gameId, budget);
-  const open: { requestKey: string; binding: BackgroundReviewBinding }[] = [];
+  const open = new Map<string, { binding: BackgroundReviewBinding; requestKeys: string[] }>();
   for (const requestKey of audit.unknownRequestKeys) {
     if (await budget.readContinuationApproval(worldId, requestKey)) continue;
     const retained = requestKey.startsWith("self-repair:board:") ? await store.get(worldId, requestKey) : null;
     const round = retained ? await backgroundRoundOfKey(c.db, gameId, worldId, requestKey) : null;
     if (!retained || retained.evidence || !round || !await admittedInterruption(c, gameId, worldId, requestKey, retained)) return "blocked";
-    open.push({ requestKey, binding: round.intent.binding });
+    const image = `${round.intent.binding.variantId}:${round.intent.binding.imageSha256}`;
+    open.set(image, { binding: round.intent.binding, requestKeys: [...(open.get(image)?.requestKeys ?? []), requestKey] });
   }
-  for (const { requestKey, binding } of open) {
-    if (deadlineAt - Date.now() < PARKED_PREPARE_NEED_MS) return "partial";
-    const scene = game.scenes.find(s => requestKey.startsWith(`self-repair:board:${s.sceneSlug}:`));
-    if (!scene) return "blocked";
+  return open;
+}
+
+/**
+ * Every open interruption of this world (`openAdmittedInterruptions`) continued: each image's interrupted questions
+ * together, only that appearance prepared, one image at a time while `deadlineAt` leaves room. Nothing is bought, and
+ * the job is left as it is. Returns "blocked" (a person decides), "none" (nothing open), "partial" (time ran out; the
+ * next pass continues the rest) or "done". `fence`: the claim of the slice that continues, checked inside each write.
+ */
+export async function continueAdmittedReviewInterruptions(c: Container, gameId: string,
+  deps: Pick<LocalPatchBoardReviewDeps, "readBoardArt">, deadlineAt: number,
+  fence?: (tx: Prisma.TransactionClient) => Promise<void>): Promise<"blocked" | "none" | "partial" | "done"> {
+  const open = await openAdmittedInterruptions(c, gameId);
+  if (open === "blocked") return "blocked";
+  if (!open.size) return "none";
+  const version = await dualVisualReviewVersion(c.db, gameId);
+  const game = await c.db.game.findUnique({ where: { id: gameId }, include: { scenes: true } });
+  if (!version || !game || game.status !== "TARGETS_GENERATING" || game.deletedAt) return "blocked";
+  // A question still asked about the same image ends first (its round answers or is cancelled at its deadline): an
+  // image's interruptions are continued together, never one ahead of a sibling question of its own round.
+  const asking = await backgroundReviewWaiting(c.db, gameId, { inFlightOnly: true });
+  let deferred = false;
+  for (const [image, { binding, requestKeys }] of open) {
+    if (asking.has(image)) { deferred = true; continue; }
+    if (deadlineAt - Date.now() < CONTINUE_PREPARE_NEED_MS) return "partial";
+    const scene = game.scenes.find(s => requestKeys[0]!.startsWith(`self-repair:board:${s.sceneSlug}:`));
+    if (!scene || requestKeys.some(key => !key.startsWith(`self-repair:board:${scene.sceneSlug}:`))) return "blocked";
     const prepared = await prepareLocalPatchBoardReview(c, { gameId, sceneId: scene.id }, deps,
       { includePlayerCandidates: true, playerReview: true, onlyHideId: binding.hideId });
     const entry = prepared.ready ? prepared.entries.find(e => e.hide.id === binding.hideId) : undefined;
-    // Only the pixels the question asked about: another image is another question.
+    // Only the pixels the questions asked about: another image is another question.
     if (!prepared.ready || !entry || entry.row.id !== binding.variantId || entry.imageSha256 !== binding.imageSha256) return "blocked";
-    const candidate = (await dualReviewQuestionCandidates(c, prepared, version)).find(item => item.requestKey === requestKey);
-    if (!candidate || !await recoverPreparedLocalPatchReview(c, { ...prepared, requestKey, fingerprint: candidate.fingerprint }, undefined,
-      { role: candidate.role, strategy: candidate.strategy }, { releaseParkedJob: false })) return "blocked";
+    const candidates = await dualReviewQuestionCandidates(c, prepared, version);
+    const questions = requestKeys.map(requestKey => candidates.find(item => item.requestKey === requestKey));
+    if (questions.some(q => !q) || !await recoverPreparedLocalPatchReviews(c, prepared,
+      questions.map(q => ({ requestKey: q!.requestKey, fingerprint: q!.fingerprint, role: q!.role, strategy: q!.strategy })),
+      fence, { releaseParkedJob: false, admitProviderFailed: true })) return "blocked";
   }
-  return "done";
+  return deferred ? "partial" : "done";
 }
 
 /**

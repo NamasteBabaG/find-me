@@ -21,7 +21,7 @@ import { readBoardConditionedCatalog } from "../board-conditioned-catalog";
 import type { LocalPatchHideDeps } from "../local-patch-hide";
 import type { DualReviewProof } from "../local-patch-dual-evidence";
 import { allowedDualPublication } from "../local-patch-dual-publication";
-import { LOCAL_PATCH_STYLE, recoverParkedLocalPatchReviews, runLocalPatchWorldSlice } from "../local-patch-world";
+import { LEAN_RECOVERY_BACKOFF_MS, LOCAL_PATCH_STYLE, runLocalPatchWorldSlice } from "../local-patch-world";
 import { tickGeneration } from "../queue";
 import { advanceContinuityInBackground, backgroundRoundIdOf } from "../continuity-background";
 import { DUAL_VISUAL_REVIEW_V3, pinVisualReviewRelease } from "../visual-review-release";
@@ -31,6 +31,7 @@ import type { SelfRepairWire } from "../local-patch-self-repair";
 import { localPatchHideEvidenceIds } from "../local-patch-judge";
 import { LOCAL_PATCH_LEAN_ACTION, leanReleaseAuditId, leanReleaseReceipt } from "../lean-release";
 import { interruptionShape, PROVIDER_FAILED_SHAPE } from "../local-patch-review-interruption-recovery";
+import { WORLD_AUTOMATIC_REVIEW_RECOVERY_V2_LIMIT } from "../../../domain/generation/world-budget";
 import { bill, paintedOk, seedApprovedGame } from "./local-patch-fixtures";
 import { GOOD_V12_VERDICT, boundHide, longAnswer, publicationBinding } from "./local-patch-dual-fixtures";
 
@@ -122,12 +123,14 @@ function painter(gameId: string, prompts: Map<string, string>, qualities: Map<st
 /** Sol, answering in the background: the bundle (quality and subject together) or the continuity question.
  * `lose`: that appearance's first bundle create never answers (a lost create: an unknown charge).
  * `slow`: that appearance's first continuity answer keeps running until `released()` (19 October: one Flex answer ran 25 minutes).
- * `fail`: the provider ends that appearance's first bundle `failed`, with no text and no usage (19 October, Flex). */
-function sol(options: { lose?: string; slow?: string; released?: () => boolean; fail?: string } = {}) {
+ * `fail`: the provider ends that appearance's first bundle `failed`, with no text and no usage (19 October, Flex).
+ * `failContinuity`: the same for that appearance's first continuity question, asked beside its bundle.
+ * `failMany`: `fail` for each of these appearances. */
+function sol(options: { lose?: string; slow?: string; released?: () => boolean; fail?: string; failContinuity?: string; failMany?: ReadonlySet<string> } = {}) {
   const creates: { hideId: string; kind: "bundle" | "continuity"; tier: unknown; attempts: number }[] = [];
   const polls = new Map<string, { hideId: string; kind: "bundle" | "continuity"; tier: unknown; n: number; reads: number }>();
   const bundles = new Map<string, number>(), refused = new Set<string>(), lost = new Set<string>();
-  let slowResponse: string | null = null, slowReads = 0;
+  let slowResponse: string | null = null, slowReads = 0, failingContinuity: string | null = null;
   const fake: BackgroundReviewTransport = { namespace: "openai:find-me-existing",
     create: async body => {
       const prompt = (body.input as { content: { text?: string }[] }[])[0]!.content[0]!.text!, bound = boundHide(prompt);
@@ -143,6 +146,7 @@ function sol(options: { lose?: string; slow?: string; released?: () => boolean; 
       const responseId = `resp_lean${creates.length}`;
       polls.set(responseId, { hideId: bound.hideId, kind, tier: body.service_tier, n, reads: 0 });
       if (kind === "continuity" && bound.hideId === options.slow && slowResponse === null) slowResponse = responseId;
+      if (kind === "continuity" && bound.hideId === options.failContinuity && failingContinuity === null) failingContinuity = responseId;
       return { responseId };
     },
     retrieve: async (responseId): Promise<BackgroundReviewState> => {
@@ -150,7 +154,7 @@ function sol(options: { lose?: string; slow?: string; released?: () => boolean; 
       if (!state) return { status: "missing" };
       if (responseId === slowResponse && !options.released?.()) { slowReads++; return { status: "in_progress" }; }
       if (++state.reads === 1) return { status: "in_progress" };
-      if (state.hideId === options.fail && state.kind === "bundle" && state.n === 1)
+      if ((state.hideId === options.fail || options.failMany?.has(state.hideId)) && state.kind === "bundle" && state.n === 1 || responseId === failingContinuity)
         return { status: "failed", reading: { responseId, raw: null, usage: null, model: "gpt-6.1-sol", finishReason: "failed", serviceTier: String(state.tier) } };
       return { status: "completed", reading: { responseId, raw: state.kind === "bundle" ? bundleAnswer(state.hideId, state.n) : longAnswer(state.hideId, 400, 400, 160),
         usage: { input_tokens: 2000, output_tokens: 500 }, model: "gpt-6.1-sol", finishReason: "stop", serviceTier: String(state.tier) } };
@@ -345,17 +349,17 @@ describe("local-patch-lean/v1 on a whole paid world", () => {
         explanation: "Synthetic diagnosis of the broken join." }), usage: { prompt_tokens: 9000, completion_tokens: 500 },
         requestId: `req-${gameId}-diagnosis-${wire.prompt.length}`, model: "gpt-5.6-sol", finishReason: "stop", wireFault: null, costUnknown: false };
     });
-    // Only the scheduled ticks, as production runs them: no person acts. The held ledger parks the world for at most the
-    // tick that found it; the next one continues the failed answer and the world goes on.
+    // Only ordinary slices: no person acts, and the world is never parked. Held only by an admitted interruption, a slice
+    // yields queued (a candidate of the scheduled selection) and the next one continues the failed answer first.
     const ready = async () => (await db.game.findUniqueOrThrow({ where: { id: gameId } })).configJson !== null;
     let result = { pending: true, attention: null as string | null }, parked = 0;
     for (let ticks = 0; ticks < 900 && !await ready(); ticks++) {
       result = await runLocalPatchWorldSlice(container, painter(gameId, new Map(), new Map()), gameId, { hardDeadlineAt: Date.now() + 270_000, diagnose });
-      if (result.attention) parked++;
+      if (result.attention || (await db.generationJob.findUniqueOrThrow({ where: { id: `job_${gameId}` } })).currentStep === "local-patch:needs-release") parked++;
     }
     expect(await ready()).toBe(true);
     expect(result.attention).toBeNull();
-    expect(parked).toBeLessThanOrEqual(1);
+    expect(parked).toBe(0);
     // The failed answer's charge is unknown and counted in full, continued by the ordinary automatic recovery.
     const worldId = boardWizardWorldId(gameId), budget = boardWizardBudgetOf(c), audit = await budget.audit(worldId);
     expect(audit.unknownRequestKeys).toHaveLength(1);
@@ -373,9 +377,9 @@ describe("local-patch-lean/v1 on a whole paid world", () => {
     expect(receipt.evidenceAttempts).toEqual(expect.arrayContaining([expect.objectContaining({ kind: "transport", code: "http" })]));
   }, 1_500_000);
 
-  it("lets the scheduled tick continue a world parked by a provider-declared failure, and never an operator's hold (Codex P1, 19 October)", async () => {
-    const gameId = "lean-world-parked", held = "lean-world-held";
-    await leanWorld(gameId); await leanWorld(held);
+  it("resumes a world the engine parked on an admitted failure only by a tick that names it, and never an operator's hold (Codex rounds 14-16)", async () => {
+    const gameId = "lean-world-parked";
+    await leanWorld(gameId);
     const busy = new Set([boardOf(THIRD.id).board, boardOf(REFUSED.id).board, boardOf(SEAM.id).board]);
     const FAILED = BOARDS.find(b => !busy.has(b.board))!.hides[1]!;
     const provider = sol({ fail: FAILED.id }), container = { ...c, visualReview: { request: vi.fn() }, backgroundReview: provider.fake } as Container;
@@ -394,52 +398,107 @@ describe("local-patch-lean/v1 on a whole paid world", () => {
     for (let reads = 0; reads < 5 && !await unknownKey(); reads++) await advanceContinuityInBackground(container, gameId);
     const key = (await unknownKey())!;
     expect(key).toBeDefined();
-    // Both parked as a held review parks a world; the second by an operator, for another reason, with nothing to continue.
-    for (const [id, why] of [[gameId, "Continuity question in the background: the world ledger is held; nothing was sent"], [held, "An operator holds this world"]] as const)
-      await db.generationJob.update({ where: { id: `job_${id}` }, data: { status: "FAILED", currentStep: "local-patch:needs-release", lastError: why } });
+    // Parked as the deployed engine parked the QA world: its hold names the interrupted question.
+    const engineHold = `${key}: the result is kept but its charge cannot be stated (Background review charge could not be verified)`;
+    const park = (lastError: string) => db.generationJob.update({ where: { id: `job_${gameId}` }, data: { status: "FAILED", currentStep: "local-patch:needs-release", lastError } });
     const job = () => db.generationJob.findUniqueOrThrow({ where: { id: `job_${gameId}` } });
-    const heldBefore = await db.generationJob.findUniqueOrThrow({ where: { id: `job_${held}` } });
-    // An operator's hold on this very world, with the same admitted failure in its ledger: never released or continued.
-    const engineHold = (await job()).lastError!;
-    await db.generationJob.update({ where: { id: `job_${gameId}` }, data: { lastError: "An operator holds this world for another reason" } });
+    const approval = () => budget.readContinuationApproval(worldId, key);
+    await park(engineHold);
+    // The scheduled tick never chooses a parked world.
     await tickGeneration(container, null, 60_000);
+    expect(await job()).toMatchObject({ status: "FAILED", currentStep: "local-patch:needs-release", lastError: engineHold });
+    expect(await approval()).toBeNull();
+    // An operator's hold on this very world, with the same admitted failure in its ledger: a tick naming it neither continues nor releases.
+    await park("An operator holds this world for another reason");
+    await slice();
     expect(await job()).toMatchObject({ status: "FAILED", currentStep: "local-patch:needs-release", lastError: "An operator holds this world for another reason" });
-    expect(await budget.readContinuationApproval(worldId, key)).toBeNull();
-    await db.generationJob.update({ where: { id: `job_${gameId}` }, data: { lastError: engineHold } });
-    const parkedAt = (await job()).updatedAt.getTime();
-    // Thirty older parked worlds ahead of it (not enrolled, between their tries) never crowd it out of the scan.
-    for (let n = 0; n < 30; n++) {
-      await db.game.create({ data: { id: `lean-world-crowd-${n}`, status: "TARGETS_GENERATING", styleVersion: LOCAL_PATCH_STYLE } });
-      await db.generationJob.create({ data: { id: `job_lean-world-crowd-${n}`, gameId: `lean-world-crowd-${n}`, status: "FAILED",
-        currentStep: "local-patch:needs-release", lastError: "local-patch: the world ledger is held; reconcile its unresolved charge before continuing",
-        updatedAt: new Date(parkedAt - 61_000 - n) } });
-    }
-    // A retained failure alone is not enough: with its round's recorded end altered, the scheduled tick continues nothing.
+    expect(await approval()).toBeNull();
+    // A retained failure alone is not enough: with its round's recorded end altered, nothing is continued or released.
+    await park(engineHold);
     const outcomeId = `aud_sb_${backgroundRoundIdOf(worldId, key)}_outcome`, outcome = await db.auditLog.findUniqueOrThrow({ where: { id: outcomeId } });
     await db.auditLog.update({ where: { id: outcomeId }, data: { metaJson: JSON.stringify({ ...JSON.parse(outcome.metaJson!), providerStatus: "completed" }) } });
-    await tickGeneration(container, null, 60_000);
-    expect(await job()).toMatchObject({ status: "FAILED", currentStep: "local-patch:needs-release" });
-    expect(await budget.readContinuationApproval(worldId, key)).toBeNull();
+    await slice();
+    expect(await job()).toMatchObject({ status: "FAILED", currentStep: "local-patch:needs-release", lastError: engineHold });
+    expect(await approval()).toBeNull();
     await db.auditLog.update({ where: { id: outcomeId }, data: { metaJson: outcome.metaJson } });
-    // Between its tries the scheduler leaves it alone; without room for one preparation it starts none.
-    expect(await recoverParkedLocalPatchReviews(container, {}, parkedAt + 5 * 60_000)).toBeNull();
-    expect(await recoverParkedLocalPatchReviews(container, {}, Date.now(), Date.now() + 10_000)).toBe(gameId);
-    expect(await budget.readContinuationApproval(worldId, key)).toBeNull();
-    expect(await job()).toMatchObject({ status: "FAILED", currentStep: "local-patch:needs-release" });
-    // Its tries never expire: thirty hours on it is still a candidate in its minute (no room here, so nothing is started).
-    expect(await recoverParkedLocalPatchReviews(container, {}, parkedAt + 30 * 60 * 60_000, Date.now() + 10_000)).toBe(gameId);
-    expect(await budget.readContinuationApproval(worldId, key)).toBeNull();
-    // The scheduled tick (no game named) continues it: the unknown charge kept whole, the job queued again.
-    await tickGeneration(container, null, 60_000);
-    expect((await budget.readContinuationApproval(worldId, key))?.version).toMatch(/^world-automatic-review-recovery\/v[12]$/);
+    // Its own record intact: the tick naming it continues the failure (the unknown charge kept whole) and re-queues it.
+    await slice();
+    expect((await approval())?.version).toMatch(/^world-automatic-review-recovery\/v[12]$/);
     expect(await budget.readRequest(worldId, key)).toMatchObject({ state: "unknown", reserveMicroUsd: 200_000 });
-    expect(await job()).toMatchObject({ status: "QUEUED", currentStep: "local-patch" });
-    // The operator's hold is untouched.
-    expect(await db.generationJob.findUniqueOrThrow({ where: { id: `job_${held}` } })).toEqual(heldBefore);
-    // And the world finishes with its ordinary slices.
+    expect((await job()).currentStep).not.toBe("local-patch:needs-release");
+    // And the world finishes with its ordinary slices, never parked again.
     const ready = async () => (await db.game.findUniqueOrThrow({ where: { id: gameId } })).configJson !== null;
-    for (let ticks = 0; ticks < 900 && !await ready(); ticks++) await slice();
+    for (let ticks = 0; ticks < 900 && !await ready(); ticks++) {
+      await slice();
+      expect((await job()).currentStep).not.toBe("local-patch:needs-release");
+    }
     expect(await ready()).toBe(true);
+  }, 1_500_000);
+
+  it("continues both questions of one image that the provider ended failed side by side, together (Codex round 16)", async () => {
+    const gameId = "lean-world-failed-twice"; await leanWorld(gameId);
+    const busy = new Set([boardOf(THIRD.id).board, boardOf(REFUSED.id).board, boardOf(SEAM.id).board]);
+    const TWICE = BOARDS.find(b => !busy.has(b.board))!.hides[2]!;
+    const provider = sol({ fail: TWICE.id, failContinuity: TWICE.id }), container = { ...c, visualReview: { request: vi.fn() }, backgroundReview: provider.fake } as Container;
+    const diagnose = vi.fn(async (wire: SelfRepairWire) => {
+      const mask = maskForHide(SEAM), core = { left: mask.left + 12, top: 40, width: 40, height: 60 };
+      return { verdict: null, raw: JSON.stringify({ cause: "composition-clipping", action: "recompose-retained", sourceKey: `${SEAM.id}:${SEAM.pose}:render:1`,
+        returnWindow: { left: 16, top: 16, width: 480, height: 736 }, protectedCore: core, faceRect: { left: core.left + 4, top: core.top + 4, width: 30, height: 30 },
+        explanation: "Synthetic diagnosis of the broken join." }), usage: { prompt_tokens: 9000, completion_tokens: 500 },
+        requestId: `req-${gameId}-diagnosis-${wire.prompt.length}`, model: "gpt-5.6-sol", finishReason: "stop", wireFault: null, costUnknown: false };
+    });
+    const ready = async () => (await db.game.findUniqueOrThrow({ where: { id: gameId } })).configJson !== null;
+    for (let ticks = 0; ticks < 900 && !await ready(); ticks++) {
+      await runLocalPatchWorldSlice(container, painter(gameId, new Map(), new Map()), gameId, { hardDeadlineAt: Date.now() + 270_000, diagnose });
+      expect((await db.generationJob.findUniqueOrThrow({ where: { id: `job_${gameId}` } })).currentStep).not.toBe("local-patch:needs-release");
+    }
+    expect(await ready()).toBe(true);
+    // Both unknown, both continued, recorded on the image in one step: one failed round (not an outage of two), both questions kept.
+    const worldId = boardWizardWorldId(gameId), budget = boardWizardBudgetOf(c), audit = await budget.audit(worldId);
+    expect(audit.unknownRequestKeys).toHaveLength(2);
+    for (const key of audit.unknownRequestKeys) expect((await budget.readContinuationApproval(worldId, key))?.version).toMatch(/^world-automatic-review-recovery\/v[12]$/);
+    const board = boardOf(TWICE.id);
+    const row = (await db.targetVariantAsset.findFirst({ where: { variant: "A", targetInstance: { targetId: TWICE.targetId, gameScene: { gameId, sceneSlug: board.board } } } }))!;
+    expect(row.status).toBe("GENERATED");
+    const receipt = JSON.parse(row.judgeJson!);
+    expect(receipt.reviewInterruptions).toHaveLength(2);
+    expect(new Set(receipt.reviewInterruptions.map((one: { requestKey: string }) => one.requestKey))).toEqual(new Set(audit.unknownRequestKeys));
+    expect(receipt.evidenceAttempts.filter((a: { code: string; attempt: number }) => a.code === "http" && a.attempt === 1)).toHaveLength(1);
+  }, 1_500_000);
+
+  it("parks for a person, within a slice, at the failure its continuations cannot cover: it never yields without progress", async () => {
+    const gameId = "lean-world-failed-often"; await leanWorld(gameId);
+    // Two continuations under v1 and four more under v2 (an enrolled world): the seventh failure is a person's to decide.
+    const covered = 2 + WORLD_AUTOMATIC_REVIEW_RECOVERY_V2_LIMIT, special = new Set([THIRD.id, REFUSED.id, SEAM.id]);
+    const FAILING = HIDES.filter(h => !special.has(h.id)).slice(0, covered + 1);
+    const provider = sol({ failMany: new Set(FAILING.map(h => h.id)) }), container = { ...c, visualReview: { request: vi.fn() }, backgroundReview: provider.fake } as Container;
+    const diagnose = vi.fn(async (wire: SelfRepairWire) => {
+      const mask = maskForHide(SEAM), core = { left: mask.left + 12, top: 40, width: 40, height: 60 };
+      return { verdict: null, raw: JSON.stringify({ cause: "composition-clipping", action: "recompose-retained", sourceKey: `${SEAM.id}:${SEAM.pose}:render:1`,
+        returnWindow: { left: 16, top: 16, width: 480, height: 736 }, protectedCore: core, faceRect: { left: core.left + 4, top: core.top + 4, width: 30, height: 30 },
+        explanation: "Synthetic diagnosis of the broken join." }), usage: { prompt_tokens: 9000, completion_tokens: 500 },
+        requestId: `req-${gameId}-diagnosis-${wire.prompt.length}`, model: "gpt-5.6-sol", finishReason: "stop", wireFault: null, costUnknown: false };
+    });
+    const worldId = boardWizardWorldId(gameId), budget = boardWizardBudgetOf(c);
+    const job = () => db.generationJob.findUniqueOrThrow({ where: { id: `job_${gameId}` } });
+    // Once the uncovered failure holds the ledger, a slice parks the world: its continuation could not complete, so it
+    // never yields to try again (a loop with no progress).
+    let uncovered = 0;
+    for (let ticks = 0; ticks < 900 && (await job()).currentStep !== "local-patch:needs-release"; ticks++) {
+      // Seven unknown answers stay reserved in full ($1.40 of the $4), so the world waits for capacity more often:
+      // its three minutes pass here.
+      if ((await job()).currentStep === "local-patch:recovery-budget-wait") await db.generationJob.update({ where: { id: `job_${gameId}` },
+        data: { updatedAt: new Date(Date.now() - LEAN_RECOVERY_BACKOFF_MS - 1_000) } });
+      await runLocalPatchWorldSlice(container, painter(gameId, new Map(), new Map()), gameId, { hardDeadlineAt: Date.now() + 270_000, diagnose });
+      if ((await budget.audit(worldId)).unknownRequestKeys.length > covered) uncovered++;
+      expect(uncovered).toBeLessThanOrEqual(2);
+    }
+    expect(await job()).toMatchObject({ status: "FAILED", currentStep: "local-patch:needs-release" });
+    const audit = await budget.audit(worldId);
+    expect(audit.unknownRequestKeys).toHaveLength(covered + 1);
+    const approvals = await Promise.all(audit.unknownRequestKeys.map(key => budget.readContinuationApproval(worldId, key)));
+    expect(approvals.filter(Boolean)).toHaveLength(covered);
+    expect((await db.game.findUniqueOrThrow({ where: { id: gameId } })).configJson).toBeNull();
   }, 1_500_000);
 
   it("admits only no answer at all, or a background response its provider ended failed with no text and no usage", () => {
