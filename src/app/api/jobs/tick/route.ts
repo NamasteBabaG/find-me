@@ -33,9 +33,6 @@ export const maxDuration = 300;
 const SLICE_MS = 30_000;
 /** The request's hard limit for generation work: the host's 300s less room for I/O and the answer. */
 const HARD_MS = 270_000;
-/** The sweep of other games' batch rounds ends within this, so the generation slice keeps its own time for a
- * board review (local-patch-slice-pacing/v1); a round it does not reach is taken by a later minute's sweep. */
-const SWEEP_MS = 45_000;
 
 /**
  * Move generation forward.
@@ -74,7 +71,7 @@ export async function POST(req: Request) {
       // Batch questions of games no longer generating: cancelled, settled, deleted at the provider.
       // Its window opens once its records are read, and closes in time for the generation slice.
       enter("quality-batch-sweep");
-      await sweepQualityBatches(c, { deadlineAt: Math.min(hardDeadlineAt - SLICE_MS, Date.now() + SWEEP_MS) }).catch(() => {
+      await sweepQualityBatches(c, { deadlineAt: hardDeadlineAt - SLICE_MS }).catch(() => {
         console.error("[jobs/tick]", { requestId, event: "quality-batch-sweep-failed" });
       });
     }
