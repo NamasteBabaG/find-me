@@ -57,10 +57,11 @@ describe("explicit unknown-charge continuation, no providers or live database", 
     await b.reserve("world", { ...input, requestKey: "remaining", reserveMicroUsd: 3_700_000 });
     await expect(b.reserve("world", { ...input, requestKey: "too-much", reserveMicroUsd: 1 })).rejects.toMatchObject({ code: "cap_exceeded" });
   });
-  it.each([250_000, 66_000])("recovers an interrupted bounded v3 question reserved at %i, and still no other amount", async amount => {
+  // 250,000 / 66,000: bounded v3. 200,000 / 120,000: local-patch-lean/v1's bundle and continuity. 210,000 is no release's amount.
+  it.each([250_000, 66_000, 200_000, 120_000])("recovers an interrupted bounded v3 or lean question reserved at %i, and still no other amount", async amount => {
     const f = fixture(), b = boardWizardBudget(f.repository, 1, { authorizeAutomaticReviewRecovery: async () => true });
     const input = { requestKey: `self-repair:board:giza:${"a".repeat(64)}`, scope: "judge" as const, operationFingerprint: "a".repeat(64), reserveMicroUsd: amount };
-    const odd = { ...input, requestKey: `self-repair:board:giza:${"b".repeat(64)}`, operationFingerprint: "b".repeat(64), reserveMicroUsd: 200_000 };
+    const odd = { ...input, requestKey: `self-repair:board:giza:${"b".repeat(64)}`, operationFingerprint: "b".repeat(64), reserveMicroUsd: 210_000 };
     // Both dispatched before either interruption holds the world.
     for (const request of [input, odd]) await b.reserve("world", request);
     for (const request of [input, odd]) await b.markUnknown("world", request.requestKey, "no response");
@@ -69,7 +70,7 @@ describe("explicit unknown-charge continuation, no providers or live database", 
     await expect(b.authorizeAutomaticReviewRecovery("world", continuation(odd))).rejects.toMatchObject({ code: "invalid_input" });
     expect(await b.authorizeAutomaticReviewRecovery("world", continuation(input))).toMatchObject({ acquired: true });
     // The whole bounded reservation stays counted; the odd unknown still holds the world.
-    expect(await b.audit("world")).toMatchObject({ held: true, reservedMicroUsd: amount + 200_000 });
+    expect(await b.audit("world")).toMatchObject({ held: true, reservedMicroUsd: amount + 210_000 });
   });
   it("preserves the complete unknown request/reservation/history while permitting only newly reserved operations", async () => {
     const f = fixture(); await unknown(f); const original = (await f.budget.readRequest("world", reserve.requestKey))!;
