@@ -246,30 +246,36 @@ QA world `game_hzju9scobvssvl0tojca` ran on 1360a90b from 11:27 UTC. Flex in bac
     - races with the owner's tick.
   - **The answer is the one round 14 offered:** a world whose ledger is held only by interruptions the continuation admits never parks.
     - `openAdmittedInterruptions` (a cheap read) groups the uncontinued unknown answers by the image each asked about, using its background round's binding. Every one must be admitted, or it is "blocked" and a person decides.
-    - At a park point (a held review, or the held ledger at the end of a slice), such a world yields, queued: a candidate of the scheduled selection, under its own claim.
+    - At a park point (a held review in either review phase, or the held ledger at the end of a slice), such a world yields, queued: a candidate of the scheduled selection, under its own claim. Round 17 found the complete-board review phase still parking; it yields too.
     - The next slice starts with `continueAdmittedReviewInterruptions`, while it has time, under its own claim (each write checks the slice's fence). It prepares one image at a time, alone (75 s of room needed), on unchanged pixels only, and continues that image's interrupted questions together.
-    - An image with a background question still asked (its create claimed) is deferred, so its interruptions are continued together once its whole round has ended. Every slice first advances the world's background rounds, and a claimed Flex round ends within 10 minutes (answered, refused, cancelled or lost), so a deferral always ends. An intent the held ledger refused to send was never claimed, and never defers.
+    - An image with a background question still asked (its create claimed) is deferred, so its interruptions are continued together once its whole round has ended. Meanwhile the world stays queued and every slice polls that round first, as for any question in flight: it is cancelled at its deadline (10 minutes on lean Flex) and ends with whatever the provider reports, or `missing` once the provider no longer has it. The deferral lasts exactly as long as that round. An intent the held ledger refused to send was never claimed, and never defers.
     - A continuation a slice could not complete ("blocked") parks the world at that slice's park point instead of yielding again.
+    - **A continuation counts only once its image records it** (round 17). Its approval is written to the ledger first, and the image's transaction writes the approval's audit row (`continuationRecorded`). An approval without that row is a continuation still to finish, not one to skip. A refused fence or a stopped worker is finished by the next pass: re-authorizing the same proof is a no-op, never a second approval. The slice runs the continuation whether or not the ledger is held, so such an approval is finished even when nothing else holds the world.
+    - **An image's questions are continued together or not at all** (round 17): every question is checked, and the per-world limits counted (`countContinuationApprovals`), before any approval is written. A question that already carries a person's approval is not continued automatically.
     - No parked job is released anywhere on this path.
   - **Round 16, two failures on one image:** a lean bundle and its continuity question are asked side by side and can fail together. `recoverPreparedLocalPatchReviews` authorizes each question on its own and records them all on the image in one transaction (`reviewInterruptions` keeps every one), so neither is stranded by the other's round.
     - The image's evidence log gets **one** transport entry for that round, not one per question. Two consecutive transport entries mean a provider outage and wait an hour (`local-patch-evidence-recovery/v2`), and the rest of the engine already writes one entry per failed round. Written per question, one double failure waited an hour. The entry is the question the policy had escalated, if any (at most one role is escalated per round), so the next round keeps that question's strategy. A single question is logged exactly as before.
   - **A provider-declared failure is admitted only on this path** (`admitProviderFailed`, which requires `releaseParkedJob: false`). Every older caller admits the no-response shape alone, exactly as deployed. Its unconditional re-queue therefore reaches nothing new; it is a pre-existing limit, recorded below.
   - **A world parked before this existed (the QA world since 12:21)** is resumed only by a tick that names it, its owner's page (`resumeParkedInterruption`), and only when:
-    - the hold the engine recorded names one of its open interruptions (`<requestKey>: …`);
+    - the hold the engine recorded names one of its own review interruptions (`<requestKey>: …`): one still open, or one an earlier pass already continued and recorded on its image. Round 17: a pass may continue one image and stop before the next, or before the release; the next tick finishes that same resumption from the recorded continuation;
     - every unknown answer holding the ledger is admitted;
-    - after the continuation the ledger is no longer held.
-    The job is re-queued compared on the hold it observed (reason and version), so a hold placed meanwhile stays.
+    - after the continuation nothing is open and the ledger is no longer held.
+    The job is re-queued compared on the hold it observed (reason and version), so a hold placed meanwhile stays. A hold that names nothing the engine continued (an operator's) is never released.
 
 **Tests:**
 - a world whose one continuity answer stays running: both siblings are asked after it and decided before it answers;
 - a world whose bundle the provider ends `failed`: only ordinary slices, never parked, READY, the $0.20 kept unknown;
-- a world whose bundle and continuity question both end `failed`: never parked, no hour's outage wait, READY; both continued and recorded on the image in one step, one evidence entry for the round;
+- a world whose bundle and continuity question both end `failed`, the continuity a read later: never parked, no hour's outage wait, READY; both continued and recorded on the image in one step, one evidence entry for the round;
+- a world whose bundle has already ended `failed` when the review of the board just completed first reads it: never parked, READY;
 - a world with seven failed bundles (two continuations under v1, four under v2): the first six are continued, and the seventh parks it for a person within a slice, never yielding again;
 - a world already parked by the engine on such a failure:
   - the scheduled tick never chooses it;
   - a tick naming it, under an operator's hold on that same world, neither continues nor releases anything;
   - with its round's recorded end altered, nothing happens;
-  - with the record intact it is continued, re-queued and finishes, never parked again;
+  - a pass whose fence refuses the image's write leaves its approval written and unrecorded, still open;
+  - with the record intact, the tick naming it finishes that same approval (one approval, recorded) and re-queues it;
+  - parked again on the same hold with its continuation recorded and nothing open, the tick naming it releases it;
+  - it then finishes, never parked again;
 - the shape rules, one by one;
 - the deadline per policy.
 

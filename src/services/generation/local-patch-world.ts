@@ -34,7 +34,7 @@ import { subjectUpgradeOf } from "./subject-enrollment";
 import { subjectRejudgePending } from "./subject-rejudge";
 import { LOCAL_PATCH_BOARD_REVIEW_MIN_MS, localPatchBoardAwaitsProvider, localPatchProgressOrder, localPatchRestDecision, localPatchRestOf,
   localPatchReviewFits, selfRepairProgress, type LocalPatchRest } from "../../domain/scene/local-patch-progress";
-import { continueAdmittedReviewInterruptions, openAdmittedInterruptions, recoverEnrolledReviewInterruptions } from "./subject-upgrade";
+import { continueAdmittedReviewInterruptions, openAdmittedInterruptions, recoverEnrolledReviewInterruptions, reviewContinuationRecorded } from "./subject-upgrade";
 import { advanceContinuityInBackground } from "./continuity-background";
 import { enrollLeanWorld } from "./lean-enrollment";
 import { isLeanWorld } from "./lean-release";
@@ -107,14 +107,18 @@ const PARKED_STEPS = [LOCAL_PATCH_NEEDS_RELEASE, LOCAL_PATCH_RECOVERY_EXHAUSTED]
  * (`continueAdmittedReviewInterruptions`) under its own claim, so no parked job is ever released.
  *
  * A world parked before this existed is resumed only by a tick that names it (its owner's page), and only when the hold
- * the engine recorded names one of those interruptions (`<requestKey>: …`); the job is re-queued only once the ledger is
- * no longer held, compared on the hold it observed, so a hold placed meanwhile stays.
+ * the engine recorded names one of its own review interruptions (`<requestKey>: …`): one still open, or one an earlier
+ * pass already continued and recorded on its image (that pass may have stopped before the next image or the release).
+ * The job is re-queued only once nothing is open and the ledger is no longer held, compared on the hold it observed,
+ * so a hold placed meanwhile stays.
  */
 async function resumeParkedInterruption(c: Container, gameId: string, observed: { id: string; lastError: string | null; updatedAt: Date },
   deps: Pick<LocalPatchBoardReviewDeps, "readBoardArt">, deadlineAt: number): Promise<void> {
   const open = await openAdmittedInterruptions(c, gameId);
-  if (open === "blocked" || ![...open.values()].some(item => item.requestKeys.some(key => observed.lastError?.startsWith(`${key}: `)))) return;
-  if (await continueAdmittedReviewInterruptions(c, gameId, deps, deadlineAt) !== "done") return;
+  if (open === "blocked") return;
+  const named = observed.lastError?.split(": ")[0] ?? "";
+  if (![...open.values()].some(item => item.requestKeys.includes(named)) && !await reviewContinuationRecorded(c, gameId, named)) return;
+  if (open.size && await continueAdmittedReviewInterruptions(c, gameId, deps, deadlineAt) !== "done") return;
   if ((await boardWizardBudgetOf(c).audit(boardWizardWorldId(gameId))).held) return;
   await c.db.generationJob.updateMany({ where: { id: observed.id, status: "FAILED", currentStep: LOCAL_PATCH_NEEDS_RELEASE,
     lastError: observed.lastError, updatedAt: observed.updatedAt }, data: { status: "QUEUED", currentStep: "local-patch", lastError: null } });
@@ -447,8 +451,9 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
       data: { status: "QUEUED", currentStep: "local-patch", lastError: null } }); });
     return { ...empty, claimed: true, pending: true, paused: false };
   };
-  // First, while this slice has its time, under its own claim: one image at a time, each prepared alone.
-  if (automatic && !extraPlan && await subjectUpgradeOf(c.db, gameId) && (await boardWizardBudgetOf(c).audit(boardWizardWorldId(gameId))).held) {
+  // First, while this slice has its time, under its own claim: one image at a time, each prepared alone. Also when the
+  // ledger is not held: an approval whose image never recorded it (its pass stopped) is finished here.
+  if (automatic && !extraPlan && await subjectUpgradeOf(c.db, gameId)) {
     const continued = await continueAdmittedReviewInterruptions(c, gameId, { readBoardArt: deps.readBoardArt },
       (options.hardDeadlineAt ?? Date.now() + 270_000) - LOCAL_PATCH_PHASE_MARGIN_MS, fence);
     if (continued === "partial") return yieldToContinue();
@@ -827,6 +832,8 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
         if (reviewed.state !== "done") {
           pendingReviews++;
           if (reviewed.state === "held") {
+            // Held only by interruptions the automatic continuation admits: queued for the next slice, never parked.
+            if (await continuable()) return { ...await yieldToContinue(), outcomes, blocked };
             attention = reviewed.reason ?? "local-patch: grouped review requires charge reconciliation";
             await c.db.$transaction(async tx => {
               await fence(tx);

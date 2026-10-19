@@ -98,6 +98,8 @@ export interface WorldAutomaticReviewRecoveryV2 extends WorldReservationInput {
   authorizationSha256: string; authorizedAt: string;
 }
 export const WORLD_AUTOMATIC_REVIEW_RECOVERY_V2_LIMIT = 4;
+/** Distinct interrupted reviews the v1 policy continues per world. */
+export const WORLD_AUTOMATIC_REVIEW_RECOVERY_V1_LIMIT = 2;
 export type WorldContinuationRecord = WorldUnknownContinuationApproval | WorldAutomaticImageRecovery | WorldAutomaticReviewRecovery | WorldAutomaticReviewRecoveryV2;
 export type WorldAutomaticImageRecoveryInput = Omit<WorldAutomaticImageRecovery, "version" | "worldId">;
 export type WorldAutomaticReviewRecoveryInput = Omit<WorldAutomaticReviewRecovery, "version" | "worldId">;
@@ -325,7 +327,7 @@ export function validateWorldUnknownContinuationApprovals(snapshot: WorldBudgetS
       automaticHides.add(hide);
     }
     if (approval.version === "world-automatic-review-recovery/v1") {
-      if (automaticReviews.has(approval.requestKey) || automaticReviews.size >= 2)
+      if (automaticReviews.has(approval.requestKey) || automaticReviews.size >= WORLD_AUTOMATIC_REVIEW_RECOVERY_V1_LIMIT)
         fail("invalid_snapshot", "At most two interrupted reviews may recover automatically per world");
       automaticReviews.add(approval.requestKey);
     }
@@ -425,6 +427,12 @@ export class WorldBudget {
   async readContinuationApproval(worldId: string, requestKey: string): Promise<WorldContinuationRecord | null> {
     nonempty(requestKey, "requestKey");
     return this.transact(worldId, async tx => getMatchingUnknownContinuationApproval(tx.snapshot, requestKey));
+  }
+
+  /** How many approvals of each version this world holds, settled requests included: what the per-world limits count. */
+  async countContinuationApprovals(worldId: string): Promise<Readonly<Record<string, number>>> {
+    return this.transact(worldId, async tx => (tx.snapshot.unknownContinuationApprovals ?? [])
+      .reduce<Record<string, number>>((counts, approval) => ({ ...counts, [approval.version]: (counts[approval.version] ?? 0) + 1 }), {}));
   }
 
   async authorizeAutomaticImageRecovery(worldId: string, input: WorldAutomaticImageRecoveryInput) {

@@ -13,7 +13,8 @@ import { dualReviewQuestionCandidates } from "./local-patch-dual-review";
 import { subjectStageRaw, type DualReviewProof } from "./local-patch-dual-evidence";
 import { readLocalPatchExtraAttemptPlan } from "./local-patch-extra-attempt";
 import { LocalPatchRetainedPurchaseStore } from "./local-patch-lifecycle";
-import { admittedInterruption, recoverPreparedLocalPatchReview, recoverPreparedLocalPatchReviews } from "./local-patch-review-interruption-recovery";
+import { admittedInterruption, continuationRecorded, isAutomaticReviewApproval, recoverPreparedLocalPatchReview,
+  recoverPreparedLocalPatchReviews } from "./local-patch-review-interruption-recovery";
 import { backgroundReviewWaiting, backgroundRoundOfKey } from "./continuity-background";
 import { DUAL_VISUAL_REVIEW_V3, dualVisualReviewVersion } from "./visual-review-release";
 import { sha256Bytes } from "./fixed-sprite";
@@ -252,6 +253,9 @@ export const CONTINUE_PREPARE_NEED_MS = 75_000;
  * the image each asked about (its background round's binding: appearance, variant, pixels). A cheap read: ledger,
  * retained records, round records. "blocked" when any uncontinued unknown answer is one the automatic continuation does
  * not admit (`admittedInterruption`) or cannot locate, so a person decides; an empty map when none is open.
+ * A continuation is complete only once its image recorded it (`continuationRecorded`): an automatic approval written
+ * by a pass that then stopped, or whose fence refused the image's write, stays open and is finished, never skipped.
+ * Any other approval (a person's) is a decision already made.
  */
 export async function openAdmittedInterruptions(c: Container, gameId: string)
   : Promise<Map<string, { binding: BackgroundReviewBinding; requestKeys: string[] }> | "blocked"> {
@@ -261,7 +265,8 @@ export async function openAdmittedInterruptions(c: Container, gameId: string)
   const store = new LocalPatchRetainedPurchaseStore(c, gameId, budget);
   const open = new Map<string, { binding: BackgroundReviewBinding; requestKeys: string[] }>();
   for (const requestKey of audit.unknownRequestKeys) {
-    if (await budget.readContinuationApproval(worldId, requestKey)) continue;
+    const approval = await budget.readContinuationApproval(worldId, requestKey);
+    if (approval && (!isAutomaticReviewApproval(approval) || await continuationRecorded(c, gameId, approval))) continue;
     const retained = requestKey.startsWith("self-repair:board:") ? await store.get(worldId, requestKey) : null;
     const round = retained ? await backgroundRoundOfKey(c.db, gameId, worldId, requestKey) : null;
     if (!retained || retained.evidence || !round || !await admittedInterruption(c, gameId, worldId, requestKey, retained)) return "blocked";
@@ -269,6 +274,16 @@ export async function openAdmittedInterruptions(c: Container, gameId: string)
     open.set(image, { binding: round.intent.binding, requestKeys: [...(open.get(image)?.requestKeys ?? []), requestKey] });
   }
   return open;
+}
+
+/**
+ * Whether this unknown answer's automatic continuation was already made and recorded on its image: the evidence a
+ * world parked on it can be resumed by, once an earlier pass continued it and stopped before releasing (Codex round 17).
+ */
+export async function reviewContinuationRecorded(c: Container, gameId: string, requestKey: string): Promise<boolean> {
+  if (!requestKey.startsWith("self-repair:board:")) return false;
+  const approval = await boardWizardBudgetOf(c).readContinuationApproval(boardWizardWorldId(gameId), requestKey);
+  return !!approval && await continuationRecorded(c, gameId, approval);
 }
 
 /**
@@ -286,8 +301,9 @@ export async function continueAdmittedReviewInterruptions(c: Container, gameId: 
   const version = await dualVisualReviewVersion(c.db, gameId);
   const game = await c.db.game.findUnique({ where: { id: gameId }, include: { scenes: true } });
   if (!version || !game || game.status !== "TARGETS_GENERATING" || game.deletedAt) return "blocked";
-  // A question still asked about the same image ends first (its round answers or is cancelled at its deadline): an
-  // image's interruptions are continued together, never one ahead of a sibling question of its own round.
+  // A question still asked about the same image ends first: an image's interruptions are continued together, never one
+  // ahead of a sibling question of its own round. Meanwhile the world stays queued and its slices poll that round, as
+  // for any question in flight (cancelled at its deadline, ended by whatever the provider reports, or `missing`).
   const asking = await backgroundReviewWaiting(c.db, gameId, { inFlightOnly: true });
   let deferred = false;
   for (const [image, { binding, requestKeys }] of open) {

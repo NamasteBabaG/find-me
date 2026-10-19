@@ -24,6 +24,7 @@ import { allowedDualPublication } from "../local-patch-dual-publication";
 import { LEAN_RECOVERY_BACKOFF_MS, LOCAL_PATCH_STYLE, runLocalPatchWorldSlice } from "../local-patch-world";
 import { tickGeneration } from "../queue";
 import { advanceContinuityInBackground, backgroundRoundIdOf } from "../continuity-background";
+import { continueAdmittedReviewInterruptions, openAdmittedInterruptions } from "../subject-upgrade";
 import { DUAL_VISUAL_REVIEW_V3, pinVisualReviewRelease } from "../visual-review-release";
 import { sha256Bytes } from "../fixed-sprite";
 import { SYSTEM_ENROLLMENT_OPERATOR, subjectUpgradeOf } from "../subject-enrollment";
@@ -124,9 +125,11 @@ function painter(gameId: string, prompts: Map<string, string>, qualities: Map<st
  * `lose`: that appearance's first bundle create never answers (a lost create: an unknown charge).
  * `slow`: that appearance's first continuity answer keeps running until `released()` (19 October: one Flex answer ran 25 minutes).
  * `fail`: the provider ends that appearance's first bundle `failed`, with no text and no usage (19 October, Flex).
- * `failContinuity`: the same for that appearance's first continuity question, asked beside its bundle.
- * `failMany`: `fail` for each of these appearances. */
-function sol(options: { lose?: string; slow?: string; released?: () => boolean; fail?: string; failContinuity?: string; failMany?: ReadonlySet<string> } = {}) {
+ * `failContinuity`: the same for that appearance's first continuity question, asked beside its bundle; it ends a read later.
+ * `failMany`: `fail` for each of these appearances.
+ * `failFast`: that appearance's first bundle has already ended `failed` when it is first read. */
+function sol(options: { lose?: string; slow?: string; released?: () => boolean; fail?: string; failContinuity?: string; failMany?: ReadonlySet<string>;
+  failFast?: string } = {}) {
   const creates: { hideId: string; kind: "bundle" | "continuity"; tier: unknown; attempts: number }[] = [];
   const polls = new Map<string, { hideId: string; kind: "bundle" | "continuity"; tier: unknown; n: number; reads: number }>();
   const bundles = new Map<string, number>(), refused = new Set<string>(), lost = new Set<string>();
@@ -153,8 +156,11 @@ function sol(options: { lose?: string; slow?: string; released?: () => boolean; 
       const state = polls.get(responseId);
       if (!state) return { status: "missing" };
       if (responseId === slowResponse && !options.released?.()) { slowReads++; return { status: "in_progress" }; }
-      if (++state.reads === 1) return { status: "in_progress" };
-      if ((state.hideId === options.fail || options.failMany?.has(state.hideId)) && state.kind === "bundle" && state.n === 1 || responseId === failingContinuity)
+      const failFast = state.hideId === options.failFast && state.kind === "bundle" && state.n === 1;
+      if (++state.reads === 1 && !failFast) return { status: "in_progress" };
+      // The failing continuity question ends a read after its bundle: the two failures arrive at different times.
+      if (responseId === failingContinuity && state.reads === 2) return { status: "in_progress" };
+      if ((state.hideId === options.fail || options.failMany?.has(state.hideId)) && state.kind === "bundle" && state.n === 1 || responseId === failingContinuity || failFast)
         return { status: "failed", reading: { responseId, raw: null, usage: null, model: "gpt-6.1-sol", finishReason: "failed", serviceTier: String(state.tier) } };
       return { status: "completed", reading: { responseId, raw: state.kind === "bundle" ? bundleAnswer(state.hideId, state.n) : longAnswer(state.hideId, 400, 400, 160),
         usage: { input_tokens: 2000, output_tokens: 500 }, model: "gpt-6.1-sol", finishReason: "stop", serviceTier: String(state.tier) } };
@@ -421,11 +427,31 @@ describe("local-patch-lean/v1 on a whole paid world", () => {
     expect(await job()).toMatchObject({ status: "FAILED", currentStep: "local-patch:needs-release", lastError: engineHold });
     expect(await approval()).toBeNull();
     await db.auditLog.update({ where: { id: outcomeId }, data: { metaJson: outcome.metaJson } });
-    // Its own record intact: the tick naming it continues the failure (the unknown charge kept whole) and re-queues it.
+    // A pass that wrote the approval and then lost its claim (its fence refuses the image's write): the approval stands,
+    // its image never recorded it, and it stays open for the next pass, never skipped (Codex round 17).
+    const recorded = async () => !!await db.auditLog.findUnique({ where: { id: (await approval())!.approvalId } });
+    await expect(continueAdmittedReviewInterruptions(container, gameId, {}, Date.now() + 270_000, async () => { throw Error("claim lost"); }))
+      .rejects.toThrow("claim lost");
+    const written = (await approval())!;
+    expect(written.version).toMatch(/^world-automatic-review-recovery\/v[12]$/);
+    expect(await recorded()).toBe(false);
+    const open = await openAdmittedInterruptions(container, gameId);
+    expect(open !== "blocked" && [...open.values()].flatMap(item => item.requestKeys)).toEqual([key]);
+    expect(await job()).toMatchObject({ status: "FAILED", currentStep: "local-patch:needs-release", lastError: engineHold });
+    // Its own record intact: the tick naming it finishes that continuation (the same approval, recorded on its image;
+    // the unknown charge kept whole) and re-queues it.
     await slice();
-    expect((await approval())?.version).toMatch(/^world-automatic-review-recovery\/v[12]$/);
+    expect(await approval()).toEqual(written);
+    expect(await budget.countContinuationApprovals(worldId)).toEqual({ [written.version]: 1 });
+    expect(await recorded()).toBe(true);
     expect(await budget.readRequest(worldId, key)).toMatchObject({ state: "unknown", reserveMicroUsd: 200_000 });
     expect((await job()).currentStep).not.toBe("local-patch:needs-release");
+    // A pass that recorded it and stopped before releasing: the engine's hold, nothing open. The tick naming it finishes
+    // that same resumption from the recorded continuation.
+    await park(engineHold);
+    await slice();
+    expect((await job()).currentStep).not.toBe("local-patch:needs-release");
+    expect(await approval()).toEqual(written);
     // And the world finishes with its ordinary slices, never parked again.
     const ready = async () => (await db.game.findUniqueOrThrow({ where: { id: gameId } })).configJson !== null;
     for (let ticks = 0; ticks < 900 && !await ready(); ticks++) {
@@ -464,6 +490,29 @@ describe("local-patch-lean/v1 on a whole paid world", () => {
     expect(receipt.reviewInterruptions).toHaveLength(2);
     expect(new Set(receipt.reviewInterruptions.map((one: { requestKey: string }) => one.requestKey))).toEqual(new Set(audit.unknownRequestKeys));
     expect(receipt.evidenceAttempts.filter((a: { code: string; attempt: number }) => a.code === "http" && a.attempt === 1)).toHaveLength(1);
+  }, 1_500_000);
+
+  it("never parks when the review of a board the slice just completed reads its bundle already ended failed (Codex round 17)", async () => {
+    const gameId = "lean-world-failed-at-once"; await leanWorld(gameId);
+    const busy = new Set([boardOf(THIRD.id).board, boardOf(REFUSED.id).board, boardOf(SEAM.id).board]);
+    const FAST = BOARDS.find(b => !busy.has(b.board))!.hides[0]!;
+    const provider = sol({ failFast: FAST.id }), container = { ...c, visualReview: { request: vi.fn() }, backgroundReview: provider.fake } as Container;
+    const diagnose = vi.fn(async (wire: SelfRepairWire) => {
+      const mask = maskForHide(SEAM), core = { left: mask.left + 12, top: 40, width: 40, height: 60 };
+      return { verdict: null, raw: JSON.stringify({ cause: "composition-clipping", action: "recompose-retained", sourceKey: `${SEAM.id}:${SEAM.pose}:render:1`,
+        returnWindow: { left: 16, top: 16, width: 480, height: 736 }, protectedCore: core, faceRect: { left: core.left + 4, top: core.top + 4, width: 30, height: 30 },
+        explanation: "Synthetic diagnosis of the broken join." }), usage: { prompt_tokens: 9000, completion_tokens: 500 },
+        requestId: `req-${gameId}-diagnosis-${wire.prompt.length}`, model: "gpt-5.6-sol", finishReason: "stop", wireFault: null, costUnknown: false };
+    });
+    const ready = async () => (await db.game.findUniqueOrThrow({ where: { id: gameId } })).configJson !== null;
+    for (let ticks = 0; ticks < 900 && !await ready(); ticks++) {
+      await runLocalPatchWorldSlice(container, painter(gameId, new Map(), new Map()), gameId, { hardDeadlineAt: Date.now() + 270_000, diagnose });
+      expect((await db.generationJob.findUniqueOrThrow({ where: { id: `job_${gameId}` } })).currentStep).not.toBe("local-patch:needs-release");
+    }
+    expect(await ready()).toBe(true);
+    const worldId = boardWizardWorldId(gameId), budget = boardWizardBudgetOf(c), audit = await budget.audit(worldId);
+    expect(audit.unknownRequestKeys).toHaveLength(1);
+    expect((await budget.readContinuationApproval(worldId, audit.unknownRequestKeys[0]!))?.version).toMatch(/^world-automatic-review-recovery\/v[12]$/);
   }, 1_500_000);
 
   it("parks for a person, within a slice, at the failure its continuations cannot cover: it never yields without progress", async () => {

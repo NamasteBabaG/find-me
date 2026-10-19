@@ -6,6 +6,7 @@ import type { prepareLocalPatchBoardReview } from "./local-patch-board-review";
 import { fenceLocalPatchImages, LocalPatchRetainedPurchaseStore } from "./local-patch-lifecycle";
 import { sha256Bytes } from "./fixed-sprite";
 import { WorldBudgetError, type WorldAutomaticReviewRecovery, type WorldAutomaticReviewRecoveryV2 } from "./world-budget";
+import { WORLD_AUTOMATIC_REVIEW_RECOVERY_V1_LIMIT, WORLD_AUTOMATIC_REVIEW_RECOVERY_V2_LIMIT } from "../../domain/generation/world-budget";
 import type { EvidenceRole, EvidenceStrategy } from "../../domain/scene/local-patch-evidence-policy";
 import { dualReviewReserves } from "../../domain/generation/dual-review-reserve";
 import { SUBJECT_REVIEW_RECOVERY, subjectUpgradeOf } from "./subject-enrollment";
@@ -73,8 +74,11 @@ export async function recoverPreparedLocalPatchReview(c: Container, prepared: Pr
  * Every interrupted question about ONE image's unchanged pixels, continued together: a lean world asks its bundle and
  * its continuity question side by side, and both can be interrupted in the same round. Continuing one alone would
  * record that round on the image and make the other's question unreachable (Codex round 16).
- * Each question is authorized on its own (v1 while its two records last, then v2), and one transaction records them
- * all on the image. `releaseParkedJob: false` leaves the job as it is, for a caller that releases only the hold it
+ * Every question is checked, and the per-world limits counted (v1 while its two records last, then v2), before any
+ * approval is written: an image's questions are continued together or not at all (Codex round 17). One transaction
+ * then records them all on the image; its approval audit rows are the receipt that they were (`continuationRecorded`).
+ * An approval written whose image never recorded it (a refused fence, a stopped worker) is reused by the next pass,
+ * never counted again. `releaseParkedJob: false` leaves the job as it is, for a caller that releases only the hold it
  * observed; it never re-queues a job that is not parked.
  */
 export async function recoverPreparedLocalPatchReviews(c: Container, prepared: Prepared,
@@ -86,28 +90,63 @@ export async function recoverPreparedLocalPatchReviews(c: Container, prepared: P
   if (options.admitProviderFailed && options.releaseParkedJob !== false) return false;
   const upgrade = await subjectUpgradeOf(c.db, prepared.game.id);
   const enrolled = upgrade?.reviewRecovery === SUBJECT_REVIEW_RECOVERY && upgrade.ownerId === prepared.game.ownerId;
-  const authorized: Authorized[] = [];
+  const counts = await prepared.budget.countContinuationApprovals(prepared.worldId);
+  let freeV1 = WORLD_AUTOMATIC_REVIEW_RECOVERY_V1_LIMIT - (counts[REVIEW_APPROVAL_V1] ?? 0);
+  let freeV2 = enrolled ? WORLD_AUTOMATIC_REVIEW_RECOVERY_V2_LIMIT - (counts[REVIEW_APPROVAL_V2] ?? 0) : 0;
+  const planned: Planned[] = [];
   for (const question of questions) {
-    const one = await authorizeInterruption(c, prepared, question, "v1", !!options.admitProviderFailed)
-      ?? (enrolled ? await authorizeInterruption(c, prepared, question, "v2", !!options.admitProviderFailed) : null);
+    const prior = await prepared.budget.readContinuationApproval(prepared.worldId, question.requestKey);
+    const release = prior?.version === REVIEW_APPROVAL_V1 ? "v1" : prior?.version === REVIEW_APPROVAL_V2 ? (enrolled ? "v2" : null) : prior ? null
+      : freeV1 > 0 ? (freeV1--, "v1") : freeV2 > 0 ? (freeV2--, "v2") : null;
+    const one = release ? await checkInterruption(c, prepared, question, release, !!options.admitProviderFailed) : null;
     if (!one) return false;
-    authorized.push(one);
+    planned.push(one);
   }
+  for (const one of planned) if (!await writeApproval(c, prepared, one)) return false;
   // An enrolled world keeps the last complete proof beside the interruption, so its paid continuity answer about
   // the same pixels can still be reused; a historical world's bytes are unchanged.
-  return recordInterruptions(c, prepared, authorized, fence, enrolled, options.releaseParkedJob !== false);
+  return recordInterruptions(c, prepared, planned.map(one => one.authorized), fence, enrolled, options.releaseParkedJob !== false);
 }
 
 export type InterruptedQuestion = Question & { readonly requestKey: string; readonly fingerprint: string };
 type Authorized = { question: InterruptedQuestion; policyId: string; approvalId: string; proof: Record<string, unknown>;
   reserveMicroUsd: number; shape: "timeout" | "provider-failed"; wireFault: "timeout" | "http" };
+type Planned = { authorized: Authorized; recovery: WorldAutomaticReviewRecovery | WorldAutomaticReviewRecoveryV2 };
+const REVIEW_APPROVAL_V1 = "world-automatic-review-recovery/v1", REVIEW_APPROVAL_V2 = "world-automatic-review-recovery/v2";
+
+/**
+ * Whether an automatic review continuation was recorded on its image: its audit row is written only inside the image's
+ * own transaction (`recordInterruptions`), so an approval without it is a continuation still to finish.
+ */
+export async function continuationRecorded(c: Pick<Container, "db">, gameId: string, approval: { version: string; approvalId: string }): Promise<boolean> {
+  if (approval.version !== REVIEW_APPROVAL_V1 && approval.version !== REVIEW_APPROVAL_V2) return false;
+  return !!await c.db.auditLog.findFirst({ where: { id: approval.approvalId, entityType: "Game", entityId: gameId }, select: { id: true } });
+}
+export const isAutomaticReviewApproval = (approval: { version: string }) =>
+  approval.version === REVIEW_APPROVAL_V1 || approval.version === REVIEW_APPROVAL_V2;
 
 const paidGame = (value: { ownerId: string | null; orders: { userId: string | null; paymentStatus: string; paidAt: Date | null; refundedAt: Date | null }[] }) =>
   value.orders.some(o => o.userId === value.ownerId && o.paymentStatus === "PAID" && o.paidAt && !o.refundedAt)
   && !value.orders.some(o => o.paymentStatus === "REFUNDED" || o.refundedAt);
 
-async function authorizeInterruption(c: Container, prepared: Prepared, question: InterruptedQuestion, release: "v1" | "v2",
-  admitProviderFailed: boolean): Promise<Authorized | null> {
+/** One question's approval, written durably before its image records it; the same record again is a no-op. */
+async function writeApproval(c: Container, prepared: Prepared, { recovery }: Planned): Promise<boolean> {
+  try {
+    if (recovery.version === REVIEW_APPROVAL_V1)
+      await boardWizardBudgetOf(c, 1, { authorizeAutomaticReviewRecovery: async captured => JSON.stringify(captured) === JSON.stringify(recovery) })
+        .authorizeAutomaticReviewRecovery(prepared.worldId, recovery);
+    else await boardWizardBudgetOf(c, 1, { authorizeAutomaticReviewRecoveryV2: async captured => JSON.stringify(captured) === JSON.stringify(recovery) })
+      .authorizeAutomaticReviewRecoveryV2(prepared.worldId, recovery);
+  } catch (error) {
+    if (error instanceof WorldBudgetError && ["invalid_input", "invalid_snapshot", "world_held"].includes(error.code)) return false;
+    throw error;
+  }
+  return true;
+}
+
+/** Everything one question's continuation must satisfy, and the approval it would write. Reads only. */
+async function checkInterruption(c: Container, prepared: Prepared, question: InterruptedQuestion, release: "v1" | "v2",
+  admitProviderFailed: boolean): Promise<Planned | null> {
   const policyId = release === "v1" ? REVIEW_INTERRUPTION_POLICY : REVIEW_INTERRUPTION_POLICY_V2;
   const { game, scene, request, worldId, budget } = prepared, { requestKey, fingerprint } = question;
   if (scene.sceneVersion !== 12 || prepared.extraPlan || request.reviewScope !== "ready-only/v1"
@@ -139,27 +178,16 @@ async function authorizeInterruption(c: Container, prepared: Prepared, question:
     ...(shape === "provider-failed" ? { providerFailed: PROVIDER_FAILED_SHAPE, responseId: reply.requestId } : {}) };
   const proofHash = sha256Bytes(Buffer.from(JSON.stringify(proof))), approvalId = release === "v1" ? `auto-review-${proofHash}` : `auto-review-v2-${proofHash}`;
   const prior = await budget.readContinuationApproval(worldId, requestKey);
-  try {
-    if (release === "v1") {
-      const recovery: WorldAutomaticReviewRecovery = { version: "world-automatic-review-recovery/v1", worldId, approvalId,
-        requestKey, scope: "judge", operationFingerprint: fingerprint, reserveMicroUsd: held.reserveMicroUsd,
-        unknownReasons: held.unknownReasons, policyId: REVIEW_INTERRUPTION_POLICY, authorizationSha256: proofHash,
-        authorizedAt: prior?.version === "world-automatic-review-recovery/v1" ? prior.authorizedAt : selected.row.updatedAt.toISOString() };
-      await boardWizardBudgetOf(c, 1, { authorizeAutomaticReviewRecovery: async captured => JSON.stringify(captured) === JSON.stringify(recovery) })
-        .authorizeAutomaticReviewRecovery(worldId, recovery);
-    } else {
-      const recovery: WorldAutomaticReviewRecoveryV2 = { version: "world-automatic-review-recovery/v2", worldId, approvalId,
-        requestKey, scope: "judge", operationFingerprint: fingerprint, reserveMicroUsd: held.reserveMicroUsd,
-        unknownReasons: held.unknownReasons, policyId: REVIEW_INTERRUPTION_POLICY_V2, authorizationSha256: proofHash,
-        authorizedAt: prior?.version === "world-automatic-review-recovery/v2" ? prior.authorizedAt : selected.row.updatedAt.toISOString() };
-      await boardWizardBudgetOf(c, 1, { authorizeAutomaticReviewRecoveryV2: async captured => JSON.stringify(captured) === JSON.stringify(recovery) })
-        .authorizeAutomaticReviewRecoveryV2(worldId, recovery);
-    }
-  } catch (error) {
-    if (error instanceof WorldBudgetError && ["invalid_input", "invalid_snapshot", "world_held"].includes(error.code)) return null;
-    throw error;
-  }
-  return { question, policyId, approvalId, proof, reserveMicroUsd: held.reserveMicroUsd, shape, wireFault };
+  const recovery: WorldAutomaticReviewRecovery | WorldAutomaticReviewRecoveryV2 = release === "v1"
+    ? { version: "world-automatic-review-recovery/v1", worldId, approvalId,
+      requestKey, scope: "judge", operationFingerprint: fingerprint, reserveMicroUsd: held.reserveMicroUsd,
+      unknownReasons: held.unknownReasons, policyId: REVIEW_INTERRUPTION_POLICY, authorizationSha256: proofHash,
+      authorizedAt: prior?.version === "world-automatic-review-recovery/v1" ? prior.authorizedAt : selected.row.updatedAt.toISOString() }
+    : { version: "world-automatic-review-recovery/v2", worldId, approvalId,
+      requestKey, scope: "judge", operationFingerprint: fingerprint, reserveMicroUsd: held.reserveMicroUsd,
+      unknownReasons: held.unknownReasons, policyId: REVIEW_INTERRUPTION_POLICY_V2, authorizationSha256: proofHash,
+      authorizedAt: prior?.version === "world-automatic-review-recovery/v2" ? prior.authorizedAt : selected.row.updatedAt.toISOString() };
+  return { authorized: { question, policyId, approvalId, proof, reserveMicroUsd: held.reserveMicroUsd, shape, wireFault }, recovery };
 }
 
 /** One transaction: every authorized question recorded on its image, which goes back to its evidence questions. */
