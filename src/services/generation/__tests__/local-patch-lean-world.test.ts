@@ -475,7 +475,10 @@ describe("local-patch-lean/v1 on a whole paid world", () => {
     expect(wake).toMatchObject({ gameId, attempt: 1 });
     expect(await claimParkedWake(container, wake)).toBe(true);
     expect(await claimParkedWake(container, wake)).toBe(false);
-    await slice();
+    // The turn's slice and the owner's tick at the same moment: whichever records the image first, the other never writes
+    // a reason over the hold (its refusal is transient), and the world is released once.
+    await Promise.all([slice(), slice()]);
+    expect((await job()).lastError ?? "").not.toMatch(/^local-patch-continue-in-slice\/v1: /);
     expect(await approval()).toEqual(written);
     expect(await budget.countContinuationApprovals(worldId)).toEqual({ [written.version]: 1 });
     expect(await recorded()).toBe(true);

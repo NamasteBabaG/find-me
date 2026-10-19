@@ -85,7 +85,7 @@ export async function recoverPreparedLocalPatchReviews(c: Container, prepared: P
   questions: readonly InterruptedQuestion[], fence?: (tx: Prisma.TransactionClient) => Promise<void>,
   /** `admitProviderFailed`: only the continuation that re-queues nothing it did not observe admits a provider-declared
    * failure (local-patch-continue-in-slice/v1); every other caller admits the no-response shape alone, as before. */
-  options: { releaseParkedJob?: boolean; admitProviderFailed?: boolean; why?: { reason?: string } } = {}): Promise<boolean> {
+  options: { releaseParkedJob?: boolean; admitProviderFailed?: boolean; why?: { reason?: string; transient?: boolean } } = {}): Promise<boolean> {
   const refuse = (reason: string) => { if (options.why) options.why.reason = reason; return false; };
   if (!questions.length || new Set(questions.map(q => q.requestKey)).size !== questions.length) return refuse("no distinct interrupted questions to continue");
   if (options.admitProviderFailed && options.releaseParkedJob !== false) return refuse("a provider-declared failure is continued only without releasing the job");
@@ -107,11 +107,18 @@ export async function recoverPreparedLocalPatchReviews(c: Container, prepared: P
     if (!one) return refuse(`${question.requestKey}: its record no longer matches an interruption this continuation admits on these pixels`);
     planned.push(one);
   }
-  for (const one of planned) if (!await writeApproval(c, prepared, one)) return refuse(`${one.authorized.question.requestKey}: the world ledger refused its continuation`);
+  // Every permanent ledger refusal (over its cap, a conflict, an overrun, spent limits) was refused above, from what this
+  // pass read; one here means the ledger moved under it (a concurrent continuation), so another turn decides.
+  for (const one of planned) if (!await writeApproval(c, prepared, one)) {
+    if (options.why) options.why.transient = true;
+    return refuse(`${one.authorized.question.requestKey}: the world ledger refused its continuation`);
+  }
   // An enrolled world keeps the last complete proof beside the interruption, so its paid continuity answer about
   // the same pixels can still be reused; a historical world's bytes are unchanged.
-  return await recordInterruptions(c, prepared, planned.map(one => one.authorized), fence, enrolled, options.releaseParkedJob !== false)
-    || refuse(`${questions.map(q => q.requestKey).join(", ")}: the image changed while its continuation was recorded`);
+  if (await recordInterruptions(c, prepared, planned.map(one => one.authorized), fence, enrolled, options.releaseParkedJob !== false)) return true;
+  // The image's row moved under this write: a concurrent pass recorded it first, or the image changed.
+  if (options.why) options.why.transient = true;
+  return refuse(`${questions.map(q => q.requestKey).join(", ")}: the image changed while its continuation was recorded`);
 }
 
 export type InterruptedQuestion = Question & { readonly requestKey: string; readonly fingerprint: string };

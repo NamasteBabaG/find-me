@@ -324,12 +324,15 @@ export async function continueAdmittedReviewInterruptions(c: Container, gameId: 
     const prepared = await prepareLocalPatchBoardReview(c, { gameId, sceneId: scene.id }, deps,
       { includePlayerCandidates: true, playerReview: true, onlyHideId: binding.hideId });
     const entry = prepared.ready ? prepared.entries.find(e => e.hide.id === binding.hideId) : undefined;
-    // Only the pixels the questions asked about: another image is another question.
-    if (!prepared.ready || !entry || entry.row.id !== binding.variantId || entry.imageSha256 !== binding.imageSha256)
+    // Only the pixels the questions asked about: another image is another question. Either refusal below is also what a
+    // pass sees when a concurrent pass has just continued this image, so it is marked transient.
+    if (!prepared.ready || !entry || entry.row.id !== binding.variantId || entry.imageSha256 !== binding.imageSha256) {
+      why.transient = true;
       return blocked(`${requestKeys.join(", ")}: the appearance ${binding.hideId} is no longer the image those questions asked about`);
+    }
     const candidates = await dualReviewQuestionCandidates(c, prepared, version);
     const questions = requestKeys.map(requestKey => candidates.find(item => item.requestKey === requestKey));
-    if (questions.some(q => !q)) return blocked(`${requestKeys.join(", ")}: the interrupted questions cannot be rebuilt on the same pixels`);
+    if (questions.some(q => !q)) { why.transient = true; return blocked(`${requestKeys.join(", ")}: the interrupted questions cannot be rebuilt on the same pixels`); }
     if (!await recoverPreparedLocalPatchReviews(c, prepared,
       questions.map(q => ({ requestKey: q!.requestKey, fingerprint: q!.fingerprint, role: q!.role, strategy: q!.strategy })),
       fence, { releaseParkedJob: false, admitProviderFailed: true, why })) return blocked(why.reason ?? `${requestKeys.join(", ")}: not continued`);
@@ -337,8 +340,9 @@ export async function continueAdmittedReviewInterruptions(c: Container, gameId: 
   return deferred ? "partial" : "done";
 }
 
-/** Why the automatic continuation cannot go on, in words a person can act on. */
-export type ContinuationWhy = { reason?: string };
+/** Why the automatic continuation cannot go on, in words a person can act on. `transient`: a concurrent pass may have
+ * just continued the same image (its pixels, question or row moved under this one), so another turn decides. */
+export type ContinuationWhy = { reason?: string; transient?: boolean };
 
 /**
  * An enrolled world's interrupted dual-review questions, found again by rebuilding

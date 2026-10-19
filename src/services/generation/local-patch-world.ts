@@ -122,7 +122,8 @@ export const LOCAL_PATCH_INTERRUPTION_HOLD = /^self-repair:board:[a-z0-9-]+:[0-9
  *
  * A refusal that waiting cannot change replaces the engine's own interruption hold with exactly why (Codex round 19), on
  * the same comparison: the park then says what a person must reconcile or authorize, and is never woken again. Time
- * running out, or a question still in flight, leaves the hold for the next turn. Any other hold is left as it is.
+ * running out, a question still in flight, or a refusal a concurrent resumption of the same image can cause (`transient`)
+ * leaves the hold for the next turn. Any other hold is left as it is.
  */
 async function resumeParkedInterruption(c: Container, gameId: string, observed: { id: string; lastError: string | null; updatedAt: Date },
   deps: Pick<LocalPatchBoardReviewDeps, "readBoardArt">, deadlineAt: number): Promise<void> {
@@ -137,7 +138,9 @@ async function resumeParkedInterruption(c: Container, gameId: string, observed: 
     return explain(`${named} is neither an interruption the automatic continuation admits nor one it already continued and recorded`);
   if (open.size) {
     const continued = await continueAdmittedReviewInterruptions(c, gameId, deps, deadlineAt, undefined, why);
-    if (continued === "blocked") return explain(why.reason ?? `${named}: not continued`);
+    // A concurrent resumption (the scheduled turn and the owner's tick) may have just continued the same image: never
+    // explained over, so its own release is not undone; the next turn decides from what was recorded.
+    if (continued === "blocked" && !why.transient) return explain(why.reason ?? `${named}: not continued`);
     if (continued !== "done") return;
   }
   const audit = await boardWizardBudgetOf(c).audit(boardWizardWorldId(gameId));
