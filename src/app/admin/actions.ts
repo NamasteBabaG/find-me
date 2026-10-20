@@ -14,6 +14,7 @@ import { headers } from "next/headers";
 import { env } from "@/lib/env";
 import { LOCAL_PATCH_REPAIR_RESUME_CONFIRMATION, resumeLocalPatchRepairs } from "@/services/generation/local-patch-repair-resume";
 import { LOCAL_PATCH_HUMAN_CONFIRMATION } from "@/services/generation/local-patch-human-approval";
+import { LEAN_REVIEW_RECOVERY_CONFIRMATION, applyLeanReviewRecovery } from "@/services/generation/lean-review-recovery";
 
 async function admin() {
   await requireQaAccess();
@@ -96,6 +97,31 @@ export async function resumeLocalPatchRepairsAction(fd: FormData): Promise<void>
   revalidatePath(destination);
   revalidatePath("/admin/orders");
   redirect(`${destination}?repair=${confirmed ? "queued" : "blocked"}`);
+}
+
+/**
+ * local-patch-lean-review-recovery/v1: an administrator's explicit release of one lean world its 2+4 continuations parked,
+ * bound to the exact plan shown on the order page. Never a page-load or cron side effect; the scheduled tick does the rest.
+ */
+export async function applyLeanReviewRecoveryAction(fd: FormData): Promise<void> {
+  const actor = await admin();
+  const gameId = str(fd, "gameId"), planSha256 = str(fd, "planSha256");
+  if (!/^[A-Za-z0-9_-]{1,160}$/.test(gameId)) redirect("/admin/orders");
+  const destination = `/admin/orders/${encodeURIComponent(gameId)}`;
+  const h = await headers(), origin = h.get("origin"), host = h.get("x-forwarded-host") ?? h.get("host");
+  let sameOrigin = false;
+  try { sameOrigin = !!origin && !!host && new URL(origin).host === host && h.get("sec-fetch-site") !== "cross-site"; } catch { /* reject invalid origins */ }
+  if (env().APP_ENV !== "qa" || !sameOrigin || fd.getAll("gameId").length !== 1 || fd.getAll("planSha256").length !== 1
+    || !/^[a-f0-9]{64}$/.test(planSha256) || fd.getAll("confirm").length !== 1 || str(fd, "confirm") !== LEAN_REVIEW_RECOVERY_CONFIRMATION)
+    redirect(`${destination}?leanRecovery=blocked`);
+  let applied = false;
+  try {
+    await applyLeanReviewRecovery(getContainer(), { gameId, operatorId: actor.id, expectedPlanSha256: planSha256 });
+    applied = true;
+  } catch { /* A safe operational notice, never private DB, ledger or identity details. */ }
+  revalidatePath(destination);
+  revalidatePath("/admin/orders");
+  redirect(`${destination}?leanRecovery=${applied ? "applied" : "blocked"}`);
 }
 
 export async function refundAction(fd: FormData): Promise<void> {

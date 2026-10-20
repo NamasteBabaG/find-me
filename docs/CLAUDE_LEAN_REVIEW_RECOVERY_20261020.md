@@ -160,8 +160,8 @@ Not run: the full `npm run check` and CI on an exact SHA. Both remain required b
    - the same job hold (status, step, reason and `updatedAt`);
    - settled 798509 and unknown 1000000 micro-USD across 7 keys;
    - v1 = 2, v2 = 4, nothing pending.
-5. Run `plan`. Expect `eligible: true`, no refusals, and `held` naming exactly the one key the hold names, with shape `provider-failed` and refusal `null`.
-6. Get Guy's explicit go-ahead, then run `apply` with that plan digest.
+5. Open the world's admin order page on QA (`/admin/orders/<gameId>`, §9). The release form appears only while the plan is eligible. It shows the committed total, the cap and what remains, and carries that plan's digest; `plan` (§4) prints the same plan from a terminal. Expect it to be eligible, with no refusals, holding exactly the one key the hold names, of shape `provider-failed`, with refusal `null`.
+6. With Guy's explicit go-ahead, an administrator ticks the confirmation and releases the world from that form (or runs `apply` with that plan digest).
 
    Afterwards confirm:
    - exactly one new audit row;
@@ -250,3 +250,47 @@ All runs used `--maxWorkers=1`; nothing live.
 | `git diff --check` | 0 | clean |
 
 Not run in this round either: the full `npm run check`, the build and CI on an exact SHA. All three remain required before release.
+
+Codex closed R1 and R2 in its round 2 (focused 63/63, independent probes 3/3, permanent world cases 4/4). The 26 files were then committed exactly as Codex hashed them (`85b427c5`, branch `claude/lean-review-recovery-20261020`, a name without the child's) and pushed.
+
+## 9. The admin release form (21 October)
+
+Guy chose to release the parked world from a page rather than the script, which needs the QA database credentials. The page follows the existing per-game admin forms (`LocalPatchRepairResumeForm` and `resumeLocalPatchRepairsAction`).
+
+**`LeanReviewRecoveryForm`** sits on `/admin/orders/[gameId]`:
+- It renders only for an administrator (`currentAdmin`); without one it never reads the plan.
+- It renders only while `planLeanReviewRecovery` is eligible.
+- It shows the committed total, the cap and what remains. It renders no request key, child, photograph or account.
+- It carries the game id and the plan digest in hidden fields, plus one required confirmation.
+
+**`applyLeanReviewRecoveryAction`** (`src/app/admin/actions.ts`):
+- QA access and an administrator are required, as for every admin action.
+- Before anything is attempted, it requires all of these:
+  - `APP_ENV=qa`;
+  - same origin, including a forwarded host;
+  - exactly one game id, matching the id pattern;
+  - exactly one 64-character hex plan digest;
+  - exactly one confirmation equal to `LEAN_REVIEW_RECOVERY_CONFIRMATION`.
+- The operator is the authenticated administrator; a forged `operatorId` field is ignored.
+- It calls `applyLeanReviewRecovery` with that digest. That function re-plans, compares the digest, and re-reads the hold and the ledger in a serializable transaction (§4).
+- Any failure becomes `?leanRecovery=blocked`, never with private detail. Success, or the same plan applied again, becomes `?leanRecovery=applied`.
+- The order page shows one notice for each.
+
+**Tests:**
+- `LeanReviewRecoveryForm.test.tsx`:
+  - renders one bound release, with the digest, the confirmation and one submit;
+  - shows the money and never the key;
+  - never acts on render;
+  - is hidden when the plan refuses;
+  - never reads the plan without an administrator.
+- `src/app/admin/__tests__/lean-review-recovery-action.test.ts`:
+  - the session administrator and the exact digest are bound;
+  - an idempotent repeat is reported as released;
+  - 14 refusal modes are checked before the release is attempted: production, no admin, QA access denied, cross origin, missing origin, cross site, unconfirmed, wrong confirmation, duplicate id, duplicate plan, duplicate confirmation, malformed plan, missing plan and invalid id;
+  - a failure becomes a safe notice.
+- The existing admin tests still pass with the new import.
+
+**Review.** Codex reviewed the change read-only on 21 October (CLI, `exec -s read-only`): `VERDICT: PASS`, no P0 to P3 findings.
+- Typecheck exit 0; the admin tests 11 files, 116 tests; `git diff --check` exit 0.
+- It traced the planner's reads: no reservation, release, write or provider call on render.
+- One note: the surrounding order page already creates a share link for a playable game. That branch does not run for a parked world in generation.

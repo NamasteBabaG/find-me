@@ -27,6 +27,8 @@ import { SUBJECT_REVIEW_RECOVERY, subjectUpgradeOf } from "./subject-enrollment"
  * with exactly why it cannot.
  */
 const PLAN_VERSION = "local-patch-lean-review-recovery-plan/v1" as const;
+/** What an administrator ticks on the order page to release one world (never a page-load or cron side effect). */
+export const LEAN_REVIEW_RECOVERY_CONFIRMATION = "release-this-world-under-local-patch-lean-review-recovery-v1";
 const sha = (value: string) => createHash("sha256").update(value).digest("hex");
 /** The hold the continuation writes once v1 and v2 are spent (recoverPreparedLocalPatchReviews), verbatim, naming the key it held. */
 export const SPENT_CONTINUATIONS_HOLD = new RegExp(`^local-patch-continue-in-slice/v1: the world's automatic review continuations are spent `

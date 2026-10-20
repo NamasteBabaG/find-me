@@ -15,6 +15,7 @@ import { Notice } from "@/ui/Shell";
 import { AttemptStrip } from "./AttemptStrip";
 import { BoardWizardRecoveryForm } from "./BoardWizardRecoveryForm";
 import { LocalPatchRepairResumeForm } from "./LocalPatchRepairResumeForm";
+import { LeanReviewRecoveryForm } from "./LeanReviewRecoveryForm";
 import { LocalPatchPaidRepairForm } from "./LocalPatchPaidRepairForm";
 import { LocalPatchExtraAttemptForm } from "./LocalPatchExtraAttemptForm";
 import { LocalPatchPartialReleaseForm } from "./LocalPatchPartialReleaseForm";
@@ -38,9 +39,9 @@ function judgeLabel(judge: { verdict: string; reason: string; claimedVerdict?: s
   return "? השופט לא הכריע";
 }
 
-export default async function AdminOrderPage({ params, searchParams }: { params: Promise<{ gameId: string }>; searchParams: Promise<{ v?: string; repair?: string; paidRepair?: string; partialRelease?: string; delivery?: string; refund?: string }> }) {
+export default async function AdminOrderPage({ params, searchParams }: { params: Promise<{ gameId: string }>; searchParams: Promise<{ v?: string; repair?: string; paidRepair?: string; partialRelease?: string; delivery?: string; refund?: string; leanRecovery?: string }> }) {
   await requireAdmin();
-  const [{ gameId }, { v, repair, paidRepair, partialRelease, delivery, refund }, { t }] = await Promise.all([params, searchParams, getI18n()]);
+  const [{ gameId }, { v, repair, paidRepair, partialRelease, delivery, refund, leanRecovery }, { t }] = await Promise.all([params, searchParams, getI18n()]);
   const variant: "A" | "B" = v === "B" ? "B" : "A";
   const c = getContainer();
   const detail = await orderDetailForAdmin(c, gameId);
@@ -90,12 +91,15 @@ export default async function AdminOrderPage({ params, searchParams }: { params:
       {refund === "review" ? <Notice kind="danger">{t.adminRefund.review}</Notice> : null}
       {repair === "queued" ? <Notice>ניסיונות התיקון אושרו ונוספו לתור היצירה בשרת.</Notice> : null}
       {repair === "blocked" ? <Notice kind="danger">התיקון לא אושר. רעננו ובדקו את מצב המשחק, ההרשאה והחיובים לפני ניסיון נוסף.</Notice> : null}
+      {leanRecovery === "applied" ? <Notice>העולם שוחרר. התור הרגיל ימשיך אותו בסבב המתוזמן הבא, ושאלות על תמונות שהספק סיים בכשל יישאלו ב-default.</Notice> : null}
+      {leanRecovery === "blocked" ? <Notice kind="danger">השחרור לא בוצע. רעננו ובדקו את מצב המשחק, ה-job וספר החשבונות לפני ניסיון נוסף.</Notice> : null}
       {paidRepair === "queued" ? <Notice>התיקונים מתמונות שכבר שולמו נוספו לתור לבדיקה. אין רינדור חדש ואין אישור פרסום בשלב זה.</Notice> : null}
       {partialRelease === "published" && playable ? <Notice>המשחק פורסם עם המחבואים שנשארו. מספר המחבואים והכוכבים בכל לוח תואם לתמונות שבמשחק.</Notice> : null}
       {partialRelease === "published" && playable && delivery === "pending" ? <Notice kind="danger">המשחק פורסם, אך המשך מסירת הקישור לא אושר. יש לבדוק את מצב הקישור והמשלוח.</Notice> : null}
       <LocalPatchPartialReleaseForm gameId={gameId} />
       <BoardWizardRecoveryForm gameId={gameId} />
       <LocalPatchRepairResumeForm gameId={gameId} />
+      <LeanReviewRecoveryForm gameId={gameId} />
       <LocalPatchPaidRepairForm game={game} />
       <LocalPatchExtraAttemptForm gameId={gameId} />
 
