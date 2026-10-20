@@ -1,8 +1,10 @@
-import { createHash } from "node:crypto";
 import { Prisma } from "@prisma/client";
 import type { Container } from "../container";
-import { LOCAL_PATCH_INTERRUPTION_HOLD, LOCAL_PATCH_NEEDS_RELEASE, LOCAL_PATCH_STYLE } from "./local-patch-world";
+import { LOCAL_PATCH_CONTINUE_IN_SLICE, LOCAL_PATCH_INTERRUPTION_HOLD, LOCAL_PATCH_NEEDS_RELEASE, LOCAL_PATCH_STYLE } from "./local-patch-world";
 import { subjectUpgradeOf } from "./subject-enrollment";
+import { boundLeanRecoveryHold, parkedHoldSha256 } from "./lean-review-recovery-pin";
+
+export { parkedHoldSha256 };
 
 /**
  * local-patch-parked-wake/v1. The scheduled tick never chooses a parked world, and the progress page does not tick a
@@ -23,6 +25,9 @@ import { subjectUpgradeOf } from "./subject-enrollment";
  *  - Each turn is claimed by a receipt whose id is the hold and the attempt number, so two scheduled ticks never take
  *    the same turn, and a turn is counted before its slice runs.
  *  - Every parked interruption hold is looked at, newest first: an exhausted one never hides a later one.
+ *  - local-patch-lean-review-recovery/v1: also the one hold a person released an existing world from, while the job still
+ *    holds exactly what they read (`boundLeanRecoveryHold`), under the same turns. Any other continuation hold is a
+ *    person's to read and is never woken.
  */
 export const LOCAL_PATCH_PARKED_WAKE_POLICY = "local-patch-parked-wake/v1" as const;
 export const LOCAL_PATCH_PARKED_WAKE_ACTION = "generation:parked-wake";
@@ -31,20 +36,20 @@ export const PARKED_WAKE_SPACING_MS = 10 * 60_000;
 
 export type ParkedWake = { readonly gameId: string; readonly jobId: string; readonly holdSha256: string; readonly attempt: number };
 
-/** One hold: the job, its reason and the moment the reason was written. */
-export function parkedHoldSha256(job: { id: string; updatedAt: Date; lastError: string | null }): string {
-  return createHash("sha256").update(JSON.stringify([job.id, job.updatedAt.toISOString(), job.lastError])).digest("hex");
-}
 const receiptPrefix = (holdSha256: string) => `aud_wake_${holdSha256.slice(0, 40)}_`;
 
 /** The parked world whose turn it is, or null. Reads only. */
 export async function nextParkedWake(c: Pick<Container, "db">, now = Date.now()): Promise<ParkedWake | null> {
   const jobs = await c.db.generationJob.findMany({
-    where: { status: "FAILED", currentStep: LOCAL_PATCH_NEEDS_RELEASE, lastError: { startsWith: "self-repair:board:", contains: " its charge cannot be stated (" },
+    where: { status: "FAILED", currentStep: LOCAL_PATCH_NEEDS_RELEASE,
+      OR: [{ lastError: { startsWith: "self-repair:board:", contains: " its charge cannot be stated (" } },
+        { lastError: { startsWith: `${LOCAL_PATCH_CONTINUE_IN_SLICE}: ` } }],
       game: { status: "TARGETS_GENERATING", deletedAt: null, styleVersion: LOCAL_PATCH_STYLE } },
     orderBy: { updatedAt: "desc" }, select: { id: true, gameId: true, lastError: true, updatedAt: true } });
   for (const job of jobs) {
-    if (!LOCAL_PATCH_INTERRUPTION_HOLD.test(job.lastError ?? "") || !await subjectUpgradeOf(c.db, job.gameId)) continue;
+    // A pin that cannot be read is the world's own slice to refuse; it never stops the scheduled tick for every other world.
+    if (!LOCAL_PATCH_INTERRUPTION_HOLD.test(job.lastError ?? "") && !await boundLeanRecoveryHold(c.db, job.gameId, job).catch(() => null)) continue;
+    if (!await subjectUpgradeOf(c.db, job.gameId)) continue;
     const holdSha256 = parkedHoldSha256(job);
     const turns = await c.db.auditLog.findMany({ where: { id: { startsWith: receiptPrefix(holdSha256) }, action: LOCAL_PATCH_PARKED_WAKE_ACTION },
       select: { createdAt: true } });

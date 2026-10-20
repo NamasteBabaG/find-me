@@ -9,6 +9,7 @@ import { LOCAL_PATCH_PAINTER_ACTION } from "./painter-release";
 import { QUALITY_CHANNEL_ACTION } from "./quality-channel";
 import { DUAL_VISUAL_REVIEW_V3, dualVisualReviewVersion } from "./visual-review-release";
 import { SYSTEM_ENROLLMENT_OPERATOR } from "./subject-enrollment";
+import { LEAN_REVIEW_RECOVERY_ACTION, leanNewWorldRecoveryReceipt, leanReviewRecoveryAuditId } from "../../domain/generation/lean-review-recovery";
 
 /**
  * local-patch-lean/v1 (19 October 2026): the owner's cost and time release for NEW QA worlds,
@@ -74,6 +75,9 @@ export async function pinLeanRelease(tx: Prisma.TransactionClient, gameId: strin
     throw Error("Only an unstarted new local-patch draft without another painter, channel or budget pin may receive the lean release");
   await tx.auditLog.create({ data: { id: leanReleaseAuditId(gameId), actorType: "SYSTEM", action: LOCAL_PATCH_LEAN_ACTION,
     entityType: "Game", entityId: gameId, metaJson: JSON.stringify(leanReleaseReceipt(gameId)) } });
+  // A new lean world recovers its review answers under local-patch-lean-review-recovery/v1 from the start (20 October 2026).
+  await tx.auditLog.create({ data: { id: leanReviewRecoveryAuditId(gameId), actorType: "SYSTEM", action: LEAN_REVIEW_RECOVERY_ACTION,
+    entityType: "Game", entityId: gameId, metaJson: JSON.stringify(leanNewWorldRecoveryReceipt(gameId)) } });
 }
 
 /** The exact pinned release, or null for a world without one. A pin that is not

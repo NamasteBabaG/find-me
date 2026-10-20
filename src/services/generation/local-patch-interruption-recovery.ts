@@ -16,8 +16,9 @@ const hash = (value: unknown) => sha256Bytes(Buffer.from(JSON.stringify(value)))
  * conflict or an unapproved unknown never crosses this publication boundary. */
 export async function localPatchBudgetReadyForPublication(budget: Pick<WorldBudget, "audit" | "readContinuationApproval">,
   worldId: string, contentVersion: number | undefined,
-  /** Only a world enrolled in the subject upgrade may also carry v2 review continuations. */
-  options: { reviewRecoveryV2?: boolean } = {}): Promise<boolean> {
+  /** Only a world enrolled in the subject upgrade may also carry v2 review continuations, and only a world pinned to
+   * local-patch-lean-review-recovery/v1 v3 ones. */
+  options: { reviewRecoveryV2?: boolean; reviewRecoveryV3?: boolean } = {}): Promise<boolean> {
   const audit = await budget.audit(worldId);
   if (audit.held || audit.pendingRequestKeys.length) return false;
   if (audit.reservedMicroUsd === 0) return true;
@@ -25,7 +26,8 @@ export async function localPatchBudgetReadyForPublication(budget: Pick<WorldBudg
   for (const key of audit.unknownRequestKeys) {
     const version = (await budget.readContinuationApproval(worldId, key))?.version;
     if (version !== "world-automatic-image-recovery/v1" && version !== "world-automatic-review-recovery/v1"
-      && !(options.reviewRecoveryV2 && version === "world-automatic-review-recovery/v2")) return false;
+      && !(options.reviewRecoveryV2 && version === "world-automatic-review-recovery/v2")
+      && !(options.reviewRecoveryV3 && version === "world-automatic-review-recovery/v3")) return false;
   }
   return true;
 }

@@ -14,8 +14,11 @@ import { SUBJECT_QUALITY_BUNDLE_VERSION } from "../../domain/generation/subject-
 import { localPatchBoardForVersion } from "../../domain/scene/local-patch-catalog";
 import { subjectPlanOfHide, subjectPlanSha256, subjectUpgradeOf, type SubjectUpgradeReceipt } from "./subject-enrollment";
 import { loadSubjectPhoto, subjectQuestion, combinedQualitySubjectQuestion, SubjectEvidenceUnavailable, subjectV2RefusalCodes, withSubject, withSubjectV2 } from "./local-patch-subject-review";
-import { askContinuityInBackground, reconcileRefusedBackgroundRound } from "./continuity-background";
+import { askContinuityInBackground, backgroundRoundsOnImage, permanentFailureOnImage, providerEndedFailed, reconcileRefusedBackgroundRound,
+  roundAnswered, type BackgroundGate, type ImageRound } from "./continuity-background";
+import type { BackgroundReviewBinding } from "../../domain/generation/background-review-round";
 import { isLeanWorld } from "./lean-release";
+import { leanReviewRecoveryOf } from "./lean-review-recovery-pin";
 import { localPatchCrowdContinuityPrompt, localPatchHeadContinuityPrompt } from "./local-patch-body-continuity";
 import { prepareVisualReview, sceneQualityQuestion, parseVisualSceneVerdicts, diagnoseVisualSceneAnswer, visualReviewMaxCharge, type PreparedVisualReview } from "./visual-review";
 import type { LocalPatchJudgeResult, LocalPatchBoardJudgeResult, QualityReader, QualityReadFault } from "./local-patch-judge";
@@ -487,6 +490,75 @@ export async function nextDualReviewPurchase(prepared: Prepared, version: DualVi
   return questions.reuse ? dualQuestionAdmission(prepared.budget, prepared.worldId, prepared.board.board, version, await questions.anatomy()) : null;
 }
 
+type CarriedBundle = { question: PreparedVisualReview; binding: NonNullable<ReturnType<typeof combinedQualitySubjectQuestion>>["binding"];
+  attempt: number; strategy: EvidenceStrategy };
+type CarriedContinuity = { question: PreparedVisualReview; attempt: number; strategy: EvidenceStrategy };
+const STRATEGIES: readonly EvidenceStrategy[] = ["standard/v1", "strict-json/v1", "compact/v1", "decide/v1"];
+
+/**
+ * local-patch-lean-review-recovery/v1. An answer already received about exactly these pixels, replayed instead of bought
+ * again when the other question of its round was interrupted (on 20 October a lean world bought an answered bundle again
+ * after each continuity question the provider ended failed). Found from the round records alone (`rounds`: the same
+ * appearance, variant, pixels, geometry and identity), rebuilt at each earlier evidence attempt and strategy at the tier
+ * its own round asked, and used only when the rebuilt question's fingerprint is the recorded one byte for byte, its
+ * settled bill and retained answer agree (`verifiedDualStage`), and the answer passes as it would be decided now: a
+ * bundle's quality acceptable and its subject reading a pass; a continuity reading a pass. A question of the current
+ * attempt (`current`) is the ordinary flow's. Never a provider; nothing is written.
+ */
+async function carriedLeanAnswers(c: Container, prepared: Prepared, version: DualVisualReviewVersion, rounds: readonly ImageRound[],
+  subject: SubjectQuestionContext, current: ReadonlySet<string>): Promise<{ bundle: CarriedBundle | null; continuity: CarriedContinuity | null }> {
+  const { request, evidenceReviewAttempt, worldId } = prepared;
+  const binding = dualBinding(prepared, version), hideId = binding.hideId;
+  const store = new LocalPatchRetainedPurchaseStore(c, prepared.game.id, prepared.budget);
+  /** The paid answer under this key, as a stage of this question, or null when its bill and envelope do not agree. */
+  const stageOf = async (question: PreparedVisualReview, requestKey: string, attempt: number, strategy: EvidenceStrategy): Promise<DualStageBase | null> => {
+    const retained = await store.get(worldId, requestKey);
+    if (!retained?.evidence || requestKey !== `self-repair:board:${prepared.board.board}:${question.fingerprint}`) return null;
+    let wire: LocalPatchJudgeResult;
+    try { wire = JSON.parse(retained.bytes.toString()); } catch { return null; }
+    return { requestKey, fingerprint: question.fingerprint, attempt, policy: question.policy, raw: wire.raw, model: wire.model,
+      finishReason: wire.finishReason, wireFault: wire.wireFault, costMicroUsd: retained.evidence.amountMicroUsd, ...(strategy === STANDARD ? {} : { strategy }) };
+  };
+  const found: { bundle: CarriedBundle | null; continuity: CarriedContinuity | null } = { bundle: null, continuity: null };
+  for (const round of [...rounds].reverse()) {
+    if (!roundAnswered(round) || current.has(round.fingerprint)) continue;
+    if (round.role === "scene-quality" && !found.bundle) {
+      const rebuilt = await (async () => {
+        for (let attempt = evidenceReviewAttempt - 1; attempt >= 1; attempt--) for (const strategy of STRATEGIES) {
+          const combined = combinedQualitySubjectQuestion(dualQualityQuestion(request, binding, attempt, strategy, { tier: round.tier }),
+            subject.plan, subject.photoPng, subject.upgrade, SUBJECT_POLICY_V2);
+          if (combined?.question.fingerprint === round.fingerprint) return { ...combined, attempt, strategy };
+        }
+        return null;
+      })();
+      const base = rebuilt ? await stageOf(rebuilt.question, round.requestKey, rebuilt.attempt, rebuilt.strategy) : null;
+      if (!rebuilt || !base) continue;
+      const stage: QualityStage = { ...base, reader: CURRENT_QUALITY_READER, subjectBundle: rebuilt.binding };
+      if (!await verifiedDualStage(c.db, worldId, stage, "scene-quality", { allowLean: true })
+        || localPatchQualityDisposition(readQualityStage(stage, hideId), 12, { hideId, reader: CURRENT_QUALITY_READER }).state !== "acceptable") continue;
+      const reading = readSubjectAnswerV2(subjectStageRaw({ raw: stage.raw, combined: SUBJECT_QUALITY_BUNDLE_VERSION }),
+        { hideId, ageYears: subject.upgrade.ageYears, plan: subject.plan });
+      if (reading.ok && reading.disposition === "pass")
+        found.bundle = { question: rebuilt.question, binding: rebuilt.binding, attempt: rebuilt.attempt, strategy: rebuilt.strategy };
+    } else if (round.role === "head-continuity" && !found.continuity) {
+      const rebuilt = await (async () => {
+        for (let attempt = evidenceReviewAttempt - 1; attempt >= 1; attempt--) for (const strategy of STRATEGIES) {
+          const question = await runtimeContinuityQuestion(prepared, binding, attempt, version, strategy, "responses-background", round.tier);
+          if (question.fingerprint === round.fingerprint) return { question, attempt, strategy };
+        }
+        return null;
+      })();
+      const base = rebuilt ? await stageOf(rebuilt.question, round.requestKey, rebuilt.attempt, rebuilt.strategy) : null;
+      if (!rebuilt || !base) continue;
+      const stage: ContinuityStage = { ...base, reader: CURRENT_CONTINUITY_READER[version] };
+      if (!await verifiedDualStage(c.db, worldId, stage, "head-continuity", { allowBackground: true, allowLean: true })) continue;
+      const read = readContinuityStage(stage, hideId, version);
+      if (read && localPatchRuntimeContinuityVerdict(read).disposition === "pass") found.continuity = rebuilt;
+    }
+  }
+  return found;
+}
+
 async function dualReview(c: Container, prepared: Prepared, deps: LocalPatchBoardReviewDeps, version: DualVisualReviewVersion, deadlineAt: number | undefined,
   options: { decideRetained?: boolean }): Promise<Waiting | Reviewed> {
   const { request, game, budget, worldId, evidenceReviewAttempt } = prepared;
@@ -516,18 +588,52 @@ async function dualReview(c: Container, prepared: Prepared, deps: LocalPatchBoar
   // Refused, and its reservation already settled at the provider's documented zero: only then the default tier.
   const refusedFlex = async (question: PreparedVisualReview) => question.policy.serviceTier === "flex"
     && await reconcileRefusedBackgroundRound(c, game.id, worldId, makeKey(question));
-  let questions = await dualQuestions(prepared, version, upgrade ? "responses-background" : undefined, subjectContext, lean ? { tier: "flex" } : undefined);
+  const pixels = dualBinding(prepared, version);
+  const onPixels: BackgroundReviewBinding = { hideId: pixels.hideId, variantId: pixels.variantId, imageSha256: pixels.imageSha256,
+    geometrySha256: pixels.geometrySha256, identitySha256: pixels.identitySha256 };
+  // local-patch-lean-review-recovery/v1, in every enrolled world (its questions are asked in the background): once the
+  // provider has said a question about these pixels can never succeed (its request refused, an image flagged, the
+  // account), nothing more is sent or bought about them, whatever that answer's charge (a settled bill stays settled, an
+  // unknown one unknown and reserved in full). Checked before any tier is chosen or question sent, and again after every
+  // answer that has just ended.
+  const permanent = async (): Promise<string | null> => upgrade ? permanentFailureOnImage(c.db, game.id, onPixels) : null;
+  const stopped = await permanent();
+  if (stopped) return { kind: "waiting", outcome: { state: "held", reason: stopped, replayed: false, costCents: 0 } };
+  // local-patch-lean-review-recovery/v1, only in a world that carries its pin: what the round records say about exactly
+  // these pixels. Once the provider has ended a question about them failed, both questions about them are asked at the
+  // default tier (a separate key and policy version); the failed question's charge stays held in full.
+  const imageRounds = lean && await leanReviewRecoveryOf(c.db, game.id) ? await backgroundRoundsOnImage(c.db, game.id, onPixels) : null;
+  const leanTier: VisualReviewTier = imageRounds?.some(providerEndedFailed) ? "default" : "flex";
+  let questions = await dualQuestions(prepared, version, upgrade ? "responses-background" : undefined, subjectContext, lean ? { tier: leanTier } : undefined);
   if (lean && await refusedFlex(questions.q)) questions = await dualQuestions(prepared, version, "responses-background", subjectContext, { tier: "default" });
-  const { binding, entry, priorReceipt, q, subjectBundle, qualityAttempt, qualityStrategy, continuityStrategy, subjectStrategy, anatomy: anatomyQuestion } = questions;
+  const { binding, entry, priorReceipt, subjectStrategy, anatomy: anatomyQuestion } = questions;
+  let { q, subjectBundle, qualityAttempt, qualityStrategy, continuityStrategy } = questions;
   const hideId = binding.hideId;
-  /** A lean world's continuity question, at its tier by the same rule. */
-  const leanAnatomy = async () => {
-    const flex = await anatomyQuestion("responses-background", "flex");
-    return await refusedFlex(flex) ? anatomyQuestion("responses-background", "default") : flex;
+  /** A lean world's continuity question at this round's tier; a Flex question the provider refused, at the default tier. */
+  const tierAnatomy = async () => {
+    const first = await anatomyQuestion("responses-background", leanTier);
+    return leanTier === "flex" && await refusedFlex(first) ? anatomyQuestion("responses-background", "default") : first;
   };
-  const askInBackground = (question: PreparedVisualReview, reserveMicroUsd: number) => askContinuityInBackground(c, { gameId: game.id, worldId,
-    requestKey: makeKey(question), question, reserveMicroUsd, fence: deps.fence, ...(deadlineAt === undefined ? {} : { deadlineAt }),
-    binding: { hideId, variantId: entry.row.id, imageSha256: binding.imageSha256, geometrySha256: binding.geometrySha256, identitySha256: binding.identitySha256 } });
+  // An answer already received about these pixels in an earlier round of the pinned world is replayed, never bought again.
+  const carried = imageRounds && subjectContext && evidenceReviewAttempt > 1 && imageRounds.some(roundAnswered)
+    ? await carriedLeanAnswers(c, prepared, version, imageRounds, subjectContext,
+      new Set([q.fingerprint, (await anatomyQuestion("responses-background", leanTier)).fingerprint]))
+    : { bundle: null, continuity: null };
+  if (carried.bundle && !questions.reuse) ({ question: q, binding: subjectBundle, attempt: qualityAttempt, strategy: qualityStrategy } = carried.bundle);
+  if (carried.continuity) continuityStrategy = carried.continuity.strategy;
+  /** The attempt the continuity question carries: a replayed answer's own, else this round's. */
+  const continuityAttempt = carried.continuity?.attempt ?? evidenceReviewAttempt;
+  const leanAnatomy = async () => carried.continuity?.question ?? tierAnatomy();
+  const askInBackground = async (question: PreparedVisualReview, reserveMicroUsd: number): Promise<BackgroundGate> => {
+    const gate = await askContinuityInBackground(c, { gameId: game.id, worldId,
+      requestKey: makeKey(question), question, reserveMicroUsd, fence: deps.fence, ...(deadlineAt === undefined ? {} : { deadlineAt }),
+      binding: { hideId, variantId: entry.row.id, imageSha256: binding.imageSha256, geometrySha256: binding.geometrySha256, identitySha256: binding.identitySha256 } });
+    if (gate.kind !== "proceed") return gate;
+    // The answer that has just ended may be the provider's statement that these pixels can never succeed: then nothing
+    // more is read, sent or bought about them.
+    const stop = await permanent();
+    return stop ? { kind: "held", reason: stop } : gate;
+  };
   /** A lean Flex question just refused waits one slice and is asked at the default tier; never a hold for a person. */
   const leanGate = async (gate: Awaited<ReturnType<typeof askContinuityInBackground>>, question: PreparedVisualReview, costCents: number): Promise<Waiting> =>
     ({ kind: "waiting", outcome: gate.kind === "held" && await refusedFlex(question)
@@ -624,7 +730,7 @@ async function dualReview(c: Container, prepared: Prepared, deps: LocalPatchBoar
     const bought = await buy(anatomy, admitted.reserveMicroUsd);
     if (bought.kind !== "bought") return waiting(bought, anatomy, continuityStrategy);
     const reader = CURRENT_CONTINUITY_READER[version];
-    proof.continuity = { ...stage(bought, anatomy, evidenceReviewAttempt, continuityStrategy), reader };
+    proof.continuity = { ...stage(bought, anatomy, continuityAttempt, continuityStrategy), reader };
     const costCents = bought.replayed ? 0 : bought.evidence.amountMicroUsd / 10_000;
     if (!visualStageReadable(proof.continuity)) return { kind: "decided", verdicts: refusedVerdicts, costCents };
     const read = readLocalPatchBodyContinuity(proof.continuity.raw, [`${hideId}:people`], reader);
@@ -799,7 +905,7 @@ async function dualReview(c: Container, prepared: Prepared, deps: LocalPatchBoar
   const anatomyBought = await buy(anatomy, anatomyAdmitted.reserveMicroUsd);
   if (anatomyBought.kind !== "bought") return waiting(anatomyBought, anatomy, continuityStrategy);
   const reader = CURRENT_CONTINUITY_READER[version];
-  proof.continuity = { ...stage(anatomyBought, anatomy, evidenceReviewAttempt, continuityStrategy), reader };
+  proof.continuity = { ...stage(anatomyBought, anatomy, continuityAttempt, continuityStrategy), reader };
   newCostCents += anatomyBought.replayed ? 0 : anatomyBought.evidence.amountMicroUsd / 10_000;
   const result = { ...base, bought: anatomyBought, wire: primaryWire, verdicts, proof, newCostCents };
   const at = new Date().toISOString();

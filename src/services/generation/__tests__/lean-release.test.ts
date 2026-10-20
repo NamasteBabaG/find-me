@@ -34,6 +34,8 @@ import {
   LEAN_WORLD_CAP_MICRO_USD, LOCAL_PATCH_LEAN_RELEASE, isLeanWorld, leanReleaseAuditId, leanReleaseOf, leanReleaseReceipt,
   pinLeanRelease, readLeanWorldBudget,
 } from "../lean-release";
+import { leanReviewRecoveryOf } from "../lean-review-recovery-pin";
+import { leanNewWorldRecoveryReceipt, leanReviewRecoveryAuditId } from "../../../domain/generation/lean-review-recovery";
 import { bill } from "./local-patch-fixtures";
 
 /**
@@ -206,6 +208,10 @@ describe("a lean draft's pin", () => {
     expect(JSON.parse((await db.auditLog.findUniqueOrThrow({ where: { id: leanReleaseAuditId(gameId) } })).metaJson!)).toEqual(leanReleaseReceipt(gameId));
     expect(leanReleaseReceipt(gameId)).toMatchObject({ painter: "medium", worldCapMicroUsd: 4_000_000, automaticBudgetExtension: false,
       judges: { quality: "visual-review-scene-quality-sol-high-background-flex/lean-v1", continuity: "visual-review-head-continuity-sol-high-background-flex/lean-v1", fallbackTier: "default" } });
+    // A new lean draft recovers its review answers under local-patch-lean-review-recovery/v1 from its creation; no other draft does.
+    expect(await leanReviewRecoveryOf(db, gameId)).toEqual(leanNewWorldRecoveryReceipt(gameId));
+    expect(await db.auditLog.findUniqueOrThrow({ where: { id: leanReviewRecoveryAuditId(gameId) } })).toMatchObject({ actorType: "SYSTEM", actorId: null });
+    expect(await leanReviewRecoveryOf(db, control)).toBeNull();
   });
 
   it("is refused outside QA, v19 and dual review v3, and on a draft that already carries another painter, channel or budget pin", async () => {
@@ -229,6 +235,14 @@ describe("a lean draft's pin", () => {
   it("is read exactly or refused, never as the nearest one", async () => {
     const gameId = await paidWorld(lean());
     expect(await isLeanWorld(db, gameId)).toBe(true);
+    // Its review recovery pin too: another term, another actor, or a pin on a world that is no longer lean is refused.
+    const recovery = await db.auditLog.findUniqueOrThrow({ where: { id: leanReviewRecoveryAuditId(gameId) } });
+    await db.auditLog.update({ where: { id: recovery.id }, data: { metaJson: JSON.stringify({ ...leanNewWorldRecoveryReceipt(gameId), mode: "existing-world" }) } });
+    await expect(leanReviewRecoveryOf(db, gameId)).rejects.toThrow("Pinned lean review recovery is invalid; refusing a fallback");
+    await db.auditLog.update({ where: { id: recovery.id }, data: { metaJson: recovery.metaJson, actorType: "ADMIN", actorId: "operator-synthetic" } });
+    await expect(leanReviewRecoveryOf(db, gameId)).rejects.toThrow("Pinned lean review recovery is invalid");
+    await db.auditLog.update({ where: { id: recovery.id }, data: { actorType: "SYSTEM", actorId: null } });
+    expect(await leanReviewRecoveryOf(db, gameId)).toEqual(leanNewWorldRecoveryReceipt(gameId));
     await db.auditLog.update({ where: { id: leanReleaseAuditId(gameId) }, data: { metaJson: JSON.stringify({ ...leanReleaseReceipt(gameId), worldCapMicroUsd: 6_000_000 }) } });
     await expect(leanReleaseOf(db, gameId)).rejects.toThrow("Pinned lean release is invalid; refusing a fallback");
   });

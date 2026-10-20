@@ -1,5 +1,5 @@
 import { QA_PILOT_COMPLETION_CAP_MICRO_USD } from "../../domain/generation/qa-world-budget-policy";
-import { auditWorldBudget, WorldBudget, WorldBudgetError, type WorldBudgetAudit, type WorldBudgetRepository, type WorldReservationInput, type WorldLinkInput, type WorldChargeEvidence, type WorldBudgetOptions, type WorldUnknownContinuationInput, type WorldAutomaticImageRecoveryInput, type WorldAutomaticReviewRecoveryInput, type WorldAutomaticReviewRecoveryV2Input } from "./world-budget";
+import { auditWorldBudget, WorldBudget, WorldBudgetError, type WorldBudgetAudit, type WorldBudgetRepository, type WorldReservationInput, type WorldLinkInput, type WorldChargeEvidence, type WorldBudgetOptions, type WorldUnknownContinuationInput, type WorldAutomaticImageRecoveryInput, type WorldAutomaticReviewRecoveryInput, type WorldAutomaticReviewRecoveryV2Input, type WorldAutomaticReviewRecoveryV3Input } from "./world-budget";
 
 export const BOARD_WIZARD_CAP_MICRO_USD = 4_000_000;
 /** A lean world's ceiling (local-patch-lean/v1): four dollars, never extended. The owner's, 19 October 2026: the
@@ -66,6 +66,7 @@ export function boardWizardBudget(repository: WorldBudgetRepository, attempt = 1
     override authorizeAutomaticImageRecovery(worldId: string, input: WorldAutomaticImageRecoveryInput) { return super.authorizeAutomaticImageRecovery(worldId, { ...input, requestKey: key(input.requestKey) }); }
     override authorizeAutomaticReviewRecovery(worldId: string, input: WorldAutomaticReviewRecoveryInput) { return super.authorizeAutomaticReviewRecovery(worldId, { ...input, requestKey: key(input.requestKey) }); }
     override authorizeAutomaticReviewRecoveryV2(worldId: string, input: WorldAutomaticReviewRecoveryV2Input) { return super.authorizeAutomaticReviewRecoveryV2(worldId, { ...input, requestKey: key(input.requestKey) }); }
+    override authorizeAutomaticReviewRecoveryV3(worldId: string, input: WorldAutomaticReviewRecoveryV3Input) { return super.authorizeAutomaticReviewRecoveryV3(worldId, { ...input, requestKey: key(input.requestKey) }); }
   }
   return new AttemptBudget(guarded, { ...options,
     // Only this verified resolver can raise the generic maximum for this world.

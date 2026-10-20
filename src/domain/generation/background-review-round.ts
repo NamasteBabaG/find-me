@@ -58,7 +58,9 @@ export type BackgroundReviewEvent =
   | { readonly kind: "refused"; readonly status: number; readonly errorType: string | null; readonly at: number }
   | { readonly kind: "lost"; readonly reason: string; readonly at: number }
   | { readonly kind: "cancel"; readonly at: number }
-  | { readonly kind: "outcome"; readonly state: BackgroundOutcomeState; readonly responseId: string; readonly providerStatus: string; readonly at: number };
+  | { readonly kind: "outcome"; readonly state: BackgroundOutcomeState; readonly responseId: string; readonly providerStatus: string; readonly at: number;
+    /** The response's own scrubbed error code, when it gave one (background-provider-error/v1); absent on every earlier outcome. */
+    readonly errorCode?: string };
 
 export const backgroundEventName = (event: BackgroundReviewEvent) => event.kind;
 

@@ -16,6 +16,8 @@ import { inventorySelfRepairRequest } from "./local-patch-self-repair";
 import { isTheModelWeAsked, type LocalPatchJudgeResult } from "./local-patch-judge";
 import { RETAINED_PURCHASE_VERSION, retainedPayloadDigest, type RetainedPurchase } from "./paid-operation";
 import { canonicalChargeEvidence, WorldBudgetError, type BudgetJson } from "./world-budget";
+import { sanitizeProviderError } from "../../domain/generation/background-provider-error";
+import { permanentFailureReason, permanentProviderFailure } from "../../domain/generation/lean-review-recovery";
 
 /**
  * A new Sol continuity question of an enrolled world, asked once as an OpenAI
@@ -94,22 +96,67 @@ export async function backgroundReviewWaiting(db: Pick<Prisma.TransactionClient,
   /** `inFlightOnly`: only a round whose create was claimed, so it is bound to end (answered, refused, cancelled at its
    * deadline, or lost after its create grace). An intent the held ledger refused to send is not in flight. */
   options: { inFlightOnly?: boolean } = {}): Promise<Set<string>> {
-  const rows = await db.auditLog.findMany({ where: { action: SOL_BACKGROUND_ACTION, entityType: "Game", entityId: gameId },
-    select: { id: true, actorType: true, actorId: true, metaJson: true } });
-  const byRound = new Map<string, RoundRow[]>();
-  for (const row of rows) {
-    const roundId = /^aud_sb_(sb[0-9a-f]{30})_[a-z]+$/.exec(row.id)?.[1];
-    if (!roundId) throw Error("BACKGROUND_REVIEW: a round record cannot be read; refusing to guess");
-    byRound.set(roundId, [...(byRound.get(roundId) ?? []), row]);
-  }
   const waitingRows = new Set<string>();
-  for (const [roundId, roundRows] of byRound) {
-    const round = backgroundRoundOf(eventsOfRows(roundRows, gameId, roundId));
+  for (const { round } of await recordedRounds(db, gameId)) {
     if (!round.terminal && (!options.inFlightOnly || round.claimAt !== null))
       waitingRows.add(`${round.intent.binding.variantId}:${round.intent.binding.imageSha256}`);
   }
   return waitingRows;
 }
+
+/** Every round recorded for this game, each read whole, with the moment its intent was written. */
+async function recordedRounds(db: Pick<Prisma.TransactionClient, "auditLog">, gameId: string): Promise<{ round: BackgroundReviewRound; at: number }[]> {
+  const rows = await db.auditLog.findMany({ where: { action: SOL_BACKGROUND_ACTION, entityType: "Game", entityId: gameId },
+    select: { id: true, actorType: true, actorId: true, metaJson: true, createdAt: true } });
+  const byRound = new Map<string, (RoundRow & { createdAt: Date })[]>();
+  for (const row of rows) {
+    const roundId = /^aud_sb_(sb[0-9a-f]{30})_[a-z]+$/.exec(row.id)?.[1];
+    if (!roundId) throw Error("BACKGROUND_REVIEW: a round record cannot be read; refusing to guess");
+    byRound.set(roundId, [...(byRound.get(roundId) ?? []), row]);
+  }
+  return [...byRound].map(([roundId, roundRows]) => ({ round: backgroundRoundOf(eventsOfRows(roundRows, gameId, roundId)),
+    at: roundRows.find(row => row.id === eventId(roundId, "intent"))!.createdAt.getTime() }));
+}
+
+/** One recorded round about one image's pixels, as its own record states it. */
+export type ImageRound = {
+  readonly requestKey: string; readonly fingerprint: string; readonly role: VisualReviewPolicy["role"];
+  /** The tier its policy asked: a lean question's own, the default for every historical one. */
+  readonly tier: "flex" | "default"; readonly terminal: BackgroundReviewRound["terminal"]; readonly at: number;
+};
+/**
+ * Every round recorded about exactly these pixels (appearance, variant, image, geometry and identity), oldest first, read
+ * from the record alone (local-patch-lean-review-recovery/v1). A record that cannot be read is refused, never skipped.
+ */
+export async function backgroundRoundsOnImage(db: Pick<Prisma.TransactionClient, "auditLog">, gameId: string,
+  binding: BackgroundReviewBinding): Promise<ImageRound[]> {
+  const same = (other: BackgroundReviewBinding) => other.hideId === binding.hideId && other.variantId === binding.variantId
+    && other.imageSha256 === binding.imageSha256 && other.geometrySha256 === binding.geometrySha256 && other.identitySha256 === binding.identitySha256;
+  return (await recordedRounds(db, gameId)).filter(({ round }) => same(round.intent.binding)).sort((a, b) => a.at - b.at).map(({ round, at }) => {
+    const policy = backgroundPolicyOfIntent(round.intent);
+    return { requestKey: round.intent.requestKey, fingerprint: round.intent.fingerprint, role: policy.role,
+      tier: policy.serviceTier ?? "default", terminal: round.terminal, at };
+  });
+}
+/** A round the provider itself ended `failed`: a provider-declared failure, whatever its charge. */
+export const providerEndedFailed = (round: Pick<ImageRound, "terminal">) => round.terminal?.kind === "outcome" && round.terminal.providerStatus === "failed";
+/**
+ * local-patch-lean-review-recovery/v1, in every world with background rounds: the provider's own statement that a question
+ * about exactly these pixels can never succeed (its request refused, an image flagged, the account), from any round about
+ * them that ended with one, whatever its charge: a settled bill stays settled, an unknown one stays unknown and reserved in
+ * full. The exact reason, or null. Reads only.
+ */
+export async function permanentFailureOnImage(db: Pick<Prisma.TransactionClient, "auditLog">, gameId: string,
+  binding: BackgroundReviewBinding): Promise<string | null> {
+  for (const { requestKey, terminal } of await backgroundRoundsOnImage(db, gameId, binding)) {
+    if (terminal?.kind !== "outcome") continue;
+    const permanent = permanentProviderFailure(terminal.errorCode);
+    if (permanent) return `${requestKey}: ${permanentFailureReason(terminal.providerStatus, permanent)}; nothing more is asked about these pixels until a person decides`;
+  }
+  return null;
+}
+/** A round whose genuine answer was kept and settled. */
+export const roundAnswered = (round: Pick<ImageRound, "terminal">) => round.terminal?.kind === "outcome" && round.terminal.state === "answered";
 
 /** The round recorded under this request key (its intent names the appearance and pixels it asked about), or null. */
 export async function backgroundRoundOfKey(db: Pick<Prisma.TransactionClient, "auditLog">, gameId: string, worldId: string, requestKey: string) {
@@ -277,16 +324,18 @@ function readTerminal(ctx: Ctx, status: "completed" | "failed" | "cancelled" | "
  * recovery record binds. Only a pending reservation is ever settled.
  */
 async function finishFromKept(ctx: Ctx, responseId: string, kept: RetainedPurchase): Promise<void> {
-  let wire: { wireFault?: unknown; backgroundState?: unknown; providerStatus?: unknown };
+  let wire: { wireFault?: unknown; backgroundState?: unknown; providerStatus?: unknown; providerError?: unknown };
   try { wire = JSON.parse(kept.bytes.toString()); } catch { throw Error("BACKGROUND_REVIEW: a kept result cannot be read"); }
   const providerStatus = typeof wire.providerStatus === "string" ? wire.providerStatus : "missing";
   const state: BackgroundOutcomeState = wire.backgroundState === "missing" ? "missing" : !kept.evidence ? "unpriced" : wire.wireFault ? "unusable" : "answered";
-  await writeEvent(ctx, round => round.terminal ? null : { kind: "outcome", state, responseId, providerStatus, at: Date.now() });
+  // Its own error code, read again through the same scrubber: the outcome says why, as far as the provider said.
+  const errorCode = sanitizeProviderError(wire.providerError)?.code ?? null;
+  await writeEvent(ctx, round => round.terminal ? null : { kind: "outcome", state, responseId, providerStatus, at: Date.now(), ...(errorCode ? { errorCode } : {}) });
   const budget = boardWizardBudgetOf(ctx.c);
   if (kept.evidence) await budget.settle(ctx.worldId, ctx.requestKey, kept.evidence, { onlyPending: true });
   else await budget.markUnknown(ctx.worldId, ctx.requestKey, state === "missing"
     ? `${ctx.requestKey}: background response ${responseId} is no longer available; the charge is unknown and kept in full`
-    : `${ctx.requestKey}: background response ${responseId} ended ${providerStatus} without a charge that can be stated`);
+    : `${ctx.requestKey}: background response ${responseId} ended ${providerStatus}${errorCode ? ` (${errorCode})` : ""} without a charge that can be stated`);
 }
 
 async function poll(ctx: Ctx, transport: BackgroundReviewTransport, responseId: string, cancelDue: boolean): Promise<BackgroundGate | null> {
@@ -312,7 +361,10 @@ async function poll(ctx: Ctx, transport: BackgroundReviewTransport, responseId: 
       { evidence: null, unknownReason: "The background response expired before its result was read" });
   } else if ("reading" in state) {
     const { reply, evidence } = readTerminal(ctx, state.status, state.reading);
-    await keep(ctx, replyBytes(ctx, reply, { responseId, providerStatus: state.status }),
+    // A response that did not complete keeps its scrubbed error beside it (background-provider-error/v1): the field is
+    // new, so every earlier retained reply, its digest and its admission read exactly as before.
+    const providerError = state.status === "completed" ? null : sanitizeProviderError(state.reading.providerError);
+    await keep(ctx, replyBytes(ctx, reply, { responseId, providerStatus: state.status, ...(providerError ? { providerError } : {}) }),
       evidence ? { evidence, unknownReason: null } : { evidence: null, unknownReason: "Background review charge could not be verified" });
   } else throw Error("BACKGROUND_REVIEW: unexpected nonterminal response state");
   const kept = await new LocalPatchRetainedPurchaseStore(ctx.c, ctx.gameId, boardWizardBudgetOf(ctx.c)).get(ctx.worldId, ctx.requestKey);

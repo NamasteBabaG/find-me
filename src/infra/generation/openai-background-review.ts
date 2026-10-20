@@ -1,5 +1,6 @@
 import { isBackgroundReviewPolicy, type VisualReviewEffort, type VisualReviewPolicy } from "../../domain/generation/visual-review-policy";
 import { BackgroundReviewRefused, type BackgroundReviewState, type BackgroundReviewTransport } from "./types";
+import { providerErrorCode, sanitizeProviderError } from "../../domain/generation/background-provider-error";
 
 /**
  * OpenAI Responses in background mode over raw HTTP, like the synchronous Sol
@@ -69,7 +70,8 @@ export class OpenAiBackgroundReviews implements BackgroundReviewTransport {
     const parsed = parse(answer.text);
     if (!answer.ok) {
       const error = parsed?.error && typeof parsed.error === "object" ? parsed.error as { type?: unknown; code?: unknown } : null;
-      const type = typeof error?.code === "string" ? error.code : typeof error?.type === "string" ? error.type : null;
+      // Recorded in the round, its zero receipt and the hold: only through the same filter as a failed response's code.
+      const type = providerErrorCode(error?.code) ?? providerErrorCode(error?.type);
       if (REFUSALS.has(answer.status) && error) throw new BackgroundReviewRefused(answer.status, type);
       throw Error(`BACKGROUND_REVIEW: create answered ${answer.status}; whether a response exists is uncertain`);
     }
@@ -91,10 +93,14 @@ export class OpenAiBackgroundReviews implements BackgroundReviewTransport {
       .filter(part => part?.type === "output_text" && typeof part.text === "string").map(part => part.text as string);
     const incomplete = body.incomplete_details && typeof body.incomplete_details === "object" ? (body.incomplete_details as { reason?: unknown }).reason : null;
     const usage = body.usage && typeof body.usage === "object" && !Array.isArray(body.usage) ? body.usage as Record<string, unknown> : null;
+    // A response that did not complete says why in its own `error` (code, message): kept scrubbed, never the body. One the
+    // provider's content filter cut short says so only in `incomplete_details`: a content-policy failure as well.
+    const providerError = status === "completed" ? null : sanitizeProviderError(body.error)
+      ?? (status === "incomplete" && incomplete === "content_filter" ? { code: "content_filter", message: null } : null);
     return { status, reading: { responseId, raw: texts.length ? texts.join("\n") : null, usage,
       model: typeof body.model === "string" ? body.model : null,
       finishReason: status === "completed" ? "stop" : incomplete === "max_output_tokens" ? "length" : typeof incomplete === "string" ? incomplete : status,
-      serviceTier: typeof body.service_tier === "string" ? body.service_tier : null } };
+      serviceTier: typeof body.service_tier === "string" ? body.service_tier : null, ...(providerError ? { providerError } : {}) } };
   }
 
   async cancel(responseId: string) {

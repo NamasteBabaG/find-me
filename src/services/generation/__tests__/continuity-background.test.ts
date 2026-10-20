@@ -8,11 +8,15 @@ import { DbStorage } from "../../../infra/storage/db";
 import { BackgroundReviewRefused, type BackgroundReviewState, type BackgroundReviewTransport } from "../../../infra/generation/types";
 import type { Container } from "../../container";
 import { boardWizardBudgetOf, boardWizardWorldId } from "../board-conditioned-wizard";
-import { askContinuityInBackground, advanceContinuityInBackground, backgroundReviewWaiting, reconcileRefusedBackgroundRound } from "../continuity-background";
+import { askContinuityInBackground, advanceContinuityInBackground, backgroundReviewWaiting, permanentFailureOnImage, reconcileRefusedBackgroundRound } from "../continuity-background";
+import { WITHHELD_PROVIDER_ERROR_CODE } from "../../../domain/generation/background-provider-error";
 import { WorldBudget } from "../world-budget";
 import { LocalPatchRetainedPurchaseStore } from "../local-patch-lifecycle";
 import { purchaseOnce } from "../paid-operation";
 import { prepareVisualReview } from "../visual-review";
+import { providerFailureRefusal } from "../local-patch-review-interruption-recovery";
+import { LOCAL_PATCH_LEAN_ACTION, leanReleaseAuditId, leanReleaseReceipt } from "../lean-release";
+import { LEAN_REVIEW_RECOVERY_ACTION, leanNewWorldRecoveryReceipt, leanReviewRecoveryAuditId } from "../../../domain/generation/lean-review-recovery";
 import { seedApprovedGame } from "./local-patch-fixtures";
 
 vi.mock("../../../lib/env", () => ({ env: () => ({ APP_ENV: "qa", GENERATION_ENABLED: "on", GENERATION_DAILY_CENTS: 0, GENERATION_PROVIDER: "openai" }),
@@ -252,6 +256,120 @@ describe("a lean world's background questions (local-patch-lean/v1)", () => {
       expect(await askContinuityInBackground(c, ask)).toMatchObject({ kind: "held", reason: expect.stringContaining("refused (429)") });
       expect(calls.create).toBe(1);
     });
+  it("records what the provider said about a failed response: its code on the outcome and in the unknown reason, never a free fallback (background-provider-error/v1)", async () => {
+    const failed = (providerError?: unknown): BackgroundReviewState => ({ status: "failed", reading: { responseId: "resp_synthetic", raw: null, usage: null,
+      model: "gpt-6.1-sol", finishReason: "failed", serviceTier: "flex", ...(providerError === undefined ? {} : { providerError } as object) } });
+    const { fake, calls } = transport(async () => ({ responseId: "resp_synthetic" }), [async () => { throw Error("read timed out"); },
+      async () => ({ status: "in_progress" }), async () => failed({ code: "server_error", message: `The server had an error at https://example.test/${"k".repeat(40)}` })]);
+    const { c, ask, budget, store, worldId, requestKey, replay } = await setup("bg-failed-code", fake, "Synthetic lean continuity", "flex");
+    // A failed read and a running response: the round waits, its reservation pending; nothing has ended.
+    expect(await askContinuityInBackground(c, ask)).toMatchObject({ kind: "waiting", reason: expect.stringContaining("read again later") });
+    expect(await askContinuityInBackground(c, ask)).toMatchObject({ kind: "waiting", running: true });
+    expect(await budget.readRequest(worldId, requestKey)).toMatchObject({ state: "pending", reserveMicroUsd: 66_000 });
+    // Terminal failed: the whole reservation unknown, the code on the outcome and in the reason, the scrubbed error kept.
+    expect(await askContinuityInBackground(c, ask)).toEqual({ kind: "proceed" });
+    expect(await budget.readRequest(worldId, requestKey)).toMatchObject({ state: "unknown", reserveMicroUsd: 66_000,
+      unknownReasons: [`${requestKey}: background response resp_synthetic ended failed (server_error) without a charge that can be stated`] });
+    const outcome = await db.auditLog.findFirstOrThrow({ where: { entityId: "bg-failed-code", id: { endsWith: "_outcome" } } });
+    expect(JSON.parse(outcome.metaJson!)).toMatchObject({ kind: "outcome", state: "unpriced", providerStatus: "failed", errorCode: "server_error" });
+    const kept = JSON.parse((await store.get(worldId, requestKey))!.bytes.toString());
+    expect(kept).toMatchObject({ providerStatus: "failed", raw: null, usage: null, providerError: { code: "server_error", message: "The server had an error at [url]" } });
+    expect(await replay()).toMatchObject({ kind: "unresolved" });
+    expect(await askContinuityInBackground(c, ask)).toEqual({ kind: "proceed" });
+    expect(calls).toEqual({ create: 1, retrieve: 3, cancel: 0 });
+    // A failure that says nothing is recorded exactly as every earlier one: no field, the same reason.
+    const bare = await setup("bg-failed-bare", transport(async () => ({ responseId: "resp_synthetic" }), [async () => failed()]).fake, "Synthetic lean continuity", "flex");
+    expect(await askContinuityInBackground(bare.c, bare.ask)).toEqual({ kind: "proceed" });
+    const bareOutcome = await db.auditLog.findFirstOrThrow({ where: { entityId: "bg-failed-bare", id: { endsWith: "_outcome" } } });
+    expect(JSON.parse(bareOutcome.metaJson!)).not.toHaveProperty("errorCode");
+    expect(JSON.parse((await bare.store.get(bare.worldId, bare.requestKey))!.bytes.toString())).not.toHaveProperty("providerError");
+    expect(await bare.budget.readRequest(bare.worldId, bare.requestKey)).toMatchObject({
+      unknownReasons: [`${bare.requestKey}: background response resp_synthetic ended failed without a charge that can be stated`] });
+  });
+  it("continues a provider-declared failure by its recorded kind, and a pinned world's role only until its second default-tier failure on the same pixels", async () => {
+    const codes = new Map<string, string>();
+    let created = 0;
+    const fake: BackgroundReviewTransport = { namespace: "openai:find-me-existing", create: async () => ({ responseId: `resp_round${++created}` }),
+      retrieve: async (responseId): Promise<BackgroundReviewState> => ({ status: "failed", reading: { responseId, raw: null, usage: null, model: "gpt-6.1-sol",
+        finishReason: "failed", serviceTier: null, ...(codes.has(responseId) ? { providerError: { code: codes.get(responseId)!, message: null } } : {}) } }),
+      cancel: async () => {} };
+    const world = async (gameId: string, pinned: boolean) => {
+      await seedApprovedGame(base, db, { gameId, styleVersion: "local-patch-world-v1", status: "TARGETS_GENERATING" });
+      await db.auditLog.create({ data: { id: leanReleaseAuditId(gameId), actorType: "SYSTEM", action: LOCAL_PATCH_LEAN_ACTION, entityType: "Game", entityId: gameId,
+        metaJson: JSON.stringify(leanReleaseReceipt(gameId)) } });
+      if (pinned) await db.auditLog.create({ data: { id: leanReviewRecoveryAuditId(gameId), actorType: "SYSTEM", action: LEAN_REVIEW_RECOVERY_ACTION,
+        entityType: "Game", entityId: gameId, metaJson: JSON.stringify(leanNewWorldRecoveryReceipt(gameId)) } });
+      const c = { ...base, backgroundReview: fake } as Container, worldId = boardWizardWorldId(gameId);
+      /** One failed round: the continuity question of this evidence attempt, at this tier, about the same pixels. */
+      const fail = async (attempt: number, tier: "flex" | "default", code?: string) => {
+        const question = prepareVisualReview({ role: "head-continuity", effort: "high", transport: "responses-background", tier, images: [Buffer.from("synthetic-png")],
+          labels: ["CASE newyork-v12-1:people"], prompt: `Synthetic lean continuity\nImmutable candidate binding: {"hideId":"newyork-v12-1"}. Evidence attempt: ${attempt}.` });
+        const requestKey = `self-repair:board:newyork:${question.fingerprint}`;
+        if (code) codes.set(`resp_round${created + 1}`, code);
+        expect(await askContinuityInBackground(c, { gameId, worldId, requestKey, question, reserveMicroUsd: 120_000, fence: async () => {},
+          binding: { hideId: "newyork-v12-1", variantId: "tva-synthetic", imageSha256: "a".repeat(64), geometrySha256: "b".repeat(64), identitySha256: "c".repeat(64) } }))
+          .toEqual({ kind: "proceed" });
+        // The unknown charge stays whole; a synthetic operator continuation only lets the next round of this test be sent.
+        const held = (await boardWizardBudgetOf(c).readRequest(worldId, requestKey))!;
+        await boardWizardBudgetOf(c, 1, { authorizeUnknownContinuation: async () => true }).authorizeUnknownContinuation(worldId, { approvalId: `operator-${attempt}`,
+          requestKey, scope: "judge", operationFingerprint: question.fingerprint, reserveMicroUsd: 120_000, unknownReasons: held.unknownReasons,
+          operatorId: "operator-synthetic", authorizationSha256: "e".repeat(64), authorizedAt: "2026-10-20T15:00:00.000Z" });
+        return () => providerFailureRefusal(c, gameId, worldId, requestKey);
+      };
+      return { c, worldId, fail };
+    };
+    const pinned = await world("bg-bound-pinned", true);
+    expect(await (await pinned.fail(1, "flex"))()).toBeNull();
+    expect(await (await pinned.fail(2, "default"))()).toBeNull();
+    const third = await pinned.fail(3, "default");
+    expect(await third()).toMatch(/^self-repair:board:newyork:[0-9a-f]{64}: the provider ended 2 default-tier questions of this role about these pixels failed; this question is not asked again automatically$/);
+    // A failure the provider names as the request's own, a flagged image or the account is never continued, at any count.
+    for (const [attempt, code, kind] of [[4, "image_content_policy_violation", "content-policy"], [5, "invalid_image", "request-invalid"], [6, "insufficient_quota", "account"]] as const)
+      expect(await (await pinned.fail(attempt, "flex", code))()).toContain(`the provider ended it failed (${kind}: ${code}); a ${kind} failure is never asked again automatically`);
+    // Without the pin only the kind decides: every earlier world reads exactly as before.
+    const plain = await world("bg-bound-plain", false);
+    for (const attempt of [1, 2, 3]) expect(await (await plain.fail(attempt, "default"))()).toBeNull();
+    expect(await (await plain.fail(4, "default", "image_content_policy_violation"))()).toContain("content-policy");
+    // A round that has not ended is never a failure to continue.
+    expect(await providerFailureRefusal(pinned.c, "bg-bound-pinned", pinned.worldId, `self-repair:board:newyork:${"d".repeat(64)}`)).toContain("recorded no outcome");
+  });
+  it("stops every question about pixels the provider said can never succeed, whatever its charge: a settled bill stays settled, an unknown one unknown (Codex QA R1)", async () => {
+    const pixels = { hideId: "newyork-v12-1", variantId: "tva-synthetic", imageSha256: "a".repeat(64), geometrySha256: "b".repeat(64), identitySha256: "c".repeat(64) };
+    /** One round about those pixels, ended as `state` says: its ledger state, its outcome event and what the stop reads. */
+    const ended = async (gameId: string, state: (responseId: string) => BackgroundReviewState) => {
+      const fake: BackgroundReviewTransport = { namespace: "openai:find-me-existing", create: async () => ({ responseId: "resp_permanent" }),
+        retrieve: async responseId => state(responseId), cancel: async () => {} };
+      const { c, ask, budget, worldId, requestKey } = await setup(gameId, fake, "Synthetic lean continuity", "flex");
+      expect(await askContinuityInBackground(c, ask)).toEqual({ kind: "proceed" });
+      const outcome = JSON.parse((await db.auditLog.findFirstOrThrow({ where: { entityId: gameId, id: { endsWith: "_outcome" } } })).metaJson!);
+      return { ledger: await budget.readRequest(worldId, requestKey), outcome, requestKey, stop: await permanentFailureOnImage(db, gameId, pixels),
+        elsewhere: await permanentFailureOnImage(db, gameId, { ...pixels, imageSha256: "d".repeat(64) }) };
+    };
+    const reading = (responseId: string, status: "failed" | "incomplete", usage: Record<string, number> | null, code: string | null) =>
+      ({ status, reading: { responseId, raw: null, usage, model: "gpt-6.1-sol", finishReason: status === "failed" ? "failed" : "content_filter",
+        serviceTier: "flex", ...(code ? { providerError: { code, message: null } } : {}) } }) as BackgroundReviewState;
+    const billed = { input_tokens: 2000, output_tokens: 500 };
+    // Priced: the provider billed what it read before it refused. The bill is settled as it arrived; the stop holds anyway.
+    const priced = await ended("bg-permanent-priced", id => reading(id, "failed", billed, "image_content_policy_violation"));
+    expect(priced.ledger).toMatchObject({ state: "settled", evidence: { providerRequestId: "resp_permanent" } });
+    expect(priced.outcome).toMatchObject({ state: "unusable", providerStatus: "failed", errorCode: "image_content_policy_violation" });
+    expect(priced.stop).toBe(`${priced.requestKey}: the provider ended it failed (content-policy: image_content_policy_violation);`
+      + " a content-policy failure is never asked again automatically; nothing more is asked about these pixels until a person decides");
+    expect(priced.elsewhere).toBeNull();
+    // Unpriced: unknown and reserved in full, never settled to reach the stop, and the same stop.
+    const unpriced = await ended("bg-permanent-unpriced", id => reading(id, "failed", null, "invalid_image"));
+    expect(unpriced.ledger).toMatchObject({ state: "unknown", reserveMicroUsd: 66_000 });
+    expect(unpriced.outcome).toMatchObject({ state: "unpriced", errorCode: "invalid_image" });
+    expect(unpriced.stop).toContain("the provider ended it failed (request-invalid: invalid_image)");
+    // A response cut short by the provider's content filter, priced; and an account failure.
+    expect((await ended("bg-permanent-filter", id => reading(id, "incomplete", billed, "content_filter"))).stop)
+      .toContain("the provider ended it incomplete (content-policy: content_filter)");
+    expect((await ended("bg-permanent-account", id => reading(id, "failed", billed, "insufficient_quota"))).stop).toContain("(account: insufficient_quota)");
+    // A recoverable failure, priced or not, and a withheld code, stop nothing.
+    for (const [gameId, usage, code] of [["bg-recoverable-priced", billed, "server_error"], ["bg-recoverable-unpriced", null, "rate_limit_exceeded"],
+      ["bg-recoverable-withheld", null, WITHHELD_PROVIDER_ERROR_CODE]] as const)
+      expect((await ended(gameId, id => reading(id, "failed", usage, code))).stop).toBeNull();
+  });
   it("reconciles nothing for a round that was not refused", async () => {
     const { fake } = transport(async () => ({ responseId: "resp_synthetic" }), [async () => ({ status: "in_progress" })]);
     const { c, ask, worldId, requestKey } = await setup("bg-not-refused", fake, "Synthetic lean continuity", "flex");

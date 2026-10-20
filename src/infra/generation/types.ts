@@ -1,3 +1,5 @@
+import type { BackgroundProviderError } from "../../domain/generation/background-provider-error";
+
 export interface CropBox {
   /** Normalized against the original photo (0..1). Square in practice. */
   x: number;
@@ -335,6 +337,8 @@ export type BackgroundReviewReading = {
   /** "stop" for a completed message, "length" for a max-output cut, else the provider's reason or null. */
   readonly finishReason: string | null;
   readonly serviceTier: string | null;
+  /** A failed, cancelled or incomplete response's own `error`, scrubbed (`sanitizeProviderError`); absent when it gave none. */
+  readonly providerError?: BackgroundProviderError | null;
 };
 export type BackgroundReviewState =
   | { readonly status: "queued" | "in_progress" }

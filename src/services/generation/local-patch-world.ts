@@ -39,6 +39,7 @@ import { continueAdmittedReviewInterruptions, openAdmittedInterruptions, recover
 import { advanceContinuityInBackground } from "./continuity-background";
 import { enrollLeanWorld } from "./lean-enrollment";
 import { isLeanWorld } from "./lean-release";
+import { boundLeanRecoveryHold } from "./lean-review-recovery-pin";
 import { leanSubjectOnlyRefusal } from "./lean-repair";
 import {
   LOCAL_PATCH_MAX_ATTEMPTS, LOCAL_PATCH_PROVIDER, LOCAL_PATCH_VARIANT, runLocalPatchHide,
@@ -124,23 +125,27 @@ export const LOCAL_PATCH_INTERRUPTION_HOLD = /^self-repair:board:[a-z0-9-]+:[0-9
  * the same comparison: the park then says what a person must reconcile or authorize, and is never woken again. Time
  * running out, a question still in flight, or a refusal a concurrent resumption of the same image can cause (`transient`)
  * leaves the hold for the next turn. Any other hold is left as it is.
+ *
+ * local-patch-lean-review-recovery/v1: a hold a person released this world from (`boundLeanRecoveryHold`: the exact
+ * job, reason and moment they read) is resumed the same way, on the held requests their release names.
  */
 async function resumeParkedInterruption(c: Container, gameId: string, observed: { id: string; lastError: string | null; updatedAt: Date },
   deps: Pick<LocalPatchBoardReviewDeps, "readBoardArt">, deadlineAt: number): Promise<void> {
   const unchanged = { id: observed.id, status: "FAILED", currentStep: LOCAL_PATCH_NEEDS_RELEASE, lastError: observed.lastError, updatedAt: observed.updatedAt };
-  const explain = async (reason: string) => { if (LOCAL_PATCH_INTERRUPTION_HOLD.test(observed.lastError ?? ""))
+  const bound = await boundLeanRecoveryHold(c.db, gameId, observed);
+  const explain = async (reason: string) => { if (bound || LOCAL_PATCH_INTERRUPTION_HOLD.test(observed.lastError ?? ""))
     await c.db.generationJob.updateMany({ where: unchanged, data: { lastError: `${LOCAL_PATCH_CONTINUE_IN_SLICE}: ${reason}`.slice(0, 500) } }); };
   const why: ContinuationWhy = {};
   const open = await openAdmittedInterruptions(c, gameId, why);
   if (open === "blocked") return explain(why.reason ?? "the automatic continuation cannot serve this world");
-  const named = observed.lastError?.split(": ")[0] ?? "";
-  if (![...open.values()].some(item => item.requestKeys.includes(named)) && !await reviewContinuationRecorded(c, gameId, named))
-    return explain(`${named} is neither an interruption the automatic continuation admits nor one it already continued and recorded`);
+  const named = bound ? bound.heldRequestKeys : [observed.lastError?.split(": ")[0] ?? ""];
+  for (const key of named) if (![...open.values()].some(item => item.requestKeys.includes(key)) && !await reviewContinuationRecorded(c, gameId, key))
+    return explain(`${key} is neither an interruption the automatic continuation admits nor one it already continued and recorded`);
   if (open.size) {
     const continued = await continueAdmittedReviewInterruptions(c, gameId, deps, deadlineAt, undefined, why);
     // A concurrent resumption (the scheduled turn and the owner's tick) may have just continued the same image: never
     // explained over, so its own release is not undone; the next turn decides from what was recorded.
-    if (continued === "blocked" && !why.transient) return explain(why.reason ?? `${named}: not continued`);
+    if (continued === "blocked" && !why.transient) return explain(why.reason ?? `${named.join(", ")}: not continued`);
     if (continued !== "done") return;
   }
   const next = await resumptionAfterContinuation(c, gameId);

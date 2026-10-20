@@ -13,7 +13,7 @@ import { dualReviewQuestionCandidates } from "./local-patch-dual-review";
 import { subjectStageRaw, type DualReviewProof } from "./local-patch-dual-evidence";
 import { readLocalPatchExtraAttemptPlan } from "./local-patch-extra-attempt";
 import { LocalPatchRetainedPurchaseStore } from "./local-patch-lifecycle";
-import { admittedInterruption, continuationRecorded, isAutomaticReviewApproval, recoverPreparedLocalPatchReview,
+import { admittedInterruption, continuationRecorded, isAutomaticReviewApproval, providerFailureRefusal, recoverPreparedLocalPatchReview,
   recoverPreparedLocalPatchReviews } from "./local-patch-review-interruption-recovery";
 import { backgroundReviewWaiting, backgroundRoundOfKey } from "./continuity-background";
 import { DUAL_VISUAL_REVIEW_V3, dualVisualReviewVersion } from "./visual-review-release";
@@ -273,10 +273,15 @@ export async function openAdmittedInterruptions(c: Container, gameId: string, wh
     if (approval && (!isAutomaticReviewApproval(approval) || await continuationRecorded(c, gameId, approval))) continue;
     const retained = requestKey.startsWith("self-repair:board:") ? await store.get(worldId, requestKey) : null;
     const round = retained ? await backgroundRoundOfKey(c.db, gameId, worldId, requestKey) : null;
-    if (!retained || retained.evidence || !round || !await admittedInterruption(c, gameId, worldId, requestKey, retained))
+    const admitted = retained && !retained.evidence && round ? await admittedInterruption(c, gameId, worldId, requestKey, retained) : null;
+    if (!retained || retained.evidence || !round || !admitted)
       return blocked(`${requestKey} is an unknown charge the automatic continuation does not admit (${!retained ? "no retained review answer"
         : retained.evidence ? "its retained answer carries a bill" : !round ? "no background round" : retained.unknownReason ?? "no reason recorded"})`
         + "; a person reconciles or authorizes it");
+    // local-patch-lean-review-recovery/v1: a provider-declared failure of a kind never asked again (or past its image's
+    // bound in a pinned world) stops here with exactly why, before a slice could yield to continue it.
+    const refusal = admitted.shape === "provider-failed" ? await providerFailureRefusal(c, gameId, worldId, requestKey) : null;
+    if (refusal) return blocked(`${refusal}; a person reconciles or authorizes it`);
     const image = `${round.intent.binding.variantId}:${round.intent.binding.imageSha256}`;
     open.set(image, { binding: round.intent.binding, requestKeys: [...(open.get(image)?.requestKeys ?? []), requestKey] });
   }

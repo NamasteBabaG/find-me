@@ -23,7 +23,9 @@ import type { DualReviewProof } from "../local-patch-dual-evidence";
 import { allowedDualPublication } from "../local-patch-dual-publication";
 import { LEAN_RECOVERY_BACKOFF_MS, LOCAL_PATCH_STYLE, runLocalPatchWorldSlice } from "../local-patch-world";
 import { tickGeneration } from "../queue";
-import { advanceContinuityInBackground, backgroundRoundIdOf } from "../continuity-background";
+import { SOL_BACKGROUND_ACTION, advanceContinuityInBackground, backgroundReviewWaiting, backgroundRoundIdOf, backgroundRoundOfKey } from "../continuity-background";
+import { LeanReviewRecoveryRefused, SPENT_CONTINUATIONS_HOLD, applyLeanReviewRecovery, planLeanReviewRecovery } from "../lean-review-recovery";
+import { LEAN_REVIEW_RECOVERY_ACTION, leanNewWorldRecoveryReceipt, leanReviewRecoveryAuditId } from "../../../domain/generation/lean-review-recovery";
 import { continueAdmittedReviewInterruptions, openAdmittedInterruptions, resumptionAfterContinuation } from "../subject-upgrade";
 import { LOCAL_PATCH_PARKED_WAKE_ACTION, PARKED_WAKE_SPACING_MS, claimParkedWake, nextParkedWake } from "../local-patch-parked-wake";
 import { DUAL_VISUAL_REVIEW_V3, pinVisualReviewRelease } from "../visual-review-release";
@@ -128,10 +130,14 @@ function painter(gameId: string, prompts: Map<string, string>, qualities: Map<st
  * `fail`: the provider ends that appearance's first bundle `failed`, with no text and no usage (19 October, Flex).
  * `failContinuity`: the same for that appearance's first continuity question, asked beside its bundle; it ends a read later.
  * `failMany`: `fail` for each of these appearances.
- * `failFast`: that appearance's first bundle has already ended `failed` when it is first read. */
+ * `failFast`: that appearance's first bundle has already ended `failed` when it is first read.
+ * `failCode`: the error code a failed response of that appearance names (background-provider-error/v1).
+ * `failureUsage`: the usage a failed response reports (a bill), instead of none. */
 function sol(options: { lose?: string; slow?: string; released?: () => boolean; fail?: string; failContinuity?: string; failMany?: ReadonlySet<string>;
-  failFast?: string } = {}) {
+  failFast?: string; failCode?: ReadonlyMap<string, string>; failureUsage?: Readonly<Record<string, number>> } = {}) {
   const creates: { hideId: string; kind: "bundle" | "continuity"; tier: unknown; attempts: number }[] = [];
+  /** The digest of every body sent: a question sent twice is the same body twice. */
+  const bodies: string[] = [];
   const polls = new Map<string, { hideId: string; kind: "bundle" | "continuity"; tier: unknown; n: number; reads: number }>();
   const bundles = new Map<string, number>(), refused = new Set<string>(), lost = new Set<string>();
   let slowResponse: string | null = null, slowReads = 0, failingContinuity: string | null = null;
@@ -140,6 +146,7 @@ function sol(options: { lose?: string; slow?: string; released?: () => boolean; 
       const prompt = (body.input as { content: { text?: string }[] }[])[0]!.content[0]!.text!, bound = boundHide(prompt);
       const kind = prompt.includes(SUBJECT_QUALITY_BUNDLE_VERSION) ? "bundle" as const : "continuity" as const;
       creates.push({ hideId: bound.hideId, kind, tier: body.service_tier, attempts: bound.attempts });
+      bodies.push(sha256Bytes(Buffer.from(JSON.stringify(body))));
       if (bound.hideId === options.lose && kind === "bundle" && !lost.has(bound.hideId)) { lost.add(bound.hideId); throw Error("socket hang up"); }
       // Flex capacity is unavailable once, for one appearance's quality question: documented, nothing created.
       if (bound.hideId === REFUSED.id && kind === "bundle" && body.service_tier === "flex" && !refused.has(bound.hideId)) {
@@ -162,13 +169,31 @@ function sol(options: { lose?: string; slow?: string; released?: () => boolean; 
       // The failing continuity question ends a read after its bundle: the two failures arrive at different times.
       if (responseId === failingContinuity && state.reads === 2) return { status: "in_progress" };
       if ((state.hideId === options.fail || options.failMany?.has(state.hideId)) && state.kind === "bundle" && state.n === 1 || responseId === failingContinuity || failFast)
-        return { status: "failed", reading: { responseId, raw: null, usage: null, model: "gpt-6.1-sol", finishReason: "failed", serviceTier: String(state.tier) } };
+        return { status: "failed", reading: { responseId, raw: null, usage: options.failureUsage ? { ...options.failureUsage } : null, model: "gpt-6.1-sol",
+          finishReason: "failed", serviceTier: String(state.tier),
+          ...(options.failCode?.has(state.hideId) ? { providerError: { code: options.failCode.get(state.hideId)!, message: "Synthetic provider message" } } : {}) } };
       return { status: "completed", reading: { responseId, raw: state.kind === "bundle" ? bundleAnswer(state.hideId, state.n) : longAnswer(state.hideId, 400, 400, 160),
         usage: { input_tokens: 2000, output_tokens: 500 }, model: "gpt-6.1-sol", finishReason: "stop", serviceTier: String(state.tier) } };
     },
     cancel: async () => {} };
-  return { fake, creates, bundles, slowReads: () => slowReads };
+  return { fake, creates, bodies, bundles, slowReads: () => slowReads };
 }
+
+/** The pin a new lean draft receives with its lean release (pinLeanRelease; lean-release.test.ts creates it through the real draft path). */
+async function pinRecovery(gameId: string) {
+  await db.auditLog.create({ data: { id: leanReviewRecoveryAuditId(gameId), actorType: "SYSTEM", action: LEAN_REVIEW_RECOVERY_ACTION,
+    entityType: "Game", entityId: gameId, metaJson: JSON.stringify(leanNewWorldRecoveryReceipt(gameId)) } });
+}
+/** The synthetic diagnosis every world of this file buys for SEAM's broken join. */
+const seamDiagnosis = (gameId: string) => vi.fn(async (wire: SelfRepairWire) => {
+  const mask = maskForHide(SEAM), core = { left: mask.left + 12, top: 40, width: 40, height: 60 };
+  return { verdict: null, raw: JSON.stringify({ cause: "composition-clipping", action: "recompose-retained", sourceKey: `${SEAM.id}:${SEAM.pose}:render:1`,
+    returnWindow: { left: 16, top: 16, width: 480, height: 736 }, protectedCore: core, faceRect: { left: core.left + 4, top: core.top + 4, width: 30, height: 30 },
+    explanation: "Synthetic diagnosis of the broken join." }), usage: { prompt_tokens: 9000, completion_tokens: 500 },
+    requestId: `req-${gameId}-diagnosis-${wire.prompt.length}`, model: "gpt-5.6-sol", finishReason: "stop", wireFault: null, costUnknown: false };
+});
+/** The appearance a request key asked about, from its own round record. */
+const hideOfKey = async (gameId: string, requestKey: string) => (await backgroundRoundOfKey(db, gameId, boardWizardWorldId(gameId), requestKey))!.intent.binding.hideId;
 
 /** The n-th bundle answer about one appearance: every look its own; THIRD's first two show another child's face; SEAM's first two a broken join. */
 function bundleAnswer(hideId: string, n: number) {
@@ -604,6 +629,198 @@ describe("local-patch-lean/v1 on a whole paid world", () => {
     expect(await resumptionAfterContinuation(c, gameId)).toEqual({ action: "explain",
       reason: `${uncoveredKey} is an unknown charge the automatic continuation does not admit (Background review charge could not be verified); a person reconciles or authorizes it` });
     await db.auditLog.update({ where: { id: uncoveredOutcome }, data: { metaJson: recordedOutcome.metaJson } });
+  }, 1_500_000);
+
+  it("continues past 2+4 under v3 in a pinned world: each failed picture asked again at the default tier, its received answer replayed, every unknown kept (local-patch-lean-review-recovery/v1)", async () => {
+    const gameId = "lean-world-recovery-v3"; await leanWorld(gameId); await pinRecovery(gameId);
+    // The same seven provider-declared failures that park an unpinned world (the test above): the second QA world's, synthetically.
+    const covered = 2 + WORLD_AUTOMATIC_REVIEW_RECOVERY_V2_LIMIT, special = new Set([THIRD.id, REFUSED.id, SEAM.id]);
+    const FAILING = HIDES.filter(h => !special.has(h.id)).slice(0, covered + 1);
+    const provider = sol({ failMany: new Set(FAILING.map(h => h.id)) }), container = { ...c, visualReview: { request: vi.fn() }, backgroundReview: provider.fake } as Container;
+    const diagnose = seamDiagnosis(gameId);
+    const slice = () => runLocalPatchWorldSlice(container, painter(gameId, new Map(), new Map()), gameId, { hardDeadlineAt: Date.now() + 270_000, diagnose });
+    const job = () => db.generationJob.findUniqueOrThrow({ where: { id: `job_${gameId}` } });
+    const ready = async () => (await db.game.findUniqueOrThrow({ where: { id: gameId } })).configJson !== null;
+    for (let ticks = 0; ticks < 900 && !await ready(); ticks++) {
+      if ((await job()).currentStep === "local-patch:recovery-budget-wait") await db.generationJob.update({ where: { id: `job_${gameId}` },
+        data: { updatedAt: new Date(Date.now() - LEAN_RECOVERY_BACKOFF_MS - 1_000) } });
+      // A few times, two workers at once (the scheduled tick and the owner's): neither sends what the other sent.
+      if ([3, 11, 19].includes(ticks)) await Promise.all([slice(), slice()]); else await slice();
+      expect((await job()).currentStep).not.toBe("local-patch:needs-release");
+    }
+    expect(await ready()).toBe(true);
+    const worldId = boardWizardWorldId(gameId), budget = boardWizardBudgetOf(c), audit = await budget.audit(worldId);
+    // Seven unknown answers, every reservation counted in full: the seventh continued under v3; nothing deleted or settled at zero.
+    expect(audit.unknownRequestKeys).toHaveLength(covered + 1);
+    expect(audit.reservedMicroUsd).toBe((covered + 1) * 200_000);
+    expect(await budget.countContinuationApprovals(worldId)).toEqual({ "world-automatic-review-recovery/v1": 2,
+      "world-automatic-review-recovery/v2": WORLD_AUTOMATIC_REVIEW_RECOVERY_V2_LIMIT, "world-automatic-review-recovery/v3": 1 });
+    expect(audit.committedMicroUsd).toBeLessThanOrEqual(4_000_000);
+    for (const hide of FAILING) {
+      // Its bundle asked twice, on Flex and then at the default tier (a separate key and policy); its continuity answer received once, replayed.
+      expect(provider.creates.filter(cr => cr.hideId === hide.id && cr.kind === "bundle").map(cr => cr.tier)).toEqual(["flex", "default"]);
+      expect(provider.creates.filter(cr => cr.hideId === hide.id && cr.kind === "continuity").map(cr => cr.tier)).toEqual(["flex"]);
+      const row = (await db.targetVariantAsset.findFirst({ where: { variant: "A", targetInstance: { targetId: hide.targetId, gameScene: { gameId, sceneSlug: boardOf(hide.id).board } } } }))!;
+      expect(row.status).toBe("GENERATED");
+      const proof = JSON.parse(row.judgeJson!).boardReview.dual as DualReviewProof;
+      expect(proof.quality).toMatchObject({ policy: leanReviewPolicy("scene-quality", "default"), attempt: 2 });
+      expect(proof.continuity).toMatchObject({ policy: leanReviewPolicy("head-continuity", "flex"), attempt: 1 });
+      expect(await allowedDualPublication(db, publicationBinding(gameId, row))).toBe(true);
+    }
+    // No question was ever sent twice, whichever worker asked it.
+    expect(new Set(provider.bodies).size).toBe(provider.bodies.length);
+    expect(fetch).not.toHaveBeenCalled();
+  }, 1_500_000);
+
+  it("parks at once, saying exactly why, when the provider names a failure that is never asked again: no loop and no second question (local-patch-lean-review-recovery/v1)", async () => {
+    const gameId = "lean-world-flagged"; await leanWorld(gameId); await pinRecovery(gameId);
+    const busy = new Set([boardOf(THIRD.id).board, boardOf(REFUSED.id).board, boardOf(SEAM.id).board]);
+    const FLAGGED = BOARDS.find(b => !busy.has(b.board))!.hides[1]!;
+    const provider = sol({ fail: FLAGGED.id, failCode: new Map([[FLAGGED.id, "image_content_policy_violation"]]) });
+    const container = { ...c, visualReview: { request: vi.fn() }, backgroundReview: provider.fake } as Container;
+    const slice = () => runLocalPatchWorldSlice(container, painter(gameId, new Map(), new Map()), gameId, { hardDeadlineAt: Date.now() + 270_000, diagnose: seamDiagnosis(gameId) });
+    const job = () => db.generationJob.findUniqueOrThrow({ where: { id: `job_${gameId}` } });
+    for (let ticks = 0; ticks < 300 && (await job()).currentStep !== "local-patch:needs-release"; ticks++) await slice();
+    const worldId = boardWizardWorldId(gameId), budget = boardWizardBudgetOf(c), audit = await budget.audit(worldId);
+    expect(audit.unknownRequestKeys).toHaveLength(1);
+    const key = audit.unknownRequestKeys[0]!;
+    expect(await hideOfKey(gameId, key)).toBe(FLAGGED.id);
+    expect(await job()).toMatchObject({ status: "FAILED", currentStep: "local-patch:needs-release",
+      lastError: `local-patch-continue-in-slice/v1: ${key}: the provider ended it failed (content-policy: image_content_policy_violation);`
+        + " a content-policy failure is never asked again automatically; a person reconciles or authorizes it" });
+    // Its charge stays unknown and reserved in full; nothing continued it.
+    expect(await budget.readRequest(worldId, key)).toMatchObject({ state: "unknown", reserveMicroUsd: 200_000 });
+    expect(await budget.readContinuationApproval(worldId, key)).toBeNull();
+    // Never woken, never continued, never asked again: more slices change nothing, and no plan releases it.
+    expect(await nextParkedWake(c)).toBeNull();
+    const parked = await job(), sent = provider.creates.length;
+    for (let i = 0; i < 3; i++) await slice();
+    expect(await job()).toEqual(parked);
+    expect(provider.creates.length).toBe(sent);
+    expect(provider.creates.filter(cr => cr.hideId === FLAGGED.id && cr.kind === "bundle")).toHaveLength(1);
+    expect((await planLeanReviewRecovery(container, { gameId })).eligible).toBe(false);
+    // Deleted, it is never resumed by anyone.
+    await db.game.update({ where: { id: gameId }, data: { deletedAt: new Date() } });
+    expect((await planLeanReviewRecovery(container, { gameId })).refusals.join("; ")).toContain("never resumed");
+    expect(await slice()).toMatchObject({ claimed: false, pending: false });
+  }, 1_500_000);
+
+  it.each([["bundle", "image_content_policy_violation", "content-policy", true], ["continuity", "insufficient_quota", "account", true],
+    ["bundle", "invalid_image", "request-invalid", true], ["continuity", "image_content_policy_violation", "content-policy", false]] as const)(
+    "never asks again about pixels whose %s the provider failed with %s, priced or not: one dispatch, nothing after it (Codex QA R1)",
+    async (role, code, kind, priced) => {
+      const gameId = `lean-world-permanent-${role}-${kind}-${priced ? "priced" : "unpriced"}`; await leanWorld(gameId); await pinRecovery(gameId);
+      const busy = new Set([boardOf(THIRD.id).board, boardOf(REFUSED.id).board, boardOf(SEAM.id).board]);
+      const FAILING = BOARDS.find(b => !busy.has(b.board))!.hides[0]!;
+      const provider = sol({ ...(role === "bundle" ? { fail: FAILING.id } : { failContinuity: FAILING.id }), failCode: new Map([[FAILING.id, code]]),
+        ...(priced ? { failureUsage: { input_tokens: 2000, output_tokens: 500 } } : {}) });
+      const container = { ...c, visualReview: { request: vi.fn() }, backgroundReview: provider.fake } as Container;
+      const slice = () => runLocalPatchWorldSlice(container, painter(gameId, new Map(), new Map()), gameId, { hardDeadlineAt: Date.now() + 270_000, diagnose: seamDiagnosis(gameId) });
+      const job = () => db.generationJob.findUniqueOrThrow({ where: { id: `job_${gameId}` } });
+      for (let ticks = 0; ticks < 300 && (await job()).currentStep !== "local-patch:needs-release"; ticks++) await slice();
+      // Parked for a person, saying which failure and why; the scheduled tick never wakes it.
+      const parked = await job();
+      expect(parked).toMatchObject({ status: "FAILED", currentStep: "local-patch:needs-release" });
+      expect(parked.lastError).toContain(`(${kind}: ${code}); a ${kind} failure is never asked again automatically`);
+      expect(await nextParkedWake(c)).toBeNull();
+      // One question of that role about those pixels, on Flex; nothing about them at the default tier, nothing after it.
+      const about = () => provider.creates.filter(cr => cr.hideId === FAILING.id);
+      expect(about().filter(cr => cr.kind === role)).toEqual([expect.objectContaining({ tier: "flex" })]);
+      expect(about().filter(cr => cr.tier !== "flex")).toEqual([]);
+      expect(about().length).toBeLessThanOrEqual(2);
+      // The failed answer's charge exactly as it arrived: a bill settled (never made unknown), no bill unknown and reserved in full.
+      const outcome = (await db.auditLog.findMany({ where: { entityId: gameId, action: SOL_BACKGROUND_ACTION, id: { endsWith: "_outcome" } } }))
+        .map(row => ({ id: row.id, event: JSON.parse(row.metaJson!) })).find(one => one.event.errorCode === code)!;
+      expect(outcome.event).toMatchObject({ state: priced ? "unusable" : "unpriced", providerStatus: "failed" });
+      const roundId = /^aud_sb_(sb[0-9a-f]{30})_outcome$/.exec(outcome.id)![1]!;
+      const intent = JSON.parse((await db.auditLog.findUniqueOrThrow({ where: { id: `aud_sb_${roundId}_intent` } })).metaJson!).intent;
+      expect(intent.binding.hideId).toBe(FAILING.id);
+      const reserveMicroUsd = role === "bundle" ? 200_000 : 120_000;
+      expect(await boardWizardBudgetOf(c).readRequest(boardWizardWorldId(gameId), intent.requestKey)).toMatchObject(priced ? { state: "settled", reserveMicroUsd }
+        : { state: "unknown", reserveMicroUsd });
+      // More slices change nothing: no dispatch, no release, the same hold.
+      const sent = provider.creates.length;
+      for (let i = 0; i < 3; i++) await slice();
+      expect(provider.creates.length).toBe(sent);
+      expect(await job()).toEqual(parked);
+      expect(fetch).not.toHaveBeenCalled();
+    }, 1_500_000);
+
+  it("releases an existing world its 2+4 parked only through a person's plan bound to that exact hold, then finishes it under v3 (local-patch-lean-review-recovery/v1)", async () => {
+    const gameId = "lean-world-quota-parked"; await leanWorld(gameId);
+    const covered = 2 + WORLD_AUTOMATIC_REVIEW_RECOVERY_V2_LIMIT, special = new Set([THIRD.id, REFUSED.id, SEAM.id]);
+    const FAILING = HIDES.filter(h => !special.has(h.id)).slice(0, covered + 1);
+    const provider = sol({ failMany: new Set(FAILING.map(h => h.id)) }), container = { ...c, visualReview: { request: vi.fn() }, backgroundReview: provider.fake } as Container;
+    const diagnose = seamDiagnosis(gameId);
+    const slice = () => runLocalPatchWorldSlice(container, painter(gameId, new Map(), new Map()), gameId, { hardDeadlineAt: Date.now() + 270_000, diagnose });
+    const job = () => db.generationJob.findUniqueOrThrow({ where: { id: `job_${gameId}` } });
+    const age = async () => { if ((await job()).currentStep === "local-patch:recovery-budget-wait") await db.generationJob.update({ where: { id: `job_${gameId}` },
+      data: { updatedAt: new Date(Date.now() - LEAN_RECOVERY_BACKOFF_MS - 1_000) } }); };
+    const worldId = boardWizardWorldId(gameId), budget = boardWizardBudgetOf(c);
+    // Parked as the deployed engine parked the second QA world: the seventh failure, v1 and v2 spent, money still free.
+    for (let ticks = 0; ticks < 900 && (await job()).currentStep !== "local-patch:needs-release"; ticks++) { await age(); await slice(); }
+    const parked = await job(), held = SPENT_CONTINUATIONS_HOLD.exec(parked.lastError ?? "")?.[1];
+    expect(held).toMatch(/^self-repair:board:[a-z]+:[0-9a-f]{64}$/);
+    expect((await budget.audit(worldId)).remainingMicroUsd).toBeGreaterThan(0);
+    // Nothing wakes or continues it by itself.
+    expect(await nextParkedWake(container)).toBeNull();
+    await slice();
+    expect(await job()).toEqual(parked);
+    // A person reads the plan: what it binds, and why it may continue.
+    const plan = await planLeanReviewRecovery(container, { gameId });
+    expect(plan).toMatchObject({ eligible: true, refusals: [], binding: { worldId, jobId: `job_${gameId}`, heldRequestKeys: [held] },
+      held: [{ requestKey: held, reserveMicroUsd: 200_000, shape: "provider-failed", refusal: null }],
+      ledger: { unknownRequests: covered + 1, continuations: { "world-automatic-review-recovery/v1": 2, "world-automatic-review-recovery/v2": WORLD_AUTOMATIC_REVIEW_RECOVERY_V2_LIMIT } } });
+    // Another digest, or an operator that is not a bounded identifier: refused, and nothing written.
+    await expect(applyLeanReviewRecovery(container, { gameId, operatorId: "operator-synthetic", expectedPlanSha256: "0".repeat(64) })).rejects.toBeInstanceOf(LeanReviewRecoveryRefused);
+    await expect(applyLeanReviewRecovery(container, { gameId, operatorId: "https://example.test/operator", expectedPlanSha256: plan.planSha256 }))
+      .rejects.toBeInstanceOf(LeanReviewRecoveryRefused);
+    expect(await db.auditLog.findUnique({ where: { id: leanReviewRecoveryAuditId(gameId) } })).toBeNull();
+    // Applied: one pin and nothing else; the job's hold, the ledger and every approval exactly as they were. Again: nothing.
+    const ledger = async () => (await db.worldBudgetLedger.findUniqueOrThrow({ where: { worldId } })).snapshotJson, ledgerBefore = await ledger();
+    expect(await applyLeanReviewRecovery(container, { gameId, operatorId: "operator-synthetic", expectedPlanSha256: plan.planSha256 }))
+      .toMatchObject({ applied: true, receipt: { mode: "existing-world", operatorId: "operator-synthetic", binding: plan.binding } });
+    expect(await applyLeanReviewRecovery(container, { gameId, operatorId: "operator-synthetic", expectedPlanSha256: plan.planSha256 })).toMatchObject({ applied: false });
+    expect(await job()).toEqual(parked);
+    expect(await ledger()).toBe(ledgerBefore);
+    expect(await db.auditLog.findUniqueOrThrow({ where: { id: leanReviewRecoveryAuditId(gameId) } })).toMatchObject({ actorType: "ADMIN", actorId: "operator-synthetic" });
+    expect((await planLeanReviewRecovery(container, { gameId })).refusals).toContain("the world already carries local-patch-lean-review-recovery/v1");
+    // A pass that writes the v3 approval and then loses its claim before the image records it (its fence refuses): the
+    // approval stands, unrecorded, and the hold is untouched; the next pass finishes that same approval, never a second.
+    for (let reads = 0; reads < 10 && (await backgroundReviewWaiting(db, gameId, { inFlightOnly: true })).size; reads++)
+      await advanceContinuityInBackground(container, gameId);
+    await expect(continueAdmittedReviewInterruptions(container, gameId, {}, Date.now() + 270_000, async () => { throw Error("claim lost"); }))
+      .rejects.toThrow("claim lost");
+    const written = (await budget.readContinuationApproval(worldId, held!))!;
+    expect(written).toMatchObject({ version: "world-automatic-review-recovery/v3", policyId: "local-patch-review-interruption/v3" });
+    expect(await db.auditLog.findUnique({ where: { id: written.approvalId } })).toBeNull();
+    expect(await job()).toEqual(parked);
+    // The scheduled tick now gives exactly that hold its turn; the world's own slice finishes the continuation and re-queues it.
+    const wake = (await nextParkedWake(container))!;
+    expect(wake).toMatchObject({ gameId, attempt: 1 });
+    expect(await claimParkedWake(container, wake)).toBe(true);
+    for (let turn = 0; turn < 20 && (await job()).currentStep === "local-patch:needs-release"; turn++) await slice();
+    expect((await job()).currentStep).not.toBe("local-patch:needs-release");
+    expect(await budget.readContinuationApproval(worldId, held!)).toEqual(written);
+    expect(await db.auditLog.findUnique({ where: { id: written.approvalId } })).not.toBeNull();
+    expect(await budget.countContinuationApprovals(worldId)).toEqual({ "world-automatic-review-recovery/v1": 2,
+      "world-automatic-review-recovery/v2": WORLD_AUTOMATIC_REVIEW_RECOVERY_V2_LIMIT, "world-automatic-review-recovery/v3": 1 });
+    expect(await budget.readRequest(worldId, held!)).toMatchObject({ state: "unknown", reserveMicroUsd: 200_000 });
+    // It finishes with its ordinary slices, the seventh picture asked again at the default tier, every unknown still counted.
+    const ready = async () => (await db.game.findUniqueOrThrow({ where: { id: gameId } })).configJson !== null;
+    for (let ticks = 0; ticks < 900 && !await ready(); ticks++) {
+      await age(); await slice();
+      expect((await job()).currentStep).not.toBe("local-patch:needs-release");
+    }
+    expect(await ready()).toBe(true);
+    const seventh = await hideOfKey(gameId, held!);
+    expect(provider.creates.filter(cr => cr.hideId === seventh && cr.kind === "bundle").map(cr => cr.tier)).toEqual(["flex", "default"]);
+    const audit = await budget.audit(worldId);
+    expect(audit.unknownRequestKeys).toHaveLength(covered + 1);
+    expect(audit.committedMicroUsd).toBeLessThanOrEqual(4_000_000);
+    expect(new Set(provider.bodies).size).toBe(provider.bodies.length);
+    // A delivered world is never released again.
+    expect((await planLeanReviewRecovery(container, { gameId })).eligible).toBe(false);
   }, 1_500_000);
 
   it("admits only no answer at all, or a background response its provider ended failed with no text and no usage", () => {
