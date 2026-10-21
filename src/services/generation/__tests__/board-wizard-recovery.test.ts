@@ -17,7 +17,9 @@ import { auditWorldBudget } from "../world-budget";
 import type { Container } from "../../container";
 const fakes = vi.hoisted(() => ({ appEnv: "qa", gate: vi.fn(async () => undefined) }));
 vi.mock("../../../lib/env", () => ({ env: () => ({ APP_ENV: fakes.appEnv }), spendGuard: () => ({}) }));
-vi.mock("../board-wizard-identity-gate", () => ({ requireBoardWizardIdentityApproval: fakes.gate }));
+// Only the approval gate is replaced: the budget's capacity reader loads this module's schemas through the source revision state.
+vi.mock("../board-wizard-identity-gate", async importOriginal => ({
+  ...await importOriginal<typeof import("../board-wizard-identity-gate")>(), requireBoardWizardIdentityApproval: fakes.gate }));
 import { BOARD_WIZARD_STYLE, BOARD_WIZARD_SOURCE_POLICY, BOARD_WIZARD_OBSERVER_POLICY, readBoardWizard } from "../board-conditioned-wizard";
 import { boardWizardBudget } from "../board-wizard-budget";
 import { authorizeBoardWizardTransportRecovery, boardWizardRecoveryForm, BOARD_WIZARD_RECOVERY_AUTHORITY } from "../board-wizard-recovery";
