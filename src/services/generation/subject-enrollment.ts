@@ -62,9 +62,9 @@ export async function subjectUpgradeOf(db: Pick<Prisma.TransactionClient, "audit
     || start.photoSha256 !== parsed.photoSha256 || start.ageYears !== parsed.ageYears)
     throw Error("Subject identity revision differs from its immutable original enrollment");
   const review = await db.auditLog.findFirst({ where: { action: "board-wizard:identity-style-reviewed", entityType: "Asset", entityId: commit.newIdentityAssetId }, orderBy: { createdAt: "desc" } });
-  const { identityGateReceiptSchema, identityReceiptReadyForPublication } = await import("./board-wizard-identity-gate");
-  const receipt = identityGateReceiptSchema.parse(JSON.parse(review?.metaJson ?? "null"));
-  if (review?.actorType !== "SYSTEM" || receipt.provenance.style.version !== "board-matched-identity/v6" || !identityReceiptReadyForPublication(receipt, 12)
+  const { identityGateReceiptOf, identityReceiptReadyForPublication } = await import("./board-wizard-identity-gate");
+  const receipt = await identityGateReceiptOf(db, commit.newIdentityAssetId);
+  if (review?.actorType !== "SYSTEM" || !receipt || receipt.provenance.style.version !== "board-matched-identity/v6" || !identityReceiptReadyForPublication(receipt, 12)
     || receipt.fingerprint !== commit.reviewFingerprint || receipt.identityAssetId !== commit.newIdentityAssetId || receipt.sheetSha256 !== commit.newIdentitySha256
     || receipt.provenance.photoAssetId !== parsed.photoAssetId || receipt.provenance.photoSha256 !== parsed.photoSha256 || receipt.provenance.ageYears !== parsed.ageYears)
     throw Error("Subject identity revision lacks its real full-source review");

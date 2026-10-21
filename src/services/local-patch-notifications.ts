@@ -7,7 +7,7 @@ import { ensurePlayerLink, tokenForLink } from "./share-link.service";
 import { hashToken } from "../lib/ids";
 import { gameReadyEmail } from "./email/templates";
 import { routeMail } from "./email/fallback";
-import { IDENTITY_GATE_ACTION } from "./generation/board-wizard-identity-gate";
+import { IDENTITY_GATE_ACTION, identityGateReceiptOf } from "./generation/board-wizard-identity-gate";
 import { JUDGE_CHECKS } from "./generation/local-patch-judge";
 import { DbStorage } from "../infra/storage/db";
 import { requireCanonicalIdentityReuse } from "./generation/local-patch-identity-reuse";
@@ -108,7 +108,7 @@ export async function enqueueLocalPatchNotifications(c: Container, tx: Prisma.Tr
     const reused = !identity && game.scenes.every(scene => scene.sceneVersion === 8 || scene.sceneVersion === 9)
       ? await requireCanonicalIdentityReuse({ ...c, db: tx as Container["db"], storage: new DbStorage(tx as Container["db"]) }, { gameId }) : null;
     const receipt = reused?.ageReview ? { approved: reused.ageReview.state === "pass", reason: reused.ageReview.reason }
-      : reused?.sourceReceipt ?? JSON.parse(identity?.metaJson ?? "null");
+      : reused?.sourceReceipt ?? await identityGateReceiptOf(tx, game.childProfile.identityAssetId ?? "");
     if (!receipt?.approved) identityConcern = typeof receipt?.reason === "string" ? receipt.reason.slice(0, 800) : "ביקורת הזהות לא אישרה את האיור; התוצר פורסם לפי מדיניות ההתראות";
   } catch { identityConcern = "ביקורת הזהות אינה זמינה לפענוח"; }
   const messages: { kind: Notice["kind"]; message: EmailMessage; viaFallback: boolean }[] = [];

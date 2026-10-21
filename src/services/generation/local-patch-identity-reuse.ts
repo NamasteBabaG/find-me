@@ -15,7 +15,7 @@ import { boardConditioningHash } from "./board-conditioned-source";
 import { readBoardConditionedCatalog } from "./board-conditioned-catalog";
 import { boardWizardWorldId } from "./board-conditioned-wizard";
 import { readNewQaWorldBudget } from "./local-patch-qa-budget";
-import { identityGateReceiptSchema, identityReceiptReadyForPublication, IDENTITY_GATE_ACTION, IDENTITY_GATE_KEY } from "./board-wizard-identity-gate";
+import { identityGateReceiptSchema, identityGateReceiptOf, identityReceiptReadyForPublication, IDENTITY_GATE_ACTION, IDENTITY_GATE_KEY } from "./board-wizard-identity-gate";
 import { avatarDisplayFromSheet } from "../../infra/generation/avatar-cut";
 import { sha256Bytes } from "./fixed-sprite";
 import { transitionGame } from "../game-status";
@@ -87,7 +87,8 @@ async function inspectSource(c: Container, sourceGameId: string, expectedIdentit
   const gate = await c.db.auditLog.findFirst({ where: { action: IDENTITY_GATE_ACTION, entityType: "Asset", entityId: asset.id }, orderBy: { createdAt: "desc" } });
   const painted = await c.db.auditLog.findFirst({ where: { action: "sheet:painted", entityType: "Asset", entityId: asset.id }, orderBy: { createdAt: "desc" } });
   demand(gate?.metaJson && painted?.metaJson, "Original identity provenance is required; no approval may be invented");
-  const receipt = identityGateReceiptSchema.parse(JSON.parse(gate.metaJson)), painting = JSON.parse(painted.metaJson);
+  const receipt = await identityGateReceiptOf(c.db, asset.id), painting = JSON.parse(painted.metaJson);
+  demand(receipt, "Resolved identity evidence is unavailable");
   demand(identityReceiptReadyForPublication(receipt, source.scenes[0]!.sceneVersion) && receipt.identityAssetId === asset.id
     && receipt.sheetSha256 === sha256Bytes(bytes) && receipt.provenance.ageYears === child.ageYears
     && boardConditioningHash(receipt.provenance.crop) === boardConditioningHash(child.photoCropJson ? JSON.parse(child.photoCropJson) : null)
@@ -117,7 +118,7 @@ async function inspectSource(c: Container, sourceGameId: string, expectedIdentit
     && render.evidence.providerRequestId === painting.requestId && render.evidence.model === painting.model
     && render.evidence.usageId === boardConditioningHash(painting.usage) && render.evidence.amountMicroUsd === Math.ceil(painting.costCents * 10_000)
     && !painting.costUnknown, "Original identity purchase is not settled");
-  return { source, child, asset, bytes, width: meta.width, paid, gateJson: gate.metaJson, paintedJson: painted.metaJson,
+  return { source, child, asset, bytes, width: meta.width, paid, gateJson: receipt.rejudge ? JSON.stringify(receipt) : gate.metaJson, paintedJson: painted.metaJson,
     ledgerSha256: sha256Bytes(Buffer.from(JSON.stringify(ledger.snapshot))) };
 }
 

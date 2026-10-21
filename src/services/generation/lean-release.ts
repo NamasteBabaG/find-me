@@ -94,7 +94,7 @@ export const isLeanWorld = async (db: Pick<Prisma.TransactionClient, "auditLog">
 /**
  * A lean world's commercial ceiling: four dollars, read from its own pin and nothing else. It never RAISES the
  * board-wizard ceiling (four dollars by default), so it needs no payment or lifecycle condition: a ceiling no
- * higher than the default is never an authorization to spend. It comes first, so no six-dollar policy or
+ * higher than the default is never an authorization to spend. A separate explicit source-completion grant is resolved before this lower ceiling. This ceiling comes before ordinary six-dollar policy or
  * five-dollar automatic extension can apply to a lean world (each also refuses one: local-patch-budget-recovery.ts).
  */
 export async function readLeanWorldBudget(c: { db: Pick<Prisma.TransactionClient, "auditLog"> }, worldId: string): Promise<BoardWizardBudgetCeiling | null> {

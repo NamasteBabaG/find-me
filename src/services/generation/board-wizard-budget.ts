@@ -2,7 +2,7 @@ import { QA_PILOT_COMPLETION_CAP_MICRO_USD } from "../../domain/generation/qa-wo
 import { auditWorldBudget, WorldBudget, WorldBudgetError, type WorldBudgetAudit, type WorldBudgetRepository, type WorldReservationInput, type WorldLinkInput, type WorldChargeEvidence, type WorldBudgetOptions, type WorldUnknownContinuationInput, type WorldAutomaticImageRecoveryInput, type WorldAutomaticReviewRecoveryInput, type WorldAutomaticReviewRecoveryV2Input, type WorldAutomaticReviewRecoveryV3Input } from "./world-budget";
 
 export const BOARD_WIZARD_CAP_MICRO_USD = 4_000_000;
-/** A lean world's ceiling (local-patch-lean/v1): four dollars, never extended. The owner's, 19 October 2026: the
+/** A lean world's ceiling (local-patch-lean/v1): four dollars. A separately authenticated completion grant may authorize one existing source revision. The owner's, 19 October 2026: the
  * target stays under three, and a world a few cents over it must never stop for them. */
 export const LEAN_BOARD_WIZARD_CAP_MICRO_USD = 4_000_000;
 /** Read-only consumers must show the SAME commercial ceiling as reservations,

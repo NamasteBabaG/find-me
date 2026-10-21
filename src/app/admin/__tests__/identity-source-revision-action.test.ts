@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 const f = vi.hoisted(() => ({ appEnv: "qa", admin: { id: "real-session-admin" } as { id: string } | null,
-  requestHeaders: new Headers(), qaAccess: vi.fn(), apply: vi.fn(), retry: vi.fn(), revalidate: vi.fn() }));
+  requestHeaders: new Headers(), qaAccess: vi.fn(), apply: vi.fn(), retry: vi.fn(), grant: vi.fn(), revalidate: vi.fn() }));
 vi.mock("next/navigation", () => ({ redirect: (url: string) => { throw new Error(`redirect:${url}`); } }));
 vi.mock("next/headers", () => ({ headers: async () => f.requestHeaders }));
 vi.mock("next/cache", () => ({ revalidatePath: f.revalidate }));
@@ -18,7 +18,9 @@ vi.mock("@/services/generation/local-patch-human-approval", () => ({ LOCAL_PATCH
 vi.mock("@/services/generation/identity-source-revision", () => ({
   IDENTITY_SOURCE_REVISION_CONFIRMATION: "repair-this-world-reference-from-full-source-v1", beginIdentitySourceRevision: f.apply, IDENTITY_SOURCE_RETRY_CONFIRMATION: "retry-the-same-bound-reference-operation-v1", retryIdentitySourceRevision: f.retry,
 }));
-import { beginIdentitySourceRevisionAction, retryIdentitySourceRevisionAction } from "../actions";
+vi.mock("@/services/generation/lean-completion-budget", () => ({ authorizeLeanCompletionBudget: f.grant }));
+import { LEAN_COMPLETION_BUDGET_CONFIRMATION } from "@/domain/generation/lean-completion-budget";
+import { beginIdentitySourceRevisionAction, retryIdentitySourceRevisionAction, authorizeLeanCompletionBudgetAction } from "../actions";
 const destination = "/admin/orders/game-synthetic", digest = "a".repeat(64);
 function form() {
   const data = new FormData(); data.set("gameId", "game-synthetic"); data.set("planSha256", digest);
@@ -27,7 +29,7 @@ function form() {
 beforeEach(() => {
   f.appEnv = "qa"; f.admin = { id: "real-session-admin" };
   f.requestHeaders = new Headers({ origin: "https://qa.example.invalid", host: "qa.example.invalid", "sec-fetch-site": "same-origin" });
-  f.qaAccess.mockReset().mockResolvedValue(undefined); f.apply.mockReset().mockResolvedValue({ applied: true }); f.revalidate.mockReset(); f.retry.mockReset().mockResolvedValue(undefined);
+  f.qaAccess.mockReset().mockResolvedValue(undefined); f.apply.mockReset().mockResolvedValue({ applied: true }); f.revalidate.mockReset(); f.retry.mockReset().mockResolvedValue(undefined); f.grant.mockReset().mockResolvedValue({ capMicroUsd: 6_000_000 });
 });
 describe("an authenticated administrator starts a bound source revision, never image approval", () => {
   it("binds the authenticated administrator and the exact plan digest, then returns to the order page", async () => {
@@ -84,4 +86,25 @@ it.each(["no-admin", "qa-denied", "production", "cross-origin", "missing-origin"
   if (mode === "duplicate-id") data.append("gameId", "another-game"); if (mode === "duplicate-held") data.append("heldId", "another-hold"); if (mode === "invalid-held") data.set("heldId", "../../another-world");
   if (mode === "duplicate-confirm") data.append("confirm", "another-operation"); if (mode === "unconfirmed") data.delete("confirm");
   await expect(retryIdentitySourceRevisionAction(data)).rejects.toThrow(); expect(f.retry).not.toHaveBeenCalled(); expect(f.revalidate).not.toHaveBeenCalled();
+});
+
+
+function capForm() { const data = form(); data.set("confirm", LEAN_COMPLETION_BUDGET_CONFIRMATION); return data; }
+it("binds a separate completion cap grant to the current admin, exact plan and same origin", async () => {
+  const data = capForm(); data.set("operatorId", "forged");
+  await expect(authorizeLeanCompletionBudgetAction(data)).rejects.toThrow(`redirect:${destination}?completionBudget=authorized`);
+  expect(f.qaAccess).toHaveBeenCalledOnce();
+  expect(f.grant).toHaveBeenCalledExactlyOnceWith({ synthetic: true }, { gameId: "game-synthetic", operatorId: "real-session-admin", expectedPlanSha256: digest });
+  expect(f.apply).not.toHaveBeenCalled(); expect(f.retry).not.toHaveBeenCalled();
+});
+it.each(["production", "no-admin", "qa-denied", "cross-origin", "missing-origin", "cross-site", "unconfirmed", "duplicate-id", "duplicate-plan", "duplicate-confirm", "bad-plan"])("refuses a %s completion grant", async mode => {
+  const data = capForm();
+  if (mode === "production") f.appEnv = "production"; if (mode === "no-admin") f.admin = null;
+  if (mode === "qa-denied") f.qaAccess.mockRejectedValue(Error("synthetic denied"));
+  if (mode === "cross-origin") f.requestHeaders.set("origin", "https://attacker.invalid");
+  if (mode === "missing-origin") f.requestHeaders.delete("origin"); if (mode === "cross-site") f.requestHeaders.set("sec-fetch-site", "cross-site");
+  if (mode === "unconfirmed") data.delete("confirm"); if (mode === "duplicate-id") data.append("gameId", "other-world");
+  if (mode === "duplicate-plan") data.append("planSha256", digest); if (mode === "duplicate-confirm") data.append("confirm", LEAN_COMPLETION_BUDGET_CONFIRMATION);
+  if (mode === "bad-plan") data.set("planSha256", "not-a-digest");
+  await expect(authorizeLeanCompletionBudgetAction(data)).rejects.toThrow(); expect(f.grant).not.toHaveBeenCalled();
 });

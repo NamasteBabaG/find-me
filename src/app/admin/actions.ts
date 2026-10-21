@@ -1,5 +1,8 @@
 "use server";
 
+import { LEAN_COMPLETION_BUDGET_CONFIRMATION } from "@/domain/generation/lean-completion-budget";
+import { authorizeLeanCompletionBudget } from "@/services/generation/lean-completion-budget";
+
 import { redirect } from "next/navigation";
 import { requireQaAccess } from "@/lib/server/qa-access";
 import { revalidatePath } from "next/cache";
@@ -186,4 +189,20 @@ export async function retryIdentitySourceRevisionAction(fd: FormData): Promise<v
   try { await retryIdentitySourceRevision(getContainer(), { gameId, operatorId: actor.id, expectedHeldId: heldId }); started = true; } catch { /* bounded notice */ }
   revalidatePath(destination);
   redirect(`${destination}?referenceRepair=${started ? "started" : "blocked"}`);
+}
+
+
+/** Separate explicit capacity authority; neither a source retry nor art approval. */
+export async function authorizeLeanCompletionBudgetAction(fd: FormData): Promise<void> {
+  const actor = await admin(), gameId = str(fd, "gameId"), planSha256 = str(fd, "planSha256");
+  if (!/^[A-Za-z0-9_-]{1,160}$/.test(gameId)) redirect("/admin/orders");
+  const destination = `/admin/orders/${encodeURIComponent(gameId)}`, h = await headers();
+  let sameOrigin = false;
+  try { sameOrigin = new URL(h.get("origin") ?? "").host === (h.get("x-forwarded-host") ?? h.get("host")) && h.get("sec-fetch-site") !== "cross-site"; } catch { /* refuse */ }
+  if (env().APP_ENV !== "qa" || !sameOrigin || fd.getAll("gameId").length !== 1 || fd.getAll("planSha256").length !== 1 || !/^[a-f0-9]{64}$/.test(planSha256)
+    || fd.getAll("confirm").length !== 1 || str(fd, "confirm") !== LEAN_COMPLETION_BUDGET_CONFIRMATION) redirect(`${destination}?completionBudget=blocked`);
+  let granted = false;
+  try { await authorizeLeanCompletionBudget(getContainer(), { gameId, operatorId: actor.id, expectedPlanSha256: planSha256 }); granted = true; } catch { /* safe bounded notice */ }
+  revalidatePath(destination);
+  redirect(`${destination}?completionBudget=${granted ? "authorized" : "blocked"}`);
 }

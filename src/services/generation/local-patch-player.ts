@@ -15,7 +15,7 @@ import { boardWizardBudgetOf, boardWizardWorldId } from "./board-conditioned-wiz
 import { localPatchBudgetReadyForPublication } from "./local-patch-interruption-recovery";
 import { LOCAL_PATCH_PROVIDER, LOCAL_PATCH_VARIANT } from "./local-patch-hide";
 import { JUDGE_CHECKS, localPatchVerdictSchema } from "./local-patch-judge";
-import { IDENTITY_GATE_ACTION, identityReceiptReadyForPublication } from "./board-wizard-identity-gate";
+import { identityGateReceiptOf, identityReceiptReadyForPublication } from "./board-wizard-identity-gate";
 import { hasLocalPatchHumanApproval, localPatchGeometryDigest } from "./local-patch-human-approval";
 import { hasLocalPatchPublicationPolicy, localPatchPublicationGeometryHash } from "./local-patch-publication-policy";
 import { enqueueLocalPatchNotifications } from "../local-patch-notifications";
@@ -163,8 +163,7 @@ export async function finishLocalPatchGame(c: Container, gameId: string, fence: 
       demand(photo.ownerId === game.ownerId && photo.type === "ORIGINAL_PHOTO", "the original photograph is not owned by this game");
       await tx.fileBlob.deleteMany({ where: { key: photo.storagePath } });
       await tx.asset.update({ where: { id: photo.id }, data: { status: "DELETED", deletedAt: new Date() } });
-      const approval = await tx.auditLog.findFirst({ where: { action: IDENTITY_GATE_ACTION, entityType: "Asset", entityId: child.identityAssetId! }, orderBy: { createdAt: "desc" } });
-      const identityReceipt = JSON.parse(approval?.metaJson ?? "null");
+      const identityReceipt = await identityGateReceiptOf(tx, child.identityAssetId!);
       demand(identityReceipt && identityReceiptReadyForPublication(identityReceipt, contentVersion) && identityReceipt?.provenance?.photoAssetId === photo.id && identityReceipt?.provenance?.ageYears === child.ageYears,
         "the privacy purge must belong to the approved identity");
       await tx.auditLog.create({ data: { id: newId("aud"), actorType: "SYSTEM", action: "local-patch:photo-purged-after-approval", entityType: "Asset", entityId: child.identityAssetId!,

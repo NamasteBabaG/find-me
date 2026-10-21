@@ -1,3 +1,6 @@
+import { IDENTITY_SOURCE_REJUDGE_VERSION, IDENTITY_SOURCE_REJUDGE_ACTION, identitySourceRejudgeId, identitySourceRejudgeKey,
+  identitySourceRejudgeBindingSchema, identitySourceRejudgeBinding, type IdentitySourceRejudgeBinding } from "./identity-source-rejudge-binding";
+import { FULL_SOURCE_STRICT_RESPONSE_FORMAT } from "../../infra/generation/identity-style-reviewer";
 import { isRefreshedCollectionVersion } from "../../domain/scene/local-patch-versions";
 import { childBodyDirection } from "../../domain/child-body";
 import sharp from "sharp";
@@ -45,9 +48,43 @@ const checksSchema = z.object({ identity: z.enum(["pass", "fail", "uncertain"]),
   paintedStyle: z.enum(["pass", "fail", "uncertain"]), sheetLayout: z.enum(["pass", "fail", "uncertain"]) }).strict();
 const fullSourceChecksSchema = checksSchema.extend({ sourceFaceVisible: z.enum(["pass", "fail", "uncertain"]),
   facialVolume: z.enum(["pass", "fail", "uncertain"]), viewConsistency: z.enum(["pass", "fail", "uncertain"]) }).strict();
+const identityReviewOutcomeSchema = z.object({
+  version: z.literal("identity-review-outcome/v1"),
+  state: z.enum(["decision", "budget-held", "http-error", "choice-count", "finish-reason", "refusal", "output-limit",
+    "json-invalid", "schema-invalid", "response-invalid", "transport-unresolved", "deadline-before-dispatch"]),
+  dispatchAttempted: z.boolean(), httpStatus: z.number().int().min(100).max(599).nullable(), finishReason: z.string().max(64).nullable(),
+  choiceCount: z.number().int().nonnegative().nullable(), refusal: z.boolean(),
+  providerErrorType: z.string().max(160).nullable().optional(), providerErrorCode: z.string().max(160).nullable().optional(),
+  providerErrorParam: z.string().max(160).nullable().optional(), bodyFormat: z.enum(["json", "non-json"]).optional(),
+  contentLength: z.number().int().nonnegative(), contentBytes: z.number().int().nonnegative().optional(), contentSha256: digest.nullable(),
+  rawContent: z.string().max(16_384).nullable(), excerpt: z.string().max(1500).nullable(),
+  schemaIssues: z.array(z.object({ path: z.string().max(160), code: z.string().max(64) }).strict()).max(8),
+}).strict();
+type IdentityReviewOutcome = z.infer<typeof identityReviewOutcomeSchema>;
+function reviewOutcome(state: IdentityReviewOutcome["state"], dispatchAttempted: boolean, response?: { httpStatus?: number; bodyFormat?: "json" | "non-json"; body: unknown }): IdentityReviewOutcome {
+  const body = response?.body && typeof response.body === "object" ? response.body as Record<string, unknown> : {};
+  const choices = Array.isArray(body.choices) ? body.choices : null;
+  const choice = choices?.[0] && typeof choices[0] === "object" ? choices[0] as Record<string, unknown> : {};
+  const message = choice.message && typeof choice.message === "object" ? choice.message as Record<string, unknown> : {};
+  const content = typeof message.content === "string" ? message.content : null;
+  const error = body.error && typeof body.error === "object" ? body.error as Record<string, unknown> : {};
+  // Only bounded provider identifiers; never free-form error messages, payloads or credentials.
+  const label = (value: unknown) => typeof value === "string" && /^[A-Za-z0-9_.:[\]\/-]{1,160}$/.test(value) && !/sk-|bearer/i.test(value) ? value : null;
+  return { version: "identity-review-outcome/v1", state, dispatchAttempted,
+    httpStatus: response?.httpStatus && response.httpStatus >= 100 && response.httpStatus <= 599 ? response.httpStatus : null,
+    finishReason: typeof choice.finish_reason === "string" ? choice.finish_reason.slice(0, 64) : null,
+    choiceCount: choices?.length ?? null, refusal: !!message.refusal,
+    providerErrorType: label(error.type), providerErrorCode: label(error.code), providerErrorParam: label(error.param),
+    ...(response?.bodyFormat ? { bodyFormat: response.bodyFormat } : {}),
+    contentLength: content?.length ?? 0, contentBytes: content === null ? 0 : Buffer.byteLength(content),
+    contentSha256: content === null ? null : sha256Bytes(Buffer.from(content)),
+    rawContent: content !== null && Buffer.byteLength(content) <= 16_384 ? content : null,
+    excerpt: content === null ? null : content.slice(0, 1500), schemaIssues: [] };
+}
+const isFullSourceGate = (version: string) => version === FULL_SOURCE_IDENTITY_GATE_VERSION || version === IDENTITY_SOURCE_REJUDGE_VERSION;
 const fullSourceAnswerSchema = z.object({ checks: fullSourceChecksSchema, reason: z.string().trim().min(1).max(1200) }).strict();
 const answerSchema = z.object({ checks: checksSchema, reason: z.string().trim().min(1).max(1200) }).strict();
-export const identityGateReceiptSchema = z.object({ version: z.enum([LEGACY_IDENTITY_GATE_VERSION, IDENTITY_GATE_VERSION, ADVISORY_IDENTITY_GATE_VERSION, AGE_IDENTITY_GATE_VERSION, FULL_SOURCE_IDENTITY_GATE_VERSION]), fingerprint: digest,
+export const identityGateReceiptSchema = z.object({ version: z.enum([LEGACY_IDENTITY_GATE_VERSION, IDENTITY_GATE_VERSION, ADVISORY_IDENTITY_GATE_VERSION, AGE_IDENTITY_GATE_VERSION, FULL_SOURCE_IDENTITY_GATE_VERSION, IDENTITY_SOURCE_REJUDGE_VERSION]), fingerprint: digest,
   identityAssetId: z.string(), sheetSha256: digest, provenance: identityProvenanceSchema,
   imageHashes: z.array(digest).min(3).max(5), approved: z.boolean(), checks: z.union([checksSchema, fullSourceChecksSchema]).nullable(), reason: z.string(),
   comparison: z.object({ firstIdentityAssetId: z.string(), firstSheetSha256: digest,
@@ -57,16 +94,17 @@ export const identityGateReceiptSchema = z.object({ version: z.enum([LEGACY_IDEN
     reason: z.enum(["first-sufficient", "best-of-two", "budget-fallback"]) }).strict().optional(),
   requestId: z.string().nullable(), costMicroUsd: z.number().int().nonnegative(), usage: z.record(z.number()).nullable(),
   model: z.enum([BOARD_JUDGE_MODEL, "gpt-5.6-luna", "gpt-6.1-sol"]), effort: z.enum(["high", "low"]), prompt: z.string(),
-}).strict().refine(r => r.version === FULL_SOURCE_IDENTITY_GATE_VERSION
+  outcome: identityReviewOutcomeSchema.optional(), rejudge: identitySourceRejudgeBindingSchema.optional(),
+}).strict().refine(r => isFullSourceGate(r.version)
   ? r.provenance.style.version === "board-matched-identity/v6" && r.model === fullSourceSettings.model && r.effort === "high"
   : r.version === ADVISORY_IDENTITY_GATE_VERSION || r.version === AGE_IDENTITY_GATE_VERSION
   ? ["board-matched-identity/v2", "board-matched-identity/v3", "board-matched-identity/v4", "board-matched-identity/v5"].includes(r.provenance.style.version) && r.model === advisorySettings.model && r.effort === "low"
   : r.version === (r.provenance.style.version === "board-matched-identity/v1" ? LEGACY_IDENTITY_GATE_VERSION : IDENTITY_GATE_VERSION)
     && r.model === BOARD_JUDGE_MODEL && r.effort === "high", "Identity review/style/model versions differ")
-  .refine(r => (r.provenance.style.version === "board-matched-identity/v6") === (r.version === FULL_SOURCE_IDENTITY_GATE_VERSION), "Full-source style requires its own evidence policy")
-  .refine(r => r.imageHashes.length === (r.comparison ? 5 : r.version === FULL_SOURCE_IDENTITY_GATE_VERSION ? 4 : 3)
-    && (!r.comparison || r.version === AGE_IDENTITY_GATE_VERSION || r.version === FULL_SOURCE_IDENTITY_GATE_VERSION), "Invalid comparison images/policy")
-  .refine(r => r.checks === null || (r.version === FULL_SOURCE_IDENTITY_GATE_VERSION
+  .refine(r => (r.provenance.style.version === "board-matched-identity/v6") === (isFullSourceGate(r.version)), "Full-source style requires its own evidence policy")
+  .refine(r => r.imageHashes.length === (r.comparison ? 5 : isFullSourceGate(r.version) ? 4 : 3)
+    && (!r.comparison || r.version === AGE_IDENTITY_GATE_VERSION || isFullSourceGate(r.version)), "Invalid comparison images/policy")
+  .refine(r => r.checks === null || (isFullSourceGate(r.version)
     ? fullSourceChecksSchema.safeParse(r.checks).success : checksSchema.safeParse(r.checks).success), "Checks must match the pinned source-evidence policy")
   .refine(r => !r.automaticSelection || (r.version === AGE_IDENTITY_GATE_VERSION || r.version === FULL_SOURCE_IDENTITY_GATE_VERSION)
     && r.automaticSelection.sourceFingerprint === r.fingerprint
@@ -75,7 +113,13 @@ export const identityGateReceiptSchema = z.object({ version: z.enum([LEGACY_IDEN
     && new Set(r.automaticSelection.candidates).size === r.automaticSelection.candidates.length
     && r.automaticSelection.candidates.length === (r.automaticSelection.reason === "best-of-two" ? 2 : 1)
     && (!r.comparison || r.comparison.firstIdentityAssetId === r.automaticSelection.candidates[0]),
-  "Selection must bind its original review and chosen asset");
+  "Selection must bind its original review and chosen asset")
+  .refine(r => r.version === IDENTITY_SOURCE_REJUDGE_VERSION
+    ? !!r.rejudge && !r.comparison && !r.automaticSelection
+    : !r.rejudge, "Rejudge must have its own bound policy")
+  .refine(r => !r.outcome || (r.outcome.state === "decision" ? r.checks !== null : r.checks === null && !r.approved),
+    "Diagnostic outcome must agree with the retained visual decision")
+  .refine(r => r.version !== IDENTITY_SOURCE_REJUDGE_VERSION || !!r.outcome, "Rejudge requires retained response diagnostics");
 const receiptSchema = identityGateReceiptSchema;
 export type IdentityGateReceipt = z.infer<typeof receiptSchema>;
 function demand(ok: unknown, message: string): asserts ok { if (!ok) throw new Error(`IDENTITY_STYLE: ${message}`); }
@@ -127,7 +171,7 @@ export function identityGatePrompt(ageYears: number, version: IdentityGateReceip
 }
 const worldId = (gameId: string) => `${gameId}:board-wizard`;
 type GateInput = { gameId: string; identityAssetId: string; sheet: Buffer; photo: Buffer; atlas: Buffer; provenance: IdentityProvenance; contentVersion?: number; deadlineAt?: number;
-  compareWith?: { identityAssetId: string; sheet: Buffer } };
+  rejudge?: IdentitySourceRejudgeBinding; compareWith?: { identityAssetId: string; sheet: Buffer } };
 
 /** No hidden repair loop: one budgeted request, with exact image/policy hashes.
  * The original images already have private asset owners; the receipt retains
@@ -155,29 +199,50 @@ export async function reviewBoardWizardIdentity(deps: {
   }
   const advisory = !fullSource && isLocalPatchAdvisoryVersion(input.contentVersion);
   demand(!advisory || ["board-matched-identity/v2", "board-matched-identity/v3", "board-matched-identity/v4", "board-matched-identity/v5"].includes(provenance.style.version), "New games require the source-backed board-face style contract");
-  const version = fullSource ? FULL_SOURCE_IDENTITY_GATE_VERSION : isLocalPatchAgeVersion(input.contentVersion) ? AGE_IDENTITY_GATE_VERSION
+  const version = input.rejudge ? IDENTITY_SOURCE_REJUDGE_VERSION : fullSource ? FULL_SOURCE_IDENTITY_GATE_VERSION : isLocalPatchAgeVersion(input.contentVersion) ? AGE_IDENTITY_GATE_VERSION
     : advisory ? ADVISORY_IDENTITY_GATE_VERSION : provenance.style.version === "board-matched-identity/v1" ? LEGACY_IDENTITY_GATE_VERSION : IDENTITY_GATE_VERSION;
   const settings = fullSource ? fullSourceSettings : advisory ? advisorySettings : { model: BOARD_JUDGE_MODEL, effort: "high", maxOutputTokens: BOARD_JUDGE_MAX_TOKENS } as const;
   const comparison = input.compareWith ? { firstIdentityAssetId: input.compareWith.identityAssetId,
     firstSheetSha256: sha256Bytes(input.compareWith.sheet), preferredCandidate: null } : undefined;
-  const prompt = identityGatePrompt(provenance.ageYears, version) + (isRefreshedCollectionVersion(input.contentVersion) ? "\n" + childBodyDirection(provenance.ageYears) + "\nThe atlas shows original scene contexts, not enlarged face tiles. Photo alone establishes facial identity. Explicitly compare facial geometry and hair against the photo; do not accept an atlas bystander lookalike. Report identity and body age failures separately, with concrete visible evidence." : "") + (!fullSource && input.contentVersion === 12 ? "\nPainted style also requires explicit pass. Compare the portrait's skin modelling, eye treatment, contour weight and hair detail against the original atlas people. Smooth photographic gradients, tiny individually drawn hairs or a fine-art portrait finish fail paintedStyle even when likeness is excellent. Feature geometry must remain accurate while surface detail matches the board. No automatic best-of-two selection may waive this check." : "") + (comparison
+  const prompt = identityGatePrompt(provenance.ageYears, input.rejudge ? FULL_SOURCE_IDENTITY_GATE_VERSION : version) + (isRefreshedCollectionVersion(input.contentVersion) ? "\n" + childBodyDirection(provenance.ageYears) + "\nThe atlas shows original scene contexts, not enlarged face tiles. Photo alone establishes facial identity. Explicitly compare facial geometry and hair against the photo; do not accept an atlas bystander lookalike. Report identity and body age failures separately, with concrete visible evidence." : "") + (!fullSource && input.contentVersion === 12 ? "\nPainted style also requires explicit pass. Compare the portrait's skin modelling, eye treatment, contour weight and hair detail against the original atlas people. Smooth photographic gradients, tiny individually drawn hairs or a fine-art portrait finish fail paintedStyle even when likeness is excellent. Feature geometry must remain accurate while surface detail matches the board. No automatic best-of-two selection may waive this check." : "") + (comparison
     ? fullSource
       ? "\nCompare TWO candidates: image2 is the SECOND/new candidate, image5 is the FIRST candidate. Image4 remains the complete original source; image1 selects the child. Checks describe the SECOND candidate. Add preferredCandidate: first|second to the JSON and concrete visible comparison evidence. Prefer the more recognizable, age-correct, consistent painted child; natural pose differences are allowed. A preference cannot waive any check. Prefer first if tied."
       : "\nAlso compare TWO candidates directly: image2 is the SECOND (new) candidate, image4 is the FIRST candidate, image5 is the uncropped source photo for missing facial context. Image1 selects the child when the full photo contains other people. Your checks describe the SECOND candidate. Add preferredCandidate: first|second to the JSON. Choose the more recognizable likeness to the source child (face geometry, eye spacing/size, nose, mouth, hair shape/colour); do not reward photographic realism or a generic cute face. Both must remain illustrated. Use age-appropriate proportions as a tie-breaker. Prefer first if genuinely tied. Give concrete comparison evidence in reason. This choice is advisory and bounded to these two images, not a request for more attempts."
     : ""), imageHashes = images.map(sha256Bytes);
-  const requestKey = identityReviewRequestKey({ identityAssetId: input.identityAssetId, provenance, comparison });
+  const rejudge = input.rejudge ? identitySourceRejudgeBindingSchema.parse(input.rejudge) : undefined;
+  if (rejudge) {
+    demand(fullSource && input.contentVersion === 12 && !comparison && rejudge.gameId === input.gameId, "Rejudge requires the exact full-source candidate");
+    const originalRow = await deps.db.auditLog.findFirst({ where: { action: IDENTITY_GATE_ACTION, entityType: "Asset", entityId: input.identityAssetId }, orderBy: { createdAt: "desc" } });
+    demand(originalRow?.metaJson, "Rejudge lacks its original paid receipt");
+    const original = receiptSchema.parse(JSON.parse(originalRow.metaJson));
+    demand(JSON.stringify(await identitySourceRejudgeBinding(deps.db, { gameId: input.gameId, attempt: rejudge.attempt,
+      original, originalMetaJson: originalRow.metaJson })) === JSON.stringify(rejudge), "Rejudge source binding differs");
+    demand(original.prompt === prompt && JSON.stringify(original.imageHashes) === JSON.stringify(imageHashes)
+      && original.sheetSha256 === sha256Bytes(input.sheet), "Rejudge must inspect byte-identical source evidence");
+    await validateIdentityGateBill(deps.budget, input.gameId, original);
+    demand((await deps.budget.readRequest(worldId(input.gameId), rejudge.originalRequestKey))?.state === "settled", "Only a settled original review is rejudge eligible");
+  }
+  const requestKey = rejudge ? identitySourceRejudgeKey(input.identityAssetId) : identityReviewRequestKey({ identityAssetId: input.identityAssetId, provenance, comparison });
   const sheetSha256 = sha256Bytes(input.sheet);
   const fingerprint = boardConditioningHash({ version, identityAssetId: input.identityAssetId, sheetSha256, provenance,
     model: settings.model, effort: settings.effort, maxTokens: settings.maxOutputTokens, serviceTier: "default", prompt, imageHashes,
     ...(fullSource ? { contentVersion: input.contentVersion, pricingVersion: fullSourcePolicy.pricingVersion, timeoutPolicy: "full-source-v1" }
       : advisory ? { contentVersion: input.contentVersion, pricingVersion: CURRENT_JUDGE_PRICING_VERSION } : {}),
-    ...(comparison ? { comparison } : {}) });
-  const saved = await deps.db.auditLog.findFirst({ where: { action: IDENTITY_GATE_ACTION, entityType: "Asset", entityId: input.identityAssetId }, orderBy: { createdAt: "desc" } });
+    ...(comparison ? { comparison } : {}),
+    ...(rejudge ? { rejudge, responseFormatPolicy: "full-source-strict-v1", responseFormatSha256: boardConditioningHash(FULL_SOURCE_STRICT_RESPONSE_FORMAT) } : {}) });
+  const saved = rejudge ? await deps.db.auditLog.findUnique({ where: { id: identitySourceRejudgeId(input.identityAssetId) } })
+    : await deps.db.auditLog.findFirst({ where: { action: IDENTITY_GATE_ACTION, entityType: "Asset", entityId: input.identityAssetId }, orderBy: { createdAt: "desc" } });
   if (saved) {
     const receipt = receiptSchema.parse(JSON.parse(saved.metaJson!));
     demand(receipt.fingerprint === fingerprint, "Retained approval refers to different pixels or policy");
     await validateIdentityGateBill(deps.budget, input.gameId, receipt);
     return receipt;
+  }
+  if (rejudge) {
+    demand(deps.recordFullSourceIntent, "Rejudge must retain its exact dispatch intent before reservation");
+    const audit = await deps.budget.audit(worldId(input.gameId));
+    demand(!audit.held && !audit.pendingRequestKeys.length && audit.remainingMicroUsd >= 400_000, "Rejudge must fit the existing cap with no in-flight purchase");
+    demand(input.deadlineAt === undefined || input.deadlineAt - Date.now() >= 205_000, "Rejudge needs a complete HIGH review window");
   }
   await deps.beforeDispatch();
   if (fullSource && deps.recordFullSourceIntent) await deps.recordFullSourceIntent({ requestKey, fingerprint });
@@ -186,8 +251,8 @@ export async function reviewBoardWizardIdentity(deps: {
   demand(reservation.acquired, "Identity review already dispatched; reconcile the retained response, never repurchase");
   const receipt: IdentityGateReceipt = { version, fingerprint, identityAssetId: input.identityAssetId, sheetSha256, provenance, imageHashes,
     approved: false, checks: null, reason: "Identity style review did not complete", requestId: null, costMicroUsd: 0, usage: null, model: settings.model, effort: settings.effort, prompt,
-    ...(comparison ? { comparison } : {}) };
-  let billingSettled = false;
+    ...(comparison ? { comparison } : {}), ...(rejudge ? { rejudge } : {}) };
+  let billingSettled = false, dispatched = false;
   try {
     // Reservation reads/writes can consume the caller's earlier time check.
     // Recompute immediately before HTTP, preserving time to record its bill.
@@ -195,9 +260,13 @@ export async function reviewBoardWizardIdentity(deps: {
     const timeoutMs = input.deadlineAt === undefined ? ceiling : Math.min(ceiling, Math.floor(input.deadlineAt - Date.now() - 25_000));
     if (timeoutMs <= 0) {
       receipt.reason = "Identity review reserved but never dispatched: request deadline expired; operator reconciliation required";
+      if (fullSource) receipt.outcome = reviewOutcome("deadline-before-dispatch", false);
       await deps.budget.markUnknown(worldId(input.gameId), requestKey, receipt.reason);
     } else {
-    const response = await (deps.reviewer ?? new OpenAiIdentityStyleReviewer(deps.apiKey)).review({ prompt, images, timeoutMs, ...(advisory || fullSource ? { settings } : {}), ...(fullSource ? { timeoutPolicy: "full-source-v1" as const } : {}) });
+    dispatched = true;
+    const response = await (deps.reviewer ?? new OpenAiIdentityStyleReviewer(deps.apiKey)).review({ prompt, images, timeoutMs, ...(advisory || fullSource ? { settings } : {}), ...(fullSource ? { timeoutPolicy: "full-source-v1" as const } : {}), ...(rejudge ? { responseFormatPolicy: "full-source-strict-v1" as const } : {}) });
+    if (fullSource) receipt.outcome = reviewOutcome(!response.httpOk ? "http-error"
+      : response.bodyFormat === "non-json" ? "json-invalid" : "response-invalid", true, response);
     // Read as unknown: malformed/billable responses must never turn into approval.
     const raw = z.object({ model: z.string(), service_tier: z.string().nullish(),
       usage: z.object({ prompt_tokens: z.number().int().positive(), completion_tokens: z.number().int().positive(), total_tokens: z.number().int().optional() }).passthrough(),
@@ -219,26 +288,81 @@ export async function reviewBoardWizardIdentity(deps: {
       usageId: boardConditioningHash(usage), rawUsage: usage as BudgetJson, model: raw.model, amountMicroUsd: receipt.costMicroUsd, costBasis: "conservative-upper-estimate" });
     billingSettled = true;
     const choice = raw.choices[0];
-    if (!settled.audit.held && response.httpOk && raw.choices.length === 1 && choice?.finish_reason === "stop" && !choice.message.refusal && usage.completion_tokens <= settings.maxOutputTokens) {
-      const rawAnswer = JSON.parse(choice.message.content ?? "");
+    const failed: IdentityReviewOutcome["state"] | null = settled.audit.held ? "budget-held" : !response.httpOk ? "http-error"
+      : raw.choices.length !== 1 ? "choice-count" : choice?.finish_reason !== "stop" ? "finish-reason"
+      : choice.message.refusal ? "refusal" : usage.completion_tokens > settings.maxOutputTokens ? "output-limit" : null;
+    if (failed) {
+      if (receipt.outcome) receipt.outcome.state = failed;
+    } else {
+      if (receipt.outcome) receipt.outcome.state = "json-invalid";
+      const rawAnswer = JSON.parse(choice!.message.content ?? "");
       const schema = fullSource ? fullSourceAnswerSchema : answerSchema;
-      const answer = comparison ? schema.extend({ preferredCandidate: z.enum(["first", "second"]) }).parse(rawAnswer) : schema.parse(rawAnswer);
-      receipt.checks = answer.checks; receipt.reason = answer.reason;
-      if (receipt.comparison) receipt.comparison.preferredCandidate = z.enum(["first", "second"]).parse(rawAnswer.preferredCandidate);
-      receipt.approved = Object.values(answer.checks).every(check => check === "pass");
+      const parsed = comparison ? schema.extend({ preferredCandidate: z.enum(["first", "second"]) }).safeParse(rawAnswer) : schema.safeParse(rawAnswer);
+      if (!parsed.success) {
+        if (receipt.outcome) {
+          receipt.outcome.state = "schema-invalid";
+          receipt.outcome.schemaIssues = parsed.error.issues.slice(0, 8).map(issue => ({
+            path: issue.path.join(".").slice(0, 160), code: issue.code.slice(0, 64) }));
+        }
+      } else {
+        const answer = parsed.data;
+        receipt.checks = answer.checks; receipt.reason = answer.reason;
+        if (receipt.comparison) receipt.comparison.preferredCandidate = z.enum(["first", "second"]).parse(rawAnswer.preferredCandidate);
+        receipt.approved = Object.values(answer.checks).every(check => check === "pass");
+        if (receipt.outcome) receipt.outcome.state = "decision";
+      }
     }
     }
   } catch {
-    // Retain a known bill even for malformed output. No raw exception or image
-    // payload enters logs; no transport/parse failure gets an automatic retry.
+    // Retain the genuine bill and bounded PRIVATE output evidence. No exception,
+    // credential, image payload or generated text is emitted to runtime logs.
+    if (fullSource && !receipt.outcome) receipt.outcome = reviewOutcome("transport-unresolved", dispatched);
     if (!billingSettled) await deps.budget.markUnknown(worldId(input.gameId), requestKey, "Identity style review response/charge unresolved; no automatic retry");
   }
-  await deps.write(tx => tx.auditLog.create({ data: { id: newId("aud"), actorType: "SYSTEM", action: IDENTITY_GATE_ACTION,
+  if (fullSource && receipt.checks === null && receipt.outcome && receipt.reason === "Identity style review did not complete")
+    receipt.reason = "Identity review produced no usable decision: " + receipt.outcome.state;
+  await deps.write(tx => tx.auditLog.create({ data: { id: rejudge ? identitySourceRejudgeId(input.identityAssetId) : newId("aud"), actorType: "SYSTEM", action: rejudge ? IDENTITY_SOURCE_REJUDGE_ACTION : IDENTITY_GATE_ACTION,
     entityType: "Asset", entityId: input.identityAssetId, metaJson: JSON.stringify(receipt) } }));
   return receipt;
 }
 
+/** Shared by display, subject adoption, publication and notifications. Old receipts remain unchanged. */
+export async function identityGateReceiptOf(db: Pick<Prisma.TransactionClient, "auditLog">, assetId: string): Promise<IdentityGateReceipt | null> {
+  const originalRow = await db.auditLog.findFirst({ where: { action: IDENTITY_GATE_ACTION, entityType: "Asset", entityId: assetId }, orderBy: { createdAt: "desc" } });
+  if (!originalRow?.metaJson) return null;
+  const original = receiptSchema.parse(JSON.parse(originalRow.metaJson));
+  if (original.version !== FULL_SOURCE_IDENTITY_GATE_VERSION) return original;
+  const row = await db.auditLog.findUnique({ where: { id: identitySourceRejudgeId(assetId) } });
+  if (!row) return original;
+  const receipt = receiptSchema.parse(JSON.parse(row.metaJson ?? "null"));
+  demand(row.actorType === "SYSTEM" && row.actorId === null && row.entityType === "Asset" && row.entityId === assetId
+    && row.action === IDENTITY_SOURCE_REJUDGE_ACTION && receipt.version === IDENTITY_SOURCE_REJUDGE_VERSION && receipt.rejudge
+    && receipt.identityAssetId === assetId, "Retained rejudge has invalid identity or policy");
+  const { identityRevisionCandidateId, IDENTITY_SOURCE_REVISION } = await import("./identity-source-revision-state");
+  const binding = await identitySourceRejudgeBinding(db, { gameId: receipt.rejudge.gameId, attempt: receipt.rejudge.attempt,
+    original, originalMetaJson: originalRow.metaJson });
+  demand(JSON.stringify(binding) === JSON.stringify(receipt.rejudge)
+    && receipt.sheetSha256 === original.sheetSha256 && receipt.prompt === original.prompt
+    && JSON.stringify(receipt.provenance) === JSON.stringify(original.provenance)
+    && JSON.stringify(receipt.imageHashes) === JSON.stringify(original.imageHashes), "Retained rejudge differs from its paid source evidence");
+  const intent = await db.auditLog.findUnique({ where: { id: identityRevisionCandidateId(binding.gameId, binding.attempt) + "_rejudge_intent" } });
+  const expected = { version: IDENTITY_SOURCE_REVISION, startSha256: binding.startSha256, attempt: binding.attempt,
+    requestKey: identitySourceRejudgeKey(assetId), operationFingerprint: receipt.fingerprint,
+    identityAssetId: assetId, sheetSha256: receipt.sheetSha256, rejudge: binding };
+  demand(intent?.actorType === "SYSTEM" && intent.actorId === null && intent.entityType === "Game" && intent.entityId === binding.gameId
+    && intent.action === "generation:identity-source-rejudge-intent" && intent.metaJson === JSON.stringify(expected), "Retained rejudge lacks its exact dispatch intent");
+  return receipt;
+}
+
 async function validateIdentityGateBill(budget: WorldBudget, gameId: string, receipt: IdentityGateReceipt) {
+  if (receipt.rejudge) {
+    const original = await budget.readRequest(worldId(gameId), receipt.rejudge.originalRequestKey);
+    demand(original?.state === "settled" && original.operationFingerprint === receipt.rejudge.originalFingerprint
+      && original.evidence.providerRequestId === receipt.rejudge.originalProviderRequestId
+      && original.evidence.amountMicroUsd === receipt.rejudge.originalCostMicroUsd
+      && original.evidence.usageId === receipt.rejudge.originalUsageSha256
+      && isTheModelWeAsked(original.evidence.model, fullSourceSettings.model), "Rejudge original billing differs");
+  }
   const charge = await budget.readRequest(worldId(gameId), identityReviewRequestKey(receipt));
   demand(charge?.operationFingerprint === receipt.fingerprint, "Review reservation does not match its receipt");
   if (charge.state === "settled" || charge.state === "linked") {
@@ -300,7 +424,7 @@ export function identityReceiptReadyForPublication(value: unknown, contentVersio
   // verdict, but do not ask a parent to resolve subjective likeness/age doubt.
   // v12 accepts its integrated style (v4) and the same style with the reference's own hair (v5).
   const style = receipt.provenance.style.version;
-  if (receipt.version === FULL_SOURCE_IDENTITY_GATE_VERSION) return contentVersion === 12 && style === "board-matched-identity/v6"
+  if (isFullSourceGate(receipt.version)) return contentVersion === 12 && style === "board-matched-identity/v6"
     && receipt.approved && fullSourceChecksSchema.safeParse(receipt.checks).success
     && Object.values(receipt.checks!).every(check => check === "pass")
     && !!receipt.requestId && !!receipt.usage && receipt.costMicroUsd > 0;
@@ -332,18 +456,10 @@ export async function identityApprovedForDisplay(c: Container, profile: {
     const reused = await canonicalIdentityApprovedForDisplay(c, profile, contentVersion);
     if (reused !== null) return reused;
   }
-  const row = await c.db.auditLog.findFirst({
-    where: { action: IDENTITY_GATE_ACTION, entityType: "Asset", entityId: profile.identityAssetId },
-    orderBy: { createdAt: "desc" },
-  });
-  if (!row?.metaJson) return false;
-  // A receipt that will not even parse is not an approval, and it is certainly
-  // not a reason for the creation screen to stop answering: this is read on
-  // every poll, and `JSON.parse` throws on a truncated row.
-  let parsed: unknown;
-  try { parsed = JSON.parse(row.metaJson); } catch { return false; }
-  const receipt = receiptSchema.safeParse(parsed);
-  if (!receipt.success) return false;
+  let resolved: IdentityGateReceipt | null;
+  try { resolved = await identityGateReceiptOf(c.db, profile.identityAssetId); } catch { return false; }
+  if (!resolved) return false;
+  const receipt = { data: resolved };
   const { identityAssetId, provenance } = receipt.data;
   let photoMatches = provenance.photoAssetId === profile.originalPhotoAssetId;
   if (!photoMatches && profile.originalPhotoAssetId === null) {
@@ -385,9 +501,8 @@ export async function requireBoardWizardIdentityApproval(c: Container, budget: W
     }
     if (reused) return reused.sourceReceipt;
   }
-  const row = await c.db.auditLog.findFirst({ where: { action: IDENTITY_GATE_ACTION, entityType: "Asset", entityId: input.identityAssetId }, orderBy: { createdAt: "desc" } });
-  demand(row?.metaJson, "Identity style approval is required before board enrollment");
-  const receipt = receiptSchema.parse(JSON.parse(row.metaJson));
+  const receipt = await identityGateReceiptOf(c.db, input.identityAssetId);
+  demand(receipt, "Identity style approval is required before board enrollment");
   demand(identityReceiptReadyForPublication(receipt, input.contentVersion), "Identity is awaiting style/identity review");
   demand(receipt.identityAssetId === input.identityAssetId && receipt.sheetSha256 === input.sheetSha256
     && receipt.provenance.style.catalogSha256 === input.catalogSha256 && receipt.provenance.photoAssetId === input.photoAssetId
@@ -402,7 +517,8 @@ export async function requireBoardWizardIdentityApproval(c: Container, budget: W
   return receipt;
 }
 
-export function identityReviewRequestKey(receipt: Pick<IdentityGateReceipt, "identityAssetId" | "provenance" | "comparison">) {
+export function identityReviewRequestKey(receipt: Pick<IdentityGateReceipt, "identityAssetId" | "provenance" | "comparison"> & { rejudge?: IdentitySourceRejudgeBinding }) {
+  if (receipt.rejudge) return identitySourceRejudgeKey(receipt.identityAssetId);
   const key = receipt.comparison ? "wizard:identity-style:2" : IDENTITY_GATE_KEY;
   return ["board-matched-identity/v3", "board-matched-identity/v4", "board-matched-identity/v5", "board-matched-identity/v6"].includes(receipt.provenance.style.version) ? key + ":" + receipt.identityAssetId : key;
 }

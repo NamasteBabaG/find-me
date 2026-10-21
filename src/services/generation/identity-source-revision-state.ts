@@ -87,7 +87,7 @@ export async function identityRevisionPausedOf(db: Db, gameId: string): Promise<
 
 
 /** Explicit source-start authority, NOT supplier usage. Shared by grant creation and publication validation. */
-export function identityRevisionContinuationGrant(start: IdentityRevisionStart, attempt: number, kind: "image" | "review", request: WorldBudgetRequest) {
+export function identityRevisionContinuationGrant(start: IdentityRevisionStart, attempt: number, kind: "image" | "review" | "rejudge", request: WorldBudgetRequest) {
   return { approvalId: `source-reference:${boardConditioningHash(start)}:${attempt}:${kind}`, requestKey: request.requestKey, scope: request.scope,
     operationFingerprint: request.operationFingerprint, reserveMicroUsd: request.reserveMicroUsd, unknownReasons: request.unknownReasons,
     operatorId: start.operatorId, authorizationSha256: boardConditioningHash({ version: "paid-reference-attempt-continuation/v1", startSha256: boardConditioningHash(start), attempt,
@@ -101,23 +101,33 @@ export async function identityRevisionContinuationPublishable(db: Db, budget: Pi
   const { subjectUpgradeOf } = await import("./subject-enrollment");
   const active = await subjectUpgradeOf(db, gameId); // Validates the immutable commit and its seven-check HIGH review.
   if (!active?.identityRevision || active.identityAssetId !== commit.newIdentityAssetId || active.identitySha256 !== commit.newIdentitySha256) return false;
-  for (let n = start.firstAttempt; n < start.firstAttempt + 3; n++) for (const kind of ["image", "review"] as const) {
+  for (let n = start.firstAttempt; n < start.firstAttempt + 3; n++) for (const kind of ["image", "review", "rejudge"] as const) {
     if (approval.approvalId !== `source-reference:${boardConditioningHash(start)}:${n}:${kind}`) continue;
     const key = identityRevisionCandidateId(gameId, n), row = await db.auditLog.findUnique({ where: { id: key } });
     const candidate = row ? identityRevisionCandidateSchema.parse(JSON.parse(row.metaJson ?? "null")) : null;
-    if (kind === "image" && candidate || kind === "review" && (!candidate || candidate.identityAssetId === commit.newIdentityAssetId)) return false;
+    if (kind === "image" && candidate || kind !== "image" && (!candidate || candidate.identityAssetId === commit.newIdentityAssetId)) return false;
     if (candidate && (row?.actorType !== "SYSTEM" || row.actorId !== null || row.action !== "generation:identity-source-revision-candidate"
       || row.entityType !== "Game" || row.entityId !== gameId || row.metaJson !== JSON.stringify(candidate) || candidate.startSha256 !== boardConditioningHash(start)
       || candidate.gameId !== gameId || candidate.attempt !== n)) return false;
-    const requestKey = kind === "image" ? `wizard:identity:${n}` : `wizard:identity-style:1:${candidate!.identityAssetId}`;
+    const requestKey = kind === "image" ? "wizard:identity:" + n : kind === "rejudge"
+      ? "wizard:identity-style-rejudge:1:" + candidate!.identityAssetId : "wizard:identity-style:1:" + candidate!.identityAssetId;
     const request = await budget.readRequest(approval.worldId, requestKey);
     if (!request || request.state !== "unknown" || request.conflicts.length || request.scope !== (kind === "image" ? "identity" : "judge")
       || request.reserveMicroUsd !== (kind === "image" ? 500_000 : 400_000)) return false;
-    const intent = await db.auditLog.findUnique({ where: { id: `${key}_${kind === "image" ? "dispatch" : "review_intent"}` } });
+    const intent = await db.auditLog.findUnique({ where: { id: key + (kind === "image" ? "_dispatch" : kind === "rejudge" ? "_rejudge_intent" : "_review_intent") } });
+    let rejudge;
+    if (kind === "rejudge") {
+      const originalRow = await db.auditLog.findFirst({ where: { action: "board-wizard:identity-style-reviewed", entityType: "Asset", entityId: candidate!.identityAssetId }, orderBy: { createdAt: "desc" } });
+      if (!originalRow?.metaJson) return false;
+      const { identityGateReceiptSchema } = await import("./board-wizard-identity-gate");
+      const { identitySourceRejudgeBinding } = await import("./identity-source-rejudge-binding");
+      try { rejudge = await identitySourceRejudgeBinding(db, { gameId, attempt: n,
+        original: identityGateReceiptSchema.parse(JSON.parse(originalRow.metaJson)), originalMetaJson: originalRow.metaJson }); } catch { return false; }
+    }
     const expected = { version: IDENTITY_SOURCE_REVISION, startSha256: boardConditioningHash(start), attempt: n, requestKey, operationFingerprint: request.operationFingerprint,
-      ...(candidate ? { identityAssetId: candidate.identityAssetId, sheetSha256: candidate.sheetSha256 } : {}) };
+      ...(candidate ? { identityAssetId: candidate.identityAssetId, sheetSha256: candidate.sheetSha256 } : {}), ...(rejudge ? { rejudge } : {}) };
     if (!intent || intent.actorType !== "SYSTEM" || intent.actorId !== null || intent.entityType !== "Game" || intent.entityId !== gameId
-      || intent.action !== (kind === "image" ? "generation:identity-source-dispatch-intent" : "generation:identity-source-review-intent")
+      || intent.action !== (kind === "image" ? "generation:identity-source-dispatch-intent" : kind === "rejudge" ? "generation:identity-source-rejudge-intent" : "generation:identity-source-review-intent")
       || intent.metaJson !== JSON.stringify(expected)) return false;
     const wanted = { ...identityRevisionContinuationGrant(start, n, kind, request), version: "world-unknown-continuation/v1", worldId: approval.worldId };
     return JSON.stringify(approval) === JSON.stringify(wanted);

@@ -6,6 +6,10 @@ import { worldPurchaseEn, worldSelectorEn, friendsEn } from "./world-features";
 
 export const en = {
   adminIdentityRevision: {
+    completionBudgetTitle: "Explicit completion budget for this world",
+    completionBudgetDescription: "Only after the owner explicitly authorized the increase: up to $6 cumulative for this existing QA source revision, including all historical spending and unknown reservations. Quality checks and existing holds still apply.",
+    completionBudgetConfirm: "The owner authorized up to $6 cumulative for this world, including its retained unknown charges.",
+    completionBudgetGrant: "Authorize this world up to $6",
     newPictures: "Pictures still needed", appearanceChecks: "Replacement-reference appearance checks", capacityNotice: "These include appearances with no saved row yet. Actual costs vary; the cap is preserved and this plan does not guarantee completion within it",
     paused: "Generation is temporarily paused by its spending controls. The queue checks again automatically; existing work and charges are preserved",
     diagnosis: "Service diagnosis", delayed: "Several scheduled turns are waiting on the same prerequisite. The service should check the retained queue and provider state; a parent retry is not required",

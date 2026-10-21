@@ -1,3 +1,5 @@
+import { planLeanCompletionBudget, authorizeLeanCompletionBudget, readLeanCompletionBudget, leanCompletionBudgetAuditId } from "../lean-completion-budget";
+import { boardConditioningHash } from "../board-conditioned-source";
 import { mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -266,17 +268,107 @@ it("continues after a lost HIGH review without clearing its full reserve or aski
   const { identityRevisionContinuationPublishable } = await import("../identity-source-revision-state");
   expect(await identityRevisionContinuationPublishable(db, f.budget, f.gameId, (await f.budget.readContinuationApproval(f.worldId, key))! as never)).toBe(true);
 });
-it("continues a billable malformed review as a failed candidate, never a visual pass or a repurchase", async () => {
+it("rejudges a settled unreadable HIGH answer once on the SAME pixels before another painting", async () => {
+  const f = await fixture(); await f.begin(); review();
+  let now = Date.now(); const clock = vi.spyOn(Date, "now").mockImplementation(() => now);
+  const deadlineAt = now + 210_000;
+  vi.mocked(fetch).mockImplementationOnce(async () => { now += 10_000; return Response.json({ model: "gpt-6.1-sol", service_tier: "default", usage: { prompt_tokens: 2000, completion_tokens: 400 },
+    choices: [{ finish_reason: "stop", message: { content: "{malformed" } }] }, { headers: { "x-request-id": "req_synthetic_malformed" } }); });
+  try { expect((await advanceIdentitySourceRevision(f.c, { gameId: f.gameId, operatorId: f.operatorId, deadlineAt })).state).toBe("deferred"); }
+  finally { clock.mockRestore(); }
+  const broken = await db.auditLog.findFirstOrThrow({ where: { action: "board-wizard:identity-style-reviewed", entityType: "Asset", metaJson: { contains: "req_synthetic_malformed" } } });
+  const original = JSON.parse(broken.metaJson!);
+  expect(original.checks).toBeNull(); expect(original.approved).toBe(false);
+  expect(original.outcome).toMatchObject({ state: "json-invalid", dispatchAttempted: true, rawContent: "{malformed" });
+  // Reproduce the deployed old paid v5 receipt: diagnostics did not exist yet. Its fingerprint is unchanged.
+  delete original.outcome;
+  const oldRow = await db.auditLog.findFirstOrThrow({ where: { action: "board-wizard:identity-style-reviewed", entityType: "Asset", entityId: original.identityAssetId } });
+  await db.auditLog.update({ where: { id: oldRow.id }, data: { metaJson: JSON.stringify(original) } });
+  const retainedOriginal = await db.auditLog.findUniqueOrThrow({ where: { id: oldRow.id } });
+  expect((await advanceIdentitySourceRevision(f.c, { gameId: f.gameId, operatorId: f.operatorId })).state).toBe("committed");
+  const { identityGateReceiptOf, identityReceiptReadyForPublication, identityReviewRequestKey } = await import("../board-wizard-identity-gate");
+  const resolved = (await identityGateReceiptOf(db, broken.entityId))!;
+  expect(resolved.version).toBe("board-wizard-identity-source-sol-high-rejudge/v1");
+  expect(resolved.rejudge).toMatchObject({ gameId: f.gameId, attempt: 2, originalFingerprint: original.fingerprint, originalCostMicroUsd: original.costMicroUsd });
+  expect(resolved.imageHashes).toEqual(original.imageHashes); expect(resolved.prompt).toBe(original.prompt);
+  expect(identityReceiptReadyForPublication(resolved, 12)).toBe(true);
+  expect(identityReviewRequestKey(resolved)).not.toBe(identityReviewRequestKey(original));
+  expect(await f.budget.readRequest(f.worldId, identityReviewRequestKey(original))).toMatchObject({ state: "settled", operationFingerprint: original.fingerprint });
+  expect(await f.budget.readRequest(f.worldId, identityReviewRequestKey(resolved))).toMatchObject({ state: "settled", operationFingerprint: resolved.fingerprint });
+  const sent = vi.mocked(fetch).mock.calls.map(call => JSON.parse(String(call[1]?.body)));
+  expect(sent.map(body => body.response_format.type)).toEqual(["json_object", "json_schema"]);
+  expect(sent[1].response_format.json_schema).toMatchObject({ strict: true });
+  expect(sent[1].messages).toEqual(sent[0].messages); expect(sent[1].model).toBe("gpt-6.1-sol"); expect(sent[1].reasoning_effort).toBe("high");
+  expect(f.create).toHaveBeenCalledOnce(); expect(fetch).toHaveBeenCalledTimes(2);
+  expect((await f.budget.audit(f.worldId)).unknownRequestKeys).toHaveLength(0);
+  expect(await db.auditLog.findUniqueOrThrow({ where: { id: broken.id } })).toEqual(retainedOriginal);
+  const before = await f.budget.audit(f.worldId);
+  expect((await advanceIdentitySourceRevision(f.c, { gameId: f.gameId, operatorId: f.operatorId })).state).toBe("committed");
+  expect(await f.budget.audit(f.worldId)).toEqual(before); expect(fetch).toHaveBeenCalledTimes(2);
+  expect(await identityApprovedForDisplay(f.c, { identityAssetId: resolved.identityAssetId, originalPhotoAssetId: resolved.provenance.photoAssetId, ageYears: 8 }, 12)).toBe(true);
+  expect((await subjectUpgradeOf(db, f.gameId))?.identityRevision).toBeTruthy();
+  const row = await db.auditLog.findUniqueOrThrow({ where: { id: "aud_identity_rejudge_" + resolved.identityAssetId } });
+  for (const mutation of [{ originalFingerprint: "f".repeat(64) }, { originalReceiptSha256: "f".repeat(64) }, { originalUsageSha256: "f".repeat(64) },
+    { originalProviderRequestId: "req_foreign" }, { originalCostMicroUsd: 1 }, { startSha256: "f".repeat(64) }, { attempt: 19 }, { gameId: "foreign-world" }]) {
+    await db.auditLog.update({ where: { id: row.id }, data: { metaJson: JSON.stringify({ ...resolved, rejudge: { ...resolved.rejudge, ...mutation } }) } });
+    await expect(identityGateReceiptOf(db, resolved.identityAssetId)).rejects.toThrow();
+  }
+  await db.auditLog.update({ where: { id: row.id }, data: { metaJson: row.metaJson } });
+  expect(await identityGateReceiptOf(db, resolved.identityAssetId)).toEqual(resolved);
+  for (const check of Object.keys(resolved.checks!)) {
+    expect(identityReceiptReadyForPublication({ ...resolved, checks: { ...resolved.checks, [check]: "uncertain" } }, 12)).toBe(false);
+    const incomplete = { ...resolved.checks } as Record<string, string>; delete incomplete[check];
+    expect(identityReceiptReadyForPublication({ ...resolved, checks: incomplete }, 12)).toBe(false);
+  }
+  const savedBill = (await f.budget.readRequest(f.worldId, identityReviewRequestKey(original)))!;
+  const readBill = f.budget.readRequest.bind(f.budget);
+  const asset = await db.asset.findUniqueOrThrow({ where: { id: resolved.identityAssetId } });
+  const sheet = await f.c.storage.get(asset.storagePath), beforeDispatch = vi.fn(async () => {});
+  for (const state of ["pending", "unknown"] as const) {
+    const fakeBudget = Object.create(f.budget) as typeof f.budget;
+    fakeBudget.readRequest = async (world, key) => key === identityReviewRequestKey(original)
+      ? { ...savedBill, state } as never : readBill(world, key);
+    await expect(reviewBoardWizardIdentity({ db, budget: fakeBudget, apiKey: "synthetic", beforeDispatch, write: work => db.$transaction(work),
+      reviewer: { review: async () => { throw Error("Must never dispatch"); } } },
+    { gameId: f.gameId, identityAssetId: resolved.identityAssetId, provenance: original.provenance, sheet, photo: f.seeded.sheet, atlas: h.sheet!, contentVersion: 12,
+      rejudge: resolved.rejudge })).rejects.toThrow();
+  }
+  expect(beforeDispatch).not.toHaveBeenCalled(); expect(fetch).toHaveBeenCalledTimes(2);
+});
+
+it("does not approve a second unreadable question or ask a third question about those pixels", async () => {
+  const f = await fixture(); await f.begin(); review();
+  const malformed = (suffix: string) => Response.json({ model: "gpt-6.1-sol", service_tier: "default", usage: { prompt_tokens: 2000, completion_tokens: 400 },
+    choices: [{ finish_reason: "stop", message: { content: "{broken" } }] }, { headers: { "x-request-id": "req_unreadable_" + suffix } });
+  vi.mocked(fetch).mockResolvedValueOnce(malformed("original")).mockResolvedValueOnce(malformed("rejudge"));
+  expect((await advanceIdentitySourceRevision(f.c, { gameId: f.gameId, operatorId: f.operatorId })).state).toBe("retry");
+  const { identityGateReceiptOf, identityReceiptReadyForPublication } = await import("../board-wizard-identity-gate");
+  const candidate = await db.auditLog.findFirstOrThrow({ where: { entityId: f.gameId, action: "generation:identity-source-revision-candidate" } });
+  const assetId = JSON.parse(candidate.metaJson!).identityAssetId, resolved = (await identityGateReceiptOf(db, assetId))!;
+  expect(resolved.checks).toBeNull(); expect(identityReceiptReadyForPublication(resolved, 12)).toBe(false);
+  expect(f.create).toHaveBeenCalledOnce(); expect(fetch).toHaveBeenCalledTimes(2); expect(await identityRevisionPending(db, f.gameId)).toBe(true);
+  expect((await advanceIdentitySourceRevision(f.c, { gameId: f.gameId, operatorId: f.operatorId })).state).toBe("committed");
+  expect(f.create).toHaveBeenCalledTimes(2); expect(fetch).toHaveBeenCalledTimes(3);
+  const requests = vi.mocked(fetch).mock.calls.map(call => JSON.parse(String(call[1]?.body)));
+  expect(requests.filter(body => body.response_format.type === "json_schema")).toHaveLength(1);
+});
+
+it("retains a lost strict rejudge in full and only publishes its exact unselected-source continuation", async () => {
   const f = await fixture(); await f.begin(); review();
   vi.mocked(fetch).mockResolvedValueOnce(Response.json({ model: "gpt-6.1-sol", service_tier: "default", usage: { prompt_tokens: 2000, completion_tokens: 400 },
-    choices: [{ finish_reason: "stop", message: { content: "{malformed" } }] }, { headers: { "x-request-id": "req_synthetic_malformed" } }));
+    choices: [{ finish_reason: "stop", message: { content: "{broken" } }] }, { headers: { "x-request-id": "req_before_lost_rejudge" } }))
+    .mockRejectedValueOnce(Error("synthetic lost strict rejudge"));
   expect((await advanceIdentitySourceRevision(f.c, { gameId: f.gameId, operatorId: f.operatorId })).state).toBe("retry");
-  const broken = await db.auditLog.findFirstOrThrow({ where: { action: "board-wizard:identity-style-reviewed", entityType: "Asset", metaJson: { contains: "req_synthetic_malformed" } } });
-  expect(JSON.parse(broken.metaJson!).checks).toBeNull();
+  const before = await f.budget.audit(f.worldId), key = before.unknownRequestKeys.find(key => key.startsWith("wizard:identity-style-rejudge:"))!;
+  const lost = await f.budget.readRequest(f.worldId, key); expect(lost).toMatchObject({ state: "unknown", reserveMicroUsd: 400_000 });
   expect((await advanceIdentitySourceRevision(f.c, { gameId: f.gameId, operatorId: f.operatorId })).state).toBe("committed");
-  expect(f.create).toHaveBeenCalledTimes(2); expect(fetch).toHaveBeenCalledTimes(2); expect((await f.budget.audit(f.worldId)).unknownRequestKeys).toHaveLength(0);
-  expect(await db.auditLog.findUniqueOrThrow({ where: { id: broken.id } })).toEqual(broken);
+  expect(f.create).toHaveBeenCalledTimes(2); expect(fetch).toHaveBeenCalledTimes(3); expect(await f.budget.readRequest(f.worldId, key)).toEqual(lost);
+  const { identityRevisionContinuationPublishable } = await import("../identity-source-revision-state");
+  const grant = (await f.budget.readContinuationApproval(f.worldId, key))!;
+  expect(await identityRevisionContinuationPublishable(db, f.budget, f.gameId, grant as never)).toBe(true);
+  expect(await identityRevisionContinuationPublishable(db, f.budget, f.gameId, { ...grant, requestKey: "foreign-question" } as never)).toBe(false);
 });
+
 it("never extends a reference grant to a foreign unknown or changes that reservation", async () => {
   const f = await fixture(); await f.begin();
   await f.budget.reserve(f.worldId, { requestKey: "wizard:identity:99", scope: "identity", operationFingerprint: "foreign-operation", reserveMicroUsd: 500_000 });
@@ -367,4 +459,85 @@ it("atomically rejects an inventory change inside the source-start transaction b
   finally { spy.mockRestore(); }
   expect(injected).toBe(true); expect(await identityRevisionPending(db, f.gameId)).toBe(false); expect(f.create).not.toHaveBeenCalled();
   expect(await db.targetVariantAsset.findUnique({ where: { id: `txn-inventory-variant-${f.gameId}` } })).toBeNull(); // Same transaction rolled back.
+});
+
+
+describe("explicit six-dollar completion authority for one existing source revision", () => {
+  it("retains every historical byte, unknown reserve and original hold, and does not authorize another world", async () => {
+    const f = await fixture(); await f.begin();
+    const requestKey = "synthetic-authorized-unknown", operationFingerprint = "7".repeat(64);
+    await f.budget.reserve(f.worldId, { requestKey, scope: "judge", operationFingerprint, reserveMicroUsd: 40_000 });
+    await f.budget.markUnknown(f.worldId, requestKey, "Synthetic response lost");
+    const unknown = (await f.budget.readRequest(f.worldId, requestKey))!;
+    await boardWizardBudgetOf(f.c, 1, { authorizeUnknownContinuation: async value => value.requestKey === requestKey && value.operatorId === f.operatorId }).authorizeUnknownContinuation(f.worldId, { approvalId: "synthetic-owner-continuation", requestKey, scope: "judge", operationFingerprint,
+      reserveMicroUsd: unknown.reserveMicroUsd, unknownReasons: unknown.unknownReasons, operatorId: f.operatorId, authorizationSha256: "8".repeat(64), authorizedAt: new Date().toISOString() });
+    const snapshot = await db.worldBudgetLedger.findUniqueOrThrow({ where: { worldId: f.worldId } });
+    const job = await db.generationJob.findUniqueOrThrow({ where: { id: `job_${f.gameId}` } });
+    const pin = await db.auditLog.findUniqueOrThrow({ where: { id: leanReleaseAuditId(f.gameId) } });
+    const plan = await planLeanCompletionBudget(f.c, f.gameId);
+    expect(plan.binding.retainedUnknowns).toEqual([{ requestKey, operationFingerprint, reserveMicroUsd: 40_000 }]);
+    const input = { gameId: f.gameId, operatorId: f.operatorId, expectedPlanSha256: plan.planSha256 };
+    const grant = await authorizeLeanCompletionBudget(f.c, input);
+    expect(grant.capMicroUsd).toBe(6_000_000); expect(await authorizeLeanCompletionBudget(f.c, input)).toEqual(grant);
+    expect(await readLeanCompletionBudget(f.c, f.worldId)).toEqual(grant);
+    expect(await db.worldBudgetLedger.findUniqueOrThrow({ where: { worldId: f.worldId } })).toMatchObject({ snapshotJson: snapshot.snapshotJson, revision: snapshot.revision + 1 });
+    expect(await db.generationJob.findUniqueOrThrow({ where: { id: job.id } })).toEqual(job);
+    expect(await db.auditLog.findUniqueOrThrow({ where: { id: pin.id } })).toEqual(pin);
+    expect(await f.budget.readRequest(f.worldId, requestKey)).toEqual(unknown);
+    expect((await f.budget.audit(f.worldId)).capMicroUsd).toBe(6_000_000);
+    expect((await f.budget.audit(f.worldId)).reservedMicroUsd).toBe(40_000);
+    expect(await db.auditLog.count({ where: { id: leanCompletionBudgetAuditId(f.gameId) } })).toBe(1);
+    await expect(f.budget.reserve(f.worldId, { requestKey: "too-large", scope: "image", operationFingerprint: "9".repeat(64), reserveMicroUsd: 6_000_001 })).rejects.toMatchObject({ code: "cap_exceeded" });
+    const other = await fixture(); expect((await other.budget.audit(other.worldId)).capMicroUsd).toBe(4_000_000);
+    expect(await readLeanCompletionBudget(other.c, other.worldId)).toBeNull(); expect(f.create).not.toHaveBeenCalled(); expect(fetch).not.toHaveBeenCalled();
+  });
+  it.each(["no-source", "non-admin", "forged-plan", "pending", "unapproved-unknown", "refund", "changed-hold", "changed-age", "changed-crop", "changed-photo", "changed-scenes", "concurrent-ledger"])("refuses %s without creating a grant or erasing evidence", async mode => {
+    const f = await fixture();
+    if (mode === "no-source") { await expect(planLeanCompletionBudget(f.c, f.gameId)).rejects.toThrow(); return; }
+    await f.begin(); const plan = await planLeanCompletionBudget(f.c, f.gameId);
+    if (mode === "non-admin") f.c.adminEmails = [];
+    if (mode === "pending" || mode === "unapproved-unknown" || mode === "concurrent-ledger") {
+      await f.budget.reserve(f.worldId, { requestKey: "synthetic-changed", scope: "judge", operationFingerprint: "b".repeat(64), reserveMicroUsd: 40_000 });
+      if (mode === "unapproved-unknown") await f.budget.markUnknown(f.worldId, "synthetic-changed", "Synthetic lost answer");
+      if (mode === "concurrent-ledger") await f.budget.settle(f.worldId, "synthetic-changed", { providerNamespace: "synthetic", providerRequestId: "req_changed_ledger",
+        usageId: "c".repeat(64), rawUsage: { synthetic: true }, model: "synthetic", amountMicroUsd: 10_000, costBasis: "conservative-upper-estimate" });
+    }
+    if (mode === "refund") await db.order.update({ where: { id: `order-${f.gameId}` }, data: { refundedAt: new Date() } });
+    if (mode === "changed-hold") await db.generationJob.update({ where: { id: `job_${f.gameId}` }, data: { attempts: 25 } });
+    if (mode === "changed-age") await db.childProfile.update({ where: { id: `chl-${f.gameId}` }, data: { ageYears: 9 } });
+    if (mode === "changed-crop") await db.childProfile.update({ where: { id: `chl-${f.gameId}` }, data: { photoCropJson: JSON.stringify({ x: 0, y: 0, w: 0.5, h: 0.5 }) } });
+    if (mode === "changed-photo") await db.childProfile.update({ where: { id: `chl-${f.gameId}` }, data: { originalPhotoAssetId: null } });
+    if (mode === "changed-scenes") await db.gameScene.updateMany({ where: { gameId: f.gameId }, data: { sceneVersion: 11 } });
+    const snapshot = await db.worldBudgetLedger.findUniqueOrThrow({ where: { worldId: f.worldId } });
+    await expect(authorizeLeanCompletionBudget(f.c, { gameId: f.gameId, operatorId: f.operatorId, expectedPlanSha256: mode === "forged-plan" ? "f".repeat(64) : plan.planSha256 })).rejects.toThrow();
+    expect(await db.auditLog.findUnique({ where: { id: leanCompletionBudgetAuditId(f.gameId) } })).toBeNull();
+    expect(await db.worldBudgetLedger.findUniqueOrThrow({ where: { worldId: f.worldId } })).toEqual(snapshot);
+    expect(f.create).not.toHaveBeenCalled(); expect(fetch).not.toHaveBeenCalled();
+  });
+  it.each(["refund", "deleted-child"])("retains a genuine late bill after %s under the former completion grant", async lifecycle => {
+    const f = await fixture(); await f.begin(); const plan = await planLeanCompletionBudget(f.c, f.gameId);
+    await authorizeLeanCompletionBudget(f.c, { gameId: f.gameId, operatorId: f.operatorId, expectedPlanSha256: plan.planSha256 });
+    await f.budget.reserve(f.worldId, { requestKey: "synthetic-late-paid", scope: "image", operationFingerprint: "d".repeat(64), reserveMicroUsd: 4_100_000 });
+    if (lifecycle === "refund") await db.order.update({ where: { id: `order-${f.gameId}` }, data: { refundedAt: new Date() } });
+    else await db.childProfile.update({ where: { id: `chl-${f.gameId}` }, data: { deletedAt: new Date() } });
+    expect(await readLeanCompletionBudget(f.c, f.worldId)).toBeNull();
+    await f.budget.settle(f.worldId, "synthetic-late-paid", { providerNamespace: "synthetic", providerRequestId: "req_late_paid_response",
+      usageId: "e".repeat(64), rawUsage: { synthetic: true }, model: "synthetic", amountMicroUsd: 4_050_000, costBasis: "conservative-upper-estimate" });
+    expect(await f.budget.readRequest(f.worldId, "synthetic-late-paid")).toMatchObject({ state: "settled", evidence: { amountMicroUsd: 4_050_000 } });
+    expect(await f.budget.audit(f.worldId)).toMatchObject({ capMicroUsd: 4_000_000, held: true });
+    await expect(f.budget.reserve(f.worldId, { requestKey: "no-new-spend", scope: "judge", operationFingerprint: "f".repeat(64), reserveMicroUsd: 40_000 })).rejects.toThrow();
+    expect(fetch).not.toHaveBeenCalled();
+  });
+  it.each(["actor", "source", "cap", "world"])("refuses a forged %s completion receipt, even with a recomputed body digest", async mode => {
+    const f = await fixture(); await f.begin(); const plan = await planLeanCompletionBudget(f.c, f.gameId);
+    await authorizeLeanCompletionBudget(f.c, { gameId: f.gameId, operatorId: f.operatorId, expectedPlanSha256: plan.planSha256 });
+    const row = await db.auditLog.findUniqueOrThrow({ where: { id: leanCompletionBudgetAuditId(f.gameId) } });
+    const { authorizationSha256: _old, ...body } = JSON.parse(row.metaJson!);
+    if (mode === "source") body.sourceStartSha256 = "e".repeat(64);
+    if (mode === "cap") body.capMicroUsd = 12_000_000;
+    if (mode === "world") body.worldId = "foreign-synthetic:board-wizard";
+    await db.auditLog.update({ where: { id: row.id }, data: { ...(mode === "actor" ? { actorType: "USER" } : {}), metaJson: JSON.stringify({ ...body, authorizationSha256: boardConditioningHash(body) }) } });
+    await expect(f.budget.audit(f.worldId)).rejects.toThrow();
+    expect(fetch).not.toHaveBeenCalled();
+  });
 });

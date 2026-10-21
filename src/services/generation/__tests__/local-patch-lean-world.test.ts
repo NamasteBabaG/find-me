@@ -905,9 +905,9 @@ describe("local-patch-lean/v1 on a whole paid world", () => {
 });
 
 
-it.each([{ scenario: "complete all27", loseReference: false, capFailure: false, mixed: false },
-  { scenario: "safe cap refusal after added unknown outcomes", loseReference: true, capFailure: true, mixed: false },
-  { scenario: "all27 after a lost reference with the real five-continuity/two-bundle reserve mix", loseReference: true, capFailure: false, mixed: true }])("repairs a rejected paid reference: $scenario (real 2+4 history, synthetic providers)", async ({ loseReference, capFailure, mixed }) => {
+it.each([{ scenario: "all27 after a settled unreadable reference review", loseReference: false, capFailure: false, mixed: false, rejudge: true },
+  { scenario: "safe cap refusal after added unknown outcomes", loseReference: true, capFailure: true, mixed: false, rejudge: false },
+  { scenario: "all27 after a lost reference with the real five-continuity/two-bundle reserve mix", loseReference: true, capFailure: false, mixed: true, rejudge: false }])("repairs a rejected paid reference: $scenario (real 2+4 history, synthetic providers)", async ({ loseReference, capFailure, mixed, rejudge }) => {
   fakes.apiKey = "synthetic-never-live";
   const { planIdentitySourceRevision, beginIdentitySourceRevision, advanceIdentitySourceRevision } = await import("../identity-source-revision");
   const { identityRevisionPending } = await import("../identity-source-revision-state");
@@ -941,6 +941,7 @@ it.each([{ scenario: "complete all27", loseReference: false, capFailure: false, 
   const marker = await sharp({ create: { width: 12, height: 12, channels: 4, background: "#1122bb" } }).png().toBuffer();
   const newSheet = await sharp(seeded.sheet).composite([{ input: marker, left: 5, top: 5 }]).png().toBuffer();
   let sourceImageCalls = 0, sourceReviewCalls = 0;
+  const responseFormats: string[] = [];
   const createCharacter = vi.fn(async (request: { qaStyleContract?: { version: string } }) => {
     sourceImageCalls++; if (loseReference && sourceImageCalls === 1) throw Error("synthetic lost replacement image");
     expect(request.qaStyleContract?.version).toBe("board-matched-identity/v6");
@@ -959,10 +960,16 @@ it.each([{ scenario: "complete all27", loseReference: false, capFailure: false, 
   expect((await slice()).paused).toBe(true); expect(await job()).toEqual(parked);
   expect(await identityApprovedForDisplay(container, { identityAssetId: originalIdentity, originalPhotoAssetId: provenance.photoAssetId, ageYears: 8 }, 12)).toBe(false);
   await expect(composeLocalPatchGame(container, gameId)).rejects.toThrow("reference revision");
-  const reviewFetch = vi.fn(async () => { sourceReviewCalls++; if (loseReference && !mixed && sourceReviewCalls === 1) throw Error("synthetic lost replacement review"); return Response.json({ model: "gpt-6.1-sol", service_tier: "default", usage: { prompt_tokens: 2000, completion_tokens: 400 },
+  const reviewFetch = vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
+    sourceReviewCalls++; responseFormats.push(JSON.parse(String(init?.body)).response_format.type);
+    if (loseReference && !mixed && sourceReviewCalls === 1) throw Error("synthetic lost replacement review");
+    if (rejudge && sourceReviewCalls === 1) return Response.json({ model: "gpt-6.1-sol", service_tier: "default", usage: { prompt_tokens: 2000, completion_tokens: 400 },
+      choices: [{ finish_reason: "stop", message: { content: "{synthetic-unreadable" } }] },
+      { headers: { "x-request-id": "req_unreadable_source_" + gameId } });
+    return Response.json({ model: "gpt-6.1-sol", service_tier: "default", usage: { prompt_tokens: 2000, completion_tokens: 400 },
     choices: [{ finish_reason: "stop", message: { content: JSON.stringify({ checks: { identity: "pass", age: "pass", paintedStyle: "pass", sheetLayout: "pass",
       sourceFaceVisible: "pass", facialVolume: "pass", viewConsistency: "pass" }, reason: "Synthetic source volume and consistency only, not visual acceptance" }) } }] },
-    { headers: { "x-request-id": `req_source_revision_review_${gameId}` } }); });
+    { headers: { "x-request-id": `req_source_revision_review_${gameId}_${sourceReviewCalls}` } }); });
   vi.stubGlobal("fetch", reviewFetch);
   let result, refusal: unknown;
   for (let turn = 0; turn < 5; turn++) {
@@ -984,7 +991,13 @@ it.each([{ scenario: "complete all27", loseReference: false, capFailure: false, 
     return;
   }
   if (refusal) throw refusal;
-  expect(result?.state).toBe("committed"); expect(createCharacter).toHaveBeenCalledTimes(loseReference ? 2 : 1); expect(reviewFetch).toHaveBeenCalledOnce();
+  expect(result?.state).toBe("committed");
+  if (rejudge) {
+    expect(sourceImageCalls).toBe(1); expect(sourceReviewCalls).toBe(2); expect(responseFormats).toEqual(["json_object", "json_schema"]);
+    expect(await db.auditLog.count({ where: { entityId: gameId, action: "generation:identity-source-revision-candidate" } })).toBe(1);
+  }
+  expect(createCharacter).toHaveBeenCalledTimes(loseReference ? 2 : 1);
+  expect(reviewFetch).toHaveBeenCalledTimes(rejudge ? 2 : 1);
   expect(await identityRevisionPending(db, gameId)).toBe(false);
   expect((await job()).attempts).toBe(parked.attempts); expect((await job()).status).toBe("QUEUED");
   const effective = (await subjectUpgradeOf(db, gameId))!;

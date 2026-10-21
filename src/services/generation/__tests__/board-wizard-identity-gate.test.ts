@@ -298,6 +298,43 @@ describe("full original source identity review (synthetic, zero paid calls)", ()
     expect((await f.budget.audit("synthetic-game:board-wizard")).unknownRequestKeys).toHaveLength(0);
     expect(identityReceiptReadyForPublication(r, 12)).toBe(false);
   });
+  it("retains bounded private schema diagnostics without converting a billable malformed answer into approval", async () => {
+    const content = { ...fullAnswer(), reason: "x".repeat(1300) };
+    const f = await fullFixture(content), r = await reviewBoardWizardIdentity(f.deps, { ...f.input, contentVersion: 12 });
+    expect(r.checks).toBeNull(); expect(r.approved).toBe(false); expect(r.costMicroUsd).toBeGreaterThan(0);
+    expect(r.outcome).toMatchObject({ state: "schema-invalid", dispatchAttempted: true, httpStatus: 200, finishReason: "stop", choiceCount: 1, refusal: false,
+      rawContent: JSON.stringify(content), schemaIssues: [{ path: "reason", code: "too_big" }] });
+    expect(r.outcome?.contentSha256).toBe(sha256Bytes(Buffer.from(JSON.stringify(content))));
+    expect(r.reason).toContain("schema-invalid");
+    expect((await f.budget.audit("synthetic-game:board-wizard")).unknownRequestKeys).toHaveLength(0);
+    expect(await reviewBoardWizardIdentity(f.deps, { ...f.input, contentVersion: 12 })).toEqual(r);
+    expect(f.fetchOnce).toHaveBeenCalledOnce();
+    const long = await fullFixture({ ...fullAnswer(), reason: "x".repeat(25_000) });
+    const rejected = await reviewBoardWizardIdentity(long.deps, { ...long.input, contentVersion: 12 });
+    expect(rejected.outcome?.rawContent).toBeNull(); expect(rejected.outcome?.excerpt).toHaveLength(1500);
+    expect(rejected.outcome?.contentLength).toBeGreaterThan(16_384); expect(rejected.approved).toBe(false);
+  });
+  it.each([400, 429])("keeps a provider HTTP%s code privately without inventing zero usage or another dispatch", async status => {
+    const f = await fullFixture();
+    f.fetchOnce.mockResolvedValueOnce(Response.json({ error: { type: "invalid_request_error", code: "invalid_json_schema",
+      param: "response_format.json_schema.schema", message: "Sensitive free-form payload must not be persisted" } }, { status }));
+    const r = await reviewBoardWizardIdentity(f.deps, { ...f.input, contentVersion: 12 });
+    expect(r.outcome).toMatchObject({ state: "http-error", httpStatus: status, bodyFormat: "json", providerErrorType: "invalid_request_error",
+      providerErrorCode: "invalid_json_schema", providerErrorParam: "response_format.json_schema.schema" });
+    expect(JSON.stringify(r)).not.toContain("Sensitive free-form"); expect(r.checks).toBeNull(); expect(r.usage).toBeNull();
+    expect((await f.budget.readRequest("synthetic-game:board-wizard", "wizard:identity-style:1:" + f.input.identityAssetId))).toMatchObject({ state: "unknown", reserveMicroUsd: 400_000 });
+    expect(await reviewBoardWizardIdentity(f.deps, { ...f.input, contentVersion: 12 })).toEqual(r); expect(f.fetchOnce).toHaveBeenCalledOnce();
+  });
+  it("keeps a non-JSON gateway status and enforces the private raw-content cap in UTF8 bytes", async () => {
+    const f = await fullFixture(); f.fetchOnce.mockResolvedValueOnce(new Response("<html>gateway unavailable</html>", { status: 502 }));
+    const r = await reviewBoardWizardIdentity(f.deps, { ...f.input, contentVersion: 12 });
+    expect(r.outcome).toMatchObject({ state: "http-error", httpStatus: 502, bodyFormat: "non-json", rawContent: null });
+    expect(r.approved).toBe(false); expect(r.requestId).toBeNull(); expect(r.costMicroUsd).toBe(0);
+    const long = await fullFixture({ ...fullAnswer(), reason: "\u05d0".repeat(10_000) });
+    const wide = await reviewBoardWizardIdentity(long.deps, { ...long.input, contentVersion: 12 });
+    expect(wide.outcome!.contentLength).toBeLessThan(16_384); expect(wide.outcome!.contentBytes).toBeGreaterThan(16_384);
+    expect(wide.outcome!.rawContent).toBeNull(); expect(wide.outcome!.excerpt).toHaveLength(1500); expect(wide.checks).toBeNull();
+  });
   it("keeps full-source image4 and first-candidate image5 in comparisons", async () => {
     const f = await fullFixture({ ...fullAnswer(), preferredCandidate: "second" });
     const firstSheet = await sharp(f.input.sheet).resize(24, 24).png().toBuffer();

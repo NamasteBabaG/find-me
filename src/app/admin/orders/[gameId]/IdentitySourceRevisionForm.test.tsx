@@ -1,3 +1,4 @@
+vi.mock("./LeanCompletionBudgetForm", () => ({ LeanCompletionBudgetForm: () => null }));
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";

@@ -1,3 +1,5 @@
+import { identitySourceRejudgeBinding, identitySourceRejudgeKey, IDENTITY_SOURCE_REJUDGE_VERSION,
+  type IdentitySourceRejudgeBinding } from "./identity-source-rejudge-binding";
 import { Prisma } from "@prisma/client";
 import { DbStorage } from "../../infra/storage/db";
 import type { Container } from "../container";
@@ -12,7 +14,7 @@ import { buildBoardWizardIdentityStyle } from "./board-wizard-identity-style";
 import { sha256Bytes } from "./fixed-sprite";
 import { worldsOwned } from "../world-catalog.service";
 import { identityProvenanceSchema, identityReceiptReadyForPublication,
-  requireBoardWizardIdentityApproval, reviewBoardWizardIdentity, identityReviewRequestKey, identityGateReceiptSchema } from "./board-wizard-identity-gate";
+  requireBoardWizardIdentityApproval, reviewBoardWizardIdentity, identityReviewRequestKey, identityGateReceiptSchema, identityGateReceiptOf } from "./board-wizard-identity-gate";
 import { applyLeanReviewRecovery, planLeanReviewRecovery } from "./lean-review-recovery";
 import { parkedHoldSha256, leanReviewRecoveryOf } from "./lean-review-recovery-pin";
 import { subjectUpgradeOf } from "./subject-enrollment";
@@ -180,27 +182,44 @@ async function continueReferenceFailures(c: Container, start: IdentityRevisionSt
     if (candidate) demand(candidate.startSha256 === hash(start) && candidate.gameId === start.gameId && candidate.attempt === n
       && candidateRow?.actorType === "SYSTEM" && candidateRow.actorId === null && candidateRow.action === "generation:identity-source-revision-candidate"
       && candidateRow.entityId === start.gameId && candidateRow.metaJson === JSON.stringify(candidate), "candidate continuation differs from authorized source");
-    const kind = candidate ? "review" : "image", intentId = `${candidateKey}_${candidate ? "review_intent" : "dispatch"}`;
-    const intent = await c.db.auditLog.findUnique({ where: { id: intentId } });
+    const receipt = candidate ? await identityGateReceiptOf(c.db, candidate.identityAssetId) : null;
+    if (receipt?.checks) continue; // A real decision, including refusal, follows the visual quality path.
+    const rejudgeIntent = candidate ? await c.db.auditLog.findUnique({ where: { id: candidateKey + "_rejudge_intent" } }) : null;
+    const kind = rejudgeIntent ? "rejudge" : candidate ? "review" : "image";
+    const intentId = candidateKey + (kind === "image" ? "_dispatch" : kind === "rejudge" ? "_rejudge_intent" : "_review_intent");
+    const intent = rejudgeIntent ?? await c.db.auditLog.findUnique({ where: { id: intentId } });
     if (!intent) continue;
     const binding = JSON.parse(intent.metaJson ?? "null");
-    const expectedKey = candidate ? `wizard:identity-style:1:${candidate.identityAssetId}` : `wizard:identity:${n}`;
+    const expectedKey = !candidate ? "wizard:identity:" + n : kind === "rejudge"
+      ? identitySourceRejudgeKey(candidate.identityAssetId) : "wizard:identity-style:1:" + candidate.identityAssetId;
     const expected = { version: IDENTITY_SOURCE_REVISION, startSha256: hash(start), attempt: n, requestKey: expectedKey,
-      operationFingerprint: binding?.operationFingerprint, ...(candidate ? { identityAssetId: candidate.identityAssetId, sheetSha256: candidate.sheetSha256 } : {}) };
+      operationFingerprint: binding?.operationFingerprint, ...(candidate ? { identityAssetId: candidate.identityAssetId, sheetSha256: candidate.sheetSha256 } : {}),
+      ...(kind === "rejudge" ? { rejudge: binding.rejudge } : {}) };
     demand(intent.actorType === "SYSTEM" && intent.actorId === null && intent.entityType === "Game" && intent.entityId === start.gameId
-      && intent.action === (candidate ? "generation:identity-source-review-intent" : "generation:identity-source-dispatch-intent")
+      && intent.action === (kind === "image" ? "generation:identity-source-dispatch-intent" : kind === "rejudge" ? "generation:identity-source-rejudge-intent" : "generation:identity-source-review-intent")
       && /^[a-f0-9]{64}$/.test(binding?.operationFingerprint ?? "") && intent.metaJson === JSON.stringify(expected), "reference continuation intent differs");
     let request = await budget.readRequest(worldId, expectedKey);
-    if (!request) continue; // An intent before reservation can finish its never-bought question normally.
-    demand(request.operationFingerprint === binding.operationFingerprint && request.scope === (candidate ? "judge" : "identity")
-      && request.reserveMicroUsd === (candidate ? 400_000 : 500_000) && !request.conflicts.length, "reference continuation refers to another reservation");
-    let receipt = null;
-    if (candidate) {
-      const row = await c.db.auditLog.findFirst({ where: { action: "board-wizard:identity-style-reviewed", entityType: "Asset", entityId: candidate.identityAssetId }, orderBy: { createdAt: "desc" } });
-      receipt = row ? identityGateReceiptSchema.parse(JSON.parse(row.metaJson ?? "null")) : null;
-      if (receipt) demand(receipt.fingerprint === request.operationFingerprint && receipt.identityAssetId === candidate.identityAssetId
-        && receipt.sheetSha256 === candidate.sheetSha256 && receipt.provenance.style.version === "board-matched-identity/v6", "reference review continuation differs from candidate");
-      if (receipt?.checks) continue; // A real visual decision, including a refusal, follows the normal quality path.
+    if (!request) continue; // Intent before reservation may finish its never-bought question normally.
+    demand(request.operationFingerprint === binding.operationFingerprint && request.scope === (kind === "image" ? "identity" : "judge")
+      && request.reserveMicroUsd === (kind === "image" ? 500_000 : 400_000) && !request.conflicts.length, "reference continuation refers to another reservation");
+    if (candidate && receipt) {
+      const originalRow = await c.db.auditLog.findFirst({ where: { action: "board-wizard:identity-style-reviewed", entityType: "Asset", entityId: candidate.identityAssetId }, orderBy: { createdAt: "desc" } });
+      if (kind === "review") {
+        demand(receipt.fingerprint === request.operationFingerprint && receipt.identityAssetId === candidate.identityAssetId
+          && receipt.sheetSha256 === candidate.sheetSha256 && receipt.provenance.style.version === "board-matched-identity/v6", "reference review continuation differs from candidate");
+        if (request.state === "settled" && receipt.requestId && receipt.usage && receipt.costMicroUsd > 0) {
+          // Keep paid pixels: the one independently keyed strict rejudge runs before another drawing.
+          await identitySourceRejudgeBinding(c.db, { gameId: start.gameId, attempt: n, original: receipt, originalMetaJson: originalRow!.metaJson! });
+          continue;
+        }
+      } else {
+        demand(originalRow?.metaJson, "rejudge continuation lacks its original receipt");
+        const original = identityGateReceiptSchema.parse(JSON.parse(originalRow.metaJson));
+        demand(JSON.stringify(await identitySourceRejudgeBinding(c.db, { gameId: start.gameId, attempt: n, original,
+          originalMetaJson: originalRow.metaJson })) === JSON.stringify(binding.rejudge), "rejudge continuation binding differs");
+        if (receipt.version === IDENTITY_SOURCE_REJUDGE_VERSION)
+          demand(receipt.fingerprint === request.operationFingerprint, "rejudge continuation differs from its receipt");
+      }
     }
     if (request.state === "pending") {
       if (Date.now() - intent.createdAt.getTime() < REFERENCE_INTENT_STALE_MS) { waiting = true; continue; }
@@ -215,8 +234,7 @@ async function continueReferenceFailures(c: Container, start: IdentityRevisionSt
       } });
       await authorized.authorizeUnknownContinuation(worldId, grant);
     }
-    // Unknown outcome or paid-but-unretained result consumes this candidate. It is never bought/reviewed again under the old key.
-    failed.add(n);
+    failed.add(n); // No third question, repeated dispatch, rewritten bill or invented visual feedback.
   }
   return { failed, waiting };
 }
@@ -344,25 +362,43 @@ export async function advanceIdentitySourceRevision(c: Container, input: { gameI
     const provenance = identityProvenanceSchema.parse(JSON.parse(painted.metaJson!).identityProvenance);
     demand(hash({ ...provenance, repair: undefined }) === hash({ ...start.provenance, repair: undefined }), "candidate source contract differs from authorized revision");
     if (input.deadlineAt && input.deadlineAt - Date.now() < 205_000) return { state: "deferred" as const };
-    let receipt;
-    try { receipt = await reviewBoardWizardIdentity({ db: c.db, budget, apiKey: env().OPENAI_API_KEY!, write,
+    let receipt = await identityGateReceiptOf(c.db, candidate.identityAssetId);
+    const ask = (rejudge?: IdentitySourceRejudgeBinding) => reviewBoardWizardIdentity({ db: c.db, budget, apiKey: env().OPENAI_API_KEY!, write,
       recordFullSourceIntent: async ({ requestKey, fingerprint }) => {
-        const id = `${key}_review_intent`, record = { version: IDENTITY_SOURCE_REVISION, startSha256: hash(start), attempt: n,
-          requestKey, operationFingerprint: fingerprint, identityAssetId: candidate.identityAssetId, sheetSha256: candidate.sheetSha256 };
+        const id = key + (rejudge ? "_rejudge_intent" : "_review_intent"), record = { version: IDENTITY_SOURCE_REVISION, startSha256: hash(start), attempt: n,
+          requestKey, operationFingerprint: fingerprint, identityAssetId: candidate.identityAssetId, sheetSha256: candidate.sheetSha256,
+          ...(rejudge ? { rejudge } : {}) };
         await write(async tx => {
           const saved = await tx.auditLog.findUnique({ where: { id } });
+          const action = rejudge ? "generation:identity-source-rejudge-intent" : "generation:identity-source-review-intent";
           if (saved) { demand(saved.metaJson === JSON.stringify(record) && saved.actorType === "SYSTEM" && saved.actorId === null
-            && saved.action === "generation:identity-source-review-intent" && saved.entityId === input.gameId, "reference review intent changed"); return; }
-          await tx.auditLog.create({ data: { id, actorType: "SYSTEM", action: "generation:identity-source-review-intent", entityType: "Game", entityId: input.gameId, metaJson: JSON.stringify(record) } });
+            && saved.action === action && saved.entityId === input.gameId, "reference review intent changed"); return; }
+          await tx.auditLog.create({ data: { id, actorType: "SYSTEM", action, entityType: "Game", entityId: input.gameId, metaJson: JSON.stringify(record) } });
         });
       },
       beforeDispatch: async () => { await assertGenerationSpendAllowed(c, start.ownerId); await write(async () => undefined); } },
-      { gameId: input.gameId, identityAssetId: candidate.identityAssetId, sheet, photo: s.photoBytes, atlas: atlas.png, provenance, contentVersion: 12, deadlineAt: input.deadlineAt });
-    } catch (error) {
-      if (isIdentityRevisionDatabaseTransient(error)) throw error;
-      const key = identityReviewRequestKey({ identityAssetId: candidate.identityAssetId, provenance });
-      if (await budget.readRequest(worldId, key)) return { state: "retry" as const, attempt: n };
-      throw error;
+      { gameId: input.gameId, identityAssetId: candidate.identityAssetId, sheet, photo: s.photoBytes, atlas: atlas.png, provenance,
+        contentVersion: 12, deadlineAt: input.deadlineAt, ...(rejudge ? { rejudge } : {}) });
+    if (!receipt) {
+      try { receipt = await ask(); } catch (error) {
+        if (isIdentityRevisionDatabaseTransient(error)) throw error;
+        if (await budget.readRequest(worldId, identityReviewRequestKey({ identityAssetId: candidate.identityAssetId, provenance })))
+          return { state: "retry" as const, attempt: n };
+        throw error;
+      }
+    }
+    if (receipt.version !== IDENTITY_SOURCE_REJUDGE_VERSION && receipt.checks === null && receipt.requestId && receipt.usage && receipt.costMicroUsd > 0) {
+      if (input.deadlineAt && input.deadlineAt - Date.now() < 205_000) return { state: "deferred" as const };
+      const originalRow = await c.db.auditLog.findFirstOrThrow({ where: { action: "board-wizard:identity-style-reviewed", entityType: "Asset", entityId: candidate.identityAssetId }, orderBy: { createdAt: "desc" } });
+      const rejudge = await identitySourceRejudgeBinding(c.db, { gameId: input.gameId, attempt: n, original: receipt, originalMetaJson: originalRow.metaJson! });
+      const room = await budget.audit(worldId);
+      demand(!room.held && !room.pendingRequestKeys.length && room.remainingMicroUsd >= 400_000,
+        "the bounded same-pixel rejudge does not fit the unchanged world budget", "cap_exceeded");
+      try { receipt = await ask(rejudge); } catch (error) {
+        if (isIdentityRevisionDatabaseTransient(error)) throw error;
+        if (await budget.readRequest(worldId, identitySourceRejudgeKey(candidate.identityAssetId))) return { state: "retry" as const, attempt: n };
+        throw error;
+      }
     }
     if (!identityReceiptReadyForPublication(receipt, 12)) {
       if (!receipt.checks || !receipt.requestId || !receipt.costMicroUsd) return { state: "retry" as const, attempt: n };

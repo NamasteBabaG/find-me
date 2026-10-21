@@ -1,3 +1,4 @@
+import { LeanCompletionBudgetForm } from "./LeanCompletionBudgetForm";
 import { currentAdmin } from "@/lib/server/session";
 import { getContainer } from "@/services/container";
 import { getI18n } from "@/i18n/server";
@@ -16,7 +17,7 @@ export async function IdentitySourceRevisionForm({ gameId }: { gameId: string })
         <input type="hidden" name="gameId" value={gameId} /><input type="hidden" name="heldId" value={held.id} />
         <label><input type="checkbox" name="confirm" value={IDENTITY_SOURCE_RETRY_CONFIRMATION} required /> {p.retryConfirm}</label>
         <button className="fm-btn fm-btn--sea" type="submit">{p.retry}</button>
-      </form> : null}</section>;
+      </form> : null}<LeanCompletionBudgetForm gameId={gameId} /></section>;
   }
   let plan;
   try { plan = await planIdentitySourceRevision(c, gameId); } catch { return null; }

@@ -1,3 +1,4 @@
+import { readLeanCompletionBudget } from "./lean-completion-budget";
 import { isRefreshedCollectionVersion } from "../../domain/scene/local-patch-versions";
 import { dailyGenerationSpend } from "./daily-generation-spend";
 import { Prisma } from "@prisma/client";
@@ -113,7 +114,7 @@ const assetId = (gameId: string, key: string) => `ast_bcw_${boardConditioningHas
 const assetPath = (id: string) => `private/board-wizard/${id}.png`;
 // A lean world's four-dollar ceiling comes first: no later policy or extension raises it (local-patch-lean/v1).
 function budgetOf(c: Container, attempt = 1, options: WorldBudgetOptions = {}) { return boardWizardBudget(new CasWorldBudgetRepository(new PrismaWorldBudgetStore(c.db)), attempt, options,
-  async worldId => await readLeanWorldBudget(c, worldId) ?? await readNewQaWorldBudget(c, worldId) ?? await readLocalPatchEmergencyBudget(c, worldId)
+  async worldId => await readLeanCompletionBudget(c, worldId) ?? await readLeanWorldBudget(c, worldId) ?? await readNewQaWorldBudget(c, worldId) ?? await readLocalPatchEmergencyBudget(c, worldId)
     ?? readBoardWizardBudgetExtension(c, worldId)); }
 
 async function spendCheck(c: Container, ownerId: string, engine: "board-wizard" | "local-patch" = "board-wizard") {
