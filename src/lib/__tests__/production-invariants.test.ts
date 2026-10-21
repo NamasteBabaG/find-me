@@ -23,6 +23,7 @@ const BASE = {
 
 async function envWith(overrides: Record<string, string>) {
   vi.resetModules();
+  vi.stubEnv("APP_ENV", undefined); // The synthetic production baseline does not inherit a caller's dev/QA setting.
   for (const [k, v] of Object.entries({ ...BASE, ...overrides })) vi.stubEnv(k, v);
   const { env } = await import("../env");
   return () => env();
@@ -137,6 +138,16 @@ describe("a setting with an invisible character in it", () => {
     expect(read()[key as "GENERATION_ENABLED" | "LOCAL_PATCH_PLAYER_REVIEW" | "PURCHASING_ENABLED"]).toBe("off");
     expect(warn).toHaveBeenCalledWith(expect.stringContaining(key));
     warn.mockRestore();
+  });
+
+  it.each(["\uFEFFfull-source-v1", " full-source-v1 ", "full-source-v1\r\n"])("reads the full-source reference switch as a typed label: %j", async value => {
+    const read = await envWith({ APP_ENV: "qa", GENERATION_PROVIDER: "mock", LOCAL_PATCH_IDENTITY_SOURCE: value });
+    expect(read().LOCAL_PATCH_IDENTITY_SOURCE).toBe("full-source-v1");
+  });
+
+  it("still refuses an unrecognized full-source reference release", async () => {
+    const read = await envWith({ APP_ENV: "qa", GENERATION_PROVIDER: "mock", LOCAL_PATCH_IDENTITY_SOURCE: " full-source-v9 " });
+    expect(read).toThrow(/LOCAL_PATCH_IDENTITY_SOURCE/);
   });
 
   it("does not let the trimming decide anything the value did not say", async () => {
