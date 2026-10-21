@@ -24,6 +24,7 @@ import { isFixedWorldStyle } from "./fixed-world-stage-record";
 import { BOARD_WIZARD_STYLE, GenerationPaused, boardWizardEnabled, enrollBoardConditionedWizard, runBoardConditionedWizardSlice, preflightBoardConditionedWizard, reserveBoardWizardIdentity } from "./board-conditioned-wizard";
 import { sha256Bytes } from "./fixed-sprite";
 import { generateBoardWizardIdentity, holdBoardWizardIdentity, withBoardWizardIdentityClaim, type BoardWizardIdentityClaim } from "./board-wizard-identity-lifecycle";
+import { identitySourceReleaseOf } from "./identity-source-release";
 import { buildBoardWizardIdentityStyle } from "./board-wizard-identity-style";
 import { identityProvenanceSchema, reviewBoardWizardIdentity, identityReceiptReadyForPublication } from "./board-wizard-identity-gate";
 import { avatarDisplayFromSheet } from "../../infra/generation/avatar-cut";
@@ -203,6 +204,8 @@ export async function runGenerationPipeline(c: Container, gameId: string, option
     // legacy optional HTTP crop or a generic portrait prompt.
     // An interrupted identity/review keeps the exact original style recipe.
     // Upgrading the default must not replace a purchased v1 atlas with v2 pixels.
+    const sourceRelease = qaIdentityClaim && localPatch ? await identitySourceReleaseOf(c.db, gameId) : null;
+    if (sourceRelease && contentVersion !== 12) throw Error("Full-source identity requires the pinned v12 collection");
     let retainedIdentityStyleVersion;
     if (qaIdentityClaim && child.identityAssetId) {
       const retained = await c.db.auditLog.findFirst({ where: { action: "sheet:painted", entityId: child.identityAssetId, entityType: "Asset" }, orderBy: { createdAt: "desc" } });
@@ -213,7 +216,7 @@ export async function runGenerationPipeline(c: Container, gameId: string, option
     try {
       // A new v12 identity takes the chosen prompt release: v16/v17 draw the sheet's
       // hair from the photograph (v5) instead of v4's default broad dark curls.
-      if (qaIdentityClaim) identityStyle = await buildBoardWizardIdentityStyle(undefined, retainedIdentityStyleVersion ?? (contentVersion === 12
+      if (qaIdentityClaim) identityStyle = await buildBoardWizardIdentityStyle(undefined, retainedIdentityStyleVersion ?? (sourceRelease ? "board-matched-identity/v6" : contentVersion === 12
         ? isAgeBodyPromptRelease(env().LOCAL_PATCH_PROMPT_RELEASE) ? "board-matched-identity/v5" : "board-matched-identity/v4"
         : isRefreshedCollectionVersion(contentVersion) ? "board-matched-identity/v3" : undefined), identityWorld, identityArtCache);
     } finally {

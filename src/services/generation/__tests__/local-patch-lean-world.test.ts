@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import sharp from "sharp";
 import { PrismaClient } from "@prisma/client";
-import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { applyTestSchema } from "../../../lib/test-schema";
 import { DbStorage } from "../../../infra/storage/db";
 import { BackgroundReviewRefused, type BackgroundReviewState, type BackgroundReviewTransport } from "../../../infra/generation/types";
@@ -46,9 +46,9 @@ import { GOOD_V12_VERDICT, boundHide, longAnswer, publicationBinding } from "./l
  * once when the provider refuses Flex, repaints a child refused for who they are a third time with no diagnosis
  * (while a compositing refusal still gets one), publishes under its own Sol policies, and stays inside its ceiling (four dollars, aiming under three).
  */
-const fakes = vi.hoisted(() => ({ testers: [] as string[] }));
+const fakes = vi.hoisted(() => ({ testers: [] as string[], apiKey: undefined as string | undefined }));
 vi.mock("../../../lib/env", () => ({ env: () => ({ APP_ENV: "qa", GENERATION_ENABLED: "on", GENERATION_DAILY_CENTS: 0, LOCAL_PATCH_PLAYER_REVIEW: "on",
-  GENERATION_PROVIDER: "openai", GENERATION_MODEL: "gpt-image-2", GENERATION_QUALITY: "medium", LOCAL_PATCH_PROMPT_RELEASE: "v15" }),
+  GENERATION_PROVIDER: "openai", GENERATION_MODEL: "gpt-image-2", GENERATION_QUALITY: "medium", OPENAI_API_KEY: fakes.apiKey, LOCAL_PATCH_PROMPT_RELEASE: "v15" }),
   spendGuard: () => ({ appEnv: "qa", realGeneration: true, testers: fakes.testers }), flag: () => false, adminEmails: () => [] }));
 
 const journey = new Set(boardsOfWorlds(["journey"]));
@@ -77,6 +77,8 @@ afterAll(async () => {
   vi.unstubAllGlobals(); await db.$disconnect();
   if (path.dirname(directory) === realpathSync(tmpdir()) && path.basename(directory).startsWith("findme-lean-world-")) rmSync(directory, { recursive: true });
 });
+
+afterEach(() => { fakes.apiKey = undefined; });
 
 /** A paid nine-board v12 journey (synthetic child, age 8) with an approved identity, a stored synthetic photograph, dual review v3 and the lean pin. */
 async function leanWorld(gameId: string) {
@@ -133,13 +135,13 @@ function painter(gameId: string, prompts: Map<string, string>, qualities: Map<st
  * `failFast`: that appearance's first bundle has already ended `failed` when it is first read.
  * `failCode`: the error code a failed response of that appearance names (background-provider-error/v1).
  * `failureUsage`: the usage a failed response reports (a bill), instead of none. */
-function sol(options: { lose?: string; slow?: string; released?: () => boolean; fail?: string; failContinuity?: string; failMany?: ReadonlySet<string>;
+function sol(options: { lose?: string; slow?: string; released?: () => boolean; fail?: string; failContinuity?: string; failMany?: ReadonlySet<string>; failContinuityMany?: ReadonlySet<string>;
   failFast?: string; failCode?: ReadonlyMap<string, string>; failureUsage?: Readonly<Record<string, number>> } = {}) {
   const creates: { hideId: string; kind: "bundle" | "continuity"; tier: unknown; attempts: number }[] = [];
   /** The digest of every body sent: a question sent twice is the same body twice. */
   const bodies: string[] = [];
   const polls = new Map<string, { hideId: string; kind: "bundle" | "continuity"; tier: unknown; n: number; reads: number }>();
-  const bundles = new Map<string, number>(), refused = new Set<string>(), lost = new Set<string>();
+  const bundles = new Map<string, number>(), continuities = new Map<string, number>(), refused = new Set<string>(), lost = new Set<string>();
   let slowResponse: string | null = null, slowReads = 0, failingContinuity: string | null = null;
   const fake: BackgroundReviewTransport = { namespace: "openai:find-me-existing",
     create: async body => {
@@ -152,8 +154,9 @@ function sol(options: { lose?: string; slow?: string; released?: () => boolean; 
       if (bound.hideId === REFUSED.id && kind === "bundle" && body.service_tier === "flex" && !refused.has(bound.hideId)) {
         refused.add(bound.hideId); throw new BackgroundReviewRefused(429, null);
       }
-      const n = kind === "bundle" ? (bundles.get(bound.hideId) ?? 0) + 1 : 0;
-      if (kind === "bundle") bundles.set(bound.hideId, n);
+      const counts = kind === "bundle" ? bundles : continuities;
+      const n = (counts.get(bound.hideId) ?? 0) + 1;
+      counts.set(bound.hideId, n);
       const responseId = `resp_lean${creates.length}`;
       polls.set(responseId, { hideId: bound.hideId, kind, tier: body.service_tier, n, reads: 0 });
       if (kind === "continuity" && bound.hideId === options.slow && slowResponse === null) slowResponse = responseId;
@@ -168,7 +171,7 @@ function sol(options: { lose?: string; slow?: string; released?: () => boolean; 
       if (++state.reads === 1 && !failFast) return { status: "in_progress" };
       // The failing continuity question ends a read after its bundle: the two failures arrive at different times.
       if (responseId === failingContinuity && state.reads === 2) return { status: "in_progress" };
-      if ((state.hideId === options.fail || options.failMany?.has(state.hideId)) && state.kind === "bundle" && state.n === 1 || responseId === failingContinuity || failFast)
+      if ((state.hideId === options.fail || options.failMany?.has(state.hideId)) && state.kind === "bundle" && state.n === 1 || responseId === failingContinuity || state.kind === "continuity" && state.n === 1 && options.failContinuityMany?.has(state.hideId) || failFast)
         return { status: "failed", reading: { responseId, raw: null, usage: options.failureUsage ? { ...options.failureUsage } : null, model: "gpt-6.1-sol",
           finishReason: "failed", serviceTier: String(state.tier),
           ...(options.failCode?.has(state.hideId) ? { providerError: { code: options.failCode.get(state.hideId)!, message: "Synthetic provider message" } } : {}) } };
@@ -515,6 +518,7 @@ describe("local-patch-lean/v1 on a whole paid world", () => {
     // finishes the same resumption from the recorded continuation.
     await park(engineHold);
     expect(await tickGeneration(container, null, 60_000)).toMatchObject({ gameId });
+    expect(fetch).not.toHaveBeenCalled(); // This legacy scheduled turn has no painter configured.
     await slice();
     expect((await job()).currentStep).not.toBe("local-patch:needs-release");
     expect(await approval()).toEqual(written);
@@ -899,3 +903,118 @@ describe("local-patch-lean/v1 on a whole paid world", () => {
     expect(await slice()).toMatchObject({ claimed: false, pending: true });
   }, 600_000);
 });
+
+
+it.each([{ scenario: "complete all27", loseReference: false, capFailure: false, mixed: false },
+  { scenario: "safe cap refusal after added unknown outcomes", loseReference: true, capFailure: true, mixed: false },
+  { scenario: "all27 after a lost reference with the real five-continuity/two-bundle reserve mix", loseReference: true, capFailure: false, mixed: true }])("repairs a rejected paid reference: $scenario (real 2+4 history, synthetic providers)", async ({ loseReference, capFailure, mixed }) => {
+  fakes.apiKey = "synthetic-never-live";
+  const { planIdentitySourceRevision, beginIdentitySourceRevision, advanceIdentitySourceRevision } = await import("../identity-source-revision");
+  const { identityRevisionPending } = await import("../identity-source-revision-state");
+  const { subjectStageCurrent } = await import("../local-patch-world");
+  const { composeLocalPatchGame } = await import("../local-patch-player");
+  const { identityApprovedForDisplay } = await import("../board-wizard-identity-gate");
+  const styleModule = await import("../board-wizard-identity-style");
+  const gameId = `lean-source-revision-${mixed ? "recover" : loseReference ? "cap" : "clean"}-synthetic`, seeded = await leanWorld(gameId);
+  const covered = 2 + WORLD_AUTOMATIC_REVIEW_RECOVERY_V2_LIMIT, special = new Set([THIRD.id, REFUSED.id, SEAM.id]);
+  const failing = HIDES.filter(h => !special.has(h.id)).slice(0, covered + 1);
+  const provider = sol({ failMany: new Set((mixed ? failing.slice(5) : failing).map(h => h.id)), ...(mixed ? { failContinuityMany: new Set(failing.slice(0, 5).map(h => h.id)) } : {}) });
+  const operatorId = `source-revision-operator-${gameId}`, email = `${gameId}@example.invalid`;
+  await db.user.create({ data: { id: operatorId, email } });
+  const container = { ...c, adminEmails: [email], visualReview: { request: vi.fn() }, backgroundReview: provider.fake } as Container;
+  const slice = () => runLocalPatchWorldSlice(container, painter(gameId, new Map(), new Map()), gameId, { hardDeadlineAt: Date.now() + 270_000, diagnose: seamDiagnosis(gameId) });
+  const job = () => db.generationJob.findUniqueOrThrow({ where: { id: `job_${gameId}` } });
+  for (let turns = 0; turns < 900 && (await job()).currentStep !== "local-patch:needs-release"; turns++) {
+    if ((await job()).currentStep === "local-patch:recovery-budget-wait") await db.generationJob.update({ where: { id: `job_${gameId}` }, data: { updatedAt: new Date(Date.now() - LEAN_RECOVERY_BACKOFF_MS - 1000) } });
+    await slice();
+  }
+  expect((await job()).lastError).toMatch(SPENT_CONTINUATIONS_HOLD);
+  for (let n = 0; n < 10 && (await backgroundReviewWaiting(db, gameId, { inFlightOnly: true })).size; n++) await advanceContinuityInBackground(container, gameId);
+  const originalEnrollment = await db.auditLog.findUniqueOrThrow({ where: { id: `aud_subject_upgrade_${gameId}` } });
+  const originalIdentity = `ast-sheet-${gameId}`, oldReview = await db.auditLog.findFirstOrThrow({ where: { action: "board-wizard:identity-style-reviewed", entityId: originalIdentity } });
+  const provenance = JSON.parse(oldReview.metaJson!).provenance;
+  await db.auditLog.create({ data: { id: `source-original-paint-${gameId}`, actorType: "SYSTEM", action: "sheet:painted", entityType: "Asset", entityId: originalIdentity,
+    metaJson: JSON.stringify({ gameId, identityProvenance: provenance }) } });
+  const worldId = boardWizardWorldId(gameId), budget = boardWizardBudgetOf(container), before = await budget.audit(worldId), parked = await job();
+  const priorRequests = await Promise.all(before.unknownRequestKeys.map(key => budget.readRequest(worldId, key)));
+  const previousRows = await db.targetVariantAsset.findMany({ where: { targetInstance: { gameScene: { gameId } } }, select: { id: true, attempts: true, assetId: true, judgeJson: true } });
+  const marker = await sharp({ create: { width: 12, height: 12, channels: 4, background: "#1122bb" } }).png().toBuffer();
+  const newSheet = await sharp(seeded.sheet).composite([{ input: marker, left: 5, top: 5 }]).png().toBuffer();
+  let sourceImageCalls = 0, sourceReviewCalls = 0;
+  const createCharacter = vi.fn(async (request: { qaStyleContract?: { version: string } }) => {
+    sourceImageCalls++; if (loseReference && sourceImageCalls === 1) throw Error("synthetic lost replacement image");
+    expect(request.qaStyleContract?.version).toBe("board-matched-identity/v6");
+    return { sheetPng: newSheet, sheetWidth: 1024, sheetHeight: 1024, avatarPng: newSheet, avatarWidth: 1024, avatarHeight: 1024,
+      model: "gpt-image-2", usage: { input_tokens: 1000, output_tokens: 1000 }, costCents: 5, providerRequestId: `req_source_revision_${gameId}_${sourceImageCalls}`, durationMs: 1, attempts: 1 };
+  });
+  container.avatars = { id: "openai", createCharacter } as unknown as Container["avatars"];
+  const styleSpy = vi.spyOn(styleModule, "buildBoardWizardIdentityStyle").mockResolvedValue({ version: "board-matched-identity/v6", png: seeded.sheet,
+    catalogSha256: provenance.style.catalogSha256, atlasSha256: provenance.style.atlasSha256, examples: [] });
+  const plan = await planIdentitySourceRevision(container, gameId);
+  expect(plan).toMatchObject({ capMicroUsd: 4_000_000, all27MustRequalify: true, releaseCurrentIdentity: false });
+  await expect(beginIdentitySourceRevision(container, { gameId, operatorId, expectedPlanSha256: "0".repeat(64) })).rejects.toThrow("changed");
+  await expect(beginIdentitySourceRevision(container, { gameId, operatorId: seeded.userId, expectedPlanSha256: plan.planSha256 })).rejects.toThrow("administrator");
+  await beginIdentitySourceRevision(container, { gameId, operatorId, expectedPlanSha256: plan.planSha256 });
+  expect(await identityRevisionPending(db, gameId)).toBe(true); expect(await job()).toEqual(parked);
+  expect((await slice()).paused).toBe(true); expect(await job()).toEqual(parked);
+  expect(await identityApprovedForDisplay(container, { identityAssetId: originalIdentity, originalPhotoAssetId: provenance.photoAssetId, ageYears: 8 }, 12)).toBe(false);
+  await expect(composeLocalPatchGame(container, gameId)).rejects.toThrow("reference revision");
+  const reviewFetch = vi.fn(async () => { sourceReviewCalls++; if (loseReference && !mixed && sourceReviewCalls === 1) throw Error("synthetic lost replacement review"); return Response.json({ model: "gpt-6.1-sol", service_tier: "default", usage: { prompt_tokens: 2000, completion_tokens: 400 },
+    choices: [{ finish_reason: "stop", message: { content: JSON.stringify({ checks: { identity: "pass", age: "pass", paintedStyle: "pass", sheetLayout: "pass",
+      sourceFaceVisible: "pass", facialVolume: "pass", viewConsistency: "pass" }, reason: "Synthetic source volume and consistency only, not visual acceptance" }) } }] },
+    { headers: { "x-request-id": `req_source_revision_review_${gameId}` } }); });
+  vi.stubGlobal("fetch", reviewFetch);
+  let result, refusal: unknown;
+  for (let turn = 0; turn < 5; turn++) {
+    try { result = await advanceIdentitySourceRevision(container, { gameId, operatorId }); } catch (error) { refusal = error; break; }
+    if (result.state === "committed") break;
+  }
+  styleSpy.mockRestore();
+  if (capFailure) {
+    expect(String(refusal)).toContain("unchanged world cap");
+    const audit = await budget.audit(worldId);
+    expect(audit.capMicroUsd).toBe(4_000_000); expect(audit.overCapMicroUsd).toBe(0); expect(audit.remainingMicroUsd).toBeLessThan(900_000);
+    const newUnknowns = audit.unknownRequestKeys.filter(key => !before.unknownRequestKeys.includes(key)); expect(newUnknowns.length).toBeGreaterThan(0);
+    for (const key of newUnknowns) expect(await budget.readRequest(worldId, key)).toMatchObject({ state: "unknown", reserveMicroUsd: key.startsWith("wizard:identity-style:") ? 400_000 : 500_000 });
+    for (let i = 0; i < before.unknownRequestKeys.length; i++) expect(await budget.readRequest(worldId, before.unknownRequestKeys[i]!)).toEqual(priorRequests[i]);
+    expect(await identityRevisionPending(db, gameId)).toBe(true); expect(await job()).toEqual(parked);
+    expect((await subjectUpgradeOf(db, gameId))?.identityAssetId).toBe(originalIdentity);
+    expect((await db.game.findUniqueOrThrow({ where: { id: gameId } })).configJson).toBeNull(); expect(createCharacter.mock.calls.length).toBeLessThanOrEqual(3);
+    console.info("synthetic-reference-cap-refusal", { committedMicroUsd: audit.committedMicroUsd, remainingMicroUsd: audit.remainingMicroUsd, newUnknowns: newUnknowns.length });
+    return;
+  }
+  if (refusal) throw refusal;
+  expect(result?.state).toBe("committed"); expect(createCharacter).toHaveBeenCalledTimes(loseReference ? 2 : 1); expect(reviewFetch).toHaveBeenCalledOnce();
+  expect(await identityRevisionPending(db, gameId)).toBe(false);
+  expect((await job()).attempts).toBe(parked.attempts); expect((await job()).status).toBe("QUEUED");
+  const effective = (await subjectUpgradeOf(db, gameId))!;
+  expect(effective).toMatchObject({ version: "local-patch-subject-upgrade/identity-revision-v2", identitySha256: sha256Bytes(newSheet), identityRevision: { originalEnrollmentSha256: expect.any(String) } });
+  expect(effective.identityAssetId).not.toBe(originalIdentity);
+  expect(await db.auditLog.findUniqueOrThrow({ where: { id: originalEnrollment.id } })).toEqual(originalEnrollment);
+  for (let i = 0; i < before.unknownRequestKeys.length; i++) expect(await budget.readRequest(worldId, before.unknownRequestKeys[i]!)).toEqual(priorRequests[i]);
+  const retainedRows = await db.targetVariantAsset.findMany({ where: { targetInstance: { gameScene: { gameId } } }, select: { id: true, attempts: true, assetId: true, judgeJson: true } });
+  expect(retainedRows.map(({ judgeJson: _review, ...image }) => image)).toEqual(previousRows.map(({ judgeJson: _review, ...image }) => image));
+  for (const previous of previousRows) {
+    const prior = JSON.parse(previous.judgeJson ?? "null");
+    if (prior?.boardReview?.dual?.subject) expect(JSON.parse(retainedRows.find(row => row.id === previous.id)!.judgeJson!).boardReview).toEqual(prior.boardReview);
+  }
+  const formerAccepted = previousRows.find(row => JSON.parse(row.judgeJson ?? "null")?.boardReview?.dual?.subject);
+  expect(formerAccepted).toBeTruthy(); expect(subjectStageCurrent(formerAccepted!, effective.identitySha256)).toBe(false);
+  expect((await advanceIdentitySourceRevision(container, { gameId, operatorId })).state).toBe("committed");
+  expect(createCharacter).toHaveBeenCalledTimes(loseReference ? 2 : 1);
+  const ready = async () => !!(await db.game.findUniqueOrThrow({ where: { id: gameId } })).configJson;
+  for (let turns = 0; turns < 900 && !await ready(); turns++) {
+    if ((await job()).currentStep === "local-patch:recovery-budget-wait") await db.generationJob.update({ where: { id: `job_${gameId}` }, data: { updatedAt: new Date(Date.now() - LEAN_RECOVERY_BACKOFF_MS - 1000) } });
+    await slice();
+  }
+  expect(await ready()).toBe(true);
+  const rows = await db.targetVariantAsset.findMany({ where: { variant: "A", targetInstance: { gameScene: { gameId } } } });
+  expect(rows).toHaveLength(27); expect(rows.every(row => row.status === "GENERATED" && subjectStageCurrent(row, effective.identitySha256))).toBe(true);
+  const after = await budget.audit(worldId); expect(after.capMicroUsd).toBe(4_000_000);
+  if (loseReference) {
+    expect(after.unknownRequestKeys).toEqual([...before.unknownRequestKeys, "wizard:identity:2"]);
+    expect(await budget.readRequest(worldId, "wizard:identity:2")).toMatchObject({ state: "unknown", reserveMicroUsd: 500_000 });
+    expect(await budget.readContinuationApproval(worldId, "wizard:identity:2")).toMatchObject({ version: "world-unknown-continuation/v1", operatorId });
+  } else expect(after.unknownRequestKeys).toEqual(before.unknownRequestKeys);
+  expect(after.committedMicroUsd).toBeLessThanOrEqual(4_000_000);
+}, 1_500_000);

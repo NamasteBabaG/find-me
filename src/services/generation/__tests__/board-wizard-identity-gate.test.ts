@@ -255,3 +255,76 @@ describe("identity style gate (synthetic images and HTTP; zero paid calls)", () 
     await expect(reviewBoardWizardIdentity(f.deps, f.input)).rejects.toThrow("reconcile"); expect(f.fetchOnce).toHaveBeenCalledTimes(1);
   });
 });
+
+
+describe("full original source identity review (synthetic, zero paid calls)", () => {
+  const fullAnswer = () => ({ checks: { ...answer().checks, sourceFaceVisible: "pass", facialVolume: "pass", viewConsistency: "pass" },
+    reason: "Synthetic whole-face, painted-volume and cross-view evidence, not an art acceptance" });
+  async function fullFixture(content: unknown = fullAnswer()) {
+    const f = await fixture(async () => response(content, { model: "gpt-6.1-sol" }));
+    f.input.provenance.promptVersion = "character-v8-full-source-volume-identity";
+    f.input.provenance.style.version = "board-matched-identity/v6";
+    f.input.provenance.crop = { x: 0, y: 0, w: 1, h: .4 };
+    return f;
+  }
+  it("sends four hash-bound images and HIGH settings from the first review; replay never repurchases", async () => {
+    const f = await fullFixture();
+    const r = await reviewBoardWizardIdentity(f.deps, { ...f.input, contentVersion: 12 });
+    expect(r.version).toBe("board-wizard-identity-source-sol-high/v5");
+    expect(r.effort).toBe("high"); expect(r.model).toBe("gpt-6.1-sol"); expect(r.imageHashes).toHaveLength(4);
+    expect(r.imageHashes[0]).not.toBe(r.imageHashes[3]);
+    const sent = JSON.parse(String(f.fetchOnce.mock.calls[0]![1]?.body));
+    expect(sent.reasoning_effort).toBe("high"); expect(sent.max_completion_tokens).toBe(6500);
+    expect(sent.messages[0].content.filter((item: { type: string }) => item.type === "image_url")).toHaveLength(4);
+    for (const s of ["SELECTION CROP", "COMPLETE original source photograph", "Never claim that an unseen nose", "viewConsistency", "facialVolume", "repeated poses are allowed"])
+      expect(r.prompt).toContain(s);
+    expect(identityReceiptReadyForPublication(r, 12)).toBe(true); expect(identityReceiptReadyForPublication(r, 11)).toBe(false);
+    expect(await reviewBoardWizardIdentity(f.deps, { ...f.input, contentVersion: 12 })).toEqual(r);
+    expect(f.fetchOnce).toHaveBeenCalledOnce();
+    expect(await f.budget.readRequest("synthetic-game:board-wizard", `wizard:identity-style:1:${r.identityAssetId}`)).toMatchObject({ state: "settled", operationFingerprint: r.fingerprint });
+  });
+  it.each(["sourceFaceVisible", "facialVolume", "viewConsistency", "identity", "age", "paintedStyle", "sheetLayout"] as const)("cannot select or publish a failed/uncertain %s", async check => {
+    for (const status of ["fail", "uncertain"] as const) {
+      const a = fullAnswer(); a.checks[check] = status;
+      const f = await fullFixture(a), r = await reviewBoardWizardIdentity(f.deps, { ...f.input, contentVersion: 12 });
+      expect(r.checks).not.toBeNull(); expect(r.approved).toBe(false); expect(identityReceiptReadyForPublication(r, 12)).toBe(false);
+      expect(identityReceiptReadyForPublication({ ...r, approved: true, automaticSelection: { policy: "identity-best-of-two/v1", sourceFingerprint: r.fingerprint,
+        candidates: [r.identityAssetId], selectedIdentityAssetId: r.identityAssetId, reason: "budget-fallback" } }, 12)).toBe(false);
+    }
+  });
+  it("keeps a known bill but refuses an old four-check answer without complete-source checks", async () => {
+    const f = await fullFixture(answer()), r = await reviewBoardWizardIdentity(f.deps, { ...f.input, contentVersion: 12 });
+    expect(r.approved).toBe(false); expect(r.checks).toBeNull(); expect(r.costMicroUsd).toBeGreaterThan(0);
+    expect((await f.budget.audit("synthetic-game:board-wizard")).unknownRequestKeys).toHaveLength(0);
+    expect(identityReceiptReadyForPublication(r, 12)).toBe(false);
+  });
+  it("keeps full-source image4 and first-candidate image5 in comparisons", async () => {
+    const f = await fullFixture({ ...fullAnswer(), preferredCandidate: "second" });
+    const firstSheet = await sharp(f.input.sheet).resize(24, 24).png().toBuffer();
+    const r = await reviewBoardWizardIdentity(f.deps, { ...f.input, contentVersion: 12, compareWith: { identityAssetId: "first-candidate", sheet: firstSheet } });
+    expect(r.imageHashes).toHaveLength(5); expect(r.comparison?.preferredCandidate).toBe("second");
+    expect(r.prompt).toContain("image5 is the FIRST candidate"); expect(r.prompt).toContain("Image4 remains the complete original source");
+    expect(identityReceiptReadyForPublication(r, 12)).toBe(true);
+  });
+  it("refuses full-source style on a different content version before dispatch", async () => {
+    const f = await fullFixture();
+    await expect(reviewBoardWizardIdentity(f.deps, { ...f.input, contentVersion: 11 })).rejects.toThrow("qualified only for v12");
+    expect(f.fetchOnce).not.toHaveBeenCalled();
+  });
+});
+
+
+describe("identity reviewer HTTP windows keep their version", () => {
+  it("keeps legacy HTTP at90 seconds and gives only the exact new Sol HIGH contract180 seconds", async () => {
+    const timeout = vi.spyOn(AbortSignal, "timeout").mockReturnValue(new AbortController().signal);
+    const fetcher = vi.fn(async () => Response.json({}));
+    const reviewer = new OpenAiIdentityStyleReviewer("synthetic-never-live", fetcher as typeof fetch);
+    try {
+      await reviewer.review({ prompt: "synthetic", images: [Buffer.from("synthetic")], timeoutMs: 250_000 }); expect(timeout).toHaveBeenLastCalledWith(90_000);
+      await reviewer.review({ prompt: "synthetic", images: [Buffer.from("synthetic")], timeoutMs: 250_000, timeoutPolicy: "full-source-v1",
+        settings: { model: "gpt-6.1-sol", effort: "high", maxOutputTokens: 6500 } }); expect(timeout).toHaveBeenLastCalledWith(180_000);
+      await expect(reviewer.review({ prompt: "synthetic", images: [], timeoutPolicy: "full-source-v1", settings: { model: "gpt-5.6-luna", effort: "low", maxOutputTokens: 3000 } })).rejects.toThrow("exact Sol HIGH");
+      expect(fetcher).toHaveBeenCalledTimes(2);
+    } finally { timeout.mockRestore(); }
+  });
+});

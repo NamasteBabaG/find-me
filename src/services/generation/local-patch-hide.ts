@@ -206,6 +206,8 @@ export async function runLocalPatchHide(c: Container, deps: LocalPatchHideDeps, 
   readonly extraAttemptAuthorizationId?: string;
 }): Promise<LocalPatchHideOutcome> {
   const { gameId, board, hide } = input;
+  const { identityRevisionPending } = await import("./identity-source-revision-state");
+  demand(!await identityRevisionPending(c.db, gameId), "reference revision blocks scene painting");
   demand(c.storage.id === "db", "local-patch imagery requires DB-backed private storage");
   // Free, and before anything else: an authored placement that cannot be held
   // is a fault to find now, not after a render has been paid for.

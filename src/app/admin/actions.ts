@@ -14,6 +14,7 @@ import { headers } from "next/headers";
 import { env } from "@/lib/env";
 import { LOCAL_PATCH_REPAIR_RESUME_CONFIRMATION, resumeLocalPatchRepairs } from "@/services/generation/local-patch-repair-resume";
 import { LOCAL_PATCH_HUMAN_CONFIRMATION } from "@/services/generation/local-patch-human-approval";
+import { IDENTITY_SOURCE_REVISION_CONFIRMATION, IDENTITY_SOURCE_RETRY_CONFIRMATION, beginIdentitySourceRevision, retryIdentitySourceRevision } from "@/services/generation/identity-source-revision";
 import { LEAN_REVIEW_RECOVERY_CONFIRMATION, applyLeanReviewRecovery } from "@/services/generation/lean-review-recovery";
 
 async function admin() {
@@ -152,4 +153,37 @@ export async function setSceneActiveAction(fd: FormData): Promise<void> {
   await setSceneActive(getContainer(), str(fd, "slug"), str(fd, "active") === "true", str(fd, "note") || undefined);
   revalidatePath("/admin/scenes");
   revalidatePath("/");
+}
+
+
+/** Same-origin, authenticated single-world reference repair. Never approves or releases the rejected drawing. */
+export async function beginIdentitySourceRevisionAction(fd: FormData): Promise<void> {
+  const actor = await admin(), gameId = str(fd, "gameId"), planSha256 = str(fd, "planSha256");
+  if (!/^[A-Za-z0-9_-]{1,160}$/.test(gameId)) redirect("/admin/orders");
+  const destination = `/admin/orders/${encodeURIComponent(gameId)}`;
+  const h = await headers(), origin = h.get("origin"), host = h.get("x-forwarded-host") ?? h.get("host");
+  let sameOrigin = false;
+  try { sameOrigin = !!origin && !!host && new URL(origin).host === host && h.get("sec-fetch-site") !== "cross-site"; } catch { /* refuse */ }
+  if (env().APP_ENV !== "qa" || !sameOrigin || fd.getAll("gameId").length !== 1 || fd.getAll("planSha256").length !== 1 || !/^[a-f0-9]{64}$/.test(planSha256)
+    || fd.getAll("confirm").length !== 1 || str(fd, "confirm") !== IDENTITY_SOURCE_REVISION_CONFIRMATION) redirect(`${destination}?referenceRepair=blocked`);
+  let started = false;
+  try { await beginIdentitySourceRevision(getContainer(), { gameId, operatorId: actor.id, expectedPlanSha256: planSha256 }); started = true; }
+  catch { /* Safe notice; never expose private source, database or supplier errors. */ }
+  revalidatePath(destination); revalidatePath("/admin/orders");
+  redirect(`${destination}?referenceRepair=${started ? "started" : "blocked"}`);
+}
+
+
+export async function retryIdentitySourceRevisionAction(fd: FormData): Promise<void> {
+  const actor = await admin(), gameId = str(fd, "gameId"), heldId = str(fd, "heldId");
+  if (!/^[A-Za-z0-9_-]{1,160}$/.test(gameId)) redirect("/admin/orders");
+  const destination = `/admin/orders/${encodeURIComponent(gameId)}`, h = await headers();
+  let sameOrigin = false;
+  try { sameOrigin = new URL(h.get("origin") ?? "").host === (h.get("x-forwarded-host") ?? h.get("host")) && h.get("sec-fetch-site") !== "cross-site"; } catch { /* refuse */ }
+  if (env().APP_ENV !== "qa" || !sameOrigin || fd.getAll("gameId").length !== 1 || fd.getAll("heldId").length !== 1 || !/^[A-Za-z0-9_-]{1,240}$/.test(heldId)
+    || fd.getAll("confirm").length !== 1 || str(fd, "confirm") !== IDENTITY_SOURCE_RETRY_CONFIRMATION) redirect(`${destination}?referenceRepair=blocked`);
+  let started = false;
+  try { await retryIdentitySourceRevision(getContainer(), { gameId, operatorId: actor.id, expectedHeldId: heldId }); started = true; } catch { /* bounded notice */ }
+  revalidatePath(destination);
+  redirect(`${destination}?referenceRepair=${started ? "started" : "blocked"}`);
 }

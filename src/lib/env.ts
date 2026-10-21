@@ -36,6 +36,8 @@ const EnvSchema = z.object({
   LOCAL_PATCH_VISUAL_REVIEW: z.enum(["legacy", "dual-high-v1", "dual-high-v2", "dual-high-v3"]).default("legacy"),
   /** Painter, diagnosis and identity-repair wording for NEW questions only: a
    * stored hide row or identity checkpoint keeps the release it started with. */
+  /** Full original photo, painted facial volume and strict HIGH reference review; pinned only on fresh QA drafts. */
+  LOCAL_PATCH_IDENTITY_SOURCE: z.enum(["legacy", "full-source-v1"]).default("legacy"),
   LOCAL_PATCH_PROMPT_RELEASE: z.enum(["v15", "v16", "v17", "v18", "v19"]).default("v15"),
   /** Painting quality for NEW local-patch drafts, pinned per game when the draft
    * is created; a game keeps its pin, and a game without one keeps its content

@@ -14,7 +14,8 @@ jobs:
     # Full controlled-provider worlds now outlast 30 minutes on shared runners.
     # Keep the complete suite, validators and private-asset build audit together.
     # 45 was outgrown on 19 October: the check alone took 43 minutes on 866fbd83 and the build was cut off.
-    timeout-minutes: 75
+    # Full-source recovery adds another controlled all27 world, including its original quota stop.
+    timeout-minutes: 90
     env:
       APP_COMMIT: ${{ github.sha }}
       NEXT_TELEMETRY_DISABLED: 1

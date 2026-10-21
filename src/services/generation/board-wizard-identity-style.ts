@@ -69,8 +69,8 @@ export async function buildBoardPeopleStyle(boardId: string, root = process.cwd(
 export async function buildBoardWizardIdentityStyle(root = process.cwd(), version: QaCharacterStyleContract["version"] = BOARD_WIZARD_IDENTITY_STYLE_VERSION,
   worldSlug: "journey" | "kingdom" = "journey", identityArtCache?: IdentityArtCache) {
   // v5 is the v4 atlas with the reference's own hair in the sheet prompt; the pixels are the same.
-  if (worldSlug === "kingdom" && version !== "board-matched-identity/v4" && version !== "board-matched-identity/v5") throw Error("Kingdom requires its integrated identity style");
-  if (version === "board-matched-identity/v3" || version === "board-matched-identity/v4" || version === "board-matched-identity/v5")
+  if (worldSlug === "kingdom" && version !== "board-matched-identity/v4" && version !== "board-matched-identity/v5" && version !== "board-matched-identity/v6") throw Error("Kingdom requires its integrated identity style");
+  if (version === "board-matched-identity/v3" || version === "board-matched-identity/v4" || version === "board-matched-identity/v5" || version === "board-matched-identity/v6")
     return { ...await buildRefreshedIdentityStyle(root, worldSlug, identityArtCache), version };
   if (version === LEGACY_BOARD_WIZARD_IDENTITY_STYLE_VERSION) return buildLegacyBoardWizardIdentityStyle(root);
   if (version !== BOARD_WIZARD_IDENTITY_STYLE_VERSION) throw new Error("BOARD_IDENTITY_STYLE: unknown identity style version");

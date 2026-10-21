@@ -2,6 +2,7 @@ import { canManageGameCreation } from "@/domain/game/access";
 import { NextResponse } from "next/server";
 import { qaAccessDenied } from "@/lib/server/qa-access";
 import { getContainer } from "@/services/container";
+import { nextIdentitySourceRevision } from "@/services/generation/identity-source-revision-queue";
 import { tickGeneration } from "@/services/generation/queue";
 import { runRetentionIfDue } from "@/services/retention.service";
 import { retryFailedAdminAlerts } from "@/services/admin-alert.service";
@@ -62,6 +63,13 @@ export async function POST(req: Request) {
     const gameId = new URL(req.url).searchParams.get("gameId");
     enter("authorization");
     if (!(await isAllowed(req, gameId))) return NextResponse.json({ error: "forbidden" }, { status: 403 });
+    // A source repair needs one full provider window. Optional chores must not starve it every minute.
+    const referenceRepair = !gameId ? await nextIdentitySourceRevision(c, null) : null;
+    if (referenceRepair && hardDeadlineAt - Date.now() >= 230_000) {
+      enter("reference-repair");
+      const result = await tickGeneration(c, referenceRepair, SLICE_MS, hardDeadlineAt - Date.now());
+      return NextResponse.json({ ...result, retention: null }, { headers: { "Cache-Control": "no-store" } });
+    }
     // Give persisted notification intent a bounded turn before new painting.
     enter("notification-retry");
     if (!gameId) await retryFailedAdminAlerts(c, { deadlineAt: Math.min(hardDeadlineAt, Date.now() + 20_000) });

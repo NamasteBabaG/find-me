@@ -1,7 +1,7 @@
 import { BOARD_JUDGE_MODEL, BOARD_JUDGE_MAX_TOKENS } from "./board-verdict";
 
 export type IdentityReviewInput = { prompt: string; images: readonly Buffer[];
-  settings?: { model: string; effort: "low" | "medium" | "high"; maxOutputTokens: number }; timeoutMs?: number };
+  settings?: { model: string; effort: "low" | "medium" | "high"; maxOutputTokens: number }; timeoutMs?: number; timeoutPolicy?: "full-source-v1" };
 export interface IdentityStyleReviewer {
   review(input: IdentityReviewInput): Promise<{ httpOk: boolean; requestId: string | null; body: unknown }>;
 }
@@ -14,7 +14,11 @@ export class OpenAiIdentityStyleReviewer implements IdentityStyleReviewer {
   }
   async review(input: IdentityReviewInput) {
     const settings = input.settings ?? { model: BOARD_JUDGE_MODEL, effort: "high", maxOutputTokens: BOARD_JUDGE_MAX_TOKENS };
-    const timeoutMs = Math.min(90_000, input.timeoutMs ?? 90_000);
+    const fullSource = input.timeoutPolicy === "full-source-v1";
+    if (fullSource && (settings.model !== "gpt-6.1-sol" || settings.effort !== "high" || settings.maxOutputTokens !== 6500))
+      throw Error("Full-source review timeout requires its exact Sol HIGH contract");
+    const ceiling = fullSource ? 180_000 : 90_000;
+    const timeoutMs = Math.min(ceiling, input.timeoutMs ?? ceiling);
     if (!Number.isSafeInteger(timeoutMs) || timeoutMs <= 0) throw new Error("Identity review dispatch window expired");
     const response = await this.fetchOnce("https://api.openai.com/v1/chat/completions", {
       method: "POST", redirect: "error", signal: AbortSignal.timeout(timeoutMs),

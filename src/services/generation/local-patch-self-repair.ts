@@ -109,6 +109,8 @@ export async function inventorySelfRepairRequest(c: Pick<Container, "db">, gameI
  * it cannot approve itself, reduce the hide count, raise the budget or run code. */
 export async function runLocalPatchSelfRepair(c: Container, input: { gameId: string; sceneId: string;
   board: LocalPatchBoard; hide: LocalPatchHide; deadlineAt?: number }, deps: SelfRepairDeps): Promise<void> {
+  const { identityRevisionPending } = await import("./identity-source-revision-state");
+  demand(!await identityRevisionPending(c.db, input.gameId), "reference revision blocks scene self-repair");
   const { gameId, hide, board } = input;
   const game = await c.db.game.findUniqueOrThrow({ where: { id: gameId }, include: { childProfile: true, orders: true } });
   const child = game.childProfile, scene = await c.db.gameScene.findUniqueOrThrow({ where: { id: input.sceneId } });

@@ -2,9 +2,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   game: vi.fn(), asset: vi.fn(), job: vi.fn(), user: vi.fn(), denied: vi.fn(), link: vi.fn(), proof: vi.fn(), hash: vi.fn(), wizard: vi.fn(), ledger: vi.fn(),
-  approved: vi.fn(), emergencyBudget: vi.fn(), newQaBudget: vi.fn(), leanBudget: vi.fn(),
+  revisionPending: vi.fn(), revisionHeld: vi.fn(), approved: vi.fn(), emergencyBudget: vi.fn(), newQaBudget: vi.fn(), leanBudget: vi.fn(),
   token: null as string | null, admin: false,
 }));
+vi.mock("@/services/generation/identity-source-revision-state", () => ({ identityRevisionPending: mocks.revisionPending, identityRevisionHeldOf: mocks.revisionHeld }));
 vi.mock("@/services/generation/lean-release", () => ({ readLeanWorldBudget: mocks.leanBudget }));
 vi.mock("@/lib/server/qa-access", () => ({ qaAccessDenied: mocks.denied }));
 vi.mock("@/lib/server/session", () => ({ currentUser: mocks.user, draftTokenFromCookie: async () => mocks.token, isAdminEmail: () => mocks.admin }));
@@ -39,7 +40,7 @@ const game = { id: "synthetic", ownerId: "owner", childProfileId: "child", style
   childProfile: { avatarAssetId: "avatar", identityAssetId: "identity", originalPhotoAssetId: "photo", ageYears: 8 } };
 beforeEach(() => {
   vi.resetAllMocks();
-  mocks.token = null; mocks.admin = false;
+  mocks.token = null; mocks.admin = false; mocks.revisionPending.mockResolvedValue(false); mocks.revisionHeld.mockResolvedValue(null);
   mocks.denied.mockResolvedValue(null); mocks.user.mockResolvedValue({ id: "owner", email: "owner@example.invalid" });
   mocks.game.mockResolvedValue({ ...game }); mocks.asset.mockResolvedValue({ status: "READY" });
   mocks.job.mockResolvedValue({ gameId: game.id, status: "DONE", stepsJson: "{}" });
@@ -364,4 +365,18 @@ describe("fixed-world creation status boundary", () => {
     expect(await (await response()).json()).toMatchObject({ state: "awaiting_review", percent: 96, pending: false, qaPreviewUrl: null });
     expect(mocks.job).toHaveBeenCalledOnce();
   });
+});
+
+
+it.each([false, true])("shows the separate source-repair state (held=%s), never the original hold, stale image or player link", async held => {
+  mocks.game.mockResolvedValue({ ...game, status: "TARGETS_GENERATING", styleVersion: "local-patch-world-v1",
+    scenes: localPatchBoardsForVersion(12).slice(0, 9)
+      .map(board => ({ sceneSlug: board.board, sceneVersion: 12, targets: board.hides.map(() => ({ status: "GENERATED" })) })) });
+  mocks.job.mockResolvedValue({ gameId: game.id, status: "FAILED", currentStep: "local-patch:needs-release", stepsJson: "{}" });
+  mocks.revisionPending.mockResolvedValue(true); mocks.revisionHeld.mockResolvedValue(held ? { id: "synthetic-held-diagnosis" } : null);
+  mocks.approved.mockResolvedValue(false); mocks.ledger.mockResolvedValue({ snapshotJson: JSON.stringify(localBudget("unknown")) });
+  const body = await (await response()).json();
+  expect(body).toMatchObject({ state: held ? "held" : "retrying", pending: !held, done: false, failed: false, awaitingQa: held,
+    current: "character", characterReady: false, avatarUrl: null, playUrl: null, spotsDone: 0, place: null });
+  expect(mocks.link).not.toHaveBeenCalled();
 });

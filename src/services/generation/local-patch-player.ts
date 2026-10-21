@@ -20,6 +20,7 @@ import { hasLocalPatchHumanApproval, localPatchGeometryDigest } from "./local-pa
 import { hasLocalPatchPublicationPolicy, localPatchPublicationGeometryHash } from "./local-patch-publication-policy";
 import { enqueueLocalPatchNotifications } from "../local-patch-notifications";
 import { readLocalPatchPartialRelease } from "./local-patch-partial-release";
+import { identityRevisionPending, identityRevisionContinuationPublishable } from "./identity-source-revision-state";
 import { subjectUpgradeOf } from "./subject-enrollment";
 import { leanReviewRecoveryOf } from "./lean-review-recovery-pin";
 import { getDict, tf } from "../../i18n";
@@ -34,6 +35,7 @@ function demand(value: unknown, reason: string): asserts value {
 
 /** Strict assembly: no avatar/body fallback and no unpainted B variant. */
 export async function composeLocalPatchGame(c: Container, gameId: string): Promise<GameConfig> {
+  demand(!await identityRevisionPending(c.db, gameId), "reference revision must finish before assembly");
   const partialRelease = await readLocalPatchPartialRelease(c, gameId);
   const game = await c.db.game.findUniqueOrThrow({ where: { id: gameId },
     include: { childProfile: true, scenes: { orderBy: { orderIndex: "asc" }, include: { targets: { include: { variants: true } } } } } });
@@ -137,6 +139,7 @@ export async function finishLocalPatchGame(c: Container, gameId: string, fence: 
     .map(url => /\/api\/assets\/([^?]+)/.exec(url)?.[1]).filter((id): id is string => !!id);
   await c.db.$transaction(async tx => {
     await fence(tx);
+    demand(!await identityRevisionPending(tx, gameId), "reference revision blocks publication");
     const game = await tx.game.findUniqueOrThrow({ where: { id: gameId }, include: { childProfile: true } });
     const count = await tx.asset.count({ where: { id: { in: assetIds }, ownerId: game.ownerId, status: "READY", deletedAt: null, visibility: "GAME" } });
     const expectedAssets = 1 + config.scenes.reduce((sum, scene) => sum + scene.targets.length, 0);
@@ -147,7 +150,8 @@ export async function finishLocalPatchGame(c: Container, gameId: string, fence: 
     const budget = boardWizardBudgetOf({ ...c, db: tx as unknown as Container["db"] }), worldId = boardWizardWorldId(gameId);
     const enrolled = !!await subjectUpgradeOf(tx, gameId);
     demand(await localPatchBudgetReadyForPublication(budget, worldId, contentVersion,
-      { reviewRecoveryV2: enrolled, reviewRecoveryV3: enrolled && !!await leanReviewRecoveryOf(tx, gameId) }),
+      { reviewRecoveryV2: enrolled, reviewRecoveryV3: enrolled && !!await leanReviewRecoveryOf(tx, gameId),
+        sourceReferenceContinuation: approval => identityRevisionContinuationPublishable(tx, budget, gameId, approval) }),
       "unresolved spending must be reconciled before publication");
     const audit = await budget.audit(worldId);
     // QA uses durable FileBlob storage. Honor the parent's original-photo

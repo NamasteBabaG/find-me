@@ -76,3 +76,37 @@ describe("explicit board-matched QA identity contract (synthetic only)", () => {
     expect(result.sheetWidth).toBe(1024); expect(result.providerRequestId).toBe("synthetic-identity-style"); expect(fetcher).toHaveBeenCalledTimes(1);
   });
 });
+
+
+describe("full-source identity first dispatch (synthetic, no provider)", () => {
+  it.each([false, true])("keeps full facial context outside the selected crop; repair=%s", async repair => {
+    const top = await sharp({ create: { width: 100, height: 50, channels: 4, background: "#bf3014" } }).png().toBuffer();
+    const bottom = await sharp({ create: { width: 100, height: 50, channels: 4, background: "#1442bf" } }).png().toBuffer();
+    const photo = await sharp({ create: { width: 100, height: 100, channels: 4, background: "white" } })
+      .composite([{ input: top, top: 0, left: 0 }, { input: bottom, top: 50, left: 0 }]).png().toBuffer();
+    const input = qaInput();
+    input.originalPhoto = photo; input.crop = { x: 0, y: 0, w: 1, h: .5 };
+    input.qaStyleContract!.version = "board-matched-identity/v6";
+    if (repair) input.identityRepair = { reason: "Synthetic lower facial features differed" };
+    const fetcher = vi.fn(async (_url: string, init: RequestInit) => {
+      const form = init.body as FormData, images = form.getAll("image[]") as Blob[];
+      expect(images).toHaveLength(3); // Full context on the FIRST request, never duplicated on repair.
+      const buffers = await Promise.all(images.map(async b => Buffer.from(await b.arrayBuffer())));
+      expect(buffers[0]!.equals(await prepareCharacterPhoto(photo, input.crop))).toBe(true);
+      expect(buffers[1]!.equals(atlas)).toBe(true);
+      expect(buffers[2]!.equals(await prepareCharacterPhoto(photo, null))).toBe(true);
+      expect(buffers[0]!.equals(buffers[2]!)).toBe(false);
+      const fullPixels = await sharp(buffers[2]!).raw().toBuffer({ resolveWithObject: true });
+      expect([...fullPixels.data.subarray((800 * fullPixels.info.width + 500) * 4, (800 * fullPixels.info.width + 500) * 4 + 4)]).toEqual([20, 66, 191, 255]);
+      const prompt = String(form.get("prompt"));
+      for (const words of ["COMPLETE original photograph", "FIRST attempt", "nose, mouth, chin", "VOLUME", "CONSISTENCY", "repeated poses are allowed"])
+        expect(prompt).toContain(words);
+      expect(prompt).not.toContain("flat separated shadow shapes");
+      expect(form.get("quality")).toBe("medium");
+      return Response.json({ data: [{ b64_json: atlas.toString("base64") }], usage: { input_tokens: 1, output_tokens: 1 } }, { headers: { "x-request-id": "synthetic-full-source" } });
+    });
+    vi.stubGlobal("fetch", fetcher);
+    await new OpenAiAvatarProvider("synthetic-never-live", { tries: 3 }).createCharacter(input);
+    expect(fetcher).toHaveBeenCalledOnce();
+  });
+});

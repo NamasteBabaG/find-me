@@ -42,6 +42,8 @@ export interface CreationSignals {
    * their game is being made when nobody is making it.
    */
   operatorHold?: boolean;
+  /** An explicit source revision owns its own queue lease; the original parked job remains immutable. */
+  referenceRepair?: "active" | "held";
 }
 
 export interface CreationProgress {
@@ -92,6 +94,11 @@ function stageOf(status: GameStatus): number {
 }
 
 export function creationProgress(s: CreationSignals): CreationProgress {
+  if (s.referenceRepair) {
+    const progress = creationProgress({ status: "AVATAR_GENERATING", characterReady: false, spotsDone: 0, spotsTotal: s.spotsTotal,
+      operatorHold: s.referenceRepair === "held" });
+    return { ...progress, state: s.referenceRepair === "held" ? "held" : "retrying" };
+  }
   const fixedUnassembled = s.fixedAssemblyReady === false || s.boardWizardState !== undefined
     && (s.fixedAssemblyReady !== true || s.spotsTotal <= 0 || s.spotsDone < s.spotsTotal);
   const stage = fixedUnassembled ? (s.characterReady ? 2 : 0) : stageOf(s.status);

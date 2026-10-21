@@ -31,13 +31,17 @@ export const subjectUpgradeReceiptSchema = z.object({
   ageYears: z.number().int().min(2).max(10), operatorId: id, actorType: z.enum(["ADMIN", "USER", "SYSTEM"]), authorizationSha256: hex, planSha256: hex,
   enrolledAt: z.string().regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/),
 }).strict();
-export type SubjectUpgradeReceipt = z.infer<typeof subjectUpgradeReceiptSchema>;
+type OriginalSubjectUpgradeReceipt = z.infer<typeof subjectUpgradeReceiptSchema>;
+export const SUBJECT_IDENTITY_REVISION_VERSION = "local-patch-subject-upgrade/identity-revision-v2" as const;
+export type SubjectUpgradeReceipt = (OriginalSubjectUpgradeReceipt & { identityRevision?: never })
+  | (Omit<OriginalSubjectUpgradeReceipt, "version"> & { version: typeof SUBJECT_IDENTITY_REVISION_VERSION;
+    identityRevision: { version: "paid-identity-source-revision/v1"; originalEnrollmentSha256: string; commitSha256: string } });
 
 /** The world's enrollment, or null when it has none. Throws on a corrupt or foreign row. */
 export async function subjectUpgradeOf(db: Pick<Prisma.TransactionClient, "auditLog">, gameId: string): Promise<SubjectUpgradeReceipt | null> {
   const row = await db.auditLog.findUnique({ where: { id: subjectUpgradeAuditId(gameId) } });
   if (!row) return null;
-  let parsed: SubjectUpgradeReceipt | null = null;
+  let parsed: OriginalSubjectUpgradeReceipt | null = null;
   try {
     const value = subjectUpgradeReceiptSchema.safeParse(JSON.parse(row.metaJson ?? "null"));
     if (value.success) parsed = value.data;
@@ -47,7 +51,25 @@ export async function subjectUpgradeOf(db: Pick<Prisma.TransactionClient, "audit
     || (parsed.actorType === "SYSTEM") !== (parsed.operatorId === SYSTEM_ENROLLMENT_OPERATOR)
     || row.action !== SUBJECT_UPGRADE_ACTION || row.entityType !== "Game" || row.entityId !== gameId || parsed.gameId !== gameId)
     throw Error("Subject upgrade enrollment is invalid; refusing a fallback");
-  return parsed;
+  // The original row stays byte-for-byte v1. Only an explicit, automatically reviewed source revision
+  // yields a distinct active v2 context; old pixels/verdicts never gain its new canonical binding.
+  const { identityRevisionStateOf } = await import("./identity-source-revision-state");
+  const { start, commit } = await identityRevisionStateOf(db, gameId); // validates the immutable chain
+  if (!commit) return parsed;
+  const { boardConditioningHash } = await import("./board-conditioned-source");
+  if (!start || commit.originalEnrollmentSha256 !== boardConditioningHash(parsed) || commit.oldIdentityAssetId !== parsed.identityAssetId
+    || commit.oldIdentitySha256 !== parsed.identitySha256 || start.ownerId !== parsed.ownerId || start.photoAssetId !== parsed.photoAssetId
+    || start.photoSha256 !== parsed.photoSha256 || start.ageYears !== parsed.ageYears)
+    throw Error("Subject identity revision differs from its immutable original enrollment");
+  const review = await db.auditLog.findFirst({ where: { action: "board-wizard:identity-style-reviewed", entityType: "Asset", entityId: commit.newIdentityAssetId }, orderBy: { createdAt: "desc" } });
+  const { identityGateReceiptSchema, identityReceiptReadyForPublication } = await import("./board-wizard-identity-gate");
+  const receipt = identityGateReceiptSchema.parse(JSON.parse(review?.metaJson ?? "null"));
+  if (review?.actorType !== "SYSTEM" || receipt.provenance.style.version !== "board-matched-identity/v6" || !identityReceiptReadyForPublication(receipt, 12)
+    || receipt.fingerprint !== commit.reviewFingerprint || receipt.identityAssetId !== commit.newIdentityAssetId || receipt.sheetSha256 !== commit.newIdentitySha256
+    || receipt.provenance.photoAssetId !== parsed.photoAssetId || receipt.provenance.photoSha256 !== parsed.photoSha256 || receipt.provenance.ageYears !== parsed.ageYears)
+    throw Error("Subject identity revision lacks its real full-source review");
+  return { ...parsed, version: SUBJECT_IDENTITY_REVISION_VERSION, identityAssetId: commit.newIdentityAssetId, identitySha256: commit.newIdentitySha256,
+    identityRevision: { version: commit.version, originalEnrollmentSha256: commit.originalEnrollmentSha256, commitSha256: boardConditioningHash(commit) } };
 }
 
 const sha = (value: string) => createHash("sha256").update(value).digest("hex");

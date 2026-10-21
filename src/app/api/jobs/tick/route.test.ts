@@ -3,13 +3,15 @@ const f = vi.hoisted(() => ({ tick: vi.fn(), notify: vi.fn(), health: vi.fn(), r
 vi.mock("@/services/container", () => ({ getContainer: () => ({}) }));
 vi.mock("@/lib/server/qa-access", () => ({ qaAccessDenied: async () => null }));
 vi.mock("@/lib/env", () => ({ env: () => ({ CRON_SECRET: "synthetic-cron" }) }));
+vi.mock("@/services/generation/identity-source-revision-queue", () => ({ nextIdentitySourceRevision: async () => repairSelection.id }));
 vi.mock("@/services/generation/queue", () => ({ tickGeneration: f.tick }));
 vi.mock("@/services/admin-alert.service", () => ({ retryFailedAdminAlerts: f.notify }));
 vi.mock("@/services/generation-health.service", () => ({ alertStalledGeneration: f.health }));
 vi.mock("@/services/retention.service", () => ({ runRetentionIfDue: f.retention }));
 import { POST } from "./route";
+const repairSelection = vi.hoisted(() => ({ id: null as string | null }));
 const request = () => new Request("https://qa.example/api/jobs/tick", { method: "POST", headers: { authorization: "Bearer synthetic-cron" } });
-beforeEach(() => {
+beforeEach(() => { repairSelection.id = null;
   vi.useFakeTimers(); vi.clearAllMocks();
   vi.spyOn(console, "info").mockImplementation(() => {}); vi.spyOn(console, "error").mockImplementation(() => {});
   f.tick.mockResolvedValue({ gameId: null, status: null, pending: false });
@@ -47,4 +49,12 @@ describe("tick diagnostics and remaining budget", () => {
     expect(JSON.stringify(vi.mocked(console.error).mock.calls)).not.toContain("sensitive-provider-detail");
     expect(vi.getTimerCount()).toBe(0);
   });
+});
+
+
+it("gives an authorized source repair a full cron window before optional chores can consume it", async () => {
+  repairSelection.id = "game-synthetic-repair"; f.notify.mockImplementation(async () => { vi.setSystemTime(Date.now() + 250_000); });
+  const response = await POST(request()); expect(response.status).toBe(200);
+  expect(f.notify).not.toHaveBeenCalled(); expect(f.health).not.toHaveBeenCalled(); expect(f.tick).toHaveBeenCalledOnce();
+  expect(f.tick.mock.calls[0]?.slice(1)).toEqual(["game-synthetic-repair", 30_000, 270_000]); expect(vi.getTimerCount()).toBe(0);
 });

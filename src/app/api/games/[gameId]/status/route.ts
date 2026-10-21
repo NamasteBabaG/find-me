@@ -22,6 +22,7 @@ import { auditWorldBudget } from "@/services/generation/world-budget";
 import { applyBoardWizardBudgetCap } from "@/services/generation/board-wizard-budget";
 import { readLocalPatchEmergencyBudget } from "@/services/generation/local-patch-budget-recovery";
 import { readNewQaWorldBudget } from "@/services/generation/local-patch-qa-budget";
+import { identityRevisionPending, identityRevisionHeldOf } from "@/services/generation/identity-source-revision-state";
 import { readLeanWorldBudget } from "@/services/generation/lean-release";
 
 export const runtime = "nodejs";
@@ -182,13 +183,16 @@ export async function GET(req: Request, ctx: { params: Promise<{ gameId: string 
   // A world parked for a person is not a world in progress. The tick already
   // refuses it; this is the half the PARENT sees, and without it the screen goes
   // on saying the game is being made and goes on asking for another slice.
+  const referenceRepair = game.styleVersion === LOCAL_PATCH_STYLE && await identityRevisionPending(c.db, gameId)
+    ? await identityRevisionHeldOf(c.db, gameId) ? "held" as const : "active" as const : undefined;
+  if (referenceRepair) { spotsDone = 0; place = null; } // Prior canonical approvals are not progress on the replacement.
   const parkedStep = game.styleVersion === LOCAL_PATCH_STYLE ? (await readStatusJob())?.currentStep : undefined;
   const parked = parkedStep === LOCAL_PATCH_NEEDS_RELEASE || parkedStep === LOCAL_PATCH_RECOVERY_EXHAUSTED;
   const qualityFailed = game.styleVersion === LOCAL_PATCH_STYLE
     && !(game.scenes.length === 9 && game.scenes.every(scene => selfRepairEnabled(scene.sceneVersion)))
     && (await readStatusJob())?.currentStep === LOCAL_PATCH_QUALITY_FAILED;
   const progress = creationProgress({ status, characterReady, spotsDone, spotsTotal, fixedAssemblyReady, boardWizardState,
-    ...(parked || localPatchBudgetHeld ? { operatorHold: true } : {}) });
+    ...(parked || localPatchBudgetHeld ? { operatorHold: true } : {}), ...(referenceRepair ? { referenceRepair } : {}) });
   // GENERATION_FAILED normally means an automatic retry; this exact durable
   // marker is a terminal quality exception only for historical engines. The
   // current collection resumes automatically, including before its first tick.

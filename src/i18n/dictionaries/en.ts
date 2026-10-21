@@ -5,6 +5,16 @@
 import { worldPurchaseEn, worldSelectorEn, friendsEn } from "./world-features";
 
 export const en = {
+  adminIdentityRevision: {
+    newPictures: "Pictures still needed", appearanceChecks: "Replacement-reference appearance checks", capacityNotice: "These include appearances with no saved row yet. Actual costs vary; the cap is preserved and this plan does not guarantee completion within it",
+    paused: "Generation is temporarily paused by its spending controls. The queue checks again automatically; existing work and charges are preserved",
+    diagnosis: "Service diagnosis", delayed: "Several scheduled turns are waiting on the same prerequisite. The service should check the retained queue and provider state; a parent retry is not required",
+    retry: "Resume the retained reference operation", retryConfirm: "The service cause was checked. Resume the same bound operation within the existing cap, preserving all requests, attempts and unknown charges. This does not approve artwork.",
+    held: "Reference repair is safely held. Check its retained diagnosis and budget before another service operation; the rejected reference is not approved for publication.",
+    title: "Repair the rejected character reference", description: "Use the existing original photograph from the first new drawing. Strict automatic review checks likeness, face volume and consistency. The rejected reference stays blocked; all 27 appearances must qualify against the replacement. Up to three new candidates; all history and uncertain charges remain inside the unchanged cap.",
+    committed: "Total committed", reserved: "Included uncertain reserves", cap: "World cap", confirm: "I have explicit authorization for up to three reference candidates within this world's existing cap, including continuing after an unresolved reference attempt while keeping its full reserve. This is not image approval or permission to publish the rejected result.",
+    begin: "Start reference repair", started: "Reference repair is authorized. The regular creation queue will draw and review the replacement, then reassess all 27 appearances. The rejected reference cannot be published.", blocked: "Reference repair did not start. Refresh to check the source, payment, job and historical charges.",
+  },
   qaSubjectUpgrade: {
     title: "QA · Updated child appearance checks",
     description: "Continue this existing paid world with stricter likeness, age, varied actions and required clothing checks. All 27 hiding spots must pass. The existing budget and uncertain charges are preserved.",

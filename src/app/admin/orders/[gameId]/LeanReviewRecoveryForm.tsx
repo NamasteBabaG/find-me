@@ -1,3 +1,5 @@
+import { identitySourceRevisionSupported } from "@/services/generation/identity-source-revision";
+import { identityRevisionPending } from "@/services/generation/identity-source-revision-state";
 import { currentAdmin } from "@/lib/server/session";
 import { getContainer } from "@/services/container";
 import { LEAN_REVIEW_RECOVERY_CONFIRMATION, planLeanReviewRecovery } from "@/services/generation/lean-review-recovery";
@@ -12,6 +14,8 @@ const dollars = (microUsd: number) => `$${(microUsd / 1e6).toFixed(2)}`;
  */
 export async function LeanReviewRecoveryForm({ gameId }: { gameId: string }) {
   if (!(await currentAdmin())) return null;
+  if (await identityRevisionPending(getContainer().db, gameId)) return null;
+  if (await identitySourceRevisionSupported(getContainer(), gameId)) return null;
   const plan = await planLeanReviewRecovery(getContainer(), { gameId });
   if (!plan.eligible || !plan.ledger) return null;
   return <form className="fm-card fm-stack fm-stack--2" action={applyLeanReviewRecoveryAction}>

@@ -11,7 +11,7 @@ import type { CropBox } from "../../infra/generation/types";
 import { boardWizardBudgetOf, boardWizardWorldId, reserveBoardWizardIdentity } from "./board-conditioned-wizard";
 import { fenceBoardWizardIdentityClaim, generateBoardWizardIdentity, holdBoardWizardIdentity, withBoardWizardIdentityClaim, type BoardWizardIdentityClaim } from "./board-wizard-identity-lifecycle";
 import { IDENTITY_GATE_ACTION, IDENTITY_SELECTION_POLICY, identityGateReceiptSchema, identityProvenanceSchema,
-  identityReceiptReadyForPublication, reviewBoardWizardIdentity, type IdentityGateReceipt } from "./board-wizard-identity-gate";
+  identityReceiptReadyForPublication, identityReviewReserveMicroUsd, reviewBoardWizardIdentity, type IdentityGateReceipt } from "./board-wizard-identity-gate";
 import { LocalPatchIdentityDeferred, requireLocalPatchIdentityTime } from "./local-patch-identity";
 import { boardConditioningHash } from "./board-conditioned-source";
 import { activateLocalPatchEmergencyBudget, deferLocalPatchIdentityAtAuthorizedCap } from "./local-patch-budget-recovery";
@@ -91,14 +91,14 @@ export async function selectBestIdentity(c: Container, initialClaim: BoardWizard
     const provenance = identityProvenanceSchema.parse(JSON.parse(painted?.metaJson ?? "{}").identityProvenance);
     try {
       return await reviewBoardWizardIdentity({ db: c.db, apiKey: env().OPENAI_API_KEY!, budget,
-      beforeDispatch: async () => { await input.preflight(); requireLocalPatchIdentityTime(input.deadlineAt, 115_000);
+      beforeDispatch: async () => { await input.preflight(); requireLocalPatchIdentityTime(input.deadlineAt, provenance.style.version === "board-matched-identity/v6" ? 205_000 : 115_000);
         await withBoardWizardIdentityClaim(c, claim, async () => undefined); },
       write: work => withBoardWizardIdentityClaim(c, claim, work),
     }, { gameId: claim.gameId, identityAssetId: ids.identityAssetId, sheet: compare ? await readAssetBuffer(c, ids.identityAssetId) : firstSheet,
       photo, atlas: input.atlas, provenance, contentVersion: input.contentVersion, deadlineAt: input.deadlineAt,
       ...(compare ? { compareWith: { identityAssetId: checkpoint.first.identityAssetId, sheet: firstSheet } } : {}) });
     } catch (error) {
-      if (await deferReservation(error, { requestKey: `wizard:identity-style:${compare ? 2 : 1}:${ids.identityAssetId}`, scope: "judge", reserveMicroUsd: 40_000 })) return null;
+      if (await deferReservation(error, { requestKey: `wizard:identity-style:${compare ? 2 : 1}:${ids.identityAssetId}`, scope: "judge", reserveMicroUsd: identityReviewReserveMicroUsd(provenance, input.contentVersion) })) return null;
       throw error;
     }
   };

@@ -777,3 +777,38 @@ describe("QA identity lifecycle: real DB and synthetic provider only", () => {
     }
   });
 });
+
+
+describe("full-source release through the real identity pipeline (synthetic providers)", () => {
+  it("keeps its new source contract through reservation, HIGH review and the handoff; no game is published", async () => {
+    const { IDENTITY_SOURCE_ACTION, identitySourceAuditId, identitySourceReceipt } = await import("../identity-source-release");
+    const f = await fixture(); await fullWorld(f, 12);
+    await db.game.update({ where: { id: f.id }, data: { styleVersion: LOCAL_PATCH_STYLE } });
+    await db.order.create({ data: { id: `order-${f.id}`, gameId: f.id, userId: f.ownerId, provider: "mock", packageTier: "ONE_WORLD",
+      paymentStatus: "PAID", paidAt: new Date(), amountAgorot: 3900 } });
+    await db.generationJob.update({ where: { id: f.claim.jobId }, data: { status: "QUEUED", attempts: 0, currentStep: null } });
+    await db.auditLog.create({ data: { id: identitySourceAuditId(f.id), actorType: "SYSTEM", action: IDENTITY_SOURCE_ACTION,
+      entityType: "Game", entityId: f.id, metaJson: JSON.stringify(identitySourceReceipt(f.id)) } });
+    f.c.avatars.createCharacter = vi.fn(async request => {
+      expect(request.qaStyleContract?.version).toBe("board-matched-identity/v6");
+      return { ...f.result(), costCents: 5.2, providerRequestId: `req_${f.id}_source` };
+    });
+    const reviews = vi.fn(async (_url: string, init: RequestInit) => {
+      const body = JSON.parse(String(init.body)); expect(body.reasoning_effort).toBe("high");
+      expect(body.messages[0].content.filter((item: { type: string }) => item.type === "image_url")).toHaveLength(4);
+      return Response.json({ model: "gpt-6.1-sol", usage: { prompt_tokens: 2000, completion_tokens: 400 },
+        choices: [{ finish_reason: "stop", message: { content: JSON.stringify({ checks: { identity: "pass", age: "pass", paintedStyle: "pass", sheetLayout: "pass",
+          sourceFaceVisible: "pass", facialVolume: "pass", viewConsistency: "pass" }, reason: "Synthetic full-source evidence; not visual acceptance" }) } }] },
+        { headers: { "x-request-id": `req_${f.id}_source_review` } });
+    });
+    vi.stubGlobal("fetch", reviews);
+    await runGenerationPipeline(f.c, f.id);
+    expect(f.c.avatars.createCharacter).toHaveBeenCalledOnce(); expect(reviews).toHaveBeenCalledOnce();
+    expect(await f.game()).toMatchObject({ status: "TARGETS_GENERATING", configJson: null, readyAt: null });
+    const child = await db.childProfile.findUniqueOrThrow({ where: { id: f.childId } });
+    const receipt = await db.auditLog.findFirstOrThrow({ where: { entityId: child.identityAssetId!, action: IDENTITY_GATE_ACTION }, orderBy: { createdAt: "desc" } });
+    expect(JSON.parse(receipt.metaJson!)).toMatchObject({ version: "board-wizard-identity-source-sol-high/v5", approved: true,
+      provenance: { promptVersion: "character-v8-full-source-volume-identity", style: { version: "board-matched-identity/v6" } } });
+    expect(await identityApprovedForDisplay(f.c, child, 12)).toBe(true);
+  });
+});

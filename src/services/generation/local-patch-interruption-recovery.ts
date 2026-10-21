@@ -4,7 +4,7 @@ import { boardWizardBudgetOf, boardWizardWorldId } from "./board-conditioned-wiz
 import { LocalPatchRetainedPurchaseStore, fenceLocalPatchImages } from "./local-patch-lifecycle";
 import { RETAINED_RENDER_VERSION } from "./local-patch-render";
 import { sha256Bytes } from "./fixed-sprite";
-import { WorldBudgetError, type WorldAutomaticImageRecovery, type WorldBudget } from "./world-budget";
+import { WorldBudgetError, type WorldAutomaticImageRecovery, type WorldBudget, type WorldUnknownContinuationApproval } from "./world-budget";
 import type { Prisma } from "@prisma/client";
 import { interruptedLocalPatchImageRequest } from "../../domain/scene/local-patch-image-request";
 
@@ -13,18 +13,20 @@ const hash = (value: unknown) => sha256Bytes(Buffer.from(JSON.stringify(value)))
 
 /** Delivery may use a fully verified replacement while the missing attempt's
  * reserve remains open. A live request, ordinary operator grant, billing
- * conflict or an unapproved unknown never crosses this publication boundary. */
+ * conflict or an unapproved unknown never crosses this publication boundary.
+ * A separate verified source-revision callback may admit only its exact consumed-reference grants, never an ordinary operator release. */
 export async function localPatchBudgetReadyForPublication(budget: Pick<WorldBudget, "audit" | "readContinuationApproval">,
   worldId: string, contentVersion: number | undefined,
   /** Only a world enrolled in the subject upgrade may also carry v2 review continuations, and only a world pinned to
    * local-patch-lean-review-recovery/v1 v3 ones. */
-  options: { reviewRecoveryV2?: boolean; reviewRecoveryV3?: boolean } = {}): Promise<boolean> {
+  options: { reviewRecoveryV2?: boolean; reviewRecoveryV3?: boolean; sourceReferenceContinuation?: (approval: WorldUnknownContinuationApproval) => Promise<boolean> } = {}): Promise<boolean> {
   const audit = await budget.audit(worldId);
   if (audit.held || audit.pendingRequestKeys.length) return false;
   if (audit.reservedMicroUsd === 0) return true;
   if (contentVersion !== 12 || !audit.unknownRequestKeys.length) return false;
   for (const key of audit.unknownRequestKeys) {
-    const version = (await budget.readContinuationApproval(worldId, key))?.version;
+    const approval = await budget.readContinuationApproval(worldId, key), version = approval?.version;
+    if (approval?.version === "world-unknown-continuation/v1" && options.sourceReferenceContinuation && await options.sourceReferenceContinuation(approval)) continue;
     if (version !== "world-automatic-image-recovery/v1" && version !== "world-automatic-review-recovery/v1"
       && !(options.reviewRecoveryV2 && version === "world-automatic-review-recovery/v2")
       && !(options.reviewRecoveryV3 && version === "world-automatic-review-recovery/v3")) return false;

@@ -1,3 +1,4 @@
+import { nextIdentitySourceRevision, tickIdentitySourceRevision } from "./identity-source-revision-queue";
 import { statusOf } from "../game-status";
 import type { Container } from "../container";
 import { LEASE_MS as PIPELINE_LEASE_MS, RESUMABLE_STATUSES, runGenerationPipeline } from "./pipeline";
@@ -86,6 +87,12 @@ export async function nextPendingGame(c: Container): Promise<string | null> {
  */
 export async function tickGeneration(c: Container, gameId: string | null, budgetMs: number, hardMs = 270_000): Promise<TickResult> {
   const now = Date.now();
+  const referenceRepair = await nextIdentitySourceRevision(c, gameId, now);
+  if (referenceRepair) {
+    const result = await tickIdentitySourceRevision(c, referenceRepair, now + hardMs, now);
+    const current = await c.db.game.findUnique({ where: { id: referenceRepair }, select: { status: true } });
+    return { gameId: referenceRepair, status: current ? statusOf(current) : null, ...result };
+  }
   // local-patch-parked-wake/v1: a world the engine parked on one of its own review interruptions gets this whole turn, at
   // most three times per hold and ten minutes apart; its own slice decides, compared on the hold it observed.
   const wake = gameId ? null : await nextParkedWake(c, now);

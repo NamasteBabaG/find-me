@@ -350,6 +350,8 @@ export async function reviewLocalPatchBoard(c: Container, input: { gameId: strin
     /** Decide a retained dual answer under its question's current reader: no
      * reservation, provider or spend switch is involved, because nothing is bought. */
     decideRetained?: boolean } = {}): Promise<LocalPatchBoardReviewOutcome> {
+  const { identityRevisionPending } = await import("./identity-source-revision-state");
+  demand(!await identityRevisionPending(c.db, input.gameId), "reference revision blocks new board review purchases");
   const dual = await hasDualVisualReview(c.db, input.gameId);
   if (options.decideRetained && !dual) return { state: "pending", reason: "Only dual review answers have a corrected reading", replayed: true, costCents: 0 };
   const calibrated = dual || playerReviewEnabled();

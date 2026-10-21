@@ -29,7 +29,8 @@ ALTER TABLE "Game" ADD CONSTRAINT "Game_ownerId_fkey" FOREIGN KEY ("ownerId") RE
 `;
 function run(code: string, input: unknown = null, cwd = root) {
   return spawnSync(process.execPath, ["--input-type=module", "-e", `import * as bootstrap from ${JSON.stringify(moduleUrl)}; const input=JSON.parse(process.argv[1]); ${code}`, JSON.stringify(input)], {
-    cwd, encoding: "utf8", timeout: 15_000, windowsHide: true,
+    // The nested offline schema engine has its own 60-second bound; allow startup/cleanup on Windows too.
+    cwd, encoding: "utf8", timeout: 75_000, windowsHide: true,
     env: { NODE_ENV: "test", PATH: process.env.PATH, SystemRoot: process.env.SystemRoot, TEMP: process.env.TEMP, TMP: process.env.TMP,
       DATABASE_URL: "invalid-test-no-network", APP_ENV: "qa", PRIVATE_CANARY: "synthetic-must-not-print" },
   });
@@ -127,7 +128,7 @@ describe("offline production bootstrap", () => {
     expect(result.metadata.columns["FileBlob.data"].type).toBe("bytea");
     expect(result.metadata.indexes["Order.Order_checkoutKey_key"].unique).toBe(true);
     expect(readFileSync(path.join(root, "prisma/schema.prisma"), "utf8")).toBe(original);
-  });
+  }, 90_000);
 
   it("refuses tampering with each reviewed SQL file, including the separate preflight", () => {
     const scratch = mkdtempSync(path.join(tmpdir(), "findme-bootstrap-artifact-test-"));
@@ -144,5 +145,5 @@ describe("offline production bootstrap", () => {
     }
     const intact = run("console.log(JSON.stringify(bootstrap.verifyBootstrapArtifacts(process.cwd(),input).sourceSha256))", output);
     expect(intact.status, intact.stderr).toBe(0);
-  });
+  }, 90_000);
 });

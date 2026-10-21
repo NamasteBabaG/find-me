@@ -127,7 +127,7 @@ export async function planLeanReviewRecovery(c: Container, input: { gameId: stri
  * inside one serializable transaction and compared with the plan's binding; neither is written (a write would move the
  * hold the pin binds). Applying the same plan again changes nothing; a different one is refused.
  */
-export async function applyLeanReviewRecovery(c: Container, input: { gameId: string; operatorId: string; expectedPlanSha256: string })
+export async function applyLeanReviewRecovery(c: Container, input: { gameId: string; operatorId: string; expectedPlanSha256: string }, transaction?: Prisma.TransactionClient)
   : Promise<{ applied: boolean; receipt: LeanReviewRecoveryReceipt }> {
   const same = (pin: LeanReviewRecoveryReceipt | null) => pin?.mode === "existing-world" && pin.planSha256 === input.expectedPlanSha256 && pin.operatorId === input.operatorId;
   const existing = await leanReviewRecoveryOf(c.db, input.gameId);
@@ -143,7 +143,7 @@ export async function applyLeanReviewRecovery(c: Container, input: { gameId: str
     binding, operatorId: input.operatorId, planSha256: plan.planSha256, authorizedAt: new Date().toISOString() };
   if (!parseLeanReviewRecoveryReceipt(structuredClone(receipt), input.gameId)) throw new LeanReviewRecoveryRefused(["the operator or the binding is not a bounded identifier"]);
   try {
-    await c.db.$transaction(async tx => {
+    const retain = async (tx: Prisma.TransactionClient) => {
       const job = await tx.generationJob.findUnique({ where: { id: binding.jobId } });
       const game = await tx.game.findUnique({ where: { id: input.gameId }, include: { orders: true } });
       if (!job || parkedHoldSha256(job) !== binding.holdSha256 || job.status !== "FAILED" || job.currentStep !== LOCAL_PATCH_NEEDS_RELEASE
@@ -155,7 +155,9 @@ export async function applyLeanReviewRecovery(c: Container, input: { gameId: str
         throw new LeanReviewRecoveryRefused(["the ledger changed while the world was released; nothing was written"]);
       await tx.auditLog.create({ data: { id: leanReviewRecoveryAuditId(input.gameId), actorType: "ADMIN", actorId: input.operatorId,
         action: LEAN_REVIEW_RECOVERY_ACTION, entityType: "Game", entityId: input.gameId, metaJson: JSON.stringify(receipt) } });
-    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, timeout: 30_000 });
+    };
+    if (transaction) await retain(transaction);
+    else await c.db.$transaction(retain, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, timeout: 30_000 });
   } catch (error) {
     if (!(error instanceof Prisma.PrismaClientKnownRequestError) || error.code !== "P2002") throw error;
     const winner = await leanReviewRecoveryOf(c.db, input.gameId);

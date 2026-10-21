@@ -7,7 +7,9 @@ import { deliverLocalPatchNotifications } from "../local-patch-notifications";
 import { GenerationPaused, boardWizardBudgetOf, boardWizardWorldId } from "./board-conditioned-wizard";
 import { retainedPurchaseKeysFor } from "../../infra/db/prisma-retained-purchase-store";
 import { buyLocalPatch, localPatchImagePolicyForVersion, localPatchRenderPolicySha256 } from "../../infra/generation/openai-local-patch";
+import { fenceLocalPatchImages } from "./local-patch-lifecycle";
 import { env } from "../../lib/env";
+import { identityRevisionPending } from "./identity-source-revision-state";
 import { finishLocalPatchGame } from "./local-patch-player";
 import { deliverGameMail } from "../publish.service";
 import { SYSTEM } from "../audit.service";
@@ -131,10 +133,15 @@ export const LOCAL_PATCH_INTERRUPTION_HOLD = /^self-repair:board:[a-z0-9-]+:[0-9
  */
 async function resumeParkedInterruption(c: Container, gameId: string, observed: { id: string; lastError: string | null; updatedAt: Date },
   deps: Pick<LocalPatchBoardReviewDeps, "readBoardArt">, deadlineAt: number): Promise<void> {
+  if (await identityRevisionPending(c.db, gameId)) return;
   const unchanged = { id: observed.id, status: "FAILED", currentStep: LOCAL_PATCH_NEEDS_RELEASE, lastError: observed.lastError, updatedAt: observed.updatedAt };
   const bound = await boundLeanRecoveryHold(c.db, gameId, observed);
+  const writeUnrevisedHold = async (data: { lastError: string | null; status?: string; currentStep?: string }) => c.db.$transaction(async tx => {
+    await fenceLocalPatchImages(tx, gameId);
+    if (!await identityRevisionPending(tx, gameId)) await tx.generationJob.updateMany({ where: unchanged, data });
+  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
   const explain = async (reason: string) => { if (bound || LOCAL_PATCH_INTERRUPTION_HOLD.test(observed.lastError ?? ""))
-    await c.db.generationJob.updateMany({ where: unchanged, data: { lastError: `${LOCAL_PATCH_CONTINUE_IN_SLICE}: ${reason}`.slice(0, 500) } }); };
+    await writeUnrevisedHold({ lastError: `${LOCAL_PATCH_CONTINUE_IN_SLICE}: ${reason}`.slice(0, 500) }); };
   const why: ContinuationWhy = {};
   const open = await openAdmittedInterruptions(c, gameId, why);
   if (open === "blocked") return explain(why.reason ?? "the automatic continuation cannot serve this world");
@@ -151,7 +158,7 @@ async function resumeParkedInterruption(c: Container, gameId: string, observed: 
   const next = await resumptionAfterContinuation(c, gameId);
   if (next.action === "explain") return explain(next.reason);
   if (next.action === "retry") return;
-  await c.db.generationJob.updateMany({ where: unchanged, data: { status: "QUEUED", currentStep: "local-patch", lastError: null } });
+  await writeUnrevisedHold({ status: "QUEUED", currentStep: "local-patch", lastError: null });
 }
 
 export type LocalPatchSliceResult = {
@@ -185,10 +192,11 @@ export function localPatchBoardFor(sceneSlug: string, version = 6): LocalPatchBo
 }
 
 /** Scheduling hint: an accepted row already carries a subject stage for its current pixels. */
-function subjectStageCurrent(row: { judgeJson: string | null }): boolean {
+export function subjectStageCurrent(row: { judgeJson: string | null }, expectedIdentitySha256?: string): boolean {
   try {
     const receipt = JSON.parse(row.judgeJson ?? "null"), dual = receipt?.boardReview?.dual;
-    return !!dual?.subject && dual.imageSha256 === receipt.judgedSha256;
+    return !!dual?.subject && dual.imageSha256 === receipt.judgedSha256
+      && (!expectedIdentitySha256 || dual.identitySha256 === expectedIdentitySha256);
   } catch { return false; }
 }
 
@@ -207,6 +215,8 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
   // A refund or an operator stop is a dispatch barrier. Never resurrect a
   // stopped game by ticking it directly.
   if (game.status !== "TARGETS_GENERATING") return { ...empty, pending: false, claimed: false, paused: false };
+  if (await identityRevisionPending(c.db, gameId)) return { ...empty, pending: false, claimed: false, paused: true,
+    attention: "The rejected reference is undergoing a bound source revision; no board is bought or published" };
   const advisory = game.scenes.length > 0 && game.scenes.every(scene => isLocalPatchAdvisoryVersion(scene.sceneVersion));
   const strict = game.scenes.length > 0 && game.scenes.every(scene => isLocalPatchStrictVersion(scene.sceneVersion));
   const automatic = game.scenes.length === 9 && game.scenes.every(scene => selfRepairEnabled(scene.sceneVersion));
@@ -523,7 +533,7 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
   const rejudgePending = (row: Parameters<typeof subjectRejudgePending>[0]) => !!subjectUpgrade && subjectRejudgePending(row, subjectUpgrade.ageYears);
   // A board also owes its v2 re-judgments (subject-rejudge/v1), whatever status the board itself carries.
   const subjectPendingScenes = (current: typeof rows) => new Set(subjectUpgrade ? game.scenes.filter(scene => current.some(row =>
-    row.targetInstance.gameSceneId === scene.id && (row.status === "GENERATED" && !subjectStageCurrent(row) || rejudgePending(row))))
+    row.targetInstance.gameSceneId === scene.id && (row.status === "GENERATED" && !subjectStageCurrent(row, subjectUpgrade?.identityRevision ? subjectUpgrade.identitySha256 : undefined) || rejudgePending(row))))
     .map(scene => scene.id) : []);
   const subjectPending = subjectPendingScenes(rows);
   // Review retained pixels before buying diagnostics or replacements. A failed
@@ -591,7 +601,7 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
       } catch { return false; }
     };
     /** Review work on an appearance's current pixels: exactly what gives its board firstWork or retry below. */
-    const reviewWork = (row: (typeof rows)[number]) => !!subjectUpgrade && row.status === "GENERATED" && !subjectStageCurrent(row)
+    const reviewWork = (row: (typeof rows)[number]) => !!subjectUpgrade && row.status === "GENERATED" && !subjectStageCurrent(row, subjectUpgrade?.identityRevision ? subjectUpgrade.identitySha256 : undefined)
       || rejudgePending(row) || playerReviewEnabled() && needsPlayerReview(row) || row.status === "GENERATED" && !reviewedAcceptable(row)
       || !!localPatchEvidenceRecovery(row)?.retry;
     const sentKey = (row: (typeof rows)[number]) => {
