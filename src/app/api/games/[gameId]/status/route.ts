@@ -24,6 +24,9 @@ import { readLocalPatchEmergencyBudget } from "@/services/generation/local-patch
 import { readNewQaWorldBudget } from "@/services/generation/local-patch-qa-budget";
 import { identityRevisionPending, identityRevisionHeldOf } from "@/services/generation/identity-source-revision-state";
 import { readLeanWorldBudget } from "@/services/generation/lean-release";
+import { readLeanCompletionBudget } from "@/services/generation/lean-completion-budget";
+import { openAdmittedInterruptions } from "@/services/generation/subject-upgrade";
+import { readLocalPatchExtraAttemptPlan } from "@/services/generation/local-patch-extra-attempt";
 
 export const runtime = "nodejs";
 
@@ -105,6 +108,7 @@ export async function GET(req: Request, ctx: { params: Promise<{ gameId: string 
   let qaBoards: { boardId: string; name: string; state: string; attempts: number; slots: { slotId: string; state: string; reason: string | null }[] }[] | null = null;
   let qaCost: { spentCents: number; reservedCents: number; capCents: number; held: boolean } | null = null;
   let localPatchBudgetHeld = false;
+  let localPatchRecoveryCheckAllowed = false;
   if (game.styleVersion === LOCAL_PATCH_STYLE && env().APP_ENV === "qa") {
     try {
       const worldId = `${gameId}:board-wizard`;
@@ -114,13 +118,15 @@ export async function GET(req: Request, ctx: { params: Promise<{ gameId: string 
       // This ledger already includes identity, painting and judging. Adding
       // asset costs here would count the same image purchase a second time.
       // The ceiling the ledger itself enforces, in the engine's own order: a new
-      // QA world's six-dollar policy, then the standing five-dollar grant, else four.
-      const extension = await readLeanWorldBudget(c, worldId) ?? await readNewQaWorldBudget(c, worldId) ?? await readLocalPatchEmergencyBudget(c, worldId);
+      // explicit source-completion grant, preserved lean pin, new-QA policy, then emergency grant.
+      const extension = await readLeanCompletionBudget(c, worldId) ?? await readLeanWorldBudget(c, worldId) ?? await readNewQaWorldBudget(c, worldId) ?? await readLocalPatchEmergencyBudget(c, worldId);
       const ledgerCap = extension?.capMicroUsd === 6_000_000 || extension?.capMicroUsd === 12_000_000 ? extension.capMicroUsd : undefined;
       const audit = applyBoardWizardBudgetCap(auditWorldBudget(snapshot, ledgerCap), extension?.capMicroUsd);
       qaCost = { spentCents: audit.settledMicroUsd / 10_000, reservedCents: audit.reservedMicroUsd / 10_000,
         capCents: audit.capMicroUsd / 10_000, held: audit.held };
       localPatchBudgetHeld = audit.held;
+      localPatchRecoveryCheckAllowed = audit.held && audit.overCapMicroUsd === 0
+        && audit.conflictRequestKeys.length === 0 && audit.overrunRequestKeys.length === 0;
     } catch {
       // An unreadable account is not permission to keep asking for purchases.
       // Do not fabricate a zero cost for malformed or unavailable evidence.
@@ -186,13 +192,29 @@ export async function GET(req: Request, ctx: { params: Promise<{ gameId: string 
   const referenceRepair = game.styleVersion === LOCAL_PATCH_STYLE && await identityRevisionPending(c.db, gameId)
     ? await identityRevisionHeldOf(c.db, gameId) ? "held" as const : "active" as const : undefined;
   if (referenceRepair) { spotsDone = 0; place = null; } // Prior canonical approvals are not progress on the replacement.
-  const parkedStep = game.styleVersion === LOCAL_PATCH_STYLE ? (await readStatusJob())?.currentStep : undefined;
+  const localPatchJob = game.styleVersion === LOCAL_PATCH_STYLE ? await readStatusJob() : undefined;
+  const parkedStep = localPatchJob?.currentStep;
   const parked = parkedStep === LOCAL_PATCH_NEEDS_RELEASE || parkedStep === LOCAL_PATCH_RECOVERY_EXHAUSTED;
   const qualityFailed = game.styleVersion === LOCAL_PATCH_STYLE
     && !(game.scenes.length === 9 && game.scenes.every(scene => selfRepairEnabled(scene.sceneVersion)))
     && (await readStatusJob())?.currentStep === LOCAL_PATCH_QUALITY_FAILED;
+  // A held account may be waiting for the same bounded automatic continuation
+  // the worker will perform next. Read that worker's admission proof; a queued
+  // job alone, an unclassified unknown, or spare money never grants recovery.
+  // This is progress only: reservations, full unknowns and publication gates stay unchanged.
+  let automaticReviewRecovery = false;
+  if (!referenceRepair && !parked && !qualityFailed && localPatchRecoveryCheckAllowed
+    && parkedStep === "local-patch" && localPatchJob && ["QUEUED", "RUNNING"].includes(localPatchJob.status)) {
+    try {
+      if (!await readLocalPatchExtraAttemptPlan(c, gameId)) {
+        const open = await openAdmittedInterruptions(c, gameId);
+        automaticReviewRecovery = open !== "blocked" && open.size > 0;
+      }
+    } catch { /* Unreadable recovery evidence remains held. */ }
+  }
   const progress = creationProgress({ status, characterReady, spotsDone, spotsTotal, fixedAssemblyReady, boardWizardState,
-    ...(parked || localPatchBudgetHeld ? { operatorHold: true } : {}), ...(referenceRepair ? { referenceRepair } : {}) });
+    ...(parked || localPatchBudgetHeld && !automaticReviewRecovery ? { operatorHold: true } : {}), ...(referenceRepair ? { referenceRepair } : {}) });
+  if (automaticReviewRecovery) progress.state = "retrying";
   // GENERATION_FAILED normally means an automatic retry; this exact durable
   // marker is a terminal quality exception only for historical engines. The
   // current collection resumes automatically, including before its first tick.

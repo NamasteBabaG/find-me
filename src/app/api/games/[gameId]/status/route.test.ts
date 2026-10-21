@@ -2,10 +2,19 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   game: vi.fn(), asset: vi.fn(), job: vi.fn(), user: vi.fn(), denied: vi.fn(), link: vi.fn(), proof: vi.fn(), hash: vi.fn(), wizard: vi.fn(), ledger: vi.fn(),
-  revisionPending: vi.fn(), revisionHeld: vi.fn(), approved: vi.fn(), emergencyBudget: vi.fn(), newQaBudget: vi.fn(), leanBudget: vi.fn(),
+  revisionPending: vi.fn(), revisionHeld: vi.fn(), approved: vi.fn(), emergencyBudget: vi.fn(), newQaBudget: vi.fn(), leanBudget: vi.fn(), completionBudget: vi.fn(), admittedInterruptions: vi.fn(), extraPlan: vi.fn(),
   token: null as string | null, admin: false,
 }));
 vi.mock("@/services/generation/identity-source-revision-state", () => ({ identityRevisionPending: mocks.revisionPending, identityRevisionHeldOf: mocks.revisionHeld }));
+vi.mock("@/services/generation/local-patch-extra-attempt", async importOriginal => ({
+  ...(await importOriginal<typeof import("@/services/generation/local-patch-extra-attempt")>()),
+  readLocalPatchExtraAttemptPlan: mocks.extraPlan,
+}));
+vi.mock("@/services/generation/lean-completion-budget", () => ({ readLeanCompletionBudget: mocks.completionBudget }));
+vi.mock("@/services/generation/subject-upgrade", async importOriginal => ({
+  ...(await importOriginal<typeof import("@/services/generation/subject-upgrade")>()),
+  openAdmittedInterruptions: mocks.admittedInterruptions,
+}));
 vi.mock("@/services/generation/lean-release", () => ({ readLeanWorldBudget: mocks.leanBudget }));
 vi.mock("@/lib/server/qa-access", () => ({ qaAccessDenied: mocks.denied }));
 vi.mock("@/lib/server/session", () => ({ currentUser: mocks.user, draftTokenFromCookie: async () => mocks.token, isAdminEmail: () => mocks.admin }));
@@ -47,6 +56,7 @@ beforeEach(() => {
   mocks.proof.mockReturnValue(null); mocks.hash.mockReturnValue("synthetic-hash"); mocks.link.mockResolvedValue({ url: "/synthetic-play" });
   mocks.ledger.mockResolvedValue(null); mocks.approved.mockResolvedValue(true); mocks.emergencyBudget.mockResolvedValue(null);
   mocks.newQaBudget.mockResolvedValue(null); mocks.leanBudget.mockResolvedValue(null);
+  mocks.completionBudget.mockResolvedValue(null); mocks.admittedInterruptions.mockResolvedValue("blocked"); mocks.extraPlan.mockResolvedValue(null);
 });
 async function response() { return GET(new Request("https://example.invalid/api/games/synthetic/status"), { params: Promise.resolve({ gameId: "synthetic" }) }); }
 function assembled(status = "MANUAL_REVIEW") {
@@ -68,6 +78,16 @@ function localBudget(pendingState?: "pending" | "unknown"): WorldBudgetSnapshot 
     origin: "reserved", state: pendingState, unknownReasons: pendingState === "unknown" ? ["usage missing"] : [], conflicts: [] });
   return { worldId: "synthetic:board-wizard", requests };
 }
+
+  /** The fixture ledger, settled at exactly `spent` micro-USD. */
+  function spentTo(spent: number) {
+    const snapshot = localBudget(), paid = snapshot.requests[0];
+    if (paid?.state !== "settled") throw new Error("Fixture needs a paid identity");
+    paid.evidence.amountMicroUsd += spent - 150_800;
+    paid.reserveMicroUsd = paid.evidence.amountMicroUsd;
+    return snapshot;
+  }
+
 
 describe("fixed-world creation status boundary", () => {
   it.each(["cookie", "owner", "admin"])("preserves %s authority for the status route", async authority => {
@@ -158,14 +178,6 @@ describe("fixed-world creation status boundary", () => {
     mocks.emergencyBudget.mockRejectedValue(Error("Invalid policy receipt"));
     expect(await (await response()).json()).toMatchObject({ pending: false, state: "held", qaCost: null });
   });
-  /** The fixture ledger, settled at exactly `spent` micro-USD. */
-  function spentTo(spent: number) {
-    const snapshot = localBudget(), paid = snapshot.requests[0];
-    if (paid?.state !== "settled") throw new Error("Fixture needs a paid identity");
-    paid.evidence.amountMicroUsd += spent - 150_800;
-    paid.reserveMicroUsd = paid.evidence.amountMicroUsd;
-    return snapshot;
-  }
   it.each([4_100_000, 5_400_000])("keeps polling a new six-dollar QA world at %i micro-USD, under the ceiling its ledger enforces", async spent => {
     mocks.game.mockResolvedValue({ ...game, status: "TARGETS_GENERATING", styleVersion: "local-patch-world-v1" });
     const snapshot = spentTo(spent);
@@ -379,4 +391,70 @@ it.each([false, true])("shows the separate source-repair state (held=%s), never 
   expect(body).toMatchObject({ state: held ? "held" : "retrying", pending: !held, done: false, failed: false, awaitingQa: held,
     current: "character", characterReady: false, avatarUrl: null, playUrl: null, spotsDone: 0, place: null });
   expect(mocks.link).not.toHaveBeenCalled();
+});
+
+
+describe("live source-completion progress regression", () => {
+  function activeLocalJob(jobStatus = "QUEUED", currentStep = "local-patch") {
+    mocks.game.mockResolvedValue({ ...game, status: "TARGETS_GENERATING", styleVersion: "local-patch-world-v1" });
+    mocks.job.mockResolvedValue({ gameId: game.id, status: jobStatus, currentStep, stepsJson: "{}" });
+  }
+  const completion = { worldId: "synthetic:board-wizard", capMicroUsd: 6_000_000, authorizationSha256: "d".repeat(64) };
+  function interruptedReview() {
+    const base = localBudget("unknown");
+    return { ...base, requests: base.requests.map(r => r.state === "unknown" ? { ...r, scope: "judge" as const } : r) };
+  }
+  const admitted = () => new Map([["synthetic-variant:synthetic-image", { binding: {}, requestKeys: ["synthetic-interrupted-review"] }]]);
+
+  it("shows the verified source-completion grant before the preserved lean ceiling", async () => {
+    activeLocalJob();
+    mocks.ledger.mockResolvedValue({ snapshotJson: JSON.stringify(spentTo(5_100_000)) });
+    mocks.completionBudget.mockResolvedValue(completion);
+    mocks.leanBudget.mockResolvedValue({ ...completion, capMicroUsd: 4_000_000 });
+    expect(await (await response()).json()).toMatchObject({ state: "working", pending: true, done: false,
+      qaCost: { capCents: 600, spentCents: 510, held: false } });
+    expect(mocks.completionBudget).toHaveBeenCalledWith(expect.anything(), completion.worldId);
+    expect(mocks.leanBudget).not.toHaveBeenCalled();
+  });
+
+  it("does not fall back when the completion grant cannot be verified", async () => {
+    activeLocalJob();
+    mocks.ledger.mockResolvedValue({ snapshotJson: JSON.stringify(spentTo(5_100_000)) });
+    mocks.completionBudget.mockRejectedValue(Error("Synthetic forged completion receipt"));
+    expect(await (await response()).json()).toMatchObject({ state: "held", pending: false, qaCost: null });
+    expect(mocks.leanBudget).not.toHaveBeenCalled();
+    expect(mocks.admittedInterruptions).not.toHaveBeenCalled();
+  });
+
+  it("keeps the real completion ceiling held even with a runnable job and admitted interruptions", async () => {
+    activeLocalJob("RUNNING");
+    mocks.ledger.mockResolvedValue({ snapshotJson: JSON.stringify(spentTo(6_100_000)) });
+    mocks.completionBudget.mockResolvedValue(completion);
+    mocks.admittedInterruptions.mockResolvedValue(admitted());
+    expect(await (await response()).json()).toMatchObject({ state: "held", pending: false,
+      qaCost: { capCents: 600, held: true } });
+    expect(mocks.admittedInterruptions).not.toHaveBeenCalled();
+  });
+
+  it.each(["QUEUED", "RUNNING"])("shows %s admitted automatic review recovery without clearing its full unknown reserve", async status => {
+    activeLocalJob(status);
+    mocks.ledger.mockResolvedValue({ snapshotJson: JSON.stringify(interruptedReview()) });
+    mocks.admittedInterruptions.mockResolvedValue(admitted());
+    expect(await (await response()).json()).toMatchObject({ state: "retrying", pending: true, awaitingQa: false, done: false,
+      qaCost: { reservedCents: 40, held: true } });
+    expect(mocks.admittedInterruptions).toHaveBeenCalledWith(expect.anything(), game.id);
+    expect(mocks.link).not.toHaveBeenCalled();
+  });
+
+  it.each(["blocked", "empty", "unavailable", "parked", "inactive", "extra-plan"])("keeps a real operator hold for %s recovery evidence", async mode => {
+    activeLocalJob(mode === "inactive" ? "FAILED" : "QUEUED", mode === "parked" ? "local-patch:needs-release" : "local-patch");
+    mocks.ledger.mockResolvedValue({ snapshotJson: JSON.stringify(interruptedReview()) });
+    if (mode === "extra-plan") mocks.extraPlan.mockResolvedValue({ version: "synthetic-extra-plan" });
+    if (mode === "unavailable") mocks.admittedInterruptions.mockRejectedValue(Error("Synthetic read unavailable"));
+    else mocks.admittedInterruptions.mockResolvedValue(mode === "empty" ? new Map() : mode === "blocked" ? "blocked" : admitted());
+    expect(await (await response()).json()).toMatchObject({ state: "held", pending: false, awaitingQa: true, done: false,
+      qaCost: { reservedCents: 40, held: true } });
+    expect(mocks.link).not.toHaveBeenCalled();
+    if (mode === "parked" || mode === "inactive" || mode === "extra-plan") expect(mocks.admittedInterruptions).not.toHaveBeenCalled();
+  });
 });
