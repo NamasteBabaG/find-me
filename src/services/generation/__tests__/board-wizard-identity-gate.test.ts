@@ -352,6 +352,23 @@ describe("full original source identity review (synthetic, zero paid calls)", ()
 
 
 describe("identity reviewer HTTP windows keep their version", () => {
+  it("bounds strict wire reasons to the consumer limit with supported pattern rather than accepting overlong provider-valid output", async () => {
+    const fetcher = vi.fn(async (_url: unknown, _init: unknown) => Response.json({}));
+    const reviewer = new OpenAiIdentityStyleReviewer("synthetic-never-live", fetcher as typeof fetch);
+    await reviewer.review({ prompt: "synthetic", images: [], timeoutPolicy: "full-source-v1", responseFormatPolicy: "full-source-strict-v1",
+      settings: { model: "gpt-6.1-sol", effort: "high", maxOutputTokens: 6500 } });
+    const body = JSON.parse(String((fetcher.mock.calls[0]![1] as RequestInit).body));
+    const schema = body.response_format.json_schema.schema, reason = schema.properties.reason;
+    expect(reason.type).toBe("string"); expect(reason).not.toHaveProperty("minLength"); expect(reason).not.toHaveProperty("maxLength");
+    const allowed = new RegExp(reason.pattern);
+    expect(allowed.test("")).toBe(false); expect(allowed.test("x".repeat(1201))).toBe(false);
+    expect(allowed.test(" ")).toBe(false); expect(allowed.test("\n")).toBe(false); expect(allowed.test("a\nb")).toBe(true);
+    expect(allowed.test("x")).toBe(true); expect(allowed.test("x".repeat(1200))).toBe(true);
+    expect(allowed.test("visible\nsource evidence")).toBe(true);
+    expect(schema.properties.checks.required).toEqual(["identity", "age", "paintedStyle", "sheetLayout", "sourceFaceVisible", "facialVolume", "viewConsistency"]);
+    expect(body.response_format.json_schema.strict).toBe(true); expect(body.model).toBe("gpt-6.1-sol"); expect(body.reasoning_effort).toBe("high");
+    expect(fetcher).toHaveBeenCalledOnce();
+  });
   it("keeps legacy HTTP at90 seconds and gives only the exact new Sol HIGH contract180 seconds", async () => {
     const timeout = vi.spyOn(AbortSignal, "timeout").mockReturnValue(new AbortController().signal);
     const fetcher = vi.fn(async () => Response.json({}));

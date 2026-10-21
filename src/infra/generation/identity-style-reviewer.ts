@@ -7,7 +7,7 @@ export const FULL_SOURCE_STRICT_RESPONSE_FORMAT = {
         required: ["identity", "age", "paintedStyle", "sheetLayout", "sourceFaceVisible", "facialVolume", "viewConsistency"],
         properties: Object.fromEntries(["identity", "age", "paintedStyle", "sheetLayout", "sourceFaceVisible", "facialVolume", "viewConsistency"]
           .map(key => [key, { type: "string", enum: ["pass", "fail", "uncertain"] }])) },
-        reason: { type: "string" } } } },
+        reason: { type: "string", pattern: "^\\S([\\s\\S]{0,1198}\\S)?$" } } } },
 } as const;
 
 export type IdentityReviewInput = { prompt: string; images: readonly Buffer[];
