@@ -12,6 +12,7 @@ import { signedAssetUrl } from "../asset.service";
 import { sceneBySlug } from "../scene-catalog.service";
 import { worldForBoard } from "../world-catalog.service";
 import { boardWizardBudgetOf, boardWizardWorldId } from "./board-conditioned-wizard";
+import { capacityContinuationPublishable } from "./lean-capacity-recovery-pin";
 import { localPatchBudgetReadyForPublication } from "./local-patch-interruption-recovery";
 import { LOCAL_PATCH_PROVIDER, LOCAL_PATCH_VARIANT } from "./local-patch-hide";
 import { JUDGE_CHECKS, localPatchVerdictSchema } from "./local-patch-judge";
@@ -151,6 +152,7 @@ export async function finishLocalPatchGame(c: Container, gameId: string, fence: 
     const enrolled = !!await subjectUpgradeOf(tx, gameId);
     demand(await localPatchBudgetReadyForPublication(budget, worldId, contentVersion,
       { reviewRecoveryV2: enrolled, reviewRecoveryV3: enrolled && !!await leanReviewRecoveryOf(tx, gameId),
+        capacityContinuation: approval => capacityContinuationPublishable(tx, gameId, approval),
         sourceReferenceContinuation: approval => identityRevisionContinuationPublishable(tx, budget, gameId, approval) }),
       "unresolved spending must be reconciled before publication");
     const audit = await budget.audit(worldId);

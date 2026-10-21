@@ -115,12 +115,21 @@ export interface WorldAutomaticReviewRecoveryV3 extends WorldReservationInput {
   authorizationSha256: string; authorizedAt: string;
 }
 export const WORLD_AUTOMATIC_REVIEW_RECOVERY_V3_LIMIT = 12;
+/** Separately authorized capacity recovery; all earlier bounds and records remain exact. */
+export interface WorldAutomaticReviewRecoveryV4 extends WorldReservationInput {
+  version: "world-automatic-review-recovery/v4";
+  worldId: string; approvalId: string; unknownReasons: readonly string[];
+  policyId: "local-patch-review-interruption/v4";
+  grantSha256: string; authorizationSha256: string; authorizedAt: string;
+}
+export const WORLD_AUTOMATIC_REVIEW_RECOVERY_V4_LIMIT = 32;
 export type WorldContinuationRecord = WorldUnknownContinuationApproval | WorldAutomaticImageRecovery | WorldAutomaticReviewRecovery
-  | WorldAutomaticReviewRecoveryV2 | WorldAutomaticReviewRecoveryV3;
+  | WorldAutomaticReviewRecoveryV2 | WorldAutomaticReviewRecoveryV3 | WorldAutomaticReviewRecoveryV4;
 export type WorldAutomaticImageRecoveryInput = Omit<WorldAutomaticImageRecovery, "version" | "worldId">;
 export type WorldAutomaticReviewRecoveryInput = Omit<WorldAutomaticReviewRecovery, "version" | "worldId">;
 export type WorldAutomaticReviewRecoveryV2Input = Omit<WorldAutomaticReviewRecoveryV2, "version" | "worldId">;
 export type WorldAutomaticReviewRecoveryV3Input = Omit<WorldAutomaticReviewRecoveryV3, "version" | "worldId">;
+export type WorldAutomaticReviewRecoveryV4Input = Omit<WorldAutomaticReviewRecoveryV4, "version" | "worldId">;
 export interface WorldBudgetOptions {
   /** Trusted composition root resolves immutable world authority inside each transaction.
    * Snapshot/caller JSON cannot raise the cap; absence preserves historical five dollars. */
@@ -134,6 +143,8 @@ export interface WorldBudgetOptions {
   authorizeAutomaticReviewRecoveryV2?: (recovery: Readonly<WorldAutomaticReviewRecoveryV2>) => Promise<boolean>;
   /** Supplied only by a lean world's recovery; absence refuses every v3 record. */
   authorizeAutomaticReviewRecoveryV3?: (recovery: Readonly<WorldAutomaticReviewRecoveryV3>) => Promise<boolean>;
+  /** Only the exact explicitly granted capacity policy may supply this verifier. */
+  authorizeAutomaticReviewRecoveryV4?: (recovery: Readonly<WorldAutomaticReviewRecoveryV4>) => Promise<boolean>;
 }
 
 export interface WorldBudgetSnapshot {
@@ -294,8 +305,10 @@ function snapshotWith(snapshot: WorldBudgetSnapshot, request: WorldBudgetRequest
 export function validateUnknownContinuationApproval(value: WorldContinuationRecord): void {
   if (!value || typeof value !== "object" || Object.getPrototypeOf(value) !== Object.prototype) fail("invalid_input", "A plain continuation approval is required");
   const automatic = value.version === "world-automatic-image-recovery/v1" || value.version === "world-automatic-review-recovery/v1"
-    || value.version === "world-automatic-review-recovery/v2" || value.version === "world-automatic-review-recovery/v3";
-  const expected = ["version", "worldId", "approvalId", "requestKey", "scope", "operationFingerprint", "reserveMicroUsd", "unknownReasons", automatic ? "policyId" : "operatorId", "authorizationSha256", "authorizedAt"].sort();
+    || value.version === "world-automatic-review-recovery/v2" || value.version === "world-automatic-review-recovery/v3"
+    || value.version === "world-automatic-review-recovery/v4";
+  const expected = ["version", "worldId", "approvalId", "requestKey", "scope", "operationFingerprint", "reserveMicroUsd", "unknownReasons", automatic ? "policyId" : "operatorId", "authorizationSha256", "authorizedAt",
+    ...(value.version === "world-automatic-review-recovery/v4" ? ["grantSha256"] : [])].sort();
   if (JSON.stringify(Object.keys(value).sort()) !== JSON.stringify(expected) || Object.values(Object.getOwnPropertyDescriptors(value)).some(p => !Object.hasOwn(p, "value"))) fail("invalid_input", "Continuation approval has unexpected fields");
   if (!automatic && value.version !== "world-unknown-continuation/v1") fail("invalid_input", "Unknown continuation approval version");
   if (value.version === "world-automatic-image-recovery/v1" && (value.policyId !== "local-patch-image-interruption/v1" || value.scope !== "image"
@@ -314,6 +327,11 @@ export function validateUnknownContinuationApproval(value: WorldContinuationReco
     || value.scope !== "judge" || !DUAL_REVIEW_RESERVES_MICRO_USD.includes(value.reserveMicroUsd)
     || !interruptedLocalPatchReviewRequest(value.requestKey, value.operationFingerprint)))
     fail("invalid_input", "Lean automatic recovery is limited to an independent collection review interruption");
+  if (value.version === "world-automatic-review-recovery/v4" && (value.policyId !== "local-patch-review-interruption/v4"
+    || value.scope !== "judge" || !DUAL_REVIEW_RESERVES_MICRO_USD.includes(value.reserveMicroUsd)
+    || !interruptedLocalPatchReviewRequest(value.requestKey, value.operationFingerprint)
+    || typeof value.grantSha256 !== "string" || !/^[a-f0-9]{64}$/.test(value.grantSha256)))
+    fail("invalid_input", "Capacity recovery requires a bounded exact grant and independent review interruption");
   if (!automatic && (typeof value.operatorId !== "string" || !/^[A-Za-z0-9_:.@/-]{1,500}$/.test(value.operatorId) || value.operatorId.includes("://") || /^sk-/i.test(value.operatorId)))
     fail("invalid_input", "Continuation approval requires a bounded operator identifier");
   for (const key of ["worldId", "approvalId", "requestKey", "operationFingerprint"] as const) {
@@ -338,6 +356,7 @@ export function validateWorldUnknownContinuationApprovals(snapshot: WorldBudgetS
   const automaticReviews = new Set<string>();
   const enrolledReviews = new Set<string>();
   const leanReviews = new Set<string>();
+  const capacityReviews = new Set<string>();
   for (const approval of snapshot.unknownContinuationApprovals) {
     if (approval.version === "world-automatic-review-recovery/v2") {
       if (enrolledReviews.has(approval.requestKey) || enrolledReviews.size >= WORLD_AUTOMATIC_REVIEW_RECOVERY_V2_LIMIT)
@@ -348,6 +367,11 @@ export function validateWorldUnknownContinuationApprovals(snapshot: WorldBudgetS
       if (leanReviews.has(approval.requestKey) || leanReviews.size >= WORLD_AUTOMATIC_REVIEW_RECOVERY_V3_LIMIT)
         fail("invalid_snapshot", `At most ${WORLD_AUTOMATIC_REVIEW_RECOVERY_V3_LIMIT} further interrupted reviews may recover in a lean world`);
       leanReviews.add(approval.requestKey);
+    }
+    if (approval.version === "world-automatic-review-recovery/v4") {
+      if (capacityReviews.has(approval.requestKey) || capacityReviews.size >= WORLD_AUTOMATIC_REVIEW_RECOVERY_V4_LIMIT)
+        fail("invalid_snapshot", "At most 32 capacity review continuations may recover in an explicitly granted world");
+      capacityReviews.add(approval.requestKey);
     }
     validateUnknownContinuationApproval(approval);
     if (approval.version === "world-automatic-image-recovery/v1") {
@@ -369,6 +393,7 @@ export function validateWorldUnknownContinuationApprovals(snapshot: WorldBudgetS
   // One continuation per interrupted review, whichever version made it.
   for (const key of enrolledReviews) if (automaticReviews.has(key)) fail("invalid_snapshot", "An interrupted review cannot be continued twice");
   for (const key of leanReviews) if (automaticReviews.has(key) || enrolledReviews.has(key)) fail("invalid_snapshot", "An interrupted review cannot be continued twice");
+  for (const key of capacityReviews) if (automaticReviews.has(key) || enrolledReviews.has(key) || leanReviews.has(key)) fail("invalid_snapshot", "An interrupted review cannot be continued twice");
 }
 /** Pure exact matching; never converts the request into a known charge. */
 export function getMatchingUnknownContinuationApproval(snapshot: WorldBudgetSnapshot, requestKey: string): WorldContinuationRecord | null {
@@ -497,8 +522,16 @@ export class WorldBudget {
     return this.authorizeAutomaticRecovery(worldId, captured);
   }
 
+  async authorizeAutomaticReviewRecoveryV4(worldId: string, input: WorldAutomaticReviewRecoveryV4Input) {
+    const captured: WorldAutomaticReviewRecoveryV4 = structuredClone({ ...input, version: "world-automatic-review-recovery/v4", worldId });
+    validateUnknownContinuationApproval(captured);
+    if (!this.options.authorizeAutomaticReviewRecoveryV4 || await this.options.authorizeAutomaticReviewRecoveryV4(structuredClone(captured)) !== true)
+      fail("invalid_input", "Verified explicit capacity recovery policy is required");
+    return this.authorizeAutomaticRecovery(worldId, captured);
+  }
+
   private async authorizeAutomaticRecovery(worldId: string, captured: WorldAutomaticImageRecovery | WorldAutomaticReviewRecovery
-    | WorldAutomaticReviewRecoveryV2 | WorldAutomaticReviewRecoveryV3) {
+    | WorldAutomaticReviewRecoveryV2 | WorldAutomaticReviewRecoveryV3 | WorldAutomaticReviewRecoveryV4) {
     return this.transact(worldId, async (tx, capMicroUsd) => {
       const prior = tx.snapshot.unknownContinuationApprovals?.find(a => a.approvalId === captured.approvalId);
       if (prior) {

@@ -36,6 +36,9 @@ export function parkedHoldSha256(job: { id: string; updatedAt: Date; lastError: 
 /** The binding of a person's release when this job still holds exactly the hold they read, or null. */
 export async function boundLeanRecoveryHold(db: Pick<Prisma.TransactionClient, "auditLog">, gameId: string,
   job: { id: string; updatedAt: Date; lastError: string | null }): Promise<LeanReviewRecoveryBinding | null> {
+  const { boundLeanCapacityHold } = await import("./lean-capacity-recovery-pin");
+  const capacity = await boundLeanCapacityHold(db, gameId, job);
+  if (capacity) return capacity;
   const pin = await leanReviewRecoveryOf(db, gameId);
   return pin?.mode === "existing-world" && pin.binding.jobId === job.id && pin.binding.holdSha256 === parkedHoldSha256(job) ? pin.binding : null;
 }

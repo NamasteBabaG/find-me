@@ -4,7 +4,7 @@ import { boardWizardBudgetOf, boardWizardWorldId } from "./board-conditioned-wiz
 import { LocalPatchRetainedPurchaseStore, fenceLocalPatchImages } from "./local-patch-lifecycle";
 import { RETAINED_RENDER_VERSION } from "./local-patch-render";
 import { sha256Bytes } from "./fixed-sprite";
-import { WorldBudgetError, type WorldAutomaticImageRecovery, type WorldBudget, type WorldUnknownContinuationApproval } from "./world-budget";
+import { WorldBudgetError, type WorldAutomaticImageRecovery, type WorldBudget, type WorldUnknownContinuationApproval, type WorldAutomaticReviewRecoveryV4 } from "./world-budget";
 import type { Prisma } from "@prisma/client";
 import { interruptedLocalPatchImageRequest } from "../../domain/scene/local-patch-image-request";
 
@@ -19,7 +19,7 @@ export async function localPatchBudgetReadyForPublication(budget: Pick<WorldBudg
   worldId: string, contentVersion: number | undefined,
   /** Only a world enrolled in the subject upgrade may also carry v2 review continuations, and only a world pinned to
    * local-patch-lean-review-recovery/v1 v3 ones. */
-  options: { reviewRecoveryV2?: boolean; reviewRecoveryV3?: boolean; sourceReferenceContinuation?: (approval: WorldUnknownContinuationApproval) => Promise<boolean> } = {}): Promise<boolean> {
+  options: { reviewRecoveryV2?: boolean; reviewRecoveryV3?: boolean; capacityContinuation?: (approval: WorldAutomaticReviewRecoveryV4) => Promise<boolean>; sourceReferenceContinuation?: (approval: WorldUnknownContinuationApproval) => Promise<boolean> } = {}): Promise<boolean> {
   const audit = await budget.audit(worldId);
   if (audit.held || audit.pendingRequestKeys.length) return false;
   if (audit.reservedMicroUsd === 0) return true;
@@ -27,6 +27,7 @@ export async function localPatchBudgetReadyForPublication(budget: Pick<WorldBudg
   for (const key of audit.unknownRequestKeys) {
     const approval = await budget.readContinuationApproval(worldId, key), version = approval?.version;
     if (approval?.version === "world-unknown-continuation/v1" && options.sourceReferenceContinuation && await options.sourceReferenceContinuation(approval)) continue;
+    if (approval?.version === "world-automatic-review-recovery/v4" && options.capacityContinuation && await options.capacityContinuation(approval)) continue;
     if (version !== "world-automatic-image-recovery/v1" && version !== "world-automatic-review-recovery/v1"
       && !(options.reviewRecoveryV2 && version === "world-automatic-review-recovery/v2")
       && !(options.reviewRecoveryV3 && version === "world-automatic-review-recovery/v3")) return false;

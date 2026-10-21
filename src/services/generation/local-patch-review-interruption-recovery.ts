@@ -5,7 +5,7 @@ import { boardWizardBudgetOf } from "./board-conditioned-wizard";
 import type { prepareLocalPatchBoardReview } from "./local-patch-board-review";
 import { fenceLocalPatchImages, LocalPatchRetainedPurchaseStore } from "./local-patch-lifecycle";
 import { sha256Bytes } from "./fixed-sprite";
-import { WorldBudgetError, type WorldAutomaticReviewRecovery, type WorldAutomaticReviewRecoveryV2, type WorldAutomaticReviewRecoveryV3 } from "./world-budget";
+import { WorldBudgetError, type WorldAutomaticReviewRecovery, type WorldAutomaticReviewRecoveryV2, type WorldAutomaticReviewRecoveryV3, type WorldAutomaticReviewRecoveryV4 } from "./world-budget";
 import { WORLD_AUTOMATIC_REVIEW_RECOVERY_V1_LIMIT, WORLD_AUTOMATIC_REVIEW_RECOVERY_V2_LIMIT, WORLD_AUTOMATIC_REVIEW_RECOVERY_V3_LIMIT } from "../../domain/generation/world-budget";
 import type { EvidenceRole, EvidenceStrategy } from "../../domain/scene/local-patch-evidence-policy";
 import { dualReviewReserves } from "../../domain/generation/dual-review-reserve";
@@ -15,6 +15,8 @@ import { backgroundRoundOfKey, backgroundRoundsOnImage, backgroundRoundTerminal,
 import { backgroundFailureKind } from "../../domain/generation/background-provider-error";
 import { leanFailureAdmission, REVIEW_INTERRUPTION_POLICY_V3 } from "../../domain/generation/lean-review-recovery";
 import { leanReviewRecoveryOf } from "./lean-review-recovery-pin";
+import { leanCapacityRecoveryOf } from "./lean-capacity-recovery-pin";
+import { CAPACITY_REVIEW_POLICY, capacityFailureCode } from "../../domain/generation/lean-capacity-recovery";
 
 export const REVIEW_INTERRUPTION_POLICY = "local-patch-review-interruption/v1" as const;
 /** The same rules for a world enrolled in the subject upgrade, once its two v1 records are spent. */
@@ -119,20 +121,24 @@ export async function recoverPreparedLocalPatchReviews(c: Container, prepared: P
   const enrolled = upgrade?.reviewRecovery === SUBJECT_REVIEW_RECOVERY && upgrade.ownerId === prepared.game.ownerId;
   // local-patch-lean-review-recovery/v1: only a world that carries its pin continues past v2, under v3.
   const pinned = enrolled && !!await leanReviewRecoveryOf(c.db, prepared.game.id);
+  const capacity = pinned ? await leanCapacityRecoveryOf(c.db, prepared.game.id) : null;
   const counts = await prepared.budget.countContinuationApprovals(prepared.worldId);
   let freeV1 = WORLD_AUTOMATIC_REVIEW_RECOVERY_V1_LIMIT - (counts[REVIEW_APPROVAL_V1] ?? 0);
   let freeV2 = enrolled ? WORLD_AUTOMATIC_REVIEW_RECOVERY_V2_LIMIT - (counts[REVIEW_APPROVAL_V2] ?? 0) : 0;
   let freeV3 = pinned ? WORLD_AUTOMATIC_REVIEW_RECOVERY_V3_LIMIT - (counts[REVIEW_APPROVAL_V3] ?? 0) : 0;
+  let freeV4 = capacity ? capacity.maxContinuations - (counts[REVIEW_APPROVAL_V4] ?? 0) : 0;
   const planned: Planned[] = [];
   for (const question of questions) {
     const prior = await prepared.budget.readContinuationApproval(prepared.worldId, question.requestKey);
-    if (prior && prior.version !== REVIEW_APPROVAL_V1 && !(prior.version === REVIEW_APPROVAL_V2 && enrolled) && !(prior.version === REVIEW_APPROVAL_V3 && pinned))
+    if (prior && prior.version !== REVIEW_APPROVAL_V1 && !(prior.version === REVIEW_APPROVAL_V2 && enrolled) && !(prior.version === REVIEW_APPROVAL_V3 && pinned)
+      && !(prior.version === REVIEW_APPROVAL_V4 && capacity && prior.grantSha256 === capacity.authorizationSha256))
       return refuse(`${question.requestKey} already carries a ${prior.version} approval that this continuation does not finish`);
-    const release = prior?.version === REVIEW_APPROVAL_V1 ? "v1" : prior?.version === REVIEW_APPROVAL_V2 ? "v2" : prior ? "v3"
-      : freeV1 > 0 ? (freeV1--, "v1") : freeV2 > 0 ? (freeV2--, "v2") : freeV3 > 0 ? (freeV3--, "v3") : null;
+    const release = prior?.version === REVIEW_APPROVAL_V1 ? "v1" : prior?.version === REVIEW_APPROVAL_V2 ? "v2" : prior?.version === REVIEW_APPROVAL_V3 ? "v3" : prior ? "v4"
+      : freeV1 > 0 ? (freeV1--, "v1") : freeV2 > 0 ? (freeV2--, "v2") : freeV3 > 0 ? (freeV3--, "v3") : freeV4 > 0 ? (freeV4--, "v4") : null;
     if (!release) return refuse(`the world's automatic review continuations are spent (${counts[REVIEW_APPROVAL_V1] ?? 0}/${WORLD_AUTOMATIC_REVIEW_RECOVERY_V1_LIMIT} under v1`
       + `${enrolled ? `, ${counts[REVIEW_APPROVAL_V2] ?? 0}/${WORLD_AUTOMATIC_REVIEW_RECOVERY_V2_LIMIT} under v2` : ""}`
-      + `${pinned ? `, ${counts[REVIEW_APPROVAL_V3] ?? 0}/${WORLD_AUTOMATIC_REVIEW_RECOVERY_V3_LIMIT} under v3` : ""}); ${question.requestKey} stays reserved in full`
+      + `${pinned ? `, ${counts[REVIEW_APPROVAL_V3] ?? 0}/${WORLD_AUTOMATIC_REVIEW_RECOVERY_V3_LIMIT} under v3` : ""}`
+      + `${capacity ? `, ${counts[REVIEW_APPROVAL_V4] ?? 0}/${capacity.maxContinuations} under v4` : ""}); ${question.requestKey} stays reserved in full`
       + " until a person reconciles or authorizes it");
     const one = await checkInterruption(c, prepared, question, release, !!options.admitProviderFailed);
     if (!one) return refuse(`${question.requestKey}: its record no longer matches an interruption this continuation admits on these pixels`);
@@ -157,9 +163,9 @@ export async function recoverPreparedLocalPatchReviews(c: Container, prepared: P
 export type InterruptedQuestion = Question & { readonly requestKey: string; readonly fingerprint: string };
 type Authorized = { question: InterruptedQuestion; policyId: string; approvalId: string; proof: Record<string, unknown>;
   reserveMicroUsd: number; shape: "timeout" | "provider-failed"; wireFault: "timeout" | "http" };
-type Planned = { authorized: Authorized; recovery: WorldAutomaticReviewRecovery | WorldAutomaticReviewRecoveryV2 | WorldAutomaticReviewRecoveryV3 };
+type Planned = { authorized: Authorized; recovery: WorldAutomaticReviewRecovery | WorldAutomaticReviewRecoveryV2 | WorldAutomaticReviewRecoveryV3 | WorldAutomaticReviewRecoveryV4 };
 const REVIEW_APPROVAL_V1 = "world-automatic-review-recovery/v1", REVIEW_APPROVAL_V2 = "world-automatic-review-recovery/v2";
-const REVIEW_APPROVAL_V3 = "world-automatic-review-recovery/v3";
+const REVIEW_APPROVAL_V3 = "world-automatic-review-recovery/v3", REVIEW_APPROVAL_V4 = "world-automatic-review-recovery/v4";
 
 /**
  * Whether an automatic review continuation was recorded on its image: its audit row is written only inside the image's
@@ -170,7 +176,7 @@ export async function continuationRecorded(c: Pick<Container, "db">, gameId: str
   return !!await c.db.auditLog.findFirst({ where: { id: approval.approvalId, entityType: "Game", entityId: gameId }, select: { id: true } });
 }
 export const isAutomaticReviewApproval = (approval: { version: string }) =>
-  approval.version === REVIEW_APPROVAL_V1 || approval.version === REVIEW_APPROVAL_V2 || approval.version === REVIEW_APPROVAL_V3;
+  approval.version === REVIEW_APPROVAL_V1 || approval.version === REVIEW_APPROVAL_V2 || approval.version === REVIEW_APPROVAL_V3 || approval.version === REVIEW_APPROVAL_V4;
 
 const paidGame = (value: { ownerId: string | null; orders: { userId: string | null; paymentStatus: string; paidAt: Date | null; refundedAt: Date | null }[] }) =>
   value.orders.some(o => o.userId === value.ownerId && o.paymentStatus === "PAID" && o.paidAt && !o.refundedAt)
@@ -185,8 +191,10 @@ async function writeApproval(c: Container, prepared: Prepared, { recovery }: Pla
     else if (recovery.version === REVIEW_APPROVAL_V2)
       await boardWizardBudgetOf(c, 1, { authorizeAutomaticReviewRecoveryV2: async captured => JSON.stringify(captured) === JSON.stringify(recovery) })
         .authorizeAutomaticReviewRecoveryV2(prepared.worldId, recovery);
-    else await boardWizardBudgetOf(c, 1, { authorizeAutomaticReviewRecoveryV3: async captured => JSON.stringify(captured) === JSON.stringify(recovery) })
+    else if (recovery.version === REVIEW_APPROVAL_V3) await boardWizardBudgetOf(c, 1, { authorizeAutomaticReviewRecoveryV3: async captured => JSON.stringify(captured) === JSON.stringify(recovery) })
       .authorizeAutomaticReviewRecoveryV3(prepared.worldId, recovery);
+    else await boardWizardBudgetOf(c, 1, { authorizeAutomaticReviewRecoveryV4: async captured => JSON.stringify(captured) === JSON.stringify(recovery) })
+        .authorizeAutomaticReviewRecoveryV4(prepared.worldId, recovery);
   } catch (error) {
     if (error instanceof WorldBudgetError && ["invalid_input", "invalid_snapshot", "world_held"].includes(error.code)) return false;
     throw error;
@@ -196,9 +204,9 @@ async function writeApproval(c: Container, prepared: Prepared, { recovery }: Pla
 
 /** Everything one question's continuation must satisfy, and the approval it would write. Reads only. `refused`: an
  * interruption of a kind, or past a bound, that is never continued automatically, and exactly why. */
-async function checkInterruption(c: Container, prepared: Prepared, question: InterruptedQuestion, release: "v1" | "v2" | "v3",
+async function checkInterruption(c: Container, prepared: Prepared, question: InterruptedQuestion, release: "v1" | "v2" | "v3" | "v4",
   admitProviderFailed: boolean): Promise<Planned | { refused: string } | null> {
-  const policyId = release === "v1" ? REVIEW_INTERRUPTION_POLICY : release === "v2" ? REVIEW_INTERRUPTION_POLICY_V2 : REVIEW_INTERRUPTION_POLICY_V3;
+  const policyId = release === "v1" ? REVIEW_INTERRUPTION_POLICY : release === "v2" ? REVIEW_INTERRUPTION_POLICY_V2 : release === "v3" ? REVIEW_INTERRUPTION_POLICY_V3 : CAPACITY_REVIEW_POLICY;
   const { game, scene, request, worldId, budget } = prepared, { requestKey, fingerprint } = question;
   if (scene.sceneVersion !== 12 || prepared.extraPlan || request.reviewScope !== "ready-only/v1"
     || request.hides.length !== 1 || !interruptedLocalPatchReviewRequest(requestKey, fingerprint)) return null;
@@ -230,6 +238,20 @@ async function checkInterruption(c: Container, prepared: Prepared, question: Int
     errorCode = terminal?.kind === "outcome" ? terminal.errorCode ?? null : null;
     failureKind = backgroundFailureKind(errorCode === null ? null : { code: errorCode, message: null });
   }
+  const capacity = release === "v4" ? await leanCapacityRecoveryOf(c.db, game.id) : null;
+  if (release === "v4") {
+    if (!capacity || shape !== "provider-failed" || !capacityFailureCode(errorCode)
+      || capacity.identitySha256 !== sha256Bytes(prepared.sheet)) return null;
+    const round = await backgroundRoundOfKey(c.db, game.id, worldId, requestKey);
+    if (!round || round.intent.binding.variantId !== selected.row.id || round.intent.binding.imageSha256 !== selected.imageSha256
+      || round.intent.binding.geometrySha256 !== selected.geometrySha256 || round.intent.binding.identitySha256 !== capacity.identitySha256) return null;
+    if (!capacity.heldRequestKeys.includes(requestKey)) {
+      const { leanReviewPolicyOf } = await import("../../domain/generation/visual-review-policy");
+      const intent = await c.db.auditLog.findUnique({ where: { id: `aud_sb_${round.intent.roundId}_intent` } });
+      if (leanReviewPolicyOf(round.intent.policyVersion ?? "")?.serviceTier !== "default"
+        || !intent || intent.createdAt.getTime() < Date.parse(capacity.authorizedAt)) return null;
+    }
+  }
   const wireFault = shape === "timeout" ? "timeout" as const : "http" as const;
   const proof = { policyId, gameId: game.id, ownerId: game.ownerId, sceneId: scene.id,
     variantId: selected.row.id, hideId: selected.hide.id, assetId: selected.asset.id, imageSha256: selected.imageSha256,
@@ -238,7 +260,8 @@ async function checkInterruption(c: Container, prepared: Prepared, question: Int
     unknownReasons: held.unknownReasons, retainedPayloadSha256: retained.payloadSha256, wireFault,
     ...(shape === "provider-failed" ? { providerFailed: PROVIDER_FAILED_SHAPE, responseId: reply.requestId } : {}),
     // Only a v3 proof names what the provider's own record said; every v1 and v2 proof is built exactly as before.
-    ...(release === "v3" && failureKind ? { failureKind, ...(errorCode ? { errorCode } : {}) } : {}) };
+    ...((release === "v3" || release === "v4") && failureKind ? { failureKind, ...(errorCode ? { errorCode } : {}) } : {}),
+    ...(capacity ? { grantSha256: capacity.authorizationSha256 } : {}) };
   const proofHash = sha256Bytes(Buffer.from(JSON.stringify(proof)));
   const approvalId = release === "v1" ? `auto-review-${proofHash}` : `auto-review-${release}-${proofHash}`;
   const prior = await budget.readContinuationApproval(worldId, requestKey);
@@ -249,8 +272,10 @@ async function checkInterruption(c: Container, prepared: Prepared, question: Int
       authorizedAt: prior?.version === "world-automatic-review-recovery/v1" ? prior.authorizedAt : selected.row.updatedAt.toISOString() }
     : release === "v2" ? { version: "world-automatic-review-recovery/v2", ...base, policyId: REVIEW_INTERRUPTION_POLICY_V2,
       authorizedAt: prior?.version === "world-automatic-review-recovery/v2" ? prior.authorizedAt : selected.row.updatedAt.toISOString() }
-    : { version: "world-automatic-review-recovery/v3", ...base, policyId: REVIEW_INTERRUPTION_POLICY_V3,
-      authorizedAt: prior?.version === "world-automatic-review-recovery/v3" ? prior.authorizedAt : selected.row.updatedAt.toISOString() };
+    : release === "v3" ? { version: "world-automatic-review-recovery/v3", ...base, policyId: REVIEW_INTERRUPTION_POLICY_V3,
+      authorizedAt: prior?.version === "world-automatic-review-recovery/v3" ? prior.authorizedAt : selected.row.updatedAt.toISOString() }
+    : { version: "world-automatic-review-recovery/v4", ...base, policyId: CAPACITY_REVIEW_POLICY, grantSha256: capacity!.authorizationSha256,
+      authorizedAt: prior?.version === "world-automatic-review-recovery/v4" ? prior.authorizedAt : selected.row.updatedAt.toISOString() };
   return { authorized: { question, policyId, approvalId, proof, reserveMicroUsd: held.reserveMicroUsd, shape, wireFault }, recovery };
 }
 

@@ -8,7 +8,7 @@ import type { StorageProvider } from "./types";
  */
 export class DbStorage implements StorageProvider {
   readonly id = "db" as const;
-  constructor(private readonly db: Db) {}
+  constructor(private readonly db: Pick<Db, "fileBlob">) {}
 
   async put(key: string, data: Buffer, contentType: string): Promise<void> {
     const bytes = new Uint8Array(data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength) as ArrayBuffer);

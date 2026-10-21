@@ -15,6 +15,7 @@ import { Notice } from "@/ui/Shell";
 import { AttemptStrip } from "./AttemptStrip";
 import { BoardWizardRecoveryForm } from "./BoardWizardRecoveryForm";
 import { LocalPatchRepairResumeForm } from "./LocalPatchRepairResumeForm";
+import { LeanCapacityRecoveryForm } from "./LeanCapacityRecoveryForm";
 import { IdentitySourceRevisionForm } from "./IdentitySourceRevisionForm";
 import { LeanReviewRecoveryForm } from "./LeanReviewRecoveryForm";
 import { LocalPatchPaidRepairForm } from "./LocalPatchPaidRepairForm";
@@ -40,9 +41,9 @@ function judgeLabel(judge: { verdict: string; reason: string; claimedVerdict?: s
   return "? השופט לא הכריע";
 }
 
-export default async function AdminOrderPage({ params, searchParams }: { params: Promise<{ gameId: string }>; searchParams: Promise<{ v?: string; repair?: string; paidRepair?: string; partialRelease?: string; delivery?: string; refund?: string; leanRecovery?: string; referenceRepair?: string }> }) {
+export default async function AdminOrderPage({ params, searchParams }: { params: Promise<{ gameId: string }>; searchParams: Promise<{ v?: string; repair?: string; paidRepair?: string; partialRelease?: string; delivery?: string; refund?: string; leanRecovery?: string; referenceRepair?: string; capacityRecovery?: string }> }) {
   await requireAdmin();
-  const [{ gameId }, { v, repair, paidRepair, partialRelease, delivery, refund, leanRecovery, referenceRepair }, { t }] = await Promise.all([params, searchParams, getI18n()]);
+  const [{ gameId }, { v, repair, paidRepair, partialRelease, delivery, refund, leanRecovery, referenceRepair, capacityRecovery }, { t }] = await Promise.all([params, searchParams, getI18n()]);
   const variant: "A" | "B" = v === "B" ? "B" : "A";
   const c = getContainer();
   const detail = await orderDetailForAdmin(c, gameId);
@@ -99,7 +100,10 @@ export default async function AdminOrderPage({ params, searchParams }: { params:
       {partialRelease === "published" && playable && delivery === "pending" ? <Notice kind="danger">המשחק פורסם, אך המשך מסירת הקישור לא אושר. יש לבדוק את מצב הקישור והמשלוח.</Notice> : null}
       {referenceRepair === "started" ? <Notice>{t.adminIdentityRevision.started}</Notice> : null}
       {referenceRepair === "blocked" ? <Notice kind="danger">{t.adminIdentityRevision.blocked}</Notice> : null}
+      {capacityRecovery === "authorized" ? <Notice>{t.adminIdentityRevision.capacityRecoveryAuthorized}</Notice> : null}
+      {capacityRecovery === "blocked" ? <Notice kind="danger">{t.adminIdentityRevision.capacityRecoveryBlocked}</Notice> : null}
       <IdentitySourceRevisionForm gameId={gameId} />
+      <LeanCapacityRecoveryForm gameId={gameId} />
       <LocalPatchPartialReleaseForm gameId={gameId} />
       <BoardWizardRecoveryForm gameId={gameId} />
       <LocalPatchRepairResumeForm gameId={gameId} />

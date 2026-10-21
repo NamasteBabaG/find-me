@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -905,9 +906,13 @@ describe("local-patch-lean/v1 on a whole paid world", () => {
 });
 
 
-it.each([{ scenario: "all27 after a settled unreadable reference review", loseReference: false, capFailure: false, mixed: false, rejudge: true },
-  { scenario: "safe cap refusal after added unknown outcomes", loseReference: true, capFailure: true, mixed: false, rejudge: false },
-  { scenario: "all27 after a lost reference with the real five-continuity/two-bundle reserve mix", loseReference: true, capFailure: false, mixed: true, rejudge: false }])("repairs a rejected paid reference: $scenario (real 2+4 history, synthetic providers)", async ({ loseReference, capFailure, mixed, rejudge }) => {
+it.each([{ scenario: "all27 after a settled unreadable reference review", loseReference: false, capFailure: false, mixed: false, rejudge: true, capacity: false },
+  { scenario: "safe cap refusal after added unknown outcomes", loseReference: true, capFailure: true, mixed: false, rejudge: false, capacity: false },
+  { scenario: "all27 after a lost reference with the real five-continuity/two-bundle reserve mix", loseReference: true, capFailure: false, mixed: true, rejudge: false, capacity: false },
+  { scenario: "capacity overload recovery all27", loseReference: true, capFailure: false, mixed: true, rejudge: false, capacity: true }])("repairs a rejected paid reference: $scenario (real 2+4 history, synthetic providers)", async ({ loseReference, capFailure, mixed, rejudge, capacity }) => {
+  const wallNow = Date.now; let elapsedBackoff = 0;
+  const capacityClock = capacity ? vi.spyOn(Date, "now").mockImplementation(() => wallNow() + elapsedBackoff) : null;
+  try {
   fakes.apiKey = "synthetic-never-live";
   const { planIdentitySourceRevision, beginIdentitySourceRevision, advanceIdentitySourceRevision } = await import("../identity-source-revision");
   const { identityRevisionPending } = await import("../identity-source-revision-state");
@@ -915,7 +920,7 @@ it.each([{ scenario: "all27 after a settled unreadable reference review", loseRe
   const { composeLocalPatchGame } = await import("../local-patch-player");
   const { identityApprovedForDisplay } = await import("../board-wizard-identity-gate");
   const styleModule = await import("../board-wizard-identity-style");
-  const gameId = `lean-source-revision-${mixed ? "recover" : loseReference ? "cap" : "clean"}-synthetic`, seeded = await leanWorld(gameId);
+  const gameId = `lean-source-revision-${capacity ? "capacity" : mixed ? "recover" : loseReference ? "cap" : "clean"}-synthetic`, seeded = await leanWorld(gameId);
   const covered = 2 + WORLD_AUTOMATIC_REVIEW_RECOVERY_V2_LIMIT, special = new Set([THIRD.id, REFUSED.id, SEAM.id]);
   const failing = HIDES.filter(h => !special.has(h.id)).slice(0, covered + 1);
   const provider = sol({ failMany: new Set((mixed ? failing.slice(5) : failing).map(h => h.id)), ...(mixed ? { failContinuityMany: new Set(failing.slice(0, 5).map(h => h.id)) } : {}) });
@@ -924,9 +929,16 @@ it.each([{ scenario: "all27 after a settled unreadable reference review", loseRe
   const container = { ...c, adminEmails: [email], visualReview: { request: vi.fn() }, backgroundReview: provider.fake } as Container;
   const slice = () => runLocalPatchWorldSlice(container, painter(gameId, new Map(), new Map()), gameId, { hardDeadlineAt: Date.now() + 270_000, diagnose: seamDiagnosis(gameId) });
   const job = () => db.generationJob.findUniqueOrThrow({ where: { id: `job_${gameId}` } });
+  const elapseEvidenceBackoff = async () => {
+    if (capacity && (await job()).currentStep === "local-patch:evidence-retry-wait") {
+      const { LOCAL_PATCH_EVIDENCE_RETRY_BACKOFF_MS } = await import("../local-patch-review-recovery");
+      // Simulate elapsed operational time, without editing the image's immutable evidence history.
+      elapsedBackoff += LOCAL_PATCH_EVIDENCE_RETRY_BACKOFF_MS + 1000;
+    }
+  };
   for (let turns = 0; turns < 900 && (await job()).currentStep !== "local-patch:needs-release"; turns++) {
     if ((await job()).currentStep === "local-patch:recovery-budget-wait") await db.generationJob.update({ where: { id: `job_${gameId}` }, data: { updatedAt: new Date(Date.now() - LEAN_RECOVERY_BACKOFF_MS - 1000) } });
-    await slice();
+    await elapseEvidenceBackoff(); await slice();
   }
   expect((await job()).lastError).toMatch(SPENT_CONTINUATIONS_HOLD);
   for (let n = 0; n < 10 && (await backgroundReviewWaiting(db, gameId, { inFlightOnly: true })).size; n++) await advanceContinuityInBackground(container, gameId);
@@ -957,6 +969,15 @@ it.each([{ scenario: "all27 after a settled unreadable reference review", loseRe
   await expect(beginIdentitySourceRevision(container, { gameId, operatorId: seeded.userId, expectedPlanSha256: plan.planSha256 })).rejects.toThrow("administrator");
   await beginIdentitySourceRevision(container, { gameId, operatorId, expectedPlanSha256: plan.planSha256 });
   expect(await identityRevisionPending(db, gameId)).toBe(true); expect(await job()).toEqual(parked);
+  if (capacity) {
+    // Finish the historical free continuation first, as the live source turn did.
+    // The short slice must defer before any replacement image or HIGH question is bought.
+    expect((await advanceIdentitySourceRevision(container, { gameId, operatorId, deadlineAt: Date.now() + 100_000 })).state).toBe("deferred");
+    expect(sourceImageCalls).toBe(0);
+    const { planLeanCompletionBudget, authorizeLeanCompletionBudget } = await import("../lean-completion-budget");
+    const six = await planLeanCompletionBudget(container, gameId);
+    await authorizeLeanCompletionBudget(container, { gameId, operatorId, expectedPlanSha256: six.planSha256 });
+  }
   expect((await slice()).paused).toBe(true); expect(await job()).toEqual(parked);
   expect(await identityApprovedForDisplay(container, { identityAssetId: originalIdentity, originalPhotoAssetId: provenance.photoAssetId, ageYears: 8 }, 12)).toBe(false);
   await expect(composeLocalPatchGame(container, gameId)).rejects.toThrow("reference revision");
@@ -1015,19 +1036,206 @@ it.each([{ scenario: "all27 after a settled unreadable reference review", loseRe
   expect(formerAccepted).toBeTruthy(); expect(subjectStageCurrent(formerAccepted!, effective.identitySha256)).toBe(false);
   expect((await advanceIdentitySourceRevision(container, { gameId, operatorId })).state).toBe("committed");
   expect(createCharacter).toHaveBeenCalledTimes(loseReference ? 2 : 1);
+  let afterCapacityGrant = -1, defaultInterrupted = false;
+  const trace: { i: number; hideId: string; paint: number; kind: string; tier: unknown; granted: boolean; evidenceAttempt: string | null; identity: string | null;
+    image: string | null; geometry: string | null; decidedAt: number | null }[] = [];
+  const prompts: string[] = [];
+  let grantedAt = Infinity;
+  let capacityBaseline: Awaited<ReturnType<typeof budget.readRequest>>[] = [];
+  const capacityKeys: string[] = [];
+  const defaultTarget = HIDES.filter(h => !special.has(h.id)).at(-1)!;
+  if (capacity) {
+    const cohort = new Set<string>();
+    const originalCreate = provider.fake.create, originalRead = provider.fake.retrieve;
+    const overloaded = new Map<string, { tier: "flex" | "default"; reads: number }>(); let granted = false;
+    provider.fake.create = async body => {
+      const prompt = (body.input as { content: { text?: string }[] }[])[0]!.content[0]!.text!;
+      const bound = boundHide(prompt), bundle = prompt.includes(SUBJECT_QUALITY_BUNDLE_VERSION);
+      const result = await originalCreate(body);
+      prompts.push(prompt);
+      // When this question was decided: its round's intent, written before its create (and before any reservation).
+      const digest = createHash("sha256").update(JSON.stringify(body)).digest("hex");
+      const intent = await db.auditLog.findFirst({ where: { entityId: gameId, action: SOL_BACKGROUND_ACTION, id: { endsWith: "_intent" }, metaJson: { contains: digest } } });
+      trace.push({ i: provider.creates.length - 1, hideId: bound.hideId, paint: bound.attempts, kind: bundle ? "bundle" : "continuity", tier: body.service_tier, granted,
+        evidenceAttempt: /Evidence attempt: (\d+)/.exec(prompt)?.[1] ?? null, identity: /"identitySha256":"([0-9a-f]{8})/.exec(prompt)?.[1] ?? null,
+        image: /"imageSha256":"([0-9a-f]{16})/.exec(prompt)?.[1] ?? null, geometry: /"geometrySha256":"([0-9a-f]{16})/.exec(prompt)?.[1] ?? null,
+        decidedAt: intent?.createdAt.getTime() ?? null });
+      if (!granted && body.service_tier === "flex" && !special.has(bound.hideId) && (cohort.has(bound.hideId) || cohort.size < 6)) {
+        cohort.add(bound.hideId); overloaded.set(result.responseId, { tier: "flex", reads: 0 });
+      }
+      if (granted && body.service_tier === "default" && bound.hideId === defaultTarget.id && bundle && !defaultInterrupted) {
+        defaultInterrupted = true; overloaded.set(result.responseId, { tier: "default", reads: 0 });
+      }
+      return result;
+    };
+    provider.fake.retrieve = async responseId => {
+      const failure = overloaded.get(responseId);
+      if (!failure) return originalRead(responseId);
+      // A real background response is first in progress: both questions are sent before either terminal failure arrives.
+      if (++failure.reads === 1) return { status: "in_progress" };
+      return { status: "failed", reading: { responseId, raw: null, usage: null, model: "gpt-6.1-sol", finishReason: "failed", serviceTier: failure.tier,
+        providerError: { code: "server_is_overloaded", message: "Synthetic provider capacity outage" } } };
+    };
+    for (let turns = 0; turns < 900 && (await job()).currentStep !== "local-patch:needs-release"; turns++) {
+      expect((await job()).status, "Capacity fixture must actually reach its old quota stop before READY").not.toBe("DONE");
+      if ((await job()).currentStep === "local-patch:recovery-budget-wait") await db.generationJob.update({ where: { id: `job_${gameId}` },
+        data: { updatedAt: new Date(Date.now() - LEAN_RECOVERY_BACKOFF_MS - 1000) } });
+      await elapseEvidenceBackoff(); await slice();
+    }
+    console.info("synthetic-capacity-before-grant", { job: await job(), overloaded: overloaded.size,
+      cohort: [...cohort], recentCreates: provider.creates.slice(-16), approvals: await budget.countContinuationApprovals(worldId) });
+    expect((await job()).lastError).toMatch(/11\/12 under v3|12\/12 under v3/);
+    for (let turns = 0; turns < 20 && (await backgroundReviewWaiting(db, gameId, { inFlightOnly: true })).size; turns++)
+      await advanceContinuityInBackground(container, gameId);
+    const { planLeanCapacityRecovery, authorizeLeanCapacityRecovery } = await import("../lean-capacity-recovery");
+    const { leanCompletionBudgetAuditId } = await import("../lean-completion-budget");
+    const recovery = await planLeanCapacityRecovery(container, gameId);
+    const beforeGrant = await db.worldBudgetLedger.findUniqueOrThrow({ where: { worldId } }), heldJob = await job();
+    const sixBefore = await db.auditLog.findUniqueOrThrow({ where: { id: leanCompletionBudgetAuditId(gameId) } });
+    const historical = await budget.audit(worldId); capacityKeys.push(...historical.unknownRequestKeys);
+    capacityBaseline = await Promise.all(capacityKeys.map(key => budget.readRequest(worldId, key)));
+    await authorizeLeanCapacityRecovery(container, { gameId, operatorId, expectedPlanSha256: recovery.planSha256 });
+    const { leanCapacityRecoveryId } = await import("../../../domain/generation/lean-capacity-recovery");
+    grantedAt = (await db.auditLog.findUniqueOrThrow({ where: { id: leanCapacityRecoveryId(gameId) } })).createdAt.getTime();
+    expect(await db.worldBudgetLedger.findUniqueOrThrow({ where: { worldId } })).toMatchObject({ snapshotJson: beforeGrant.snapshotJson, revision: beforeGrant.revision + 1 });
+    expect(await job()).toEqual(heldJob); expect(await db.auditLog.findUniqueOrThrow({ where: { id: sixBefore.id } })).toEqual(sixBefore);
+    granted = true; afterCapacityGrant = provider.creates.length;
+    expect((await nextParkedWake(container))?.gameId).toBe(gameId);
+    // Same eight historical unknowns as the live shape, with a conservative lost-image500k instead of a400k review.
+    expect(before.unknownRequestKeys).toHaveLength(7);
+    expect(capacityKeys.length).toBeGreaterThanOrEqual(8);
+  }
   const ready = async () => !!(await db.game.findUniqueOrThrow({ where: { id: gameId } })).configJson;
   for (let turns = 0; turns < 900 && !await ready(); turns++) {
     if ((await job()).currentStep === "local-patch:recovery-budget-wait") await db.generationJob.update({ where: { id: `job_${gameId}` }, data: { updatedAt: new Date(Date.now() - LEAN_RECOVERY_BACKOFF_MS - 1000) } });
-    await slice();
+    await elapseEvidenceBackoff(); await slice();
   }
   expect(await ready()).toBe(true);
   const rows = await db.targetVariantAsset.findMany({ where: { variant: "A", targetInstance: { gameScene: { gameId } } } });
   expect(rows).toHaveLength(27); expect(rows.every(row => row.status === "GENERATED" && subjectStageCurrent(row, effective.identitySha256))).toBe(true);
-  const after = await budget.audit(worldId); expect(after.capMicroUsd).toBe(4_000_000);
+  const after = await budget.audit(worldId); expect(after.capMicroUsd).toBe(capacity ? 12_000_000 : 4_000_000);
   if (loseReference) {
-    expect(after.unknownRequestKeys).toEqual([...before.unknownRequestKeys, "wizard:identity:2"]);
+    if (capacity) expect(after.unknownRequestKeys).toEqual(expect.arrayContaining([...before.unknownRequestKeys, "wizard:identity:2"]));
+    else expect(after.unknownRequestKeys).toEqual([...before.unknownRequestKeys, "wizard:identity:2"]);
     expect(await budget.readRequest(worldId, "wizard:identity:2")).toMatchObject({ state: "unknown", reserveMicroUsd: 500_000 });
     expect(await budget.readContinuationApproval(worldId, "wizard:identity:2")).toMatchObject({ version: "world-unknown-continuation/v1", operatorId });
   } else expect(after.unknownRequestKeys).toEqual(before.unknownRequestKeys);
-  expect(after.committedMicroUsd).toBeLessThanOrEqual(4_000_000);
+  expect(after.committedMicroUsd).toBeLessThanOrEqual(capacity ? 12_000_000 : 4_000_000);
+  if (capacity) {
+    const sentAfterGrant = trace.filter(one => one.granted);
+    console.info("synthetic-capacity-after-grant", JSON.stringify({ afterCapacityGrant, grantedAt,
+      flexSentAfterGrant: sentAfterGrant.filter(one => one.tier !== "default"), identities: [...new Set(trace.map(one => one.identity))] }));
+    expect(defaultInterrupted).toBe(true);
+    expect(sentAfterGrant.length).toBe(provider.creates.length - afterCapacityGrant);
+    expect(sentAfterGrant.length).toBeGreaterThan(0);
+    // One tier per round (R22): a round begun on Flex before the grant (its intent and reservation recorded) keeps its
+    // exact keys and finishes its other question on Flex; every round begun after the grant is asked at the default tier.
+    // A round: one evidence attempt about one candidate (its pixels, geometry, identity and painting); a self-repaired
+    // candidate is a new binding with its own rounds, even where its pixels are unchanged.
+    const roundOf = (one: typeof trace[number]) => `${one.hideId}:${one.identity}:${one.image}:${one.geometry}:${one.paint}:${one.evidenceAttempt}`;
+    expect(trace.every(one => one.decidedAt !== null && one.image !== null && one.geometry !== null && one.identity !== null)).toBe(true);
+    const begunOnFlexBeforeGrant = new Set(trace.filter(one => one.tier === "flex" && one.decidedAt! < grantedAt).map(roundOf));
+    expect(sentAfterGrant.filter(one => one.tier !== "default" && !begunOnFlexBeforeGrant.has(roundOf(one)))).toEqual([]);
+    // Nothing bought twice: each round asks each of its two questions once, whichever tier it is on.
+    const asked = trace.map(one => `${roundOf(one)}:${one.kind}`);
+    for (const [index, key] of asked.entries()) {
+      const first = asked.indexOf(key);
+      if (first === index) continue;
+      const a = prompts[first]!, b = prompts[index]!;
+      let at = 0; while (at < a.length && a[at] === b[at]) at++;
+      console.info("synthetic-capacity-duplicate-round", JSON.stringify({ key, first: trace[first], again: trace[index], lengths: [a.length, b.length], at,
+        a: a.slice(Math.max(0, at - 300), at + 500), b: b.slice(Math.max(0, at - 300), at + 500) }));
+    }
+    expect(asked.filter((key, index) => asked.indexOf(key) !== index)).toEqual([]);
+    expect(provider.creates.slice(afterCapacityGrant).some(one => !provider.creates.slice(0, afterCapacityGrant).some(old => old.hideId === one.hideId))).toBe(true);
+    expect(provider.creates.filter(one => one.hideId === defaultTarget.id && one.kind === "continuity")).toHaveLength(1);
+    expect(new Set(provider.bodies).size).toBe(provider.bodies.length);
+    for (let n = 0; n < capacityKeys.length; n++) expect(await budget.readRequest(worldId, capacityKeys[n]!)).toEqual(capacityBaseline[n]);
+    expect((await budget.countContinuationApprovals(worldId))["world-automatic-review-recovery/v4"]).toBeGreaterThan(0);
+    // Playable: READY at publication, DELIVERED once the world's ready mail is sent within the same slices.
+    expect(["READY", "DELIVERED"]).toContain((await db.game.findUniqueOrThrow({ where: { id: gameId } })).status);
+    // Publication purged the private photograph; the granted cap above still resolved after that purge.
+    expect((await db.childProfile.findUniqueOrThrow({ where: { id: `chl-${gameId}` } })).originalPhotoAssetId).toBeNull();
+    console.info("synthetic-capacity-all27", { unknowns: after.unknownRequestKeys.length, reservedMicroUsd: after.reservedMicroUsd,
+      committedMicroUsd: after.committedMicroUsd, capMicroUsd: after.capMicroUsd });
+  }
+  } finally { capacityClock?.mockRestore(); }
 }, 1_500_000);
+
+it.each(["default", "flex"] as const)("capacity recovery keeps an unfinished %s question on its exact key across review passes", async existingTier => {
+  const gameId = `lean-capacity-pending-${existingTier}-synthetic`; await leanWorld(gameId);
+  const pinModule = await import("../lean-capacity-recovery-pin");
+  // This is a transport-policy boundary test. Full receipt/financial authority is tested separately against SQLite.
+  let capacityGranted = existingTier === "default";
+  const pin = vi.spyOn(pinModule, "leanCapacityRecoveryOf").mockImplementation(async (_db, id) => id === gameId && capacityGranted ? {} as never : null);
+  const created: { hideId: string; tier: unknown; digest: string }[] = [];
+  const fake: BackgroundReviewTransport = { namespace: "openai:find-me-existing", create: async body => {
+    const prompt = (body.input as { content: { text?: string }[] }[])[0]!.content[0]!.text!;
+    created.push({ hideId: boundHide(prompt).hideId, tier: body.service_tier, digest: sha256Bytes(Buffer.from(JSON.stringify(body))) });
+    return { responseId: `resp_pending_default_${created.length}` };
+  }, retrieve: async () => ({ status: "in_progress" }), cancel: async () => {} };
+  const container = { ...c, visualReview: { request: vi.fn() }, backgroundReview: fake } as Container, deps = painter(gameId, new Map(), new Map());
+  try {
+    await db.auditLog.create({ data: { id: leanReviewRecoveryAuditId(gameId), actorType: "SYSTEM", action: LEAN_REVIEW_RECOVERY_ACTION,
+      entityType: "Game", entityId: gameId, metaJson: JSON.stringify(leanNewWorldRecoveryReceipt(gameId)) } });
+    for (let turn = 0; turn < 5 && !created.length; turn++)
+      await runLocalPatchWorldSlice(container, deps, gameId, { maxHides: 1, hardDeadlineAt: Date.now() + 270_000 });
+    const first = created[0]; expect(first).toBeTruthy();
+    const before = created.filter(one => one.hideId === first!.hideId); expect(before.length).toBeGreaterThan(0);
+    expect(before.every(one => one.tier === existingTier)).toBe(true);
+    capacityGranted = true;
+    const { reviewLocalPatchBoard } = await import("../local-patch-board-review");
+    const scene = await db.gameScene.findFirstOrThrow({ where: { gameId, sceneSlug: boardOf(first!.hideId).board } });
+    await reviewLocalPatchBoard(container, { gameId, sceneId: scene.id }, { fence: async () => {} });
+    await reviewLocalPatchBoard(container, { gameId, sceneId: scene.id }, { fence: async () => {} });
+    expect(created.filter(one => one.hideId === first!.hideId)).toEqual(before);
+    expect(new Set(created.map(one => one.digest)).size).toBe(created.length);
+  } finally { pin.mockRestore(); }
+}, 180_000);
+
+it.each([false, true])("capacity recovery replays completed Flex answers at the first evidence attempt after an independent poll; recover unreadable continuity: %s", async badContinuity => {
+  const gameId = `lean-capacity-completed-flex-${badContinuity}-synthetic`; await leanWorld(gameId);
+  await db.auditLog.create({ data: { id: leanReviewRecoveryAuditId(gameId), actorType: "SYSTEM", action: LEAN_REVIEW_RECOVERY_ACTION,
+    entityType: "Game", entityId: gameId, metaJson: JSON.stringify(leanNewWorldRecoveryReceipt(gameId)) } });
+  const pinModule = await import("../lean-capacity-recovery-pin"); let granted = false, completed = false;
+  const pin = vi.spyOn(pinModule, "leanCapacityRecoveryOf").mockImplementation(async (_db, id) => id === gameId && granted ? {} as never : null);
+  const created: { hideId: string; tier: unknown; kind: "bundle" | "continuity"; digest: string }[] = [];
+  const byResponse = new Map<string, typeof created[number]>();
+  const fake: BackgroundReviewTransport = { namespace: "openai:find-me-existing", create: async body => {
+    const prompt = (body.input as { content: { text?: string }[] }[])[0]!.content[0]!.text!, hideId = boundHide(prompt).hideId;
+    const item = { hideId, tier: body.service_tier, kind: prompt.includes(SUBJECT_QUALITY_BUNDLE_VERSION) ? "bundle" as const : "continuity" as const,
+      digest: sha256Bytes(Buffer.from(JSON.stringify(body))) };
+    created.push(item); const responseId = `resp_completed_flex_${created.length}`; byResponse.set(responseId, item); return { responseId };
+  }, retrieve: async responseId => {
+    if (!completed) return { status: "in_progress" };
+    const item = byResponse.get(responseId)!;
+    return { status: "completed", reading: { responseId, raw: item.kind === "bundle" ? bundleAnswer(item.hideId, 3) : badContinuity && item.tier === "flex" ? "{synthetic-unreadable" : longAnswer(item.hideId, 400, 400, 160),
+      usage: { input_tokens: 2000, output_tokens: 500 }, model: "gpt-6.1-sol", finishReason: "stop", serviceTier: String(item.tier) } };
+  }, cancel: async () => {} };
+  const container = { ...c, visualReview: { request: vi.fn() }, backgroundReview: fake } as Container;
+  try {
+    for (let turn = 0; turn < 5 && !created.length; turn++)
+      await runLocalPatchWorldSlice(container, painter(gameId, new Map(), new Map()), gameId, { maxHides: 1, hardDeadlineAt: Date.now() + 270_000 });
+    expect(created).toHaveLength(2); expect(created.every(item => item.tier === "flex")).toBe(true);
+    const before = structuredClone(created); completed = true;
+    await advanceContinuityInBackground(container, gameId);
+    expect((await backgroundReviewWaiting(db, gameId, { inFlightOnly: true })).size).toBe(0);
+    const scene = await db.gameScene.findFirstOrThrow({ where: { gameId, sceneSlug: boardOf(created[0]!.hideId).board } });
+    const { reviewLocalPatchBoard } = await import("../local-patch-board-review");
+    granted = true;
+    await reviewLocalPatchBoard(container, { gameId, sceneId: scene.id }, { fence: async () => {} });
+    expect(created).toEqual(before);
+    expect(await boardWizardBudgetOf(container).audit(boardWizardWorldId(gameId))).toMatchObject({ pendingRequestKeys: [] });
+    if (badContinuity) {
+      const { prepareLocalPatchBoardReview } = await import("../local-patch-board-review");
+      const prepared = await prepareLocalPatchBoardReview(container, { gameId, sceneId: scene.id }, {},
+        { playerReview: true, includePlayerCandidates: true, skipApprovedEvidence: true, onlyHideId: created[0]!.hideId });
+      expect(prepared.ready).toBe(true); if (!prepared.ready) throw Error("Synthetic same-pixel retry did not prepare");
+      expect(prepared.evidenceReviewAttempt).toBe(2);
+      const { buyDualLocalPatchReview } = await import("../local-patch-dual-review");
+      await buyDualLocalPatchReview(container, prepared, { fence: async () => {} });
+      expect(created.slice(before.length)).toEqual([expect.objectContaining({ hideId: created[0]!.hideId, kind: "continuity", tier: "default" })]);
+      expect(created.filter(item => item.kind === "bundle")).toHaveLength(1);
+    }
+  } finally { pin.mockRestore(); }
+}, 180_000);

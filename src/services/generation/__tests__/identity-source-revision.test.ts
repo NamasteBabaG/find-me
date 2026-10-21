@@ -1,3 +1,8 @@
+import { planLeanCapacityRecovery, authorizeLeanCapacityRecovery, readLeanCapacityRecoveryBudget } from "../lean-capacity-recovery";
+import { leanCapacityRecoveryOf, boundLeanCapacityHold, capacityContinuationPublishable } from "../lean-capacity-recovery-pin";
+import { leanCapacityRecoveryId } from "../../../domain/generation/lean-capacity-recovery";
+import { prepareVisualReview } from "../visual-review";
+import { askContinuityInBackground, advanceContinuityInBackground } from "../continuity-background";
 import { planLeanCompletionBudget, authorizeLeanCompletionBudget, readLeanCompletionBudget, leanCompletionBudgetAuditId } from "../lean-completion-budget";
 import { boardConditioningHash } from "../board-conditioned-source";
 import { mkdtempSync, realpathSync, rmSync } from "node:fs";
@@ -540,4 +545,195 @@ describe("explicit six-dollar completion authority for one existing source revis
     await expect(f.budget.audit(f.worldId)).rejects.toThrow();
     expect(fetch).not.toHaveBeenCalled();
   });
+});
+
+describe("explicit capacity recovery authority; synthetic source and provider only", () => {
+  async function capacityFixture(errorCode = "server_is_overloaded", keepPending = false) {
+    const f = await fixture(); await f.begin();
+    const sixPlan = await planLeanCompletionBudget(f.c, f.gameId);
+    await authorizeLeanCompletionBudget(f.c, { gameId: f.gameId, operatorId: f.operatorId, expectedPlanSha256: sixPlan.planSha256 });
+    review(); expect((await advanceIdentitySourceRevision(f.c, { gameId: f.gameId, operatorId: f.operatorId })).state).toBe("committed");
+    vi.stubGlobal("fetch", vi.fn(async () => { throw Error("Live provider forbidden"); }));
+    const upgrade = (await subjectUpgradeOf(db, f.gameId))!;
+    const legacy = Array.from({ length: 17 }, (_, n) => ({ requestKey: `self-repair:board:newyork:${(n + 100).toString(16).padStart(64, "0")}`,
+      scope: "judge" as const, operationFingerprint: (n + 100).toString(16).padStart(64, "0"), reserveMicroUsd: 66_000 }));
+    for (const input of legacy) await f.budget.reserve(f.worldId, input);
+    let terminal = false, sent = 0;
+    const provider: import("../../../infra/generation/types").BackgroundReviewTransport = { namespace: "openai:find-me-existing",
+      create: async () => ({ responseId: `resp_capacity_${f.gameId}_${++sent}` }), cancel: async () => {},
+      retrieve: async responseId => terminal ? { status: "failed", reading: { responseId, raw: null, usage: null, model: "gpt-6.1-sol",
+        finishReason: "failed", serviceTier: "flex", providerError: { code: errorCode, message: null } } } : { status: "in_progress" } };
+    f.c.backgroundReview = provider;
+    const keys: string[] = [], assetIds: string[] = [];
+    for (let n = 0; n < 2; n++) {
+      const board = boards[n]!, hide = board.hides[0]!, sceneId = `gsc-${f.gameId}-${board.board}`;
+      const marker = await sharp({ create: { width: 8, height: 8, channels: 4, background: n ? "#cc6633" : "#3366cc" } }).png().toBuffer();
+      const image = await sharp(f.seeded.sheet).composite([{ input: marker, left: 8, top: 8 }]).png().toBuffer();
+      const imageSha256 = sha256Bytes(image), geometrySha256 = String(n + 1).repeat(64), variantId = `capacity-variant-${f.gameId}-${n}`;
+      const assetId = `capacity-asset-${f.gameId}-${n}`, storagePath = `game/${assetId}.png`; assetIds.push(assetId);
+      await f.c.storage.put(storagePath, image, "image/png");
+      await db.asset.create({ data: { id: assetId, ownerId: f.seeded.userId, type: "TARGET_SPRITE", visibility: "GAME", storagePath, mimeType: "image/png", bytes: image.length } });
+      await db.targetInstance.create({ data: { id: `capacity-target-${f.gameId}-${n}`, gameSceneId: sceneId, targetId: hide.targetId,
+        targetType: "child", slotAId: "A", slotBId: "B" } });
+      await db.targetVariantAsset.create({ data: { id: variantId, targetInstanceId: `capacity-target-${f.gameId}-${n}`, variant: "A", slotId: "A", assetId,
+        attempts: 1, status: "FAILED", judgeJson: JSON.stringify({ judgedSha256: imageSha256, geometrySha256 }) } });
+      const question = prepareVisualReview({ role: "head-continuity", effort: "high", transport: "responses-background", tier: "flex",
+        images: [image], labels: [`CASE ${hide.id}:people`], prompt: `Synthetic capacity evidence ${n}; immutable hide ${hide.id}` });
+      const requestKey = `self-repair:board:${board.board}:${question.fingerprint}`; keys.push(requestKey);
+      expect(await askContinuityInBackground(f.c, { gameId: f.gameId, worldId: f.worldId, requestKey, question, reserveMicroUsd: 120_000,
+        fence: async () => {}, binding: { hideId: hide.id, variantId, imageSha256, geometrySha256, identitySha256: upgrade.identitySha256 } })).toMatchObject({ kind: "waiting" });
+    }
+    for (const input of legacy) await f.budget.markUnknown(f.worldId, input.requestKey, "Synthetic historical unpriced review");
+    const allowed = boardWizardBudgetOf(f.c, 1, { authorizeAutomaticReviewRecovery: async () => true,
+      authorizeAutomaticReviewRecoveryV2: async () => true, authorizeAutomaticReviewRecoveryV3: async () => true });
+    for (const [n, input] of legacy.entries()) {
+      const base = { ...input, approvalId: `historical-capacity-${f.gameId}-${n}`, unknownReasons: ["Synthetic historical unpriced review"],
+        authorizationSha256: "8".repeat(64), authorizedAt: new Date().toISOString() };
+      if (n < 2) await allowed.authorizeAutomaticReviewRecovery(f.worldId, { ...base, policyId: "local-patch-review-interruption/v1" });
+      else if (n < 6) await allowed.authorizeAutomaticReviewRecoveryV2(f.worldId, { ...base, policyId: "local-patch-review-interruption/v2" });
+      else await allowed.authorizeAutomaticReviewRecoveryV3(f.worldId, { ...base, policyId: "local-patch-review-interruption/v3" });
+    }
+    terminal = !keepPending; if (!keepPending) await advanceContinuityInBackground(f.c, f.gameId);
+    expect((await f.budget.audit(f.worldId)).pendingRequestKeys).toHaveLength(keepPending ? 2 : 0);
+    await db.generationJob.update({ where: { id: `job_${f.gameId}` }, data: { status: "FAILED", currentStep: "local-patch:needs-release",
+      lastError: `local-patch-continue-in-slice/v1: the world's automatic review continuations are spent (2/2 under v1, 4/4 under v2, 11/12 under v3); ${keys[1]} stays reserved in full until a person reconciles or authorizes it` } });
+    return { ...f, keys, assetIds, legacy, sent: () => sent };
+  }
+
+  it("writes a separate exact grant once, leaving every historical byte, reserve, hold and other world's cap unchanged", async () => {
+    const f = await capacityFixture(), plan = await planLeanCapacityRecovery(f.c, f.gameId);
+    const ledger = await db.worldBudgetLedger.findUniqueOrThrow({ where: { worldId: f.worldId } });
+    const job = await db.generationJob.findUniqueOrThrow({ where: { id: `job_${f.gameId}` } });
+    const six = await db.auditLog.findUniqueOrThrow({ where: { id: leanCompletionBudgetAuditId(f.gameId) } });
+    const input = { gameId: f.gameId, operatorId: f.operatorId, expectedPlanSha256: plan.planSha256 };
+    const grant = await authorizeLeanCapacityRecovery(f.c, input);
+    expect(await authorizeLeanCapacityRecovery(f.c, input)).toEqual(grant);
+    expect(await readLeanCapacityRecoveryBudget(f.c, f.worldId)).toMatchObject({ capMicroUsd: 12_000_000 });
+    expect(await leanCapacityRecoveryOf(db, f.gameId)).toEqual(grant);
+    expect(grant.heldRequestKeys).toEqual([...f.keys].sort()); expect(new Set(grant.capacityEvidence.map(r => r.imageSha256)).size).toBe(2);
+    expect(await db.worldBudgetLedger.findUniqueOrThrow({ where: { worldId: f.worldId } })).toMatchObject({ snapshotJson: ledger.snapshotJson, revision: ledger.revision + 1 });
+    expect(await db.generationJob.findUniqueOrThrow({ where: { id: job.id } })).toEqual(job);
+    expect(await db.auditLog.findUniqueOrThrow({ where: { id: six.id } })).toEqual(six);
+    expect((await f.budget.audit(f.worldId)).reservedMicroUsd).toBe(17 * 66_000 + 240_000);
+    const other = await fixture(); expect((await other.budget.audit(other.worldId)).capMicroUsd).toBe(4_000_000);
+    expect(f.sent()).toBe(2); expect(fetch).not.toHaveBeenCalled();
+    expect(await boundLeanCapacityHold(db, f.gameId, job)).toMatchObject({ jobId: job.id, heldRequestKeys: grant.heldRequestKeys });
+    expect(await boundLeanCapacityHold(db, f.gameId, { ...job, lastError: "A later unrelated operator hold" })).toBeNull();
+    const proof = { policyId: "local-patch-review-interruption/v4" as const, grantSha256: grant.authorizationSha256, identitySha256: grant.identitySha256,
+      requestKey: f.keys[0]!, operationFingerprint: (await f.budget.readRequest(f.worldId, f.keys[0]!))!.operationFingerprint,
+      unknownReasons: ["Synthetic unpriced capacity"], gameId: f.gameId, ownerId: grant.ownerId };
+    const raw = JSON.stringify(proof), authorizationSha256 = sha256Bytes(Buffer.from(raw)), approvalId = `auto-review-v4-${authorizationSha256}`;
+    const approval = { version: "world-automatic-review-recovery/v4", worldId: f.worldId, ...proof, authorizationSha256, approvalId,
+      scope: "judge", reserveMicroUsd: 120_000, authorizedAt: new Date().toISOString() } as const;
+    await db.auditLog.create({ data: { id: approvalId, actorType: "SYSTEM", action: proof.policyId, entityType: "Game", entityId: f.gameId, metaJson: raw } });
+    expect(await capacityContinuationPublishable(db, f.gameId, approval)).toBe(true);
+    expect(await capacityContinuationPublishable(db, f.gameId, { ...approval, grantSha256: "e".repeat(64) })).toBe(false);
+    await db.auditLog.update({ where: { id: approvalId }, data: { actorType: "ADMIN" } });
+    expect(await capacityContinuationPublishable(db, f.gameId, approval)).toBe(false);
+    await db.auditLog.update({ where: { id: approvalId }, data: { actorType: "SYSTEM", metaJson: raw + " " } });
+    expect(await capacityContinuationPublishable(db, f.gameId, approval)).toBe(false);
+  }, 90_000);
+
+  it("rechecks stored image bytes on the transaction connection while authorizing", async () => {
+    const f = await capacityFixture(), plan = await planLeanCapacityRecovery(f.c, f.gameId);
+    const originalGet = f.c.storage.get.bind(f.c.storage), originalTransaction = db.$transaction.bind(db);
+    let inTransaction = false, externalReads = 0;
+    const storage = vi.spyOn(f.c.storage, "get").mockImplementation(async key => {
+      externalReads++;
+      if (inTransaction) throw Error("Synthetic single-connection guard: outer storage escaped transaction");
+      return originalGet(key);
+    });
+    const transaction = vi.spyOn(db, "$transaction").mockImplementation(((work: (tx: import("@prisma/client").Prisma.TransactionClient) => Promise<unknown>, options?: unknown) =>
+      originalTransaction(async tx => { inTransaction = true; try { return await work(tx); } finally { inTransaction = false; } }, options as never)) as typeof db.$transaction);
+    try {
+      const receipt = await authorizeLeanCapacityRecovery(f.c, { gameId: f.gameId, operatorId: f.operatorId, expectedPlanSha256: plan.planSha256 });
+      expect(receipt.capMicroUsd).toBe(12_000_000); expect(externalReads).toBeGreaterThan(0);
+      expect(await leanCapacityRecoveryOf(db, f.gameId)).toEqual(receipt);
+    } finally { transaction.mockRestore(); storage.mockRestore(); }
+  }, 90_000);
+
+  it.each(["non-admin", "wrong-plan", "changed-hold", "changed-ledger", "refund", "shared", "changed-age", "lost-image", "wrong-owner"])("refuses %s without changing money or releasing the job", async mode => {
+    const f = await capacityFixture(), plan = await planLeanCapacityRecovery(f.c, f.gameId);
+    if (mode === "non-admin") f.c.adminEmails = [];
+    if (mode === "changed-hold") await db.generationJob.update({ where: { id: `job_${f.gameId}` }, data: { lastError: "Synthetic separate operator hold" } });
+    if (mode === "changed-ledger") await f.budget.recordUnknown(f.worldId, { requestKey: "synthetic-new-financial-state", scope: "judge", operationFingerprint: "c".repeat(64), reserveMicroUsd: 40_000, reason: "Synthetic new unknown" });
+    if (mode === "refund") await db.order.update({ where: { id: `order-${f.gameId}` }, data: { refundedAt: new Date() } });
+    if (mode === "shared") await db.game.create({ data: { id: `shared-${f.gameId}`, ownerId: f.seeded.userId, childProfileId: `chl-${f.gameId}` } });
+    if (mode === "changed-age") await db.childProfile.update({ where: { id: `chl-${f.gameId}` }, data: { ageYears: 9 } });
+    if (mode === "lost-image") await db.asset.update({ where: { id: f.assetIds[1]! }, data: { deletedAt: new Date(), status: "DELETED" } });
+    if (mode === "wrong-owner") await db.asset.update({ where: { id: f.assetIds[1]! }, data: { ownerId: f.operatorId } });
+    const ledger = await db.worldBudgetLedger.findUniqueOrThrow({ where: { worldId: f.worldId } }), job = await db.generationJob.findUniqueOrThrow({ where: { id: `job_${f.gameId}` } });
+    await expect(authorizeLeanCapacityRecovery(f.c, { gameId: f.gameId, operatorId: f.operatorId,
+      expectedPlanSha256: mode === "wrong-plan" ? "f".repeat(64) : plan.planSha256 })).rejects.toThrow();
+    expect(await db.auditLog.findUnique({ where: { id: leanCapacityRecoveryId(f.gameId) } })).toBeNull();
+    expect(await db.worldBudgetLedger.findUniqueOrThrow({ where: { worldId: f.worldId } })).toEqual(ledger);
+    expect(await db.generationJob.findUniqueOrThrow({ where: { id: job.id } })).toEqual(job);
+    expect(f.sent()).toBe(2); expect(fetch).not.toHaveBeenCalled();
+  }, 90_000);
+
+  it("waits for known in-flight responses without granting or changing the held job", async () => {
+    const f = await capacityFixture("server_is_overloaded", true);
+    const ledger = await db.worldBudgetLedger.findUniqueOrThrow({ where: { worldId: f.worldId } }), job = await db.generationJob.findUniqueOrThrow({ where: { id: `job_${f.gameId}` } });
+    await expect(planLeanCapacityRecovery(f.c, f.gameId)).rejects.toThrow("Read existing provider responses first");
+    expect(await db.auditLog.findUnique({ where: { id: leanCapacityRecoveryId(f.gameId) } })).toBeNull();
+    expect(await db.worldBudgetLedger.findUniqueOrThrow({ where: { worldId: f.worldId } })).toEqual(ledger);
+    expect(await db.generationJob.findUniqueOrThrow({ where: { id: job.id } })).toEqual(job);
+  }, 90_000);
+
+  it.each(["refund", "deleted-child"])("keeps a genuine late bill after %s while withdrawing the extra capacity", async lifecycle => {
+    const f = await capacityFixture(), plan = await planLeanCapacityRecovery(f.c, f.gameId);
+    await authorizeLeanCapacityRecovery(f.c, { gameId: f.gameId, operatorId: f.operatorId, expectedPlanSha256: plan.planSha256 });
+    if (lifecycle === "refund") await db.order.update({ where: { id: `order-${f.gameId}` }, data: { refundedAt: new Date() } });
+    else await db.childProfile.update({ where: { id: `chl-${f.gameId}` }, data: { deletedAt: new Date() } });
+    expect(await readLeanCapacityRecoveryBudget(f.c, f.worldId)).toBeNull();
+    const usage = { input_tokens: 1000, output_tokens: 100 };
+    await f.budget.settle(f.worldId, f.keys[0]!, { providerNamespace: "openai:find-me-existing", providerRequestId: `resp_capacity_${f.gameId}_1`,
+      usageId: boardConditioningHash(usage), rawUsage: usage, model: "gpt-6.1-sol", amountMicroUsd: 10_000, costBasis: "conservative-upper-estimate" });
+    expect(await f.budget.readRequest(f.worldId, f.keys[0]!)).toMatchObject({ state: "settled", evidence: { amountMicroUsd: 10_000 } });
+    expect(await f.budget.audit(f.worldId)).toMatchObject({ capMicroUsd: 4_000_000, held: true });
+    await expect(f.budget.reserve(f.worldId, { requestKey: "no-extra-capacity", scope: "judge", operationFingerprint: "7".repeat(64), reserveMicroUsd: 40_000 })).rejects.toThrow();
+    expect(f.sent()).toBe(2); expect(fetch).not.toHaveBeenCalled();
+  }, 90_000);
+
+  it.each(["published", "delivered", "purged-unpublished", "published-unrecorded"])("keeps the granted cap only across the READY finalizer's own photo purge: %s", async mode => {
+    const f = await capacityFixture(), plan = await planLeanCapacityRecovery(f.c, f.gameId);
+    const grant = await authorizeLeanCapacityRecovery(f.c, { gameId: f.gameId, operatorId: f.operatorId, expectedPlanSha256: plan.planSha256 });
+    const child = await db.childProfile.findUniqueOrThrow({ where: { id: `chl-${f.gameId}` } });
+    expect(child.originalPhotoAssetId).toBeTruthy();
+    if (mode !== "published-unrecorded") await db.auditLog.create({ data: { id: `aud-photo-purge-${f.gameId}`, actorType: "SYSTEM", action: "local-patch:photo-purged-after-approval",
+      entityType: "Asset", entityId: child.identityAssetId!, metaJson: JSON.stringify({ photoAssetId: child.originalPhotoAssetId, ageYears: child.ageYears }) } });
+    await db.childProfile.update({ where: { id: child.id }, data: { originalPhotoAssetId: null } });
+    if (mode !== "purged-unpublished") await db.game.update({ where: { id: f.gameId }, data: { status: mode === "delivered" ? "DELIVERED" : "READY", configJson: "{}", readyAt: new Date() } });
+    if (mode === "published" || mode === "delivered") {
+      expect(await readLeanCapacityRecoveryBudget(f.c, f.worldId)).toEqual({ worldId: f.worldId, capMicroUsd: 12_000_000, authorizationSha256: grant.authorizationSha256 });
+      expect((await f.budget.audit(f.worldId)).capMicroUsd).toBe(12_000_000);
+    } else {
+      expect(await readLeanCapacityRecoveryBudget(f.c, f.worldId)).toBeNull();
+      expect((await f.budget.audit(f.worldId)).capMicroUsd).toBe(6_000_000);
+    }
+    expect(f.sent()).toBe(2); expect(fetch).not.toHaveBeenCalled();
+  }, 90_000);
+
+  it("does not admit a provider error outside the explicit capacity code", async () => {
+    const f = await capacityFixture("server_error");
+    await expect(planLeanCapacityRecovery(f.c, f.gameId)).rejects.toThrow("not an admitted capacity failure");
+    expect(await db.auditLog.findUnique({ where: { id: leanCapacityRecoveryId(f.gameId) } })).toBeNull();
+  }, 90_000);
+
+  it.each(["actor", "world", "source", "six", "cap"])("rejects forged %s authority even with recomputed body hashes", async mode => {
+    const f = await capacityFixture(), plan = await planLeanCapacityRecovery(f.c, f.gameId);
+    await authorizeLeanCapacityRecovery(f.c, { gameId: f.gameId, operatorId: f.operatorId, expectedPlanSha256: plan.planSha256 });
+    const row = await db.auditLog.findUniqueOrThrow({ where: { id: leanCapacityRecoveryId(f.gameId) } });
+    const { authorizationSha256: _auth, ...body } = JSON.parse(row.metaJson!);
+    if (mode === "world") body.worldId = "foreign-synthetic:board-wizard";
+    if (mode === "source") body.sourceCommitSha256 = "1".repeat(64);
+    if (mode === "six") body.completionGrantSha256 = "2".repeat(64);
+    if (mode === "cap") body.capMicroUsd = 24_000_000;
+    const { planSha256: _plan, operatorId: _operator, authorizedAt: _at, automaticRelease: _release, ...binding } = body;
+    body.planSha256 = boardConditioningHash(binding);
+    await db.auditLog.update({ where: { id: row.id }, data: { ...(mode === "actor" ? { actorType: "USER" } : {}), metaJson: JSON.stringify({ ...body, authorizationSha256: boardConditioningHash(body) }) } });
+    await expect(readLeanCapacityRecoveryBudget(f.c, f.worldId)).rejects.toThrow();
+    await expect(f.budget.reserve(f.worldId, { requestKey: "synthetic-no-fallback", scope: "image", operationFingerprint: "7".repeat(64), reserveMicroUsd: 50_000 })).rejects.toThrow();
+    expect(f.sent()).toBe(2); expect(fetch).not.toHaveBeenCalled();
+  }, 90_000);
 });

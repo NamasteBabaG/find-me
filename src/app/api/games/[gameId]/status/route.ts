@@ -24,6 +24,7 @@ import { readLocalPatchEmergencyBudget } from "@/services/generation/local-patch
 import { readNewQaWorldBudget } from "@/services/generation/local-patch-qa-budget";
 import { identityRevisionPending, identityRevisionHeldOf } from "@/services/generation/identity-source-revision-state";
 import { readLeanWorldBudget } from "@/services/generation/lean-release";
+import { readLeanCapacityRecoveryBudget } from "@/services/generation/lean-capacity-recovery";
 import { readLeanCompletionBudget } from "@/services/generation/lean-completion-budget";
 import { openAdmittedInterruptions } from "@/services/generation/subject-upgrade";
 import { readLocalPatchExtraAttemptPlan } from "@/services/generation/local-patch-extra-attempt";
@@ -119,7 +120,7 @@ export async function GET(req: Request, ctx: { params: Promise<{ gameId: string 
       // asset costs here would count the same image purchase a second time.
       // The ceiling the ledger itself enforces, in the engine's own order: a new
       // explicit source-completion grant, preserved lean pin, new-QA policy, then emergency grant.
-      const extension = await readLeanCompletionBudget(c, worldId) ?? await readLeanWorldBudget(c, worldId) ?? await readNewQaWorldBudget(c, worldId) ?? await readLocalPatchEmergencyBudget(c, worldId);
+      const extension = await readLeanCapacityRecoveryBudget(c, worldId) ?? await readLeanCompletionBudget(c, worldId) ?? await readLeanWorldBudget(c, worldId) ?? await readNewQaWorldBudget(c, worldId) ?? await readLocalPatchEmergencyBudget(c, worldId);
       const ledgerCap = extension?.capMicroUsd === 6_000_000 || extension?.capMicroUsd === 12_000_000 ? extension.capMicroUsd : undefined;
       const audit = applyBoardWizardBudgetCap(auditWorldBudget(snapshot, ledgerCap), extension?.capMicroUsd);
       qaCost = { spentCents: audit.settledMicroUsd / 10_000, reservedCents: audit.reservedMicroUsd / 10_000,

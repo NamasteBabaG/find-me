@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   game: vi.fn(), asset: vi.fn(), job: vi.fn(), user: vi.fn(), denied: vi.fn(), link: vi.fn(), proof: vi.fn(), hash: vi.fn(), wizard: vi.fn(), ledger: vi.fn(),
-  revisionPending: vi.fn(), revisionHeld: vi.fn(), approved: vi.fn(), emergencyBudget: vi.fn(), newQaBudget: vi.fn(), leanBudget: vi.fn(), completionBudget: vi.fn(), admittedInterruptions: vi.fn(), extraPlan: vi.fn(),
+  revisionPending: vi.fn(), revisionHeld: vi.fn(), approved: vi.fn(), emergencyBudget: vi.fn(), newQaBudget: vi.fn(), leanBudget: vi.fn(), completionBudget: vi.fn(), capacityBudget: vi.fn(), admittedInterruptions: vi.fn(), extraPlan: vi.fn(),
   token: null as string | null, admin: false,
 }));
 vi.mock("@/services/generation/identity-source-revision-state", () => ({ identityRevisionPending: mocks.revisionPending, identityRevisionHeldOf: mocks.revisionHeld }));
@@ -10,6 +10,7 @@ vi.mock("@/services/generation/local-patch-extra-attempt", async importOriginal 
   ...(await importOriginal<typeof import("@/services/generation/local-patch-extra-attempt")>()),
   readLocalPatchExtraAttemptPlan: mocks.extraPlan,
 }));
+vi.mock("@/services/generation/lean-capacity-recovery", () => ({ readLeanCapacityRecoveryBudget: mocks.capacityBudget }));
 vi.mock("@/services/generation/lean-completion-budget", () => ({ readLeanCompletionBudget: mocks.completionBudget }));
 vi.mock("@/services/generation/subject-upgrade", async importOriginal => ({
   ...(await importOriginal<typeof import("@/services/generation/subject-upgrade")>()),
@@ -56,7 +57,7 @@ beforeEach(() => {
   mocks.proof.mockReturnValue(null); mocks.hash.mockReturnValue("synthetic-hash"); mocks.link.mockResolvedValue({ url: "/synthetic-play" });
   mocks.ledger.mockResolvedValue(null); mocks.approved.mockResolvedValue(true); mocks.emergencyBudget.mockResolvedValue(null);
   mocks.newQaBudget.mockResolvedValue(null); mocks.leanBudget.mockResolvedValue(null);
-  mocks.completionBudget.mockResolvedValue(null); mocks.admittedInterruptions.mockResolvedValue("blocked"); mocks.extraPlan.mockResolvedValue(null);
+  mocks.completionBudget.mockResolvedValue(null); mocks.capacityBudget.mockResolvedValue(null); mocks.admittedInterruptions.mockResolvedValue("blocked"); mocks.extraPlan.mockResolvedValue(null);
 });
 async function response() { return GET(new Request("https://example.invalid/api/games/synthetic/status"), { params: Promise.resolve({ gameId: "synthetic" }) }); }
 function assembled(status = "MANUAL_REVIEW") {
@@ -456,5 +457,25 @@ describe("live source-completion progress regression", () => {
       qaCost: { reservedCents: 40, held: true } });
     expect(mocks.link).not.toHaveBeenCalled();
     if (mode === "parked" || mode === "inactive" || mode === "extra-plan") expect(mocks.admittedInterruptions).not.toHaveBeenCalled();
+  });
+});
+
+
+describe("explicit capacity recovery ceiling on parent progress", () => {
+  it.each([6_500_000, 11_900_000, 12_100_000])("reads the new verified ceiling first at %i microUSD", async spent => {
+    mocks.game.mockResolvedValue({ ...game, status: "TARGETS_GENERATING", styleVersion: "local-patch-world-v1" });
+    mocks.ledger.mockResolvedValue({ snapshotJson: JSON.stringify(spentTo(spent)) });
+    mocks.capacityBudget.mockResolvedValue({ worldId: "synthetic:board-wizard", capMicroUsd: 12_000_000, authorizationSha256: "e".repeat(64) });
+    mocks.completionBudget.mockResolvedValue({ worldId: "synthetic:board-wizard", capMicroUsd: 6_000_000, authorizationSha256: "d".repeat(64) });
+    expect(await (await response()).json()).toMatchObject({ pending: spent <= 12_000_000, state: spent <= 12_000_000 ? "working" : "held",
+      qaCost: { capCents: 1200, held: spent > 12_000_000 } });
+    expect(mocks.completionBudget).not.toHaveBeenCalled(); expect(mocks.link).not.toHaveBeenCalled();
+  });
+  it("does not fall back from forged capacity authority", async () => {
+    mocks.game.mockResolvedValue({ ...game, status: "TARGETS_GENERATING", styleVersion: "local-patch-world-v1" });
+    mocks.ledger.mockResolvedValue({ snapshotJson: JSON.stringify(spentTo(6_500_000)) });
+    mocks.capacityBudget.mockRejectedValue(Error("Synthetic invalid capacity receipt"));
+    expect(await (await response()).json()).toMatchObject({ pending: false, state: "held", qaCost: null });
+    expect(mocks.completionBudget).not.toHaveBeenCalled(); expect(mocks.link).not.toHaveBeenCalled();
   });
 });

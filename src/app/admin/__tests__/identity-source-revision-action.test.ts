@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 const f = vi.hoisted(() => ({ appEnv: "qa", admin: { id: "real-session-admin" } as { id: string } | null,
-  requestHeaders: new Headers(), qaAccess: vi.fn(), apply: vi.fn(), retry: vi.fn(), grant: vi.fn(), revalidate: vi.fn() }));
+  requestHeaders: new Headers(), qaAccess: vi.fn(), apply: vi.fn(), retry: vi.fn(), grant: vi.fn(), capacity: vi.fn(), revalidate: vi.fn() }));
 vi.mock("next/navigation", () => ({ redirect: (url: string) => { throw new Error(`redirect:${url}`); } }));
 vi.mock("next/headers", () => ({ headers: async () => f.requestHeaders }));
 vi.mock("next/cache", () => ({ revalidatePath: f.revalidate }));
@@ -19,8 +19,10 @@ vi.mock("@/services/generation/identity-source-revision", () => ({
   IDENTITY_SOURCE_REVISION_CONFIRMATION: "repair-this-world-reference-from-full-source-v1", beginIdentitySourceRevision: f.apply, IDENTITY_SOURCE_RETRY_CONFIRMATION: "retry-the-same-bound-reference-operation-v1", retryIdentitySourceRevision: f.retry,
 }));
 vi.mock("@/services/generation/lean-completion-budget", () => ({ authorizeLeanCompletionBudget: f.grant }));
+vi.mock("@/services/generation/lean-capacity-recovery", () => ({ authorizeLeanCapacityRecovery: f.capacity }));
+import { LEAN_CAPACITY_RECOVERY_CONFIRMATION } from "@/domain/generation/lean-capacity-recovery";
 import { LEAN_COMPLETION_BUDGET_CONFIRMATION } from "@/domain/generation/lean-completion-budget";
-import { beginIdentitySourceRevisionAction, retryIdentitySourceRevisionAction, authorizeLeanCompletionBudgetAction } from "../actions";
+import { beginIdentitySourceRevisionAction, retryIdentitySourceRevisionAction, authorizeLeanCompletionBudgetAction, authorizeLeanCapacityRecoveryAction } from "../actions";
 const destination = "/admin/orders/game-synthetic", digest = "a".repeat(64);
 function form() {
   const data = new FormData(); data.set("gameId", "game-synthetic"); data.set("planSha256", digest);
@@ -29,7 +31,7 @@ function form() {
 beforeEach(() => {
   f.appEnv = "qa"; f.admin = { id: "real-session-admin" };
   f.requestHeaders = new Headers({ origin: "https://qa.example.invalid", host: "qa.example.invalid", "sec-fetch-site": "same-origin" });
-  f.qaAccess.mockReset().mockResolvedValue(undefined); f.apply.mockReset().mockResolvedValue({ applied: true }); f.revalidate.mockReset(); f.retry.mockReset().mockResolvedValue(undefined); f.grant.mockReset().mockResolvedValue({ capMicroUsd: 6_000_000 });
+  f.qaAccess.mockReset().mockResolvedValue(undefined); f.apply.mockReset().mockResolvedValue({ applied: true }); f.revalidate.mockReset(); f.retry.mockReset().mockResolvedValue(undefined); f.grant.mockReset().mockResolvedValue({ capMicroUsd: 6_000_000 }); f.capacity.mockReset().mockResolvedValue({ capMicroUsd: 12_000_000 });
 });
 describe("an authenticated administrator starts a bound source revision, never image approval", () => {
   it("binds the authenticated administrator and the exact plan digest, then returns to the order page", async () => {
@@ -107,4 +109,32 @@ it.each(["production", "no-admin", "qa-denied", "cross-origin", "missing-origin"
   if (mode === "duplicate-plan") data.append("planSha256", digest); if (mode === "duplicate-confirm") data.append("confirm", LEAN_COMPLETION_BUDGET_CONFIRMATION);
   if (mode === "bad-plan") data.set("planSha256", "not-a-digest");
   await expect(authorizeLeanCompletionBudgetAction(data)).rejects.toThrow(); expect(f.grant).not.toHaveBeenCalled();
+});
+
+function capacityForm() { const data = form(); data.set("confirm", LEAN_CAPACITY_RECOVERY_CONFIRMATION); return data; }
+it("binds capacity authority only to the authenticated administrator and exact same-origin plan", async () => {
+  const data = capacityForm(); data.set("operatorId", "forged");
+  await expect(authorizeLeanCapacityRecoveryAction(data)).rejects.toThrow(`redirect:${destination}?capacityRecovery=authorized`);
+  expect(f.qaAccess).toHaveBeenCalledOnce();
+  expect(f.capacity).toHaveBeenCalledExactlyOnceWith({ synthetic: true }, { gameId: "game-synthetic", operatorId: "real-session-admin", expectedPlanSha256: digest });
+  expect(f.grant).not.toHaveBeenCalled(); expect(f.apply).not.toHaveBeenCalled(); expect(f.retry).not.toHaveBeenCalled();
+});
+it.each(["production", "no-admin", "qa-denied", "cross-origin", "missing-origin", "cross-site", "unconfirmed", "wrong-confirmation",
+  "duplicate-id", "duplicate-plan", "duplicate-confirm", "missing-plan", "bad-plan", "invalid-id"])("refuses %s capacity authority before any grant", async mode => {
+  const data = capacityForm();
+  if (mode === "production") f.appEnv = "production"; if (mode === "no-admin") f.admin = null;
+  if (mode === "qa-denied") f.qaAccess.mockRejectedValue(Error("synthetic denied"));
+  if (mode === "cross-origin") f.requestHeaders.set("origin", "https://attacker.invalid");
+  if (mode === "missing-origin") f.requestHeaders.delete("origin"); if (mode === "cross-site") f.requestHeaders.set("sec-fetch-site", "cross-site");
+  if (mode === "unconfirmed") data.delete("confirm"); if (mode === "wrong-confirmation") data.set("confirm", LEAN_COMPLETION_BUDGET_CONFIRMATION);
+  if (mode === "duplicate-id") data.append("gameId", "other-world"); if (mode === "invalid-id") data.set("gameId", "../../other");
+  if (mode === "duplicate-plan") data.append("planSha256", digest); if (mode === "duplicate-confirm") data.append("confirm", LEAN_CAPACITY_RECOVERY_CONFIRMATION);
+  if (mode === "missing-plan") data.delete("planSha256"); if (mode === "bad-plan") data.set("planSha256", "not-a-digest");
+  await expect(authorizeLeanCapacityRecoveryAction(data)).rejects.toThrow();
+  expect(f.capacity).not.toHaveBeenCalled(); expect(f.revalidate).not.toHaveBeenCalled();
+});
+it("returns a safe blocked notice for a stale or refused capacity plan without exposing private details", async () => {
+  f.capacity.mockRejectedValue(Error("synthetic private financial details"));
+  await expect(authorizeLeanCapacityRecoveryAction(capacityForm())).rejects.toThrow(`redirect:${destination}?capacityRecovery=blocked`);
+  expect(f.capacity).toHaveBeenCalledOnce();
 });

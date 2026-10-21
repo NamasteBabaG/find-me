@@ -18,6 +18,7 @@ import { askContinuityInBackground, backgroundRoundsOnImage, permanentFailureOnI
   roundAnswered, type BackgroundGate, type ImageRound } from "./continuity-background";
 import type { BackgroundReviewBinding } from "../../domain/generation/background-review-round";
 import { isLeanWorld } from "./lean-release";
+import { leanCapacityRecoveryOf } from "./lean-capacity-recovery-pin";
 import { leanReviewRecoveryOf } from "./lean-review-recovery-pin";
 import { localPatchCrowdContinuityPrompt, localPatchHeadContinuityPrompt } from "./local-patch-body-continuity";
 import { prepareVisualReview, sceneQualityQuestion, parseVisualSceneVerdicts, diagnoseVisualSceneAnswer, visualReviewMaxCharge, type PreparedVisualReview } from "./visual-review";
@@ -337,12 +338,20 @@ async function dualQuestions(prepared: Prepared, version: DualVisualReviewVersio
     && !(oldQuality.subjectBundle && recovery?.retry && recovery.role === "quality");
   const qualityAttempt = reuse ? oldQuality!.attempt : evidenceReviewAttempt;
   const qualityStrategy = reuse ? oldQuality!.strategy ?? STANDARD : strategyFor("quality");
-  const qualityTier = lean ? reuse && oldQuality!.policy.serviceTier ? oldQuality!.policy.serviceTier : lean.tier : undefined;
-  const quality = dualQualityQuestion(request, binding, qualityAttempt, qualityStrategy, qualityTier ? { tier: qualityTier } : {});
   // A reused bundle is rebuilt under the policy it was bought with, so it replays; a new one asks v2.
   const bundlePolicy = reuse && oldQuality?.subjectBundle ? oldQuality.subjectBundle.subjectPolicy ?? SUBJECT_POLICY_VERSION : SUBJECT_POLICY_V2;
-  let combined = subject && (!reuse || oldQuality?.subjectBundle)
-    ? combinedQualitySubjectQuestion(quality, subject.plan, subject.photoPng, subject.upgrade, bundlePolicy) : null;
+  const asked = (tier: VisualReviewTier | undefined) => {
+    const quality = dualQualityQuestion(request, binding, qualityAttempt, qualityStrategy, tier ? { tier } : {});
+    return { quality, combined: subject && (!reuse || oldQuality?.subjectBundle)
+      ? combinedQualitySubjectQuestion(quality, subject.plan, subject.photoPng, subject.upgrade, bundlePolicy) : null };
+  };
+  const reusedTier = lean && reuse ? oldQuality!.policy.serviceTier : undefined;
+  let { quality, combined } = asked(lean ? reusedTier ?? lean.tier : undefined);
+  // A reused answer keeps the tier it was bought at only while its exact question replays it. Rebuilt for a revised
+  // reference, the bundle names the new identity: a new question, asked at this round's tier (a capacity grant's default),
+  // never a fresh Flex question beside a default continuity question.
+  if (lean && reusedTier && reusedTier !== lean.tier && !await questionStarted(prepared, combined?.question ?? quality))
+    ({ quality, combined } = asked(lean.tier));
   // A v1 bundle already started about these pixels in this round (bought before v2, its answer never
   // recorded on the row) is resumed under v1: never bought a second time in its v2 form.
   if (subject && (!reuse || oldQuality?.subjectBundle) && bundlePolicy === SUBJECT_POLICY_V2) {
@@ -603,8 +612,18 @@ async function dualReview(c: Container, prepared: Prepared, deps: LocalPatchBoar
   // these pixels. Once the provider has ended a question about them failed, both questions about them are asked at the
   // default tier (a separate key and policy version); the failed question's charge stays held in full.
   const imageRounds = lean && await leanReviewRecoveryOf(c.db, game.id) ? await backgroundRoundsOnImage(c.db, game.id, onPixels) : null;
-  const leanTier: VisualReviewTier = imageRounds?.some(providerEndedFailed) ? "default" : "flex";
-  let questions = await dualQuestions(prepared, version, upgrade ? "responses-background" : undefined, subjectContext, lean ? { tier: leanTier } : undefined);
+  // A separately granted capacity recovery moves new questions off the failing tier for this world.
+  // This attempt's unfinished Flex rounds and settled Flex answers retain their own policy/key, including
+  // an answer saved by a separate poll. Earlier-attempt answers are reused below without selecting a new Flex question.
+  const capacity = imageRounds && await leanCapacityRecoveryOf(c.db, game.id);
+  const flex = capacity ? await dualQuestions(prepared, version, "responses-background", subjectContext, { tier: "flex" }) : null;
+  const currentFlex = flex ? new Set([...(flex.qualityAttempt === evidenceReviewAttempt ? [flex.q.fingerprint] : []),
+    (await flex.anatomy("responses-background", "flex")).fingerprint]) : null;
+  const leanTier: VisualReviewTier = imageRounds?.some(providerEndedFailed)
+    || capacity && !imageRounds!.some(round => round.tier === "flex" && currentFlex!.has(round.fingerprint)
+      && (!round.terminal || roundAnswered(round))) ? "default" : "flex";
+  let questions = flex && leanTier === "flex" ? flex
+    : await dualQuestions(prepared, version, upgrade ? "responses-background" : undefined, subjectContext, lean ? { tier: leanTier } : undefined);
   if (lean && await refusedFlex(questions.q)) questions = await dualQuestions(prepared, version, "responses-background", subjectContext, { tier: "default" });
   const { binding, entry, priorReceipt, subjectStrategy, anatomy: anatomyQuestion } = questions;
   let { q, subjectBundle, qualityAttempt, qualityStrategy, continuityStrategy } = questions;

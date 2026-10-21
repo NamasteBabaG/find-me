@@ -6,6 +6,13 @@ import { worldPurchaseEn, worldSelectorEn, friendsEn } from "./world-features";
 
 export const en = {
   adminIdentityRevision: {
+    capacityRecoveryTitle: "Continue after review-service overload",
+    capacityRecoveryDescription: "Use the regular review service for new questions and continue the saved images within a separate cumulative ceiling. Existing bills and uncertain reserves stay counted in full. Every required hiding spot still needs strict automatic approval.",
+    capacityRecoveryConfirm: "The owner authorized up to $12 in total for this world, including its entire history and uncertain charges. Continue only the verified provider-overload failures. This does not approve an image or publish the game.",
+    capacityRecoveryGrant: "Authorize this world up to $12",
+    capacityRecoveryAuthorized: "The recovery authorization is saved. The regular queue will continue the exact retained work; the game still needs every required check.",
+    capacityRecoveryBlocked: "Recovery was not authorized. Refresh and check the current hold, source and financial records.",
+
     completionBudgetTitle: "Explicit completion budget for this world",
     completionBudgetDescription: "Only after the owner explicitly authorized the increase: up to $6 cumulative for this existing QA source revision, including all historical spending and unknown reservations. Quality checks and existing holds still apply.",
     completionBudgetConfirm: "The owner authorized up to $6 cumulative for this world, including its retained unknown charges.",
