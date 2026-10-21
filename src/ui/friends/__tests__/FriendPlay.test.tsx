@@ -212,7 +212,8 @@ describe("the friends lobby and current guest", () => {
 
     online = true; act(() => { window.dispatchEvent(new Event("online")); });
     await page.findByText(text.saved);
-    expect(page.queryByRole("dialog", { name: unsavedTitle })).toBeNull();
+    // The saved label renders before FriendDialog's passive effect closes the native dialog.
+    await waitFor(() => expect(page.queryByRole("dialog", { name: unsavedTitle })).toBeNull());
     expect(window.localStorage.getItem(outboxKey(old))).toBeNull();
     expect(page.getByTestId("guest-game").textContent).toContain(old.id);
     expect(game.props.friend!.participantId).toBe(old.id);
