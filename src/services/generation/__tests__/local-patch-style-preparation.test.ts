@@ -29,7 +29,8 @@ function fixture() {
   const game = { styleVersion: LOCAL_PATCH_STYLE, ownerId: "synthetic-owner", deletedAt: null as Date | null, packageTier: "ONE_WORLD",
     scenes: boardsOfWorlds(["kingdom"]).map(sceneSlug => ({ sceneSlug, sceneVersion: 12 })) };
   const c = { storage: { id: "db" }, avatars: { id: "openai", createCharacter: generate },
-    db: { game: { findUniqueOrThrow: async () => game }, user: { findUnique: async () => ({ email: "synthetic@example.invalid" }) } } } as unknown as Container;
+    db: { game: { findUniqueOrThrow: async () => game }, user: { findUnique: async () => ({ email: "synthetic@example.invalid" }) },
+      auditLog: { findUnique: async () => null } } } as unknown as Container;
   return { c, game, generate };
 }
 
