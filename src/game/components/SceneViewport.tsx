@@ -6,7 +6,8 @@ import type { AdventureRect } from "@/domain/adventure/content";
 import type { MissionState } from "@/domain/game/mission";
 import { currentTargetId, isFound, visibleTargetId } from "@/domain/game/mission";
 import type { HintLevel } from "@/domain/game/hints";
-import { assetPlan, preloadVerdict, type LoadResult } from "../engine/asset-plan";
+import { assetPlan, preloadVerdict } from "../engine/asset-plan";
+import { preloadGameImage } from "../engine/image-preload";
 import { expandRect, hitPadding, hitTest, spriteRect, stageToScreen, type HitCandidate, type NormRect } from "../engine/viewport-math";
 import { spriteAspect, targetGeometry } from "../engine/target-geometry";
 import { useViewport, type ViewportApi } from "../engine/useViewport";
@@ -17,6 +18,8 @@ export type Hit = { kind: "target"; id: string } | { kind: "discovery"; id: stri
 
 interface Props {
   scene: SceneConfig;
+  /** Verified display transport only; the scene's canonical art binding stays unchanged. */
+  baseUrl?: string;
   mission: MissionState;
   hintLevel: HintLevel;
   bonusFound: boolean;
@@ -26,7 +29,7 @@ interface Props {
   onReady?: (api: ViewportApi) => void;
   /** Physical pan/pinch only; camera animations and hint focus do not hide the UI. */
   onGestureChange?: (active: boolean) => void;
-  /** Every image this board can show has decoded — base, foreground, all three children, the bonus. */
+  /** The board and initially visible hide have decoded. Future hides never delay it. */
   onAssetsReady?: () => void;
   /** The currently mounted board/child images, not just off-DOM preloads, decoded. */
   onVisibleAssetsReady?: (ready: boolean) => void;
@@ -58,7 +61,7 @@ const NO_DISCOVERIES: NonNullable<Props["discoveries"]> = [];
  * All hit-testing is math on normalized coordinates (no DOM hit targets), so a
  * tap resolves the same way on every device and at every zoom.
  */
-export function SceneViewport({ scene, mission, hintLevel, bonusFound, discoveries = NO_DISCOVERIES, onHit, onReady, onGestureChange, onAssetsReady, onVisibleAssetsReady, onAssetsFailed, retryToken = 0, ariaLabel, keyboardHint, followsCamera = false, children }: Props) {
+export function SceneViewport({ scene, baseUrl = scene.art.base, mission, hintLevel, bonusFound, discoveries = NO_DISCOVERIES, onHit, onReady, onGestureChange, onAssetsReady, onVisibleAssetsReady, onAssetsFailed, retryToken = 0, ariaLabel, keyboardHint, followsCamera = false, children }: Props) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const stageRef = useRef<HTMLDivElement | null>(null);
   /** Whether anything React draws on this frame follows the camera (set on every render, read per frame). */
@@ -245,80 +248,53 @@ export function SceneViewport({ scene, mission, hintLevel, bonusFound, discoveri
     [cursor, onTap, stage],
   );
 
-  // The board webp is static and fast; a child's patch is a signed database
-  // asset and is not. Drawn as they arrive, the world appeared first and the
-  // child popped into it a second later — which is the answer, shown before the
-  // question. And because only the current target is drawn, the same pop-in
-  // would spoil every later mission too. So every picture is preloaded up
-  // front, and the curtain in ScenePlayer stays shut until this succeeds.
-  // An essential failure or timeout shows a retry screen, never a blind open.
-  const plan = useMemo(() => assetPlan(scene, placedTargets.map((p) => (p.sprite.kind === "image" ? p.sprite.url : p.sprite.faceUrl))), [scene, placedTargets]);
+  // Only the visible child belongs to the initial barrier. A later hide can
+  // arrive while this one is played; its actual mounted decode is checked below.
+  const current = currentTargetId(mission);
+  const currentPlaced = placedTargets.find((p) => p.target.id === current) ?? null;
+  const visible = visibleTargetId(mission);
+  const visiblePlaced = placedTargets.find(p => p.target.id === visible);
+  const nextId = mission.plan.order.find(id => id !== visible && !isFound(mission, id));
+  const nextPlaced = placedTargets.find(p => p.target.id === nextId);
+  const spriteUrl = (placed: typeof visiblePlaced) => placed ? placed.sprite.kind === "image" ? placed.sprite.url : placed.sprite.faceUrl : null;
+  const visibleUrl = spriteUrl(visiblePlaced), nextUrl = spriteUrl(nextPlaced);
+  const plan = useMemo(() => assetPlan({ ...scene, art: { ...scene.art, base: baseUrl } }, visibleUrl, nextUrl), [scene, baseUrl, visibleUrl, nextUrl]);
+  const loadKey = `${scene.slug}:${baseUrl}:${retryToken}`;
+  const visibleKey = `${loadKey}:${visible ?? "complete"}`;
+  const [preloadedKey, setPreloadedKey] = useState<string | null>(null);
+  const [mountedKey, setMountedKey] = useState<string | null>(null);
   const assetsReadyRef = useRef(onAssetsReady);
   assetsReadyRef.current = onAssetsReady;
   const assetsFailedRef = useRef(onAssetsFailed);
   assetsFailedRef.current = onAssetsFailed;
-  // Keep the decoded images alive for this board, including the next four
-  // children. A completed promise alone does not retain its Image object.
-  const preloadedImages = useRef<HTMLImageElement[]>([]);
   useEffect(() => {
-    let settled = false;
-    const pending = new Set<() => void>();
-    const settle = (verdict: "ready" | "failed") => {
-      if (settled) return;
-      settled = true;
-      if (verdict === "ready") assetsReadyRef.current?.();
-      else assetsFailedRef.current?.();
-    };
-    // The board and the child in it are the game: without them there is
-    // nothing to find, so a missing one is a calm retry screen, never an open
-    // board with an impossible mission. The foreground and the bonus are
-    // decoration and may fail quietly. Twenty seconds is a slow phone on a
-    // slow network; what happens then is the retry screen, not a blind open.
-    const slow = setTimeout(() => {
-      settle("failed");
-      // Decoration may still be pending after the essential barrier opened.
-      // Bound those requests too, without turning them into a game failure.
-      for (const cancel of [...pending]) cancel();
-    }, 20_000);
-    const load =
-        (url: string) =>
-          new Promise<LoadResult>((resolve) => {
-            // All essential pixels must decode before the curtain opens.
-            // A delayed/failed decode takes the ordinary bounded retry path.
-            const img = new Image();
-            preloadedImages.current.push(img);
-            let finished = false;
-            const finish = (ok: boolean) => {
-              if (finished) return;
-              finished = true;
-              img.onload = null; img.onerror = null;
-              pending.delete(cancel);
-              if (!pending.size) clearTimeout(slow);
-              resolve({ url, ok });
-            };
-            const cancel = () => { img.removeAttribute?.("src"); finish(false); };
-            pending.add(cancel);
-            img.onload = () => {
-              if (typeof img.decode !== "function") { finish(true); return; }
-              void img.decode().then(() => finish(true), () => finish(false));
-            };
-            img.onerror = () => finish(false);
-            img.src = url;
-          });
-    // Optional art must never hold the ready barrier hostage. Keep loading it
-    // (and retaining the Image) while only essential pixels decide readiness.
-    for (const url of plan.decorative) void load(url);
-    void Promise.all(plan.essential.map(load)).then((results) => settle(preloadVerdict(plan, results)));
+    let active = true;
+    // Retain the Image objects until this board leaves, so decoded pixels can
+    // be reused. A promise on its own does not keep their Image objects alive.
+    const loads = plan.essential.map(url => ({ url, ...preloadGameImage(url, "high") }));
+    void Promise.all(loads.map(async load => ({ url: load.url, ok: await load.ready }))).then(results => {
+      if (!active) return;
+      if (preloadVerdict(plan, results) === "failed") { assetsFailedRef.current?.(); return; }
+      setPreloadedKey(loadKey);
+      assetsReadyRef.current?.();
+    });
     return () => {
-      settled = true;
-      clearTimeout(slow);
-      for (const cancel of [...pending]) cancel();
-      for (const img of preloadedImages.current) { img.onload = null; img.onerror = null; img.removeAttribute?.("src"); }
-      preloadedImages.current = [];
+      active = false;
+      loads.forEach(load => load.cancel());
     };
-    // Once per board, and again on an explicit retry.
+    // Initial visible target, once per board/retry. Later swaps have their own
+    // mandatory mounted-image gate instead of restarting this initial barrier.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [scene.slug, retryToken]);
+  }, [scene.slug, baseUrl, retryToken]);
+
+  useEffect(() => {
+    if (preloadedKey !== loadKey || mountedKey !== visibleKey) return;
+    // One next hide, never all remaining children. A speculative failure has
+    // no authority over the ready current board; the mounted gate handles it
+    // only if this image is actually selected. Decorative images are optional.
+    const loads = [...plan.warmup, ...plan.decorative].map(url => preloadGameImage(url));
+    return () => loads.forEach(load => load.cancel());
+  }, [preloadedKey, loadKey, mountedKey, visibleKey, plan]);
 
   // Handed over at first layout and again on every resize: the methods read
   // live state now, but the snapshot fields (transform, fit, viewport) on the
@@ -328,8 +304,6 @@ export function SceneViewport({ scene, mission, hintLevel, bonusFound, discoveri
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [api.viewport.width, api.viewport.height]);
 
-  const current = currentTargetId(mission);
-  const currentPlaced = placedTargets.find((p) => p.target.id === current) ?? null;
   /**
    * One child on the board at a time.
    *
@@ -339,31 +313,72 @@ export function SceneViewport({ scene, mission, hintLevel, bonusFound, discoveri
    * through the found celebration (the mission advances on FOUND_DONE) and is
    * replaced by the next one.
    */
-  const visible = visibleTargetId(mission);
   const onBoard = useMemo(() => placedTargets.filter((p) => p.target.id === visible), [placedTargets, visible]);
   const visibleReadyRef = useRef(onVisibleAssetsReady);
   visibleReadyRef.current = onVisibleAssetsReady;
-  const decodedMounted = useRef(new WeakMap<HTMLImageElement, string>());
+  const decodedMounted = useRef(new WeakMap<Element, string>());
   useLayoutEffect(() => {
     // A newly mounted <img> may decode again on a memory-constrained phone.
     // Mark it unavailable before paint; an old target's late promise cannot
     // reopen the curtain over the next target or over the retry screen.
     const images = [...(containerRef.current?.querySelectorAll<HTMLImageElement>("img.stage__base, [data-target] img") ?? [])];
-    const decodable = images.filter(img => typeof img.decode === "function" && decodedMounted.current.get(img) !== img.src);
-    if (!decodable.length) { visibleReadyRef.current?.(true); return; } // Older browsers retain the preload/load gate.
+    const decodable = images.filter(img => decodedMounted.current.get(img) !== img.src);
+    const faceSource = (face: SVGImageElement) => face.getAttribute("href") ?? face.getAttributeNS("http://www.w3.org/1999/xlink", "href") ?? "";
+    const faces = [...(containerRef.current?.querySelectorAll<SVGImageElement>("[data-target] image") ?? [])]
+      .map(face => ({ face, source: faceSource(face) })).filter(({ face, source }) => decodedMounted.current.get(face) !== source);
+    if (!decodable.length && !faces.length) { setMountedKey(visibleKey); visibleReadyRef.current?.(true); return; }
     let active = true;
+    const listeners: Array<() => void> = [];
+    const removeListeners = () => listeners.forEach(remove => remove());
     visibleReadyRef.current?.(false);
-    const failed = () => { if (active) { active = false; clearTimeout(timeout); assetsFailedRef.current?.(); } };
+    const failed = () => { if (active) { active = false; clearTimeout(timeout); removeListeners(); assetsFailedRef.current?.(); } };
     const timeout = setTimeout(failed, 20_000);
-    void Promise.all(decodable.map(img => Promise.resolve().then(() => img.decode()))).then(() => {
+    // A legacy composed child puts its face in SVG <image>, which has no
+    // decode/complete API. Its selected URL must load and decode as critical
+    // work even when an earlier speculative warmup failed. Bind completion to
+    // this mounted SVG element and source; never reopen for a removed face.
+    const faceLoads = faces.map(({ face, source }) => {
+      const load = preloadGameImage(source, "high");
+      face.addEventListener("error", failed);
+      listeners.push(() => { face.removeEventListener("error", failed); load.cancel(); });
+      return load.ready.then(ok => {
+        if (!ok || !source || faceSource(face) !== source) throw Error("The selected face image is unavailable");
+      });
+    });
+    const loaded = (img: HTMLImageElement): Promise<void> => {
+      const source = img.src;
+      if (typeof img.decode === "function") return Promise.resolve().then(() => img.decode()).then(() => {
+        if (img.src !== source) throw Error("The mounted image changed while decoding");
+      });
+      // A warm off-DOM image is not proof that this element has loaded. Older
+      // browsers need the actual element's load/error events on every swap.
+      return new Promise<void>((resolve, reject) => {
+        const remove = () => { img.removeEventListener("load", onLoad); img.removeEventListener("error", onError); };
+        const onLoad = () => {
+          remove();
+          if (img.src === source && img.naturalWidth > 0) resolve();
+          else reject(Error("The mounted image is unavailable"));
+        };
+        const onError = () => { remove(); reject(Error("The mounted image did not load")); };
+        if (img.complete) { onLoad(); return; }
+        img.addEventListener("load", onLoad); img.addEventListener("error", onError);
+        listeners.push(remove);
+        // Cover a cached load finishing between the check and the listeners.
+        if (img.complete) onLoad();
+      });
+    };
+    void Promise.all([...decodable.map(loaded), ...faceLoads]).then(() => {
       if (active) {
         clearTimeout(timeout);
+        removeListeners();
         for (const img of decodable) decodedMounted.current.set(img, img.src);
+        for (const { face, source } of faces) decodedMounted.current.set(face, source);
+        setMountedKey(visibleKey);
         visibleReadyRef.current?.(true);
       }
     }, failed);
-    return () => { active = false; clearTimeout(timeout); };
-  }, [visible, scene.art.base, retryToken]);
+    return () => { active = false; clearTimeout(timeout); removeListeners(); };
+  }, [visibleKey]);
   // Every render paints the camera as it is now, never the last React state: between a gesture's frames the stage
   // is moved directly (onFrame above), and a render for any other reason must not put it back.
   const transform = api.live();
@@ -394,7 +409,7 @@ export function SceneViewport({ scene, mission, hintLevel, bonusFound, discoveri
       // A find changes no pixels, filters, transforms or stacking of the child.
       // Its feedback is rendered separately, above ALL board layers, below.
       return (
-        <div key={p.target.id} className={`stage__target${p.isPatch ? " stage__target--patch" : ""}`} style={box} data-target={p.target.id} data-found={found}>
+        <div key={`${p.target.id}:${retryToken}`} className={`stage__target${p.isPatch ? " stage__target--patch" : ""}`} style={box} data-target={p.target.id} data-found={found}>
           <Sprite sprite={p.sprite} title={p.target.item} className="stage__sprite" />
         </div>
       );
@@ -402,7 +417,7 @@ export function SceneViewport({ scene, mission, hintLevel, bonusFound, discoveri
     return (
       <>
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={scene.art.base} alt="" width={stage.width} height={stage.height} className="stage__layer stage__base" decoding="async" draggable={false} />
+        <img key={`base:${retryToken}`} src={baseUrl} alt="" width={stage.width} height={stage.height} className="stage__layer stage__base" decoding="async" fetchPriority="high" draggable={false} />
         <div className="stage__layer">{onBoard.filter((p) => p.slot.layer === "behindForeground").map(renderTarget)}</div>
         {scene.art.foreground ? (
           // eslint-disable-next-line @next/next/no-img-element
@@ -448,7 +463,7 @@ export function SceneViewport({ scene, mission, hintLevel, bonusFound, discoveri
         ) : null}
       </>
     );
-  }, [scene, stage, mission, onBoard, bonus, bonusFound, ambientAnim, hintLevel, currentPlaced]);
+  }, [scene, baseUrl, stage, mission, onBoard, bonus, bonusFound, ambientAnim, hintLevel, currentPlaced, retryToken]);
 
   return (
     <div

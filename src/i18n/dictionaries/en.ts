@@ -620,6 +620,8 @@ export const en = {
       unlocked: "You can continue to the next place!",
       starEarned: "One star earned!",
       journeyFinished: "Journey finished — more stars to discover!",
+      loadingWorld: "Loading your world…",
+      loadingNext: "Loading the next hiding spot…",
       loadTitle: "The picture is still on its way…",
       loadRetry: "Once more ✨",
       loadBack: "Back to the map",

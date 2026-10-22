@@ -16,10 +16,11 @@ import { LEAN_WARM_HAT_VERSION, SUBJECT_PAINTER_V4 } from "../../../domain/gener
 import { leanReviewPolicy } from "../../../domain/generation/visual-review-policy";
 import type { Container } from "../../container";
 import { boardsOfWorlds } from "../../world-catalog.service";
+import { sceneBySlug } from "../../scene-catalog.service";
 import { boardWizardBudgetOf, boardWizardWorldId } from "../board-conditioned-wizard";
 import { reviewBoardWizardIdentity } from "../board-wizard-identity-gate";
 import { readBoardConditionedCatalog } from "../board-conditioned-catalog";
-import type { LocalPatchHideDeps } from "../local-patch-hide";
+import { readShippedBoardArt, type LocalPatchHideDeps } from "../local-patch-hide";
 import type { DualReviewProof } from "../local-patch-dual-evidence";
 import { allowedDualPublication } from "../local-patch-dual-publication";
 import { LEAN_RECOVERY_BACKOFF_MS, LOCAL_PATCH_STYLE, runLocalPatchWorldSlice } from "../local-patch-world";
@@ -54,6 +55,31 @@ vi.mock("../../../lib/env", () => ({ env: () => ({ APP_ENV: "qa", GENERATION_ENA
 
 const journey = new Set(boardsOfWorlds(["journey"]));
 const BOARDS = localPatchBoardsForVersion(12).filter(board => journey.has(board.board)), HIDES = BOARDS.flatMap(board => board.hides);
+const JOURNEY_ART = new Map(BOARDS.map(board => {
+  const definition = sceneBySlug(board.board, 12);
+  if (board.art !== `public${definition.art.base}` || !definition.art.sha256) throw Error("Journey fixture requires canonical pinned artwork");
+  return [board.art, definition.art.sha256] as const;
+}));
+/** This file never changes shipped public art. Reuse the real reader's exact verified PNG,
+ * at most once per Journey board, while every identity, candidate and review remains fresh. */
+function memoizedJourneyArt(read = readShippedBoardArt) {
+  const verified = new Map<string, Promise<Buffer>>();
+  return {
+    read: (art: string, expectedSha256: string): Promise<Buffer> => {
+      if (JOURNEY_ART.get(art) !== expectedSha256) return read(art, expectedSha256);
+      const key = JSON.stringify([art, expectedSha256]);
+      let bytes = verified.get(key);
+      if (!bytes) {
+        bytes = read(art, expectedSha256);
+        verified.set(key, bytes);
+        void bytes.catch(() => { if (verified.get(key) === bytes) verified.delete(key); });
+      }
+      return bytes;
+    },
+    clear: () => verified.clear(),
+  };
+}
+const journeyArt = memoizedJourneyArt();
 const boardOf = (hideId: string) => BOARDS.find(b => b.hides.some(h => h.id === hideId))!;
 /** Refused twice for a different child's face: its third painting passes, with no diagnosis bought. */
 const THIRD = BOARDS.find(b => b.board !== "antarctica")!.hides[0]!;
@@ -75,11 +101,28 @@ beforeAll(async () => {
   vi.stubGlobal("fetch", vi.fn(async () => { throw Error("Live requests forbidden in the lean world"); }));
 }, 180_000);
 afterAll(async () => {
-  vi.unstubAllGlobals(); await db.$disconnect();
+  journeyArt.clear(); vi.unstubAllGlobals(); await db.$disconnect();
   if (path.dirname(directory) === realpathSync(tmpdir()) && path.basename(directory).startsWith("findme-lean-world-")) rmSync(directory, { recursive: true });
 });
 
 afterEach(() => { fakes.apiKey = undefined; });
+
+it("reuses only exact verified Journey artwork bytes and retries a failed read", async () => {
+  const read = vi.fn(async (art: string, digest: string) => Buffer.from(`${art}:${digest}`)), memo = memoizedJourneyArt(read);
+  const [art, digest] = [...JOURNEY_ART][0]!, [otherArt, otherDigest] = [...JOURNEY_ART][1]!;
+  const first = memo.read(art, digest), concurrent = memo.read(art, digest);
+  expect(concurrent).toBe(first); expect(await concurrent).toBe(await first); expect(read).toHaveBeenCalledTimes(1);
+  expect(await memo.read(otherArt, otherDigest)).not.toBe(await first); expect(read).toHaveBeenCalledTimes(2);
+  const changedDigest = "0".repeat(64), alias = art.replace("public/", "public/./");
+  for (let i = 0; i < 2; i++) { await memo.read(art, changedDigest); await memo.read(alias, digest); }
+  expect(read).toHaveBeenCalledTimes(6);
+  expect(read).toHaveBeenCalledWith(art, changedDigest); expect(read).toHaveBeenCalledWith(alias, digest);
+  memo.clear(); expect(await memo.read(art, digest)).not.toBe(await first); expect(read).toHaveBeenCalledTimes(7);
+  memo.clear(); read.mockRejectedValueOnce(Error("Synthetic verified-art read failure"));
+  await expect(memo.read(art, digest)).rejects.toThrow("Synthetic verified-art read failure");
+  expect(await memo.read(art, digest)).toEqual(await first); expect(read).toHaveBeenCalledTimes(9);
+  memo.clear();
+});
 
 /** A paid nine-board v12 journey (synthetic child, age 8) with an approved identity, a stored synthetic photograph, dual review v3 and the lean pin. */
 async function leanWorld(gameId: string) {
@@ -113,7 +156,7 @@ async function leanWorld(gameId: string) {
 
 /** Synthetic painter; every paid attempt differs, and every prompt and requested quality is kept. */
 function painter(gameId: string, prompts: Map<string, string>, qualities: Map<string, string | undefined>): LocalPatchHideDeps {
-  return { renderPolicySha256: "f".repeat(64), judge: async () => { throw Error("Per-hide judge forbidden"); },
+  return { readBoardArt: journeyArt.read, renderPolicySha256: "f".repeat(64), judge: async () => { throw Error("Per-hide judge forbidden"); },
     render: async ({ requestKey, stylePng, prompt, subjectQuality }) => {
       const hide = HIDES.find(h => requestKey.startsWith(`${h.id}:`));
       if (!hide) throw Error(`Unexpected synthetic request ${requestKey}`);
@@ -1186,7 +1229,8 @@ it.each(["default", "flex"] as const)("capacity recovery keeps an unfinished %s 
     capacityGranted = true;
     const { reviewLocalPatchBoard } = await import("../local-patch-board-review");
     const scene = await db.gameScene.findFirstOrThrow({ where: { gameId, sceneSlug: boardOf(first!.hideId).board } });
-    await reviewLocalPatchBoard(container, { gameId, sceneId: scene.id }, { fence: async () => {} });
+    await reviewLocalPatchBoard(container, { gameId, sceneId: scene.id }, { fence: async () => {}, readBoardArt: journeyArt.read });
+    // Retained keys must also agree when the next pass uses the uncached real reader.
     await reviewLocalPatchBoard(container, { gameId, sceneId: scene.id }, { fence: async () => {} });
     expect(created.filter(one => one.hideId === first!.hideId)).toEqual(before);
     expect(new Set(created.map(one => one.digest)).size).toBe(created.length);
@@ -1228,7 +1272,7 @@ it.each([false, true])("capacity recovery replays completed Flex answers at the 
     expect(await boardWizardBudgetOf(container).audit(boardWizardWorldId(gameId))).toMatchObject({ pendingRequestKeys: [] });
     if (badContinuity) {
       const { prepareLocalPatchBoardReview } = await import("../local-patch-board-review");
-      const prepared = await prepareLocalPatchBoardReview(container, { gameId, sceneId: scene.id }, {},
+      const prepared = await prepareLocalPatchBoardReview(container, { gameId, sceneId: scene.id }, { readBoardArt: journeyArt.read },
         { playerReview: true, includePlayerCandidates: true, skipApprovedEvidence: true, onlyHideId: created[0]!.hideId });
       expect(prepared.ready).toBe(true); if (!prepared.ready) throw Error("Synthetic same-pixel retry did not prepare");
       expect(prepared.evidenceReviewAttempt).toBe(2);

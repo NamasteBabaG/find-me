@@ -13,10 +13,12 @@ import { gameWorlds } from "@/domain/game/config";
 import { WorldMap } from "./WorldMap";
 import { WorldHub } from "./WorldHub";
 import { ScenePlayer } from "./ScenePlayer";
-import { prefetchOwnerPassport } from "../engine/owner-passport-preload";
+import { resolveDisplayBoardUrl } from "../engine/board-display";
+import { warmGameImages } from "../engine/image-preload";
+import { sceneWarmupUrls } from "../engine/scene-warmup";
 import { bindGameAudio } from "../audio/sounds";
-import { searchProgress } from "@/domain/game/round";
-import { gameStars } from "@/domain/game/progress";
+import { roundCanOpen, searchProgress } from "@/domain/game/round";
+import { gameStars, sceneCanAdvance } from "@/domain/game/progress";
 import { isPassportBook } from "@/domain/passport/passport";
 import { RoundControls } from "./RoundControls";
 import { OwnerWorldSelector } from "./OwnerWorldSelector";
@@ -73,6 +75,7 @@ function Shell({ config, demo = false, skipGift = false, readOnlyPreview = false
   const turnTip = useTurnTip();
   const gameRef = useRef<HTMLDivElement>(null);
   const historyMounted = useRef(false);
+  const [hydrated, setHydrated] = useState(false);
 
   useEffect(() => { friend?.onProgress(friendSnapshotFromPlay(state)); }, [friend, state.progress, state.album, state.mission]);
 
@@ -87,6 +90,7 @@ function Shell({ config, demo = false, skipGift = false, readOnlyPreview = false
       if (hydrated.round?.active && hydrated.worldSlug !== initialWorld) hydrated.pauseRound();
       store.getState().goToMap(null, initialWorld);
     }
+    setHydrated(true);
     return () => store.getState().stopAlbumSync();
   }, [store, config, initialWorld, autoStartScene]);
 
@@ -129,11 +133,25 @@ function Shell({ config, demo = false, skipGift = false, readOnlyPreview = false
     else if (!step && top) window.history.back();
   }, [state.screen, demo, singleMission]);
 
-  // While the owner looks at the map, the passport book is fetched in the background, so opening it is instant.
-  // Warm only the saved spread and its neighbour, including their decoded pictures.
+  // Prepare only the next playable board and its first hide, using the same
+  // verified display URL as its viewport. The owner passport waits for its
+  // actual screen, so its photos/cards cannot compete with this first board.
+  const mayWarm = hydrated && !demo && !readOnlyPreview && !friend && Boolean(playToken || albumOwner)
+    && (state.screen === "gift" || state.screen === "map");
+  const warmSlug = state.continueTo ?? (state.round?.active
+    ? state.round.route.find(slug => {
+      const one = config.scenes.find(row => row.slug === slug);
+      return one && !sceneCanAdvance(state.round!.progress, one) && roundCanOpen(state.round!, config, slug);
+    }) : state.nextScene());
+  const warmScene = mayWarm ? config.scenes.find(row => row.slug === warmSlug) : undefined;
+  const warmBoard = config.adventure?.boards.find(board => board.boardSlug === warmScene?.slug && board.sceneVersion === warmScene.version);
+  const [warmBase, warmTarget] = warmScene ? sceneWarmupUrls(warmScene, searchProgress(state.round, state.progress), config.gameId,
+    resolveDisplayBoardUrl(warmScene, warmBoard)) : [];
   useEffect(() => {
-    if (state.screen === "map" && state.albumMode === "owner") prefetchOwnerPassport(config.gameId).catch(() => undefined);
-  }, [state.screen, state.albumMode, config.gameId]);
+    if (!mayWarm || !warmBase) return;
+    const work = warmGameImages([warmBase, ...(warmTarget ? [warmTarget] : [])]);
+    return work.cancel;
+  }, [mayWarm, warmBase, warmTarget]);
 
   const body = useMemo(() => {
     switch (state.screen) {

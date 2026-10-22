@@ -8,26 +8,34 @@ import { assetPlan, preloadVerdict } from "../asset-plan";
 const scene = { art: { base: "/b.webp", foreground: "/f.webp" }, bonus: { sprite: "/bonus.webp" } };
 
 describe("the asset plan", () => {
-  it("counts the board and every child as essential, the rest as decoration", () => {
-    const plan = assetPlan(scene, ["/c1.webp", "/c2.webp"]);
-    expect(plan.essential).toEqual(["/b.webp", "/c1.webp", "/c2.webp"]);
+  it("requires only the board and current child, and warms one following child", () => {
+    const plan = assetPlan(scene, "/c1.webp", "/c2.webp");
+    expect(plan.essential).toEqual(["/b.webp", "/c1.webp"]);
+    expect(plan.warmup).toEqual(["/c2.webp"]);
     expect(plan.decorative).toEqual(["/f.webp", "/bonus.webp"]);
   });
 
   it("opens when only decoration failed", () => {
-    const plan = assetPlan(scene, ["/c1.webp"]);
+    const plan = assetPlan(scene, "/c1.webp");
     expect(preloadVerdict(plan, [{ url: "/f.webp", ok: false }, { url: "/b.webp", ok: true }, { url: "/c1.webp", ok: true }])).toBe("ready");
   });
 
   it("does not open without the child, or without the board", () => {
-    const plan = assetPlan(scene, ["/c1.webp"]);
+    const plan = assetPlan(scene, "/c1.webp");
     expect(preloadVerdict(plan, [{ url: "/c1.webp", ok: false }])).toBe("failed");
     expect(preloadVerdict(plan, [{ url: "/b.webp", ok: false }])).toBe("failed");
   });
 
   it("never lists a picture twice", () => {
-    const plan = assetPlan({ art: { base: "/b.webp", foreground: "/b.webp" } }, ["/b.webp"]);
+    const plan = assetPlan({ art: { base: "/b.webp", foreground: "/b.webp" } }, "/b.webp", "/b.webp");
     expect(plan.essential).toEqual(["/b.webp"]);
+    expect(plan.warmup).toEqual([]);
     expect(plan.decorative).toEqual([]);
+  });
+
+  it("does not fail the current mission for a failed future hide", () => {
+    const plan = assetPlan(scene, "/current.webp", "/next.webp");
+    expect(preloadVerdict(plan, [{ url: "/b.webp", ok: true }, { url: "/current.webp", ok: true }, { url: "/next.webp", ok: false }])).toBe("ready");
+    expect(assetPlan(scene).essential).toEqual(["/b.webp"]);
   });
 });

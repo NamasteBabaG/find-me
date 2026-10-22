@@ -2,12 +2,14 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Container } from "../container";
 
 const run = vi.hoisted(() => vi.fn());
+const spendPause = vi.hoisted(() => vi.fn());
 const wizard = vi.hoisted(() => ({ enabled: false, run: vi.fn() }));
 vi.mock("../generation/pipeline", () => ({ runGenerationPipeline: run, LEASE_MS: 6 * 60_000, RESUMABLE_STATUSES: ["PAID", "TARGETS_GENERATING", "SCENES_COMPOSING", "GENERATION_FAILED"] }));
 vi.mock("../generation/board-conditioned-wizard", () => ({ BOARD_WIZARD_STYLE: "fixed-sprite-board-wizard-v1", boardWizardEnabled: () => wizard.enabled, runBoardConditionedWizardSlice: wizard.run }));
+vi.mock("../generation/local-patch-spend-pause", async original => ({ ...await original<typeof import("../generation/local-patch-spend-pause")>(), pauseLocalPatchForSpendGuard: spendPause }));
 import { nextPendingGame, tickGeneration } from "../generation/queue";
 import { FIXED_WORLD_STYLE_PREFIX, FIXED_WORLD_STYLE_VERSION } from "../generation/fixed-world-stage-record";
-import { LOCAL_PATCH_NEEDS_RELEASE, LOCAL_PATCH_RECOVERY_EXHAUSTED, LOCAL_PATCH_STYLE } from "@/services/generation/local-patch-world";
+import { LOCAL_PATCH_NEEDS_RELEASE, LOCAL_PATCH_QUALITY_FAILED, LOCAL_PATCH_RECOVERY_EXHAUSTED, LOCAL_PATCH_STYLE } from "@/services/generation/local-patch-world";
 
 function setup(styleVersion = FIXED_WORLD_STYLE_VERSION, status = "PAID") {
   const db = { game: { findFirst: vi.fn().mockResolvedValue(null), findUnique: vi.fn().mockResolvedValue({ styleVersion, status }) },
@@ -15,7 +17,7 @@ function setup(styleVersion = FIXED_WORLD_STYLE_VERSION, status = "PAID") {
     generationJob: { findUnique: vi.fn().mockResolvedValue(null), findMany: vi.fn().mockResolvedValue([]) } };
   return { db, c: { db } as unknown as Container };
 }
-beforeEach(() => { run.mockReset().mockResolvedValue(undefined); wizard.enabled = false; wizard.run.mockReset().mockResolvedValue({ pending: true }); });
+beforeEach(() => { run.mockReset().mockResolvedValue(undefined); spendPause.mockReset().mockResolvedValue(null); wizard.enabled = false; wizard.run.mockReset().mockResolvedValue({ pending: true }); });
 
 describe("fixed worlds never occupy the legacy painter queue", () => {
   it("routes a new local-patch game's identity through the bounded pipeline before hiding", async () => {
@@ -23,9 +25,20 @@ describe("fixed worlds never occupy the legacy painter queue", () => {
     const clock = vi.spyOn(Date, "now").mockReturnValue(1_000_000);
     try {
       expect(await tickGeneration(s.c, "local", 30_000, 270_000)).toMatchObject({ gameId: "local", status: "PAID", pending: true });
+      expect(spendPause).toHaveBeenCalledExactlyOnceWith(s.c, "local", 6 * 60_000,
+        [LOCAL_PATCH_NEEDS_RELEASE, LOCAL_PATCH_RECOVERY_EXHAUSTED, LOCAL_PATCH_QUALITY_FAILED], ["PAID", "AVATAR_GENERATING", "GENERATION_FAILED"]);
       expect(run).toHaveBeenCalledExactlyOnceWith(s.c, "local", { deadlineAt: 1_030_000, hardDeadlineAt: 1_270_000 });
       expect(wizard.run).not.toHaveBeenCalled();
     } finally { clock.mockRestore(); }
+  });
+  it.each(["PAID", "AVATAR_GENERATING", "GENERATION_FAILED"])("leaves a spend-paused %s identity out of the pipeline", async status => {
+    const s = setup(LOCAL_PATCH_STYLE, status), attention = "Paused: this deployment does not permit the world's owner to spend";
+    spendPause.mockResolvedValue(attention);
+    expect(await tickGeneration(s.c, "local", 30_000, 270_000)).toEqual({ gameId: "local", status, pending: false, attention });
+    expect(spendPause).toHaveBeenCalledExactlyOnceWith(s.c, "local", 6 * 60_000,
+      [LOCAL_PATCH_NEEDS_RELEASE, LOCAL_PATCH_RECOVERY_EXHAUSTED, LOCAL_PATCH_QUALITY_FAILED], ["PAID", "AVATAR_GENERATING", "GENERATION_FAILED"]);
+    expect(run).not.toHaveBeenCalled();
+    expect(wizard.run).not.toHaveBeenCalled();
   });
   it("forwards the hard deadline from tick entry to the enabled QA wizard without invoking the painter", async () => {
     const s = setup("fixed-sprite-board-wizard-v1", "TARGETS_GENERATING"); wizard.enabled = true;

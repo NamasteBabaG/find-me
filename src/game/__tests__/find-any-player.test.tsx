@@ -26,6 +26,7 @@ const rig = vi.hoisted(() => ({ tap: (_x: number, _y: number) => {}, viewport: {
 vi.mock("../engine/useViewport", () => ({ useViewport: (_ref: unknown, _stage: unknown, tap: typeof rig.tap) => { rig.tap = tap; return rig.viewport; } }));
 vi.mock("next/image", () => ({ default: ({ unoptimized: _unoptimized, fill: _fill, ...props }: React.ImgHTMLAttributes<HTMLImageElement> & { unoptimized?: boolean; fill?: boolean }) => <img {...props} /> }));
 const copy: MissionCopy = { successByTarget: {}, itemByTarget: {}, wrongTarget: "Other", wrongTargetNoItem: "Other", bonus: "Bonus", fallbackSuccess: "Found" };
+const originalDecode = Object.getOwnPropertyDescriptor(HTMLImageElement.prototype, "decode");
 
 class LoadedImage {
   static instances: LoadedImage[] = [];
@@ -34,6 +35,7 @@ class LoadedImage {
   src = "";
   resolveDecode!: () => void;
   decode = vi.fn(() => new Promise<void>(resolve => { this.resolveDecode = resolve; }));
+  removeAttribute(name: string) { if (name === "src") this.src = ""; }
   constructor() { LoadedImage.instances.push(this); }
 }
 async function decodeAll() {
@@ -52,8 +54,17 @@ function fourScene(): SceneConfig {
   const scene = fiveScene();
   return { ...scene, appearancesPerBoard: 4, targets: scene.targets.slice(0, 4) };
 }
-beforeEach(() => { vi.stubGlobal("React", React); vi.stubGlobal("Image", LoadedImage); LoadedImage.instances = []; rig.viewport.isDragging = false; rig.viewport.viewport = { width: 390, height: 650 }; vi.useFakeTimers(); window.matchMedia = (() => ({ matches: true, addEventListener() {}, removeEventListener() {} })) as never; });
-afterEach(() => { cleanup(); vi.clearAllTimers(); vi.useRealTimers(); vi.unstubAllGlobals(); vi.clearAllMocks(); });
+beforeEach(() => {
+  vi.stubGlobal("React", React); vi.stubGlobal("Image", LoadedImage); LoadedImage.instances = [];
+  Object.defineProperty(HTMLImageElement.prototype, "decode", { configurable: true, value: () => Promise.resolve() });
+  rig.viewport.isDragging = false; rig.viewport.viewport = { width: 390, height: 650 }; vi.useFakeTimers();
+  window.matchMedia = (() => ({ matches: true, addEventListener() {}, removeEventListener() {} })) as never;
+});
+afterEach(() => {
+  cleanup(); vi.clearAllTimers(); vi.useRealTimers(); vi.unstubAllGlobals(); vi.clearAllMocks();
+  if (originalDecode) Object.defineProperty(HTMLImageElement.prototype, "decode", originalDecode);
+  else Reflect.deleteProperty(HTMLImageElement.prototype, "decode");
+});
 
 describe("find-any rendering and mobile feedback", () => {
   it.each([{ width: 390, height: 844, compact: true }, { width: 1400, height: 844, compact: false }, { width: 844, height: 390, compact: true }])("gives the board room during a gesture and restores controls without losing finds at $width × $height", async ({ width, height, compact }) => {
@@ -141,7 +152,7 @@ describe("find-any rendering and mobile feedback", () => {
     const view = render(<Player />); await decodeAll();
     for (let i = 0; i < scene.targets.length; i++) {
       act(() => store.getState().dispatch({ type: "TAP_TARGET", targetId: currentTargetId(store.getState().mission!)!, now: Date.now() }));
-      act(() => vi.advanceTimersByTime(2200)); act(() => vi.advanceTimersByTime(560)); act(() => vi.advanceTimersByTime(160)); act(() => vi.advanceTimersByTime(901));
+      act(() => vi.advanceTimersByTime(2200)); await act(async () => vi.advanceTimersByTime(560)); act(() => vi.advanceTimersByTime(160)); act(() => vi.advanceTimersByTime(901));
     }
     const dialog = within(view.getByRole("dialog")), progress = store.getState().progress;
     const place = dialog.getByText(scene.name).closest(".complete__place")!;
@@ -178,7 +189,7 @@ describe("find-any rendering and mobile feedback", () => {
     const view = render(<Player />); await decodeAll();
     for (let i = 0; i < scene.targets.length; i++) {
       act(() => store.getState().dispatch({ type: "TAP_TARGET", targetId: currentTargetId(store.getState().mission!)!, now: Date.now() }));
-      act(() => vi.advanceTimersByTime(2200)); act(() => vi.advanceTimersByTime(560)); act(() => vi.advanceTimersByTime(160)); act(() => vi.advanceTimersByTime(901));
+      act(() => vi.advanceTimersByTime(2200)); await act(async () => vi.advanceTimersByTime(560)); act(() => vi.advanceTimersByTime(160)); act(() => vi.advanceTimersByTime(901));
     }
     const dialog = within(view.getByRole("dialog")), round = store.getState().round;
     expect(dialog.getByText(scene.name).closest(".complete__place")?.querySelector(".place-emblem")).not.toBeNull();
@@ -208,7 +219,7 @@ describe("find-any rendering and mobile feedback", () => {
       act(() => rig.tap(Number(id.slice(-1)) * 0.19 + 0.07, 0.45));
       expect(view.container.querySelectorAll(".bubble")).toHaveLength(1);
       act(() => vi.advanceTimersByTime(2200));
-      act(() => vi.advanceTimersByTime(560));
+      await act(async () => vi.advanceTimersByTime(560));
       act(() => vi.advanceTimersByTime(160));
       act(() => vi.advanceTimersByTime(901));
       expect(store.getState().progress.scenes[scene.slug]!.foundTargetIds).toHaveLength(count);
@@ -319,7 +330,7 @@ describe("find-any rendering and mobile feedback", () => {
       act(() => vi.advanceTimersByTime(2200));
       expect(view.container.querySelector(".scene__curtain")?.classList.contains("is-open")).toBe(false);
       expect(view.container.querySelector(".mission__continue")).toBeNull();
-      act(() => vi.advanceTimersByTime(560));
+      await act(async () => vi.advanceTimersByTime(560));
       expect(view.container.querySelector(`[data-target="${id}"]`)).toBeNull();
       const next = currentTargetId(store.getState().mission!)!;
       expect(next).not.toBe(id);
@@ -343,18 +354,21 @@ describe("find-any rendering and mobile feedback", () => {
     expect(store.getState().sceneSlug).toBe("next-board");
   });
 
-  it("preloads all five but draws and accepts only one, including the fifth celebration", async () => {
+  it("preloads the current child then only the next, drawing and accepting one through the fifth celebration", async () => {
     const scene = fiveScene(); const plan = planScenePlay(scene, { plays: 0 }, "fixture");
     let mission = missionReducer(createMissionState(scene.slug, plan, scene), { type: "START", now: 1 }, copy);
     const hit = vi.fn(); const ready = vi.fn();
     const view = render(<SceneViewport scene={scene} mission={mission} hintLevel={0} bonusFound={false} onHit={hit} onAssetsReady={ready} />);
     expect(view.container.querySelectorAll("[data-target]")).toHaveLength(1);
-    expect(LoadedImage.instances.map(image => image.src)).toEqual(expect.arrayContaining(scene.targets.map((_, i) => `/test-patch-${i}.png`)));
+    const patchUrl = (id: string) => `/test-patch-${id.slice(-1)}.png`;
+    expect(LoadedImage.instances.map(image => image.src)).toEqual([scene.art.base, patchUrl(plan.order[0]!)]);
     expect(ready).not.toHaveBeenCalled();
     await act(async () => { for (const image of LoadedImage.instances) image.onload?.(); });
-    expect(ready).not.toHaveBeenCalled(); // load is not enough: every decode must complete.
-    await act(async () => { for (const image of LoadedImage.instances) image.resolveDecode(); });
+    expect(ready).not.toHaveBeenCalled(); // Load is not enough: both critical images must decode.
+    await act(async () => { for (const image of LoadedImage.instances) image.resolveDecode?.(); });
     expect(ready).toHaveBeenCalledOnce();
+    expect(LoadedImage.instances.filter(image => image.src.startsWith("/test-patch-")).map(image => image.src))
+      .toEqual([patchUrl(plan.order[0]!), patchUrl(plan.order[1]!)]);
     for (let i = 0; i < 5; i++) {
       const id = currentTargetId(mission)!;
       const index = Number(id.slice(-1));
@@ -389,7 +403,7 @@ describe("find-any rendering and mobile feedback", () => {
     act(() => store.getState().dispatch({ type: "TAP_AMBIENT", ambientId: "ambient" }));
     expect(view.container.querySelector(".bubble")?.textContent).toBe("Tree says hello");
     act(() => vi.advanceTimersByTime(500));
-    act(() => store.getState().dispatch({ type: "TAP_TARGET", targetId: "hide-4", now: 2 }));
+    await act(async () => store.getState().dispatch({ type: "TAP_TARGET", targetId: "hide-4", now: 2 }));
     const bubble = view.container.querySelector(".bubble");
     expect(bubble?.textContent).toContain("Found 4!"); expect(view.container.querySelectorAll(".bubble")).toHaveLength(1);
     expect(view.getAllByRole("status")).toHaveLength(1); expect(view.getByRole("status").textContent).toContain("One star earned!");
@@ -399,7 +413,7 @@ describe("find-any rendering and mobile feedback", () => {
     act(() => vi.advanceTimersByTime(1001));
     expect(view.container.querySelector(".bubble")).toBeNull();
     expect(view.container.querySelector(".scene__curtain")?.classList.contains("is-open")).toBe(false);
-    act(() => vi.advanceTimersByTime(560));
+    await act(async () => vi.advanceTimersByTime(560));
     act(() => vi.advanceTimersByTime(160));
     expect(store.getState().mission!.phase).toBe("searching");
     expect(view.container.querySelector(".scene__curtain")?.classList.contains("is-open")).toBe(true);
@@ -438,7 +452,7 @@ describe("find-any rendering and mobile feedback", () => {
     for (let i = 0; i < 5; i++) {
       const id = currentTargetId(store.getState().mission!)!;
       act(() => rig.tap(Number(id.slice(-1)) * 0.19 + 0.07, 0.45));
-      act(() => vi.advanceTimersByTime(2200)); act(() => vi.advanceTimersByTime(560)); act(() => vi.advanceTimersByTime(160)); act(() => vi.advanceTimersByTime(901));
+      act(() => vi.advanceTimersByTime(2200)); await act(async () => vi.advanceTimersByTime(560)); act(() => vi.advanceTimersByTime(160)); act(() => vi.advanceTimersByTime(901));
       expect(view.container.querySelector(".scene__advance")).toBeNull();
     }
     expect(view.getByRole("dialog").textContent).toContain("You found every hiding spot in this round!");

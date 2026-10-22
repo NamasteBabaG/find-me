@@ -15,6 +15,8 @@ import { MissionCard } from "./MissionCard";
 import { ToolIcon } from "./ToolIcon";
 import { CelebrationOverlay } from "./CelebrationOverlay";
 import { CloudBank } from "./Clouds";
+import { GoldStar } from "./GoldStar";
+import { resolveDisplayBoardUrl } from "../engine/board-display";
 import { FLIGHT_MS, StarFlight, type FlightPath } from "./StarFlight";
 import { StarTray } from "./StarTray";
 import { PlaceEmblem } from "@/app/home/PlaceEmblem";
@@ -418,7 +420,7 @@ export function ScenePlayer({ scene, mission, store, onBack, onSceneComplete }: 
     (hit: Hit) => {
       // The next patch is already swapped while the curtain is still closed.
       // It cannot be found until the player can actually see the new board.
-      if (turn || (guided && (!revealed || loadFailed || (mission.phase !== "searching" && mission.phase !== "complete") || showComplete))) return;
+      if (turn || !revealed || loadFailed || (guided && ((mission.phase !== "searching" && mission.phase !== "complete") || showComplete))) return;
       sounds().unlock();
       switch (hit.kind) {
         case "target":
@@ -541,8 +543,8 @@ export function ScenePlayer({ scene, mission, store, onBack, onSceneComplete }: 
         </div>
       </header>
 
-      <div className="scene__stage" ref={stageRef}>
-        <SceneViewport scene={scene} mission={mission} hintLevel={mission.hintLevel} bonusFound={mission.bonusFound} discoveries={board?.discoveries} onHit={onHit} onReady={onReady} onGestureChange={setGestureActive} onAssetsReady={onAssetsReady} onVisibleAssetsReady={onVisibleAssetsReady} onAssetsFailed={onAssetsFailed} retryToken={retryToken} ariaLabel={tf(g.scene.sceneAria, { name: scene.name })} keyboardHint={g.scene.keyboardHint}
+      <div className="scene__stage" ref={stageRef} aria-busy={!curtainOpen && !loadFailed}>
+        <SceneViewport scene={scene} baseUrl={resolveDisplayBoardUrl(scene, board ?? undefined)} mission={mission} hintLevel={mission.hintLevel} bonusFound={mission.bonusFound} discoveries={board?.discoveries} onHit={onHit} onReady={onReady} onGestureChange={setGestureActive} onAssetsReady={onAssetsReady} onVisibleAssetsReady={onVisibleAssetsReady} onAssetsFailed={onAssetsFailed} retryToken={retryToken} ariaLabel={tf(g.scene.sceneAria, { name: scene.name })} keyboardHint={g.scene.keyboardHint}
           followsCamera={!!bubble || !!(discoveryRegion && !turn && revealed)}>
           {(vp) => {
             liveTransform.current = vp.transform;
@@ -581,6 +583,12 @@ export function ScenePlayer({ scene, mission, store, onBack, onSceneComplete }: 
           </div>
         ) : null}
       </div>
+
+      {/* Outside aria-busy stage so assistive technology hears the loading status immediately. */}
+      {!curtainOpen && !loadFailed ? <div className="scene__loading" role="status" aria-live="polite" aria-atomic="true">
+        <span className="scene__loading-stars" aria-hidden="true"><span><GoldStar /></span><span><GoldStar /></span><span><GoldStar /></span></span>
+        <span>{turn ? g.scene.loadingNext : g.scene.loadingWorld}</span>
+      </div> : null}
 
       {flight ? <StarFlight key={flight.key} path={flight.path} /> : null}
       {guided && board ? <Collection board={board} scene={scene} collectedIds={collectedIds} selectedId={selectedDiscovery} hintLevel={discoveryHint} obscured={compact && chromeHidden} searchComplete={mission.phase === "complete"} disabled={turn || !revealed || loadFailed || showComplete || (mission.phase !== "searching" && mission.phase !== "complete")} muted={store.muted} arrival={arrival} repeat={repeatTap} onSelect={selectDiscovery} onHint={requestDiscoveryHint} /> : null}

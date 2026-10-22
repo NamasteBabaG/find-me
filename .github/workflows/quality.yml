@@ -9,12 +9,11 @@ concurrency:
   group: quality-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 jobs:
-  verify:
+  checks:
+    name: Core quality and privacy
     runs-on: ubuntu-latest
-    # Full controlled-provider worlds now outlast 30 minutes on shared runners.
-    # Keep the complete suite, validators and private-asset build audit together.
-    # 45 was outgrown on 19 October: the check alone took 43 minutes on 866fbd83 and the build was cut off.
-    # Full-source recovery adds another controlled all27 world, including its original quota stop.
+    # The controlled lean-world file has its own runner; every other test,
+    # validators and the private-asset build audit stay in this job.
     timeout-minutes: 90
     env:
       APP_COMMIT: ${{ github.sha }}
@@ -26,7 +25,8 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - run: npm run check -- --maxWorkers=4
+      - name: Typecheck and core tests
+        run: npm run check -- --maxWorkers=4 --exclude src/services/generation/__tests__/local-patch-lean-world.test.ts
       - run: npm run scenes:validate
       - run: npm run adventures:validate
       - name: Production build and private-asset audit
@@ -48,3 +48,35 @@ jobs:
       - name: No generated source drift
         run: git diff --exit-code
       # No deployment credentials, customer DB or paid image provider in CI.
+
+  lean-world:
+    name: Complete controlled lean worlds
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      APP_COMMIT: ${{ github.sha }}
+      NEXT_TELEMETRY_DISABLED: 1
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Every controlled lean-world scenario
+        run: npm run test -- src/services/generation/__tests__/local-patch-lean-world.test.ts --maxWorkers=1
+      - name: No lean generated source drift
+        run: git diff --exit-code
+
+  # Preserve the required verify status. A skipped, failed or cancelled part
+  # cannot turn the full quality gate green, even when the other job passed.
+  verify:
+    needs: [checks, lean-world]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Both complete quality jobs passed
+        env:
+          CORE_RESULT: ${{ needs.checks.result }}
+          LEAN_RESULT: ${{ needs.lean-world.result }}
+        run: test "$CORE_RESULT" = success && test "$LEAN_RESULT" = success

@@ -611,6 +611,8 @@ export const he: Dictionary = {
       unlocked: "אפשר להמשיך למקום הבא!",
       starEarned: "קיבלתם כוכב זהב!",
       journeyFinished: "המסע הסתיים — עוד כוכבים מחכים!",
+      loadingWorld: "טוענים את העולם…",
+      loadingNext: "טוענים את המחבוא הבא…",
       loadTitle: "הציור עוד בדרך…",
       loadRetry: "טוענים שוב",
       loadBack: "למפה",

@@ -143,6 +143,19 @@
   transition: opacity 0ms;
 }
 .scene__curtain.is-open::before { opacity: 0; transition: opacity 360ms ease-out 120ms; }
+/* Three familiar gold stars visibly take turns while pixels are on their way.
+   Only transforms/opacity animate; no frame loop, image fetch or minimum wait.
+   This status sits ABOVE the opaque clouds, not behind their aria-hidden art. */
+.scene__loading { position: absolute; inset: 0; z-index: calc(var(--z-ui) - 1); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--space-3); padding: var(--space-4); color: var(--ink); font-family: var(--font-kid); font-size: var(--fs-400); font-weight: 600; line-height: var(--lh-400); text-align: center; }
+.scene__loading > span:last-child { max-width: 24ch; padding: var(--space-1) var(--space-3); border-radius: var(--radius-pill); background: var(--white); box-shadow: var(--shadow-1); }
+.scene__loading-stars { display: flex; align-items: center; gap: var(--space-2); height: var(--space-8); }
+.scene__loading-stars > span { display: block; width: var(--space-5); height: var(--space-5); animation: cloud-loading-star var(--dur-4) ease-in-out infinite; }
+.scene__loading-stars > span:nth-child(2) { animation-delay: 160ms; }
+.scene__loading-stars > span:nth-child(3) { animation-delay: 320ms; }
+.scene__loading-stars .star { width: 100%; height: 100%; }
+@keyframes cloud-loading-star { 0%, 65%, 100% { transform: translateY(0) scale(.88); opacity: .55; } 30% { transform: translateY(calc(-1 * var(--space-2))) scale(1); opacity: 1; } }
+@media (max-width: 720px) { .scene__loading { font-size: var(--fs-300); line-height: var(--lh-300); } }
+@media (prefers-reduced-motion: reduce) { .scene__loading-stars > span { animation: none; opacity: 1; } }
 /* The retry screen: calm, no red, no scolding — the picture is late, that is all. */
 .scene__retry { position: absolute; inset: 0; z-index: var(--z-ui); display: grid; place-items: center; background: var(--scene-sky, #BFE9FF); }
 .scene__retry-card { animation: fm-fade-up var(--dur-3) var(--ease-out); display: flex; flex-direction: column; align-items: center; gap: var(--space-2); padding: var(--space-4); border-radius: var(--radius-4); background: var(--white); box-shadow: var(--shadow-2); text-align: center; max-width: min(90vw, 360px); }

@@ -58,3 +58,7 @@ artwork remain planned and are not part of the active creation catalog.
   as a code-cleanup shortcut. Customer deletion uses the lifecycle services.
 - Use explicit git add paths. Never stage a dotenv file or private output.
 - Do not pipe check into tail/grep and use the latter's exit code as a gate.
+
+## Player display transport
+
+`node scripts/prepare-board-display.mjs --write` prepares public board display copies only (near-lossless60, same dimensions, maximum channel error2/255). `node scripts/prepare-board-display.mjs` verifies the source and derivative hashes, byte limits and dimensions. Canonical painting inputs and saved GameConfig paths/hashes are never rewritten. The player selects a copy only through the exact saved board source hash.

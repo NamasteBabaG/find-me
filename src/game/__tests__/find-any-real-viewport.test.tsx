@@ -14,6 +14,7 @@ import { createPlayStore } from "../store/play-store";
 import { targetGeometry } from "../engine/target-geometry";
 import { stageToScreen } from "../engine/viewport-math";
 import { sounds } from "../audio/sounds";
+import { getDict } from "@/i18n";
 
 const originalDecode = Object.getOwnPropertyDescriptor(HTMLImageElement.prototype, "decode");
 function mountedDecode(decode: (image: HTMLImageElement) => Promise<void>) {
@@ -35,6 +36,7 @@ class LoadedImage {
   onload: (() => void) | null = null;
   onerror: (() => void) | null = null;
   src = "";
+  fetchPriority = "";
   decode() { return Promise.resolve(); }
   removeAttribute(name: string) { if (name === "src") this.src = ""; }
   constructor() { LoadedImage.instances.push(this); }
@@ -46,6 +48,7 @@ beforeEach(() => {
   vi.stubGlobal("Image", LoadedImage);
   LoadedImage.instances = [];
   LoadedImage.stalled.clear();
+  mountedDecode(() => Promise.resolve());
   vi.useFakeTimers();
   window.matchMedia = (() => ({ matches: false, addEventListener() {}, removeEventListener() {} })) as never;
   vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => setTimeout(() => callback(performance.now()), 16));
@@ -67,6 +70,14 @@ function sceneFixture(): SceneConfig {
         rect: { x: 0.33 + index * 0.055, y: 0.3, w: 0.08, h: 0.35 },
         hitRect: { x: 0.3525 + index * 0.055, y: 0.4, w: 0.035, h: 0.15 } } })),
   };
+}
+
+function mixedLegacyScene(): SceneConfig {
+  const original = sceneFixture();
+  const scene: SceneConfig = { ...original, version: 6, playMode: undefined, appearancesPerBoard: undefined, findsRequiredToAdvance: undefined,
+    targets: original.targets.slice(0, 2) };
+  scene.targets[1]!.sprite = { kind: "composed", faceUrl: "/synthetic-legacy-face.png", bodyTemplate: "beach_float" };
+  return scene;
 }
 
 async function mountPlayer(size: { width: number; height: number }, scene = sceneFixture(), saved: string[] = [], expectStarted = true, suppliedConfig?: GameConfig) {
@@ -244,10 +255,29 @@ describe("one child at a time through the actual animated viewport", () => {
   it("releases the active board's preload sources and handlers when leaving", async () => {
     const player = await mountPlayer({ width: 1024, height: 768 });
     const owned = [...LoadedImage.instances];
-    expect(owned).toHaveLength(6); // One board + five variant-selected hides.
+    expect(owned).toHaveLength(3); // Board + current hide, followed by only the next hide.
     expect(owned.every(image => image.src.length > 0)).toBe(true);
     player.unmount();
     expect(owned.every(image => image.src === "" && image.onload === null && image.onerror === null)).toBe(true);
+  });
+
+  it("opens the current hide before a slow future hide, and ignores that speculative failure", async () => {
+    const scene = sceneFixture(), nextUrl = "/synthetic-1.png";
+    LoadedImage.stalled.add(nextUrl);
+    const player = await mountPlayer({ width: 390, height: 650 }, scene);
+    expect(player.visible()).toEqual(["hide-0"]);
+    expect(player.curtainOpen()).toBe(true);
+    expect(player.container.querySelector(".scene__loading")).toBeNull();
+    expect(player.container.querySelector(".scene__stage")?.getAttribute("aria-busy")).toBe("false");
+    expect(LoadedImage.instances.filter(image => image.fetchPriority === "high").map(image => image.src)).toEqual([scene.art.base, "/synthetic-0.png"]);
+    const warmup = LoadedImage.instances.filter(image => image.fetchPriority === "low");
+    expect(warmup.map(image => image.src)).toEqual([nextUrl]);
+    expect(LoadedImage.instances.some(image => image.src === "/synthetic-2.png")).toBe(false);
+    await act(async () => warmup[0]!.onerror?.());
+    act(() => vi.advanceTimersByTime(20_000));
+    expect(player.curtainOpen()).toBe(true);
+    expect(player.container.querySelector(".scene__retry")).toBeNull();
+    expect(player.store.getState().mission!.phase).toBe("searching");
   });
   it.each([{ width: 1280, height: 800 }, { width: 320, height: 650 }])("awards once, then lights one gold star only when its real flight lands at $width×$height", async size => {
     const player = await mountPlayer(size);
@@ -286,7 +316,10 @@ describe("one child at a time through the actual animated viewport", () => {
     expect(player.container.querySelector(".scene")?.getAttribute("data-mission-phase")).toBe("searching");
     expect(player.visible()).toEqual([second]);
     expect(lit()).toBe(1);
-    // No restart happened: a real tap on the next child is accepted at once.
+    // No restart happened: after the new mounted image decodes, a real tap on
+    // the next child is accepted without another intro or celebration.
+    await act(async () => {});
+    expect(player.curtainOpen()).toBe(true);
     player.hit(second!);
     expect(player.store.getState().mission!.phase).toBe("found");
     expect(Object.keys(player.store.getState().mission!.found).sort()).toEqual([first!, second!].sort());
@@ -345,8 +378,11 @@ describe("one child at a time through the actual animated viewport", () => {
     const ready: Array<() => void> = [];
     mountedDecode(() => new Promise<void>(resolve => ready.push(resolve)));
     const player = await mountPlayer({ width: 390, height: 650 }, sceneFixture(), [], false);
-    expect(LoadedImage.instances.length).toBeGreaterThanOrEqual(6);
+    expect(LoadedImage.instances).toHaveLength(2); // No future hide competes with the current decode.
     expect(player.curtainOpen()).toBe(false);
+    expect(player.container.querySelector(".scene__loading")?.textContent).toBe(getDict("en").game.scene.loadingWorld);
+    expect(player.container.querySelector(".scene__loading")?.closest('[aria-busy="true"]')).toBeNull();
+    expect(player.container.querySelector(".scene__stage")?.getAttribute("aria-busy")).toBe("true");
     expect(player.store.getState().mission!.phase).toBe("intro");
     act(() => LayoutObserver.latest.resize(390, 720));
     const camera = player.stage.style.transform;
@@ -354,6 +390,7 @@ describe("one child at a time through the actual animated viewport", () => {
     expect(player.curtainOpen()).toBe(false);
     await act(async () => ready.forEach(resolve => resolve()));
     expect(player.curtainOpen()).toBe(true);
+    expect(player.container.querySelector(".scene__loading")).toBeNull();
     act(() => vi.advanceTimersByTime(1000));
     // Clamping every animation frame may round sub-pixel floating point noise.
     const numericTransform = (value: string) => value.match(/-?\d+(?:\.\d+)?/g)!.map(Number);
@@ -397,6 +434,7 @@ describe("one child at a time through the actual animated viewport", () => {
     const progress = player.store.getState().progress;
     act(() => vi.advanceTimersByTime(1200));
     expect(player.curtainOpen()).toBe(false); // Old fixed160ms timer opened here.
+    expect(player.container.querySelector(".scene__loading")?.textContent).toBe(getDict("en").game.scene.loadingNext);
     player.hit(next);
     expect(player.store.getState().progress).toBe(progress);
     await act(async () => decodeReady!());
@@ -407,11 +445,164 @@ describe("one child at a time through the actual animated viewport", () => {
     expect(player.curtainOpen()).toBe(false);
     act(() => vi.advanceTimersByTime(1));
     expect(player.curtainOpen()).toBe(true);
+    expect(player.container.querySelector(".scene__loading")).toBeNull();
     act(() => LayoutObserver.latest.resize(390, 720));
     act(() => vi.advanceTimersByTime(1000));
     expect(player.stage.style.transform).toBe(fitted);
     expect(player.store.getState().progress).toBe(progress);
     expect(player.visible()).toEqual([next]);
+  });
+
+  it("covers a remotely adopted current hide and blocks keyboard finding until the replacement image decodes", async () => {
+    let slowUrl = "", ready!: () => void;
+    mountedDecode(image => image.getAttribute("src") === slowUrl ? new Promise<void>(resolve => { ready = resolve; }) : Promise.resolve());
+    const scene = sceneFixture();
+    // Put each synthetic hide under the initial keyboard cursor; the viewport
+    // must still route Enter through the covered-board guard during a swap.
+    for (const target of scene.targets) if (target.sprite.kind === "image") target.sprite.hitRect = { x: .48, y: .425, w: .04, h: .15 };
+    const player = await mountPlayer({ width: 390, height: 650 }, scene);
+    const first = player.visible()[0]!, next = player.store.getState().mission!.plan.order.find(id => id !== first)!;
+    slowUrl = `/synthetic-${next.slice(-1)}.png`;
+    const before = player.store.getState().progress;
+    act(() => player.store.getState().dispatch({ type: "ADOPT_FOUND", now: Date.now(),
+      found: { [first]: { hintsUsed: 0, misses: 0, elapsedMs: 0 } } }));
+    await act(async () => {});
+    expect(player.visible()).toEqual([next]);
+    expect(ready).toBeTypeOf("function");
+    expect(player.curtainOpen()).toBe(false);
+    expect(player.container.querySelector(".scene__loading")).not.toBeNull();
+    expect(player.container.querySelector(".scene__stage")?.getAttribute("aria-busy")).toBe("true");
+    fireEvent.keyDown(player.viewport, { key: "Enter" }); // Aim at the middle.
+    fireEvent.keyDown(player.viewport, { key: "Enter" }); // Try the covered hide.
+    expect(player.store.getState().progress).toBe(before);
+    expect(player.store.getState().mission!.found[next]).toBeUndefined();
+    await act(async () => ready());
+    expect(player.curtainOpen()).toBe(true);
+    expect(player.container.querySelector(".scene__loading")).toBeNull();
+    expect(player.store.getState().progress).toBe(before);
+    fireEvent.keyDown(player.viewport, { key: "Enter" });
+    expect(player.store.getState().mission!.found[next]).toBeDefined();
+    expect(player.store.getState().progress.scenes[scene.slug]!.foundTargetIds).toEqual([first, next]);
+  });
+
+  it("waits for the real next image load when the browser has no decode API", async () => {
+    Reflect.deleteProperty(HTMLImageElement.prototype, "decode");
+    const player = await mountPlayer({ width: 390, height: 650 }, sceneFixture(), [], false);
+    const loaded = (image: HTMLImageElement) => {
+      Object.defineProperty(image, "naturalWidth", { configurable: true, value: 512 });
+      Object.defineProperty(image, "complete", { configurable: true, value: true });
+      fireEvent.load(image);
+    };
+    await act(async () => { player.container.querySelectorAll<HTMLImageElement>("img.stage__base, [data-target] img").forEach(loaded); });
+    act(() => vi.advanceTimersByTime(1000));
+    expect(player.store.getState().mission!.phase).toBe("searching");
+    player.hit(player.visible()[0]!);
+    act(() => vi.advanceTimersByTime(2200));
+    await act(async () => vi.advanceTimersByTime(560));
+    const next = player.container.querySelector<HTMLImageElement>("[data-target] img")!;
+    expect(next.complete).toBe(false);
+    act(() => vi.advanceTimersByTime(1200));
+    expect(player.curtainOpen()).toBe(false);
+    expect(player.container.querySelector(".scene__loading")?.textContent).toBe(getDict("en").game.scene.loadingNext);
+    const progress = player.store.getState().progress;
+    player.hit(player.visible()[0]!);
+    expect(player.store.getState().progress).toBe(progress);
+    await act(async () => loaded(next));
+    act(() => vi.advanceTimersByTime(160));
+    expect(player.curtainOpen()).toBe(true);
+    expect(player.container.querySelector(".scene__loading")).toBeNull();
+  });
+
+  it("retries a failed native image without decode, ignoring the abandoned element's late load", async () => {
+    Reflect.deleteProperty(HTMLImageElement.prototype, "decode");
+    const player = await mountPlayer({ width: 390, height: 650 }, sceneFixture(), [], false);
+    const loaded = (image: HTMLImageElement) => {
+      Object.defineProperty(image, "naturalWidth", { configurable: true, value: 512 });
+      Object.defineProperty(image, "complete", { configurable: true, value: true });
+      fireEvent.load(image);
+    };
+    await act(async () => { player.container.querySelectorAll<HTMLImageElement>("img.stage__base, [data-target] img").forEach(loaded); });
+    act(() => vi.advanceTimersByTime(1000));
+    player.hit(player.visible()[0]!);
+    act(() => vi.advanceTimersByTime(2200));
+    await act(async () => vi.advanceTimersByTime(560));
+    const abandoned = player.container.querySelector<HTMLImageElement>("[data-target] img")!;
+    await act(async () => fireEvent.error(abandoned));
+    expect(player.container.querySelector(".scene__retry")).not.toBeNull();
+    expect(player.container.querySelector(".scene__loading")).toBeNull();
+    await act(async () => fireEvent.click(player.container.querySelector(".scene__retry-card button")!));
+    const replacement = player.container.querySelector<HTMLImageElement>("[data-target] img")!;
+    expect(replacement).not.toBe(abandoned);
+    await act(async () => { LoadedImage.instances.forEach(image => image.onload?.()); loaded(abandoned); });
+    expect(player.curtainOpen()).toBe(false);
+    expect(player.container.querySelector(".scene__loading")?.textContent).toBe(getDict("en").game.scene.loadingNext);
+    await act(async () => { player.container.querySelectorAll<HTMLImageElement>("img.stage__base, [data-target] img").forEach(loaded); });
+    act(() => vi.advanceTimersByTime(160));
+    expect(player.container.querySelector(".scene__retry")).toBeNull();
+    expect(player.curtainOpen()).toBe(true);
+  });
+
+  it("keeps a mixed legacy SVG face critical when its earlier speculative warmup failed", async () => {
+    const scene = mixedLegacyScene(), faceUrl = "/synthetic-legacy-face.png";
+    const player = await mountPlayer({ width: 390, height: 650 }, scene);
+    expect(player.visible()).toEqual(["hide-0"]);
+    expect(player.curtainOpen()).toBe(true);
+    const speculative = LoadedImage.instances.find(image => image.src === faceUrl && image.fetchPriority === "low")!;
+    expect(speculative).toBeDefined();
+    await act(async () => speculative.onerror?.());
+    expect(player.curtainOpen()).toBe(true);
+    expect(player.container.querySelector(".scene__retry")).toBeNull();
+    player.hit("hide-0");
+    act(() => vi.advanceTimersByTime(2200));
+    await act(async () => vi.advanceTimersByTime(560));
+    expect(player.visible()).toEqual(["hide-1"]);
+    expect(player.container.querySelector("[data-target] image")?.getAttribute("href")).toBe(faceUrl);
+    const selected = LoadedImage.instances.find(image => image.src === faceUrl && image.fetchPriority === "high")!;
+    expect(selected).toBeDefined();
+    const progress = player.store.getState().progress;
+    act(() => vi.advanceTimersByTime(1200));
+    expect(player.curtainOpen()).toBe(false);
+    expect(player.container.querySelector(".scene__loading")?.textContent).toBe(getDict("en").game.scene.loadingNext);
+    expect(player.container.querySelector(".scene__retry")).toBeNull();
+    await act(async () => selected.onload?.());
+    act(() => vi.advanceTimersByTime(160));
+    expect(player.curtainOpen()).toBe(true);
+    expect(player.container.querySelector(".scene__loading")).toBeNull();
+    expect(player.store.getState().progress).toBe(progress);
+    expect(Object.keys(player.store.getState().mission!.found)).toEqual(["hide-0"]);
+  });
+
+  it.each(["error", "timeout"] as const)("retries a selected legacy SVG face after %s without accepting its abandoned late decode", async failure => {
+    const scene = mixedLegacyScene(), faceUrl = "/synthetic-legacy-face.png";
+    const player = await mountPlayer({ width: 390, height: 650 }, scene);
+    player.hit("hide-0");
+    act(() => vi.advanceTimersByTime(2200));
+    await act(async () => vi.advanceTimersByTime(560));
+    const abandoned = player.container.querySelector<SVGImageElement>("[data-target] image")!;
+    const selected = LoadedImage.instances.find(image => image.src === faceUrl && image.fetchPriority === "high")!;
+    let lateDecode!: () => void;
+    vi.spyOn(selected, "decode").mockImplementation(() => new Promise<void>(resolve => { lateDecode = resolve; }));
+    await act(async () => selected.onload?.());
+    expect(lateDecode).toBeTypeOf("function");
+    if (failure === "error") await act(async () => fireEvent.error(abandoned));
+    else await act(async () => vi.advanceTimersByTime(20_000));
+    expect(player.curtainOpen()).toBe(false);
+    expect(player.container.querySelector(".scene__retry")).not.toBeNull();
+    expect(player.container.querySelector(".scene__loading")).toBeNull();
+    const progress = player.store.getState().progress;
+    await act(async () => fireEvent.click(player.container.querySelector(".scene__retry-card button")!));
+    expect(player.container.querySelector("[data-target] image")).not.toBe(abandoned);
+    await act(async () => { lateDecode(); fireEvent.load(abandoned); fireEvent.error(abandoned); });
+    act(() => vi.advanceTimersByTime(160));
+    expect(player.curtainOpen()).toBe(false);
+    expect(player.container.querySelector(".scene__retry")).toBeNull();
+    expect(player.container.querySelector(".scene__loading")?.textContent).toBe(getDict("en").game.scene.loadingNext);
+    await act(async () => { LoadedImage.instances.forEach(image => image.onload?.()); });
+    act(() => vi.advanceTimersByTime(160));
+    expect(player.curtainOpen()).toBe(true);
+    expect(player.container.querySelector(".scene__loading")).toBeNull();
+    expect(player.store.getState().progress).toBe(progress);
+    expect(Object.keys(player.store.getState().mission!.found)).toEqual(["hide-0"]);
   });
 
   it("keeps a failed mounted decode behind the retry screen until an explicit successful retry", async () => {
@@ -420,6 +611,7 @@ describe("one child at a time through the actual animated viewport", () => {
     const player = await mountPlayer({ width: 390, height: 650 }, sceneFixture(), [], false);
     await act(async () => rejectDecode!(new Error("cold decode failed")));
     expect(player.container.querySelector(".scene__retry")).not.toBeNull();
+    expect(player.container.querySelector(".scene__loading")).toBeNull();
     expect(player.curtainOpen()).toBe(false);
     mountedDecode(() => Promise.resolve());
     await act(async () => fireEvent.click(player.container.querySelector(".scene__retry-card button")!));
@@ -436,13 +628,16 @@ describe("one child at a time through the actual animated viewport", () => {
     const player = await mountPlayer({ width: 390, height: 650 }, sceneFixture(), [], false);
     act(() => vi.advanceTimersByTime(20_000));
     expect(player.container.querySelector(".scene__retry")).not.toBeNull();
+    expect(player.container.querySelector(".scene__loading")).toBeNull();
     mountedDecode(() => new Promise<void>(resolve => newReady.push(resolve)));
     await act(async () => fireEvent.click(player.container.querySelector(".scene__retry-card button")!));
     await act(async () => { for (const image of LoadedImage.instances) image.onload?.(); oldReady.forEach(resolve => resolve()); });
     expect(player.curtainOpen()).toBe(false);
+    expect(player.container.querySelector(".scene__loading")?.textContent).toBe(getDict("en").game.scene.loadingWorld);
     expect(player.store.getState().mission!.phase).toBe("intro");
     await act(async () => newReady.forEach(resolve => resolve()));
     expect(player.curtainOpen()).toBe(true);
+    expect(player.container.querySelector(".scene__loading")).toBeNull();
   });
 
   it("does not flash the clouds or decode the unchanged board again when the fifth child disappears", async () => {
@@ -499,7 +694,7 @@ describe("one child at a time through the actual animated viewport", () => {
       act(() => vi.advanceTimersByTime(559));
       expect(visible()).toEqual([current]);
       expect(store.getState().mission!.phase).toBe("found");
-      act(() => vi.advanceTimersByTime(1));
+      await act(async () => vi.advanceTimersByTime(1));
       expect(visible()).toHaveLength(1);
       expect(visible()).not.toContain(current);
       expect(store.getState().mission!.phase).toBe("searching");
@@ -531,7 +726,7 @@ describe("one child at a time through the actual animated viewport", () => {
     expect(stage.style.transform).toBe(zoomed);
     act(() => vi.advanceTimersByTime(1));
     expect(curtainOpen()).toBe(false);
-    act(() => vi.advanceTimersByTime(560));
+    await act(async () => vi.advanceTimersByTime(560));
     expect(store.getState().mission!.phase).toBe("searching");
     expect(visible()).toHaveLength(1);
     expect(stage.style.transform).toBe(initialCamera);
@@ -552,7 +747,7 @@ describe("one child at a time through the actual animated viewport", () => {
     hit(visible()[0]!);
     expect(store.getState().progress.scenes[scene.slug]!.foundTargetIds).toHaveLength(3);
     act(() => vi.advanceTimersByTime(2200));
-    act(() => vi.advanceTimersByTime(560));
+    await act(async () => vi.advanceTimersByTime(560));
     act(() => vi.advanceTimersByTime(400));
     expect(visible()).toHaveLength(1);
     expect(store.getState().progress.scenes[scene.slug]!.foundTargetIds).not.toContain(visible()[0]);
@@ -571,7 +766,7 @@ describe("one child at a time through the actual animated viewport", () => {
     expect(store.getState().mission!.phase).toBe("found");
     act(() => vi.advanceTimersByTime(1700));
     expect(curtainOpen()).toBe(false);
-    act(() => vi.advanceTimersByTime(560));
+    await act(async () => vi.advanceTimersByTime(560));
     act(() => vi.advanceTimersByTime(400));
     expect(store.getState().mission!.phase).toBe("searching");
     expect(store.getState().mission!.currentIndex).toBe(1);

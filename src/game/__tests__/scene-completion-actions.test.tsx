@@ -21,6 +21,7 @@ vi.mock("next/image", () => ({ default: ({ unoptimized: _u, fill: _f, ...props }
 const audio = vi.hoisted(() => ({ muted: true, restoreMutePreference: () => true, subscribeMuted: () => () => {},
   unlock: vi.fn(), play: vi.fn(), setScene: vi.fn(), startAmbient: vi.fn(), stopAmbient: vi.fn() }));
 vi.mock("../audio/sounds", () => ({ sounds: () => audio }));
+const originalDecode = Object.getOwnPropertyDescriptor(HTMLImageElement.prototype, "decode");
 
 class LoadedImage {
   static instances: LoadedImage[] = [];
@@ -29,15 +30,21 @@ class LoadedImage {
   src = "";
   resolveDecode!: () => void;
   decode = () => new Promise<void>(resolve => { this.resolveDecode = resolve; });
+  removeAttribute(name: string) { if (name === "src") this.src = ""; }
   constructor() { LoadedImage.instances.push(this); }
 }
 
 beforeEach(() => {
   vi.stubGlobal("React", React); vi.stubGlobal("Image", LoadedImage); LoadedImage.instances = [];
+  Object.defineProperty(HTMLImageElement.prototype, "decode", { configurable: true, value: () => Promise.resolve() });
   vi.useFakeTimers(); localStorage.clear();
   window.matchMedia = (() => ({ matches: true, addEventListener() {}, removeEventListener() {} })) as never;
 });
-afterEach(() => { cleanup(); vi.clearAllTimers(); vi.useRealTimers(); vi.unstubAllGlobals(); vi.clearAllMocks(); });
+afterEach(() => {
+  cleanup(); vi.clearAllTimers(); vi.useRealTimers(); vi.unstubAllGlobals(); vi.clearAllMocks();
+  if (originalDecode) Object.defineProperty(HTMLImageElement.prototype, "decode", originalDecode);
+  else Reflect.deleteProperty(HTMLImageElement.prototype, "decode");
+});
 
 async function completedPopup(locale: "en" | "he") {
   const { config: original, catalog } = adventureFixture(5);
@@ -63,7 +70,7 @@ async function completedPopup(locale: "en" | "he") {
   for (let count = 0; count < scene.targets.length; count++) {
     act(() => store.getState().dispatch({ type: "TAP_TARGET", targetId: currentTargetId(store.getState().mission!)!, now: Date.now() }));
     act(() => vi.advanceTimersByTime(2200));
-    act(() => vi.advanceTimersByTime(560));
+    await act(async () => vi.advanceTimersByTime(560));
     act(() => vi.advanceTimersByTime(160));
     act(() => vi.advanceTimersByTime(901));
   }

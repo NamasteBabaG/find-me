@@ -36,6 +36,7 @@ class LoadedImage {
   onerror: (() => void) | null = null;
   src = "";
   decode() { return Promise.resolve(); }
+  removeAttribute(name: string) { if (name === "src") this.src = ""; }
   constructor() { LoadedImage.instances.push(this); }
 }
 
@@ -44,6 +45,8 @@ beforeEach(() => {
   vi.stubGlobal("ResizeObserver", LayoutObserver);
   vi.stubGlobal("Image", LoadedImage);
   LoadedImage.instances = [];
+  // jsdom does not load pixels: both off-DOM and mounted images decode locally.
+  Object.defineProperty(HTMLImageElement.prototype, "decode", { configurable: true, value: () => Promise.resolve() });
   vi.useFakeTimers();
   window.matchMedia = (() => ({ matches: false, addEventListener() {}, removeEventListener() {} })) as never;
   vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => setTimeout(() => callback(performance.now()), 16));
