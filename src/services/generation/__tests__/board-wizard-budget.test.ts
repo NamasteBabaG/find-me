@@ -3,10 +3,10 @@ import { CasWorldBudgetRepository, type AtomicWorldBudgetStore } from "../../../
 import { boardWizardBudget } from "../board-wizard-budget";
 import type { WorldBudgetSnapshot } from "../world-budget";
 
-function repository() {
+function repository(afterRead?: () => Promise<void>) {
   let saved: { revision: number; snapshot: WorldBudgetSnapshot } | null = null;
   const store: AtomicWorldBudgetStore = {
-    read: async () => structuredClone(saved),
+    read: async () => { const snapshot = structuredClone(saved); await afterRead?.(); return snapshot; },
     insertIfAbsent: async (_id, snapshot) => { if (saved) return false; saved = { revision: 0, snapshot: structuredClone(snapshot) }; return true; },
     compareAndSwap: async (_id, revision, snapshot) => { if (!saved || saved.revision !== revision) return false; saved = { revision: revision + 1, snapshot: structuredClone(snapshot) }; return true; },
   };
@@ -15,6 +15,22 @@ function repository() {
 const evidence = (id: string, amountMicroUsd: number) => ({ providerNamespace: "fixture", providerRequestId: id, usageId: id, rawUsage: { tokens: 1 }, model: "gpt-image-2", amountMicroUsd, costBasis: "conservative-upper-estimate" as const });
 const reserve = (key: string, cents: number) => ({ requestKey: key, scope: "image" as const, operationFingerprint: key, reserveMicroUsd: cents * 10_000 });
 describe("QA wizard four-dollar budget", () => {
+  it.each([1, 2] as const)("forwards pending-only unknown accounting after a concurrent hold under attempt %i", async attempt => {
+    let pauseNextRead = false, read!: () => void, release!: () => void;
+    const observed = new Promise<void>(resolve => { read = resolve; });
+    const wait = new Promise<void>(resolve => { release = resolve; });
+    const repo = repository(async () => { if (pauseNextRead) { pauseNextRead = false; read(); await wait; } });
+    const first = boardWizardBudget(repo, attempt), second = boardWizardBudget(repo, attempt);
+    await first.reserve("w", reserve("review", 10));
+    pauseNextRead = true;
+    const replaying = first.markUnknown("w", "review", "Late terminal accounting", { onlyPending: true });
+    await observed;
+    await second.markUnknown("w", "review", "Exact hold from another worker");
+    release();
+    expect((await replaying).request).toMatchObject({ state: "unknown", requestKey: attempt === 1 ? "review" : "attempt-2:review",
+      reserveMicroUsd: 100_000, unknownReasons: ["Exact hold from another worker"] });
+    expect(await first.readRequest("w", "review")).toEqual(await second.readRequest("w", "review"));
+  });
   it("includes earlier identity cost and atomically refuses any reservation above $4", async () => {
     const b = boardWizardBudget(repository());
     await b.importSettled("w", { scope: "identity", operationFingerprint: "identity", evidence: evidence("identity", 500_000) });

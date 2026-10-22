@@ -51,6 +51,7 @@ export default async function AdminOrderPage({ params, searchParams }: { params:
   const { game, status, costCents, localPatchCost, activity, failedSpots, paintedSpots, awaitingQa, playable } = detail;
   // Asset signatures expire; the stored config is re-signed on the way out.
   const config = game.configJson ? withFreshAssetUrls(getContainer(), parseGameConfig(game.configJson)) : null;
+  const legacyControls = game.styleVersion !== "local-patch-world-v1";
   const order = game.orders[0] ?? null;
   const playUrl = isPlayable(status) ? (await ensurePlayerLink(c, gameId)).url : null;
   const avatarId = game.childProfile?.avatarAssetId;
@@ -154,7 +155,7 @@ export default async function AdminOrderPage({ params, searchParams }: { params:
                               // A painted patch is a piece of the world: it is drawn, tapped and
                               // pointed at from its own alpha (target-geometry), and dx/dy/scale
                               // do not apply to it. The form used to accept them and change nothing.
-                              <span className="fm-small">מחבוא מצויר: המיקום, אזור הלחיצה והראש באים מהפאץ׳ עצמו; אין כאן dx/dy/scale. לתיקון — ↻ Regenerate.</span>
+                              <span className="fm-small">מחבוא מצויר: המיקום, אזור הלחיצה והראש באים מהפאץ׳ עצמו; אין כאן dx/dy/scale. לתיקון נעשה במסלול ההתאוששות התואם למנוע.</span>
                             ) : (
                               <form action={adjustTargetAction} className="adjust">
                                 <input type="hidden" name="gameId" value={gameId} />
@@ -174,13 +175,13 @@ export default async function AdminOrderPage({ params, searchParams }: { params:
                               </form>
                             )}
                           </div>
-                          <form action={regenTargetAction}>
+                          {legacyControls ? <form action={regenTargetAction}>
                             <input type="hidden" name="gameId" value={gameId} />
                             <input type="hidden" name="targetInstanceId" value={row?.id ?? ""} />
                             <button className="fm-btn fm-btn--ghost fm-btn--sm" type="submit" disabled={!row}>
                               ↻ Regenerate
                             </button>
-                          </form>
+                          </form> : null}
                         </div>
                       );
                     })}
@@ -214,13 +215,13 @@ export default async function AdminOrderPage({ params, searchParams }: { params:
                         {spot.attempts > 1 ? ` · ${spot.attempts} attempts` : ""}
                         <div title={spot.judge?.reason ?? ""}>{judgeLabel(spot.judge)}{spot.judge?.model ? ` · ${spot.judge.model}` : ""}</div>
                       </span>
-                      <form action={regenTargetAction}>
+                      {legacyControls ? <form action={regenTargetAction}>
                         <input type="hidden" name="gameId" value={gameId} />
                         <input type="hidden" name="targetInstanceId" value={spot.targetInstanceId} />
                         <button className="fm-btn fm-btn--ghost fm-btn--sm" type="submit">
                           ↻
                         </button>
-                      </form>
+                      </form> : null}
                     </summary>
                     {spot.judge ? <div className="fm-stack fm-stack--1">
                       <p className="fm-small" dir="auto">{spot.judge.reason}</p>
@@ -268,13 +269,13 @@ export default async function AdminOrderPage({ params, searchParams }: { params:
                   ) : (
                     <span className="fm-small">אין תמונות שמורות מהניסיונות האלה.</span>
                   )}
-                  <form action={regenTargetAction}>
+                  {legacyControls ? <form action={regenTargetAction}>
                     <input type="hidden" name="gameId" value={gameId} />
                     <input type="hidden" name="targetInstanceId" value={spot.targetInstanceId} />
                     <button className="fm-btn fm-btn--ghost fm-btn--sm" type="submit">
                       ↻ נסו שוב את המחבוא הזה
                     </button>
-                  </form>
+                  </form> : null}
                 </div>
               ))}
             </section>
@@ -339,13 +340,13 @@ export default async function AdminOrderPage({ params, searchParams }: { params:
 
           <section className="fm-card fm-stack fm-stack--2">
             <h3>פעולות</h3>
-            <form action={requestPhotoAction} className="fm-stack fm-stack--1">
+            {legacyControls ? <form action={requestPhotoAction} className="fm-stack fm-stack--1">
               <input type="hidden" name="gameId" value={gameId} />
               <input className="fm-input" name="note" placeholder="הערה להורה (תמונה חדשה)" />
               <button className="fm-btn fm-btn--secondary fm-btn--sm" type="submit">
                 בקשת תמונה חדשה
               </button>
-            </form>
+            </form> : null}
             {playable ? (
               <form action={adminRotateLinkAction}>
                 <input type="hidden" name="gameId" value={gameId} />

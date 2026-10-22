@@ -55,6 +55,23 @@ function charge(providerRequestId = "provider", amountMicroUsd = 80_000): WorldC
 function saved(backing: FakeBacking, worldId = "world"): WorldBudgetSnapshot | null { const row = backing.rows.get(worldId); return row ? JSON.parse(row.json) : null; }
 
 describe("CAS world budget adapter races", () => {
+  it("rechecks pending-only unknown accounting after a concurrent writer bound another hold", async () => {
+    const { backing, store, budget } = fixture();
+    await budget.reserve("world", input());
+    const second = new WorldBudget(new CasWorldBudgetRepository(new FakeAtomicStore(backing)));
+    let read!: () => void, release!: () => void;
+    const observed = new Promise<void>(resolve => { read = resolve; });
+    const wait = new Promise<void>(resolve => { release = resolve; });
+    store.afterRead = async () => { store.afterRead = undefined; read(); await wait; };
+    const finishing = budget.markUnknown("world", "request", "Late background accounting", { onlyPending: true });
+    await observed;
+    await second.markUnknown("world", "request", "Exact hold written by another worker");
+    const bound = structuredClone(backing.rows.get("world"));
+    release();
+    expect((await finishing).request).toMatchObject({ state: "unknown", unknownReasons: ["Exact hold written by another worker"] });
+    expect(backing.rows.get("world")).toEqual(bound);
+    expect(backing.conflicts).toBe(1);
+  });
   it.each([false, true])("serializes independent workers competing for budget; preexisting row=%s", async preexisting => {
     const { backing, store, budget } = fixture();
     if (preexisting) await store.insertIfAbsent("world", { worldId: "world", requests: [] });

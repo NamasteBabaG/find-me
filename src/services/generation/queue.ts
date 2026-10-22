@@ -109,6 +109,10 @@ export async function tickGeneration(c: Container, gameId: string | null, budget
       return { gameId: id, status: (await c.db.game.findUniqueOrThrow({ where: { id } })).status, pending: true, attention: null };
     }
     if (["PAID", "AVATAR_GENERATING", "GENERATION_FAILED"].includes(before.status)) {
+      // An identity declined before its first lease must yield cron turns too.
+      const paused = await pauseLocalPatchForSpendGuard(c, id, PIPELINE_LEASE_MS,
+        [LOCAL_PATCH_NEEDS_RELEASE, LOCAL_PATCH_RECOVERY_EXHAUSTED, LOCAL_PATCH_QUALITY_FAILED], ["PAID", "AVATAR_GENERATING", "GENERATION_FAILED"]);
+      if (paused) return { gameId: id, status: statusOf(before), pending: false, attention: paused };
       // The pinned engine owns its identity contract from the first preview.
       // The pipeline returns after approval; it never paints legacy targets.
       await runGenerationPipeline(c, id, { deadlineAt: now + budgetMs, hardDeadlineAt: now + hardMs });

@@ -59,7 +59,7 @@ export function boardWizardBudget(repository: WorldBudgetRepository, attempt = 1
     override readRequest(worldId: string, requestKey: string) { return super.readRequest(worldId, key(requestKey)); }
     override settle(worldId: string, requestKey: string, evidence: WorldChargeEvidence, options?: { onlyPending?: boolean }) { return super.settle(worldId, key(requestKey), evidence, options); }
     override link(worldId: string, input: WorldLinkInput) { return super.link(worldId, { ...input, requestKey: key(input.requestKey), canonicalRequestKey: key(input.canonicalRequestKey) }); }
-    override markUnknown(worldId: string, requestKey: string, reason: string) { return super.markUnknown(worldId, key(requestKey), reason); }
+    override markUnknown(worldId: string, requestKey: string, reason: string, options?: { onlyPending?: boolean }) { return super.markUnknown(worldId, key(requestKey), reason, options); }
     override recordUnknown(worldId: string, input: WorldReservationInput & { reason: string }) { return super.recordUnknown(worldId, { ...input, requestKey: key(input.requestKey) }); }
     override readContinuationApproval(worldId: string, requestKey: string) { return super.readContinuationApproval(worldId, key(requestKey)); }
     override authorizeUnknownContinuation(worldId: string, input: WorldUnknownContinuationInput) { return super.authorizeUnknownContinuation(worldId, { ...input, requestKey: key(input.requestKey) }); }

@@ -14,6 +14,7 @@ import { boardConditioningHash } from "./board-conditioned-source";
 import type { BudgetJson } from "./world-budget";
 import type { IdentityProvenance } from "./board-wizard-identity-gate";
 import { LOCAL_PATCH_STYLE } from "./local-patch-world";
+import { avatarRepairLineageAssets, purgeAvatarRepairLineage } from "./avatar-repair-lineage";
 
 export interface BoardWizardIdentityClaim {
   gameId: string; jobId: string; jobAttempt: number; styleVersion: string;
@@ -172,7 +173,10 @@ export async function deleteBoardWizardIdentityGame(c: Container, gameId: string
     await deleteAdventureAlbum(tx, gameId, c.databaseUrl);
     const child = game.childProfileId ? await tx.childProfile.findUnique({ where: { id: game.childProfileId } }) : null;
     if (child && await tx.game.count({ where: { childProfileId: child.id, deletedAt: null, NOT: { id: gameId } } }) === 0) {
+      const repairIds = new Set((await avatarRepairLineageAssets(tx, { childId: child.id, ownerId: game.ownerId })).map(asset => asset.id));
+      await purgeAvatarRepairLineage(tx, { gameId, childId: child.id, ownerId: game.ownerId, now });
       for (const id of [child.originalPhotoAssetId, child.identityAssetId, child.avatarAssetId].filter((id): id is string => !!id)) {
+        if (repairIds.has(id)) continue; // The lineage helper already applied every shared-consumer check.
         const asset = await tx.asset.findUniqueOrThrow({ where: { id } }); demand(asset.ownerId === game.ownerId);
         const aliases = await tx.asset.findMany({ where: { storagePath: asset.storagePath }, select: { id: true } });
         const elsewhere = await tx.childProfile.count({ where: { NOT: { id: child.id }, OR: [

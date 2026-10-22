@@ -4,7 +4,7 @@ import { capacityFailureCode } from "../../domain/generation/lean-capacity-recov
 import type { BackgroundReviewRound } from "../../domain/generation/background-review-round";
 import type { EvidenceRole } from "../../domain/scene/local-patch-evidence-policy";
 import { leanReviewPolicyOf } from "../../domain/generation/visual-review-policy";
-import { backgroundRoundOfKey, SOL_BACKGROUND_ACTION } from "./continuity-background";
+import { backgroundRoundOfKey, backgroundRoundsOnImage, SOL_BACKGROUND_ACTION } from "./continuity-background";
 import { leanCapacityRecoveryOf } from "./lean-capacity-recovery-pin";
 import { parkedHoldSha256 } from "./lean-review-recovery-pin";
 import { sha256Bytes } from "./fixed-sprite";
@@ -74,7 +74,15 @@ export async function boundLeanCapacityStartedRoundHold(db: Db, gameId: string,
   if (!pin || pin.jobId !== job.id) return null;
   const round = await backgroundRoundOfKey(db, gameId, pin.worldId, requestKey);
   if (!round) return null;
-  const admission = await capacityReviewRoundAdmission(db, pin, round);
+  let admission = await capacityReviewRoundAdmission(db, pin, round);
+  if (!admission && leanReviewPolicyOf(round.intent.policyVersion ?? "")?.role === "head-continuity") {
+    // Wake eligibility may discover a recorded companion on these exact bindings; it buys nothing.
+    // The actual continuation still rebuilds and supplies its exact candidates before admitting it.
+    const companions = (await backgroundRoundsOnImage(db, gameId, round.intent.binding))
+      .filter(one => one.role === "scene-quality" && one.tier === "flex")
+      .map(one => ({ requestKey: one.requestKey, fingerprint: one.fingerprint, role: "quality" as const }));
+    admission = await capacityReviewRoundAdmission(db, pin, round, companions);
+  }
   if (admission?.kind !== "started-flex") return null;
   return { worldId: pin.worldId, jobId: pin.jobId, holdSha256: parkedHoldSha256(job),
     heldRequestKeys: [requestKey], ledgerSha256: pin.ledgerSha256 };

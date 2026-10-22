@@ -1,4 +1,5 @@
 import { Prisma } from "@prisma/client";
+import { DbStorage } from "../infra/storage/db";
 import { sqlTable } from "@/infra/db/sql-table";
 import { isPlayable } from "@/domain/order-state";
 import { deleteAdventureAlbum } from "./adventure-album.service";
@@ -19,6 +20,7 @@ import { BOARD_WIZARD_STYLE, deleteBoardConditionedWizard } from "./generation/b
 import { deleteBoardWizardIdentityGame } from "./generation/board-wizard-identity-lifecycle";
 import { LOCAL_PATCH_STYLE } from "./generation/local-patch-world";
 import { deleteLocalPatchGame } from "./generation/local-patch-deletion";
+import { avatarRepairLineageAssets, purgeAvatarRepairLineage } from "./generation/avatar-repair-lineage";
 
 /** Library + owner actions. Everything here requires the owner's user id. */
 export async function listGamesForUser(c: Container, userId: string) {
@@ -132,6 +134,18 @@ export async function deleteGame(c: Container, gameId: string, actor: Actor, use
     include: { childProfile: true, scenes: { include: { targets: { include: { variants: true } } } } },
   });
   if (!g) return false;
+  // Refuse a corrupt/foreign derivative inventory before any legacy image cleanup.
+  // A valid inventory is read again under the final lifecycle fence below.
+  const repairAssets = g.childProfile ? await avatarRepairLineageAssets(c.db, { childId: g.childProfile.id, ownerId: g.ownerId }) : [];
+  // A prepared first full-face recut may not have committed its lineage yet.
+  // Its local-patch sibling's durable history still identifies this mixed graph.
+  const localPatchSibling = g.childProfile && await c.db.game.findFirst({ where: { childProfileId: g.childProfile.id,
+    styleVersion: LOCAL_PATCH_STYLE }, select: { id: true } });
+  if (repairAssets.length || localPatchSibling) {
+    const deleted = await deleteLegacyAvatarLineageGame(c, gameId, actor, userId, g.styleVersion);
+    if (deleted) c.analytics.track("game_deleted", { gameId });
+    return deleted;
+  }
   await revokePlayerLinks(c, gameId, actor);
   for (const s of g.scenes) {
     for (const t of s.targets) {
@@ -169,11 +183,70 @@ export async function deleteGame(c: Container, gameId: string, actor: Actor, use
       styleVersion: g.styleVersion, updatedAt: g.updatedAt }, data: { configJson: null } });
     if (fenced.count !== 1) throw new GameStatusConflict(gameId, statusOf(g), "DELETED");
     await transitionGame(c, gameId, "DELETED", actor, undefined, tx);
+    if (g.childProfile) await purgeAvatarRepairLineage(tx, { gameId, childId: g.childProfile.id, ownerId: g.ownerId, now: new Date() });
     await purgeAdminAlertNotifications(tx, gameId);
     await deleteAdventureAlbum(tx, gameId, c.databaseUrl);
   }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
   c.analytics.track("game_deleted", { gameId });
   return true;
+}
+
+/** Only a legacy graph sharing local-patch display lineage takes this path.
+ * Read it afresh and fence before touching any bytes/pointers: an avatar recut
+ * committed after the outer route read must be deleted wholly or left wholly live. */
+async function deleteLegacyAvatarLineageGame(c: Container, gameId: string, actor: Actor, userId: string | undefined,
+  expectedStyle: string): Promise<boolean> {
+  if (c.storage.id !== "db") throw Error("Display repair lineage requires transactional private storage");
+  return c.db.$transaction(async tx => {
+    const g = await tx.game.findFirst({ where: { id: gameId, ...(userId ? { ownerId: userId } : {}), deletedAt: null },
+      include: { childProfile: true, scenes: { include: { targets: { include: { variants: true } } } } } });
+    if (!g) return false;
+    if (actor.type === "ADMIN") {
+      const administrator = await tx.user.findUnique({ where: { id: actor.id }, select: { email: true } });
+      if (!administrator || !(c.adminEmails ?? []).some(email => email.trim().toLowerCase() === administrator.email.trim().toLowerCase())) {
+        throw Error("Administrator not authorized");
+      }
+    } else if (actor.type !== "USER" || actor.id !== g.ownerId || userId !== g.ownerId) {
+      throw Error("Owner authorization required");
+    }
+    if (g.styleVersion !== expectedStyle) throw new GameStatusConflict(gameId, statusOf(g), "DELETED");
+    const child = g.childProfile;
+    const repairs = child ? await avatarRepairLineageAssets(tx, { childId: child.id, ownerId: g.ownerId }) : [];
+    const repairIds = new Set(repairs.map(asset => asset.id));
+    const scoped = { ...c, db: tx as Container["db"], storage: new DbStorage(tx) };
+    const claim = await tx.game.updateMany({ where: { id: gameId, ownerId: g.ownerId, childProfileId: g.childProfileId,
+      deletedAt: null, styleVersion: expectedStyle, status: g.status, updatedAt: g.updatedAt },
+      data: { updatedAt: new Date(Math.max(Date.now(), g.updatedAt.getTime() + 1)) } });
+    if (claim.count !== 1) throw new GameStatusConflict(gameId, statusOf(g), "DELETED");
+    await transitionGame(scoped, gameId, "DELETED", actor, undefined, tx);
+    await tx.generationJob.updateMany({ where: { gameId }, data: { status: "DONE", attempts: { increment: 1 },
+      currentStep: null, stepsJson: "{}", lastError: null } });
+    await tx.game.update({ where: { id: gameId }, data: { configJson: null } });
+    await revokePlayerLinks(scoped, gameId, actor);
+    const remove = (id: string | null | undefined) => id && repairIds.has(id) ? Promise.resolve() : deleteAsset(scoped, id);
+    for (const scene of g.scenes) for (const target of scene.targets) {
+      await remove(target.spriteAssetId);
+      for (const variant of target.variants) {
+        await remove(variant.assetId);
+        for (const id of rejectedIds(variant.rejectedAssetIdsJson)) await remove(id);
+        const evidenceIds = renderEvidenceIds(variant.usageJson);
+        for (const id of evidenceIds) await remove(id);
+        if (evidenceIds.length) await tx.targetVariantAsset.update({ where: { id: variant.id },
+          data: { usageJson: removeRenderEvidence(variant.usageJson, new Set(evidenceIds)) } });
+      }
+      await tx.targetVariantAsset.updateMany({ where: { targetInstanceId: target.id }, data: { assetId: null, rejectedAssetIdsJson: null } });
+    }
+    if (child && await tx.game.count({ where: { childProfileId: child.id, deletedAt: null, NOT: { id: gameId } } }) === 0) {
+      await remove(child.avatarAssetId); await remove(child.originalPhotoAssetId); await remove(child.identityAssetId);
+      await purgeAvatarRepairLineage(tx, { gameId, childId: child.id, ownerId: g.ownerId, now: new Date() });
+      await tx.childProfile.update({ where: { id: child.id },
+        data: { avatarAssetId: null, originalPhotoAssetId: null, identityAssetId: null, photoCropJson: null, deletedAt: new Date() } });
+    }
+    await tx.gameScene.updateMany({ where: { gameId }, data: { configJson: null } });
+    await purgeAdminAlertNotifications(tx, gameId);
+    await deleteAdventureAlbum(tx, gameId, c.databaseUrl);
+    return true;
+  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, timeout: 30_000 });
 }
 
 export function configFromGame(game: { configJson: string | null }): GameConfig | null {

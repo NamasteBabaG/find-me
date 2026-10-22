@@ -171,6 +171,17 @@ describe("settlement, unknown spend and holds", () => {
     expect((await budget.settle("world", "c", charge("c"), { onlyPending: true })).request.state).toBe("settled");
   });
 
+  it("marks only a pending request unknown when asked to, preserving an existing hold's reasons and a settled bill", async () => {
+    const { repository, budget } = fixture();
+    for (const key of ["a", "b", "c"]) await budget.reserve("world", reservation(key));
+    await budget.markUnknown("world", "a", "Original bound hold");
+    await budget.settle("world", "b", charge("b"));
+    const before = await repository.snapshot();
+    expect((await budget.markUnknown("world", "a", "Late background accounting", { onlyPending: true })).request).toEqual(before.requests.find(r => r.requestKey === "a"));
+    expect((await budget.markUnknown("world", "b", "Late background accounting", { onlyPending: true })).request).toEqual(before.requests.find(r => r.requestKey === "b"));
+    expect((await budget.markUnknown("world", "c", "Retained unpriced result", { onlyPending: true })).request).toMatchObject({ state: "unknown", unknownReasons: ["Retained unpriced result"], reserveMicroUsd: 100_000 });
+  });
+
   it("records an over-reserve bill without clamping even when total is still below cap", async () => {
     const { budget } = fixture(); await budget.reserve("world", reservation());
     const result = await budget.settle("world", "request-1", charge("overrun", 100_001));

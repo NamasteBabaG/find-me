@@ -113,10 +113,14 @@ export function readBoardWizard(raw: string): Capsule {
 const scope = (gameId: string) => `${gameId}:board-wizard`;
 const assetId = (gameId: string, key: string) => `ast_bcw_${boardConditioningHash([gameId, key])}`;
 const assetPath = (id: string) => `private/board-wizard/${id}.png`;
-// A lean world's four-dollar ceiling comes first: no later policy or extension raises it (local-patch-lean/v1).
+/** Exact authority precedence shared by purchases and display. Only explicitly
+ * bound recovery grants raise a lean pin; ordinary defaults never do. */
+export async function readBoardWizardBudgetAuthority(c: Container, worldId: string) {
+  return await readLeanCapacityRecoveryBudget(c, worldId) ?? await readLeanCompletionBudget(c, worldId) ?? await readLeanWorldBudget(c, worldId)
+    ?? await readNewQaWorldBudget(c, worldId) ?? await readLocalPatchEmergencyBudget(c, worldId) ?? readBoardWizardBudgetExtension(c, worldId);
+}
 function budgetOf(c: Container, attempt = 1, options: WorldBudgetOptions = {}) { return boardWizardBudget(new CasWorldBudgetRepository(new PrismaWorldBudgetStore(c.db)), attempt, options,
-  async worldId => await readLeanCapacityRecoveryBudget(c, worldId) ?? await readLeanCompletionBudget(c, worldId) ?? await readLeanWorldBudget(c, worldId) ?? await readNewQaWorldBudget(c, worldId) ?? await readLocalPatchEmergencyBudget(c, worldId)
-    ?? readBoardWizardBudgetExtension(c, worldId)); }
+  worldId => readBoardWizardBudgetAuthority(c, worldId)); }
 
 async function spendCheck(c: Container, ownerId: string, engine: "board-wizard" | "local-patch" = "board-wizard") {
   demand((engine === "local-patch" ? env().APP_ENV === "qa" : boardWizardEnabled()) && c.storage.id === "db", "QA generation is not explicitly enabled with durable storage");

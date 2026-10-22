@@ -16,6 +16,7 @@ import { boardsOfWorlds, purchasableWorlds } from "./world-catalog.service";
 import { SYSTEM } from "./audit.service";
 import { env } from "@/lib/env";
 import { purchasingClosed, purchasingEnabled } from "@/lib/purchasing";
+import { isFixedWorldStyle } from "./generation/fixed-world-stage-record";
 import { LOCAL_PATCH_STYLE } from "./generation/local-patch-world";
 import { INTEGRATED_COLLECTION_VERSION } from "../domain/scene/local-patch-versions";
 import { assertNoOutstandingCheckout, DraftCheckoutInProgress, hasOutstandingCheckout } from "./draft-checkout-lock";
@@ -421,6 +422,7 @@ export async function selectPackage(c: Container, gameId: string, tierRaw: strin
 export async function replacePhotoForPaidGame(c: Container, gameId: string, input: { buffer: Buffer; mimeType: string; crop: CropBox | null }): Promise<FlowResult> {
   const game = await c.db.game.findUnique({ where: { id: gameId }, include: { childProfile: true } });
   if (!game || !game.childProfile) return flowError("DRAFT_NOT_FOUND", "המשחק לא נמצא.");
+  if (game.styleVersion === "local-patch-world-v1" || isFixedWorldStyle(game.styleVersion)) return flowError("DRAFT_LOCKED", "החלפת מקור מחייבת מסלול התאוששות מתאים.");
   if (statusOf(game) !== "NEEDS_NEW_PHOTO") return flowError("DRAFT_LOCKED", "המשחק לא מחכה לתמונה חדשה.");
   const check = await checkPhoto(input.buffer, input.mimeType);
   if (!check.ok) {

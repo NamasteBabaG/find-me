@@ -6,6 +6,7 @@ import { newId } from "../../lib/ids";
 import { LOCAL_PATCH_STYLE, localPatchPrivateInventory } from "./local-patch-world";
 import { LOCAL_PATCH_PROVIDER } from "./local-patch-hide";
 import { localPatchNotificationPrefix } from "../local-patch-notifications";
+import { avatarRepairLineageAssets } from "./avatar-repair-lineage";
 import { purgeAdminAlertNotifications } from "../admin-alert-deletion";
 
 function demand(value: unknown, message: string): asserts value {
@@ -85,6 +86,12 @@ export async function deleteLocalPatchGame(c: Container, gameId: string, actor: 
           demand(typeof candidate?.identityAssetId === "string" && typeof candidate?.avatarAssetId === "string", "Invalid candidate inventory");
           childAssets.push([candidate.identityAssetId, "IDENTITY_SHEET"], [candidate.avatarAssetId, "AVATAR"]);
         }
+      }
+      // A recut can have committed while its old-avatar cleanup failed or
+      // its COMMIT acknowledgement was lost. The same commit retained every
+      // replaced address, including repairs initiated from a sibling game.
+      for (const asset of await avatarRepairLineageAssets(tx, { childId: child.id, ownerId: game.ownerId })) {
+        childAssets.push([asset.id, "AVATAR"]);
       }
       for (const [assetId, type] of childAssets) {
         if (!assetId) continue;

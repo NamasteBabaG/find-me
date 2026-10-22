@@ -94,6 +94,29 @@ describe("capacity grant carries exactly an already-started Flex round", () => {
     vi.mocked(leanCapacityRecoveryOf).mockResolvedValue(null);
     expect(await boundLeanCapacityStartedRoundHold(f.db, gameId, job)).toBeNull();
   });
+  it("wakes a paired post-grant continuity hold without replacing normal continuation's candidate proof", async () => {
+    const f = fixture(), quality = f.add("quality", "flex", 17, before), continuity = f.add("continuity", "flex", 18, after);
+    const answered = f.rows.get("aud_sb_" + quality.round.intent.roundId + "_outcome")!;
+    answered.metaJson = JSON.stringify({ kind: "outcome", state: "answered", providerStatus: "completed",
+      responseId: "resp_synthetic_17", at: Date.parse(after) });
+    vi.mocked(leanCapacityRecoveryOf).mockResolvedValue(f.pin);
+    const job = { id: f.pin.jobId, updatedAt: new Date(after), lastError: "local-patch-continue-in-slice/v1: " + continuity.candidate.requestKey
+      + ": its record no longer matches an interruption this continuation admits on these pixels" };
+    expect(await boundLeanCapacityStartedRoundHold(f.db, gameId, job)).toEqual({ worldId, jobId: job.id,
+      holdSha256: parkedHoldSha256(job), heldRequestKeys: [continuity.candidate.requestKey], ledgerSha256: f.pin.ledgerSha256 });
+    // A bounded wake buys nothing. Actual continuation still requires the exact rebuilt candidate.
+    expect(await capacityReviewRoundAdmission(f.db, f.pin, continuity.round)).toBeNull();
+    expect(await capacityReviewRoundAdmission(f.db, f.pin, continuity.round, [quality.candidate])).toMatchObject({ kind: "started-flex" });
+  });
+  it.each(["imageSha256", "geometrySha256", "identitySha256", "variantId", "hideId"] as const)("does not discover a wake companion for different %s", async field => {
+    const f = fixture();
+    f.add("quality", "flex", 19, before, { [field]: "e".repeat(64) });
+    const continuity = f.add("continuity", "flex", 20, after);
+    vi.mocked(leanCapacityRecoveryOf).mockResolvedValue(f.pin);
+    const job = { id: f.pin.jobId, updatedAt: new Date(after), lastError: "local-patch-continue-in-slice/v1: " + continuity.candidate.requestKey
+      + ": its record no longer matches an interruption this continuation admits on these pixels" };
+    expect(await boundLeanCapacityStartedRoundHold(f.db, gameId, job)).toBeNull();
+  });
   it("does not wake later holds for a fresh default question or a fresh Flex question", async () => {
     const f = fixture(); vi.mocked(leanCapacityRecoveryOf).mockResolvedValue(f.pin);
     for (const tier of ["default", "flex"] as const) {

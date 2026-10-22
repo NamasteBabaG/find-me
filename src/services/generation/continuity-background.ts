@@ -338,6 +338,55 @@ async function finishFromKept(ctx: Ctx, responseId: string, kept: RetainedPurcha
     : `${ctx.requestKey}: background response ${responseId} ended ${providerStatus}${errorCode ? ` (${errorCode})` : ""} without a charge that can be stated`);
 }
 
+/** A terminal event can commit before its accounting write. Replay only its existing receipt and pending reservation:
+ * no provider, event or retained-byte write, and no change to a hold another writer has already bound. */
+async function reconcileTerminalReceipt(ctx: Ctx, round: BackgroundReviewRound): Promise<boolean> {
+  const terminal = round.terminal;
+  if (!terminal || terminal.kind === "refused") return false;
+  const budget = boardWizardBudgetOf(ctx.c), request = await budget.readRequest(ctx.worldId, ctx.requestKey);
+  if (!request) throw Error("BACKGROUND_REVIEW: a terminal round has no reservation");
+  if (request.state !== "pending") return false;
+  if (request.scope !== "judge" || request.operationFingerprint !== ctx.question.fingerprint
+    || request.reserveMicroUsd !== ctx.reserveMicroUsd || request.conflicts.length)
+    throw Error("BACKGROUND_REVIEW: a terminal round has no matching reservation");
+  const kept = await new LocalPatchRetainedPurchaseStore(ctx.c, ctx.gameId, budget).get(ctx.worldId, ctx.requestKey);
+  if (!kept || kept.version !== RETAINED_PURCHASE_VERSION || kept.worldId !== ctx.worldId || kept.requestKey !== ctx.requestKey
+    || kept.scope !== "judge" || kept.operationFingerprint !== ctx.question.fingerprint || retainedPayloadDigest(kept.bytes) !== kept.payloadSha256)
+    throw Error("BACKGROUND_REVIEW: a terminal round has no matching retained receipt");
+  let wire: Record<string, unknown>;
+  try { wire = JSON.parse(kept.bytes.toString()); }
+  catch { throw Error("BACKGROUND_REVIEW: a terminal receipt cannot be read"); }
+  if (!wire || typeof wire !== "object" || Array.isArray(wire) || wire.fingerprint !== ctx.question.fingerprint
+    || wire.transport !== BACKGROUND_REVIEW_TRANSPORT || JSON.stringify(wire.policy) !== JSON.stringify(ctx.question.policy))
+    throw Error("BACKGROUND_REVIEW: a terminal receipt differs from its question");
+  let unknownReason: string;
+  if (terminal.kind === "lost") {
+    if (round.submitted || kept.evidence || kept.unknownReason !== NO_RESPONSE_REASON || wire.backgroundState !== "lost"
+      || Object.entries(NO_REPLY).some(([key, value]) => wire[key] !== value))
+      throw Error("BACKGROUND_REVIEW: a lost create's receipt differs from its terminal record");
+    unknownReason = `${ctx.requestKey}: the background create's answer was lost; the charge is unknown and kept in full`;
+  } else {
+    const responseId = terminal.responseId;
+    const missing = wire.backgroundState === "missing";
+    const state: BackgroundOutcomeState = missing ? "missing" : !kept.evidence ? "unpriced" : wire.wireFault ? "unusable" : "answered";
+    const providerStatus = typeof wire.providerStatus === "string" ? wire.providerStatus : "missing";
+    const errorCode = sanitizeProviderError(wire.providerError)?.code ?? null;
+    if (round.submitted?.responseId !== responseId || wire.requestId !== responseId || wire.responseId !== responseId
+      || state !== terminal.state || providerStatus !== terminal.providerStatus || errorCode !== (terminal.errorCode ?? null)
+      || (missing && (kept.evidence || Object.entries({ ...NO_REPLY, requestId: responseId }).some(([key, value]) => wire[key] !== value)))
+      || (kept.evidence && (wire.costUnknown !== false || kept.evidence.providerRequestId !== responseId
+        || kept.evidence.providerNamespace !== `${ctx.question.policy.provider}:find-me-existing` || kept.evidence.model !== wire.model
+        || kept.evidence.usageId !== sha(JSON.stringify(wire.usage)))))
+      throw Error("BACKGROUND_REVIEW: a response receipt differs from its terminal record");
+    unknownReason = missing
+      ? `${ctx.requestKey}: background response ${responseId} is no longer available; the charge is unknown and kept in full`
+      : `${ctx.requestKey}: background response ${responseId} ended ${providerStatus}${errorCode ? ` (${errorCode})` : ""} without a charge that can be stated`;
+  }
+  if (kept.evidence) await budget.settle(ctx.worldId, ctx.requestKey, kept.evidence, { onlyPending: true });
+  else await budget.markUnknown(ctx.worldId, ctx.requestKey, unknownReason, { onlyPending: true });
+  return true;
+}
+
 async function poll(ctx: Ctx, transport: BackgroundReviewTransport, responseId: string, cancelDue: boolean): Promise<BackgroundGate | null> {
   // A result kept by a pass that stopped before recording it is that result: never read twice.
   const already = await new LocalPatchRetainedPurchaseStore(ctx.c, ctx.gameId, boardWizardBudgetOf(ctx.c)).get(ctx.worldId, ctx.requestKey);
@@ -406,7 +455,10 @@ export async function askContinuityInBackground(c: Container, ask: BackgroundAsk
   for (let turn = 0; turn < 4; turn++) {
     const step = nextBackgroundStep(round, Date.now());
     if (step.step === "done") {
-      if (round.terminal?.kind !== "refused") return { kind: "proceed" };
+      if (round.terminal?.kind !== "refused") {
+        await reconcileTerminalReceipt(ctx, round);
+        return { kind: "proceed" };
+      }
       // A refusal recorded by a create that stopped before its zero settlement is finished here, never left pending.
       await settleRefusal(ctx, transport?.namespace ?? OPENAI_BACKGROUND_NAMESPACE, round.terminal.status, round.terminal.errorType);
       return held(`the create was refused (${round.terminal.status})`);
@@ -438,7 +490,6 @@ export async function askContinuityInBackground(c: Container, ask: BackgroundAsk
 export async function advanceContinuityInBackground(c: Container, gameId: string,
   options: { deadlineAt?: number; running?: Set<string>; turn?: number } = {}): Promise<number> {
   const { running, turn, ...window } = options;
-  if (!c.backgroundReview) return 0;
   const recorded = await c.db.auditLog.findMany({ where: { action: SOL_BACKGROUND_ACTION, entityType: "Game", entityId: gameId,
     id: { endsWith: "_intent" } }, orderBy: { createdAt: "asc" } });
   const start = turn !== undefined && recorded.length ? turn % recorded.length : 0;
@@ -460,14 +511,19 @@ export async function advanceContinuityInBackground(c: Container, gameId: string
     const step = nextBackgroundStep(round, Date.now());
     // A refusal whose zero settlement a stopped create never wrote: finished here, so its reservation never strands.
     if (round.terminal?.kind === "refused") { await reconcileRefusedBackgroundRound(c, gameId, worldId, intent.requestKey); continue; }
+    const ctx: Ctx = { c, gameId, worldId, roundId: intent.roundId, requestKey: intent.requestKey, reserveMicroUsd: intent.reserveMicroUsd,
+      binding: intent.binding, question: { fingerprint: intent.fingerprint, policy: backgroundPolicyOfIntent(intent) },
+      fence: async () => {}, ...window };
+    if (round.terminal) {
+      if (await reconcileTerminalReceipt(ctx, round)) advanced++;
+      continue;
+    }
+    if (!c.backgroundReview) continue;
     if (step.step !== "poll" && step.step !== "lost") continue;
     const reserved = await budget.readRequest(worldId, intent.requestKey);
     if (!reserved || reserved.scope !== "judge" || reserved.operationFingerprint !== intent.fingerprint
       || reserved.reserveMicroUsd !== intent.reserveMicroUsd || reserved.conflicts.length)
       throw Error("BACKGROUND_REVIEW: recorded response has no matching reservation");
-    const ctx: Ctx = { c, gameId, worldId, roundId: intent.roundId, requestKey: intent.requestKey, reserveMicroUsd: intent.reserveMicroUsd,
-      binding: intent.binding, question: { fingerprint: intent.fingerprint, policy: backgroundPolicyOfIntent(intent) },
-      fence: async () => {}, ...window };
     if (step.step === "lost") await recordLost(ctx, "the create was claimed and its answer never arrived within its grace");
     else {
       const gate = await poll(ctx, c.backgroundReview, step.responseId, step.cancelDue);

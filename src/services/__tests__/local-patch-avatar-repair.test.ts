@@ -112,19 +112,20 @@ describe("local-patch full-face display repair: real storage and typed database 
     await db.game.create({ data: { id: shared, ownerId: f.ownerId, childProfileId: f.childId, styleVersion: "fixed-sprite-v999" } });
     await expect(recutAvatar(c, f.id, actor)).rejects.toMatchObject({ code: "unsupported" });
     await db.game.delete({ where: { id: shared } });
-    const store = c.storage;
-    const racing: Container = { ...c, storage: { ...store, id: store.id,
-      get: key => store.get(key), delete: key => store.delete(key), exists: key => store.exists(key),
-      put: async (key, bytes, mime) => {
-        await store.put(key, bytes, mime);
-        if (change === "source") await db.asset.update({ where: { id: f.sheetId }, data: { status: "FAILED" } });
-        else await db.childProfile.update({ where: { id: f.childId }, data: change === "identity" ? { identityAssetId: null } : { ageYears: 7 } });
-      },
-    } };
+    // Display storage now shares the attachment transaction. Inject the
+    // concurrent edit after its source read, before it acquires the DB fence.
+    const transact = db.$transaction.bind(db);
+    const raced = vi.spyOn(db, "$transaction").mockImplementationOnce((async (work: never, options: never) => {
+      if (change === "source") await db.asset.update({ where: { id: f.sheetId }, data: { status: "FAILED" } });
+      else await db.childProfile.update({ where: { id: f.childId }, data: change === "identity" ? { identityAssetId: null } : { ageYears: 7 } });
+      return transact(work, options);
+    }) as typeof db.$transaction);
+    const racing = c;
     await expect(recutAvatar(racing, f.id, actor)).rejects.toMatchObject({ code: "conflict" });
+    raced.mockRestore();
     expect((await db.childProfile.findUniqueOrThrow({ where: { id: f.childId } })).avatarAssetId).toBe(f.avatarId);
     const avatars = await db.asset.findMany({ where: { ownerId: f.ownerId, type: "AVATAR" } });
     expect(avatars.find(asset => asset.id === f.avatarId)?.status).toBe("READY");
-    expect(avatars.find(asset => asset.id !== f.avatarId)?.status).toBe("DELETED");
+    expect(avatars.filter(asset => asset.id !== f.avatarId)).toEqual([]);
   });
 });

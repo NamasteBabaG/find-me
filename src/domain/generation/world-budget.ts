@@ -662,11 +662,13 @@ export class WorldBudget {
     });
   }
 
-  async markUnknown(worldId: string, requestKey: string, reason: string): Promise<WorldBudgetResult> {
+  /** `onlyPending` preserves a hold another writer already bound, including its exact unknown reasons. */
+  async markUnknown(worldId: string, requestKey: string, reason: string, options: { onlyPending?: boolean } = {}): Promise<WorldBudgetResult> {
     nonempty(requestKey, "requestKey"); nonempty(reason, "reason");
     return this.transact(worldId, async (tx, capMicroUsd) => {
       const existing = tx.snapshot.requests.find(item => item.requestKey === requestKey);
       if (!existing) return fail("request_missing", "Cannot mark an unreserved request unknown");
+      if (options.onlyPending && existing.state !== "pending") return { request: structuredClone(existing), audit: auditWorldBudget(tx.snapshot, capMicroUsd) };
       // A late timeout/error cannot reopen a successfully settled request.
       if (existing.state === "settled" || existing.state === "linked") return { request: structuredClone(existing), audit: auditWorldBudget(tx.snapshot, capMicroUsd) };
       const request: WorldBudgetRequest = { ...existing, state: "unknown", unknownReasons: [...new Set([...existing.unknownReasons, reason])] };

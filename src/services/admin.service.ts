@@ -1,3 +1,6 @@
+import { Prisma } from "@prisma/client";
+import { DbStorage } from "@/infra/storage/db";
+import { AVATAR_REPAIR_LINEAGE_ACTION } from "./generation/avatar-repair-lineage";
 import { TargetAdjustSchema } from "@/domain/game/config";
 import { isCurrency, type Currency } from "@/domain/package";
 import { isAwaitingQa, isPlayable, type GameStatus } from "@/domain/order-state";
@@ -12,9 +15,9 @@ import { sha256Bytes } from "./generation/fixed-sprite";
 import { FixedWorldStageError, fixedStageAssert, isFixedWorldStyle, readFixedWorldStage } from "./generation/fixed-world-stage-record";
 import { fixedWorldJsonSha256 } from "./generation/fixed-world-materializer";
 import { auditWorldBudget } from "./generation/world-budget";
+import { applyBoardWizardBudgetCap, BOARD_WIZARD_CAP_MICRO_USD } from "./generation/board-wizard-budget";
 import { PrismaWorldBudgetStore } from "@/infra/db/prisma-world-budget-store";
-import { boardWizardWorldId } from "./generation/board-conditioned-wizard";
-import { readNewQaWorldBudget } from "./generation/local-patch-qa-budget";
+import { readBoardWizardBudgetAuthority, boardWizardWorldId } from "./generation/board-conditioned-wizard";
 import { rebindLocalPatchNotificationAvatar } from "./local-patch-notifications";
 
 async function assertLegacyMutation(c: Container, gameId: string) {
@@ -312,8 +315,9 @@ export async function localPatchCostForDisplay(c: Container, gameId: string) {
   try {
     const ledger = await new PrismaWorldBudgetStore(c.db).read(boardWizardWorldId(gameId));
     if (!ledger) return null;
-    const grant = await readNewQaWorldBudget(c, boardWizardWorldId(gameId));
-    const cost = auditWorldBudget(ledger.snapshot, grant?.capMicroUsd ?? 5_000_000);
+    const authority = await readBoardWizardBudgetAuthority(c, boardWizardWorldId(gameId));
+    const cap = authority?.capMicroUsd ?? BOARD_WIZARD_CAP_MICRO_USD;
+    const cost = applyBoardWizardBudgetCap(auditWorldBudget(ledger.snapshot, cap === 6_000_000 || cap === 12_000_000 ? cap : 5_000_000), cap);
     return { settledMicroUsd: cost.settledMicroUsd, reservedMicroUsd: cost.reservedMicroUsd,
       unresolved: cost.held || cost.reservedMicroUsd > 0 || cost.pendingRequestKeys.length > 0,
       unknownCharges: cost.unknownRequestKeys.length, byScope: cost.byScope,
@@ -338,7 +342,8 @@ export async function approveAndPublish(c: Container, gameId: string, actor: Act
 
 export async function markTargetForRegeneration(c: Container, targetInstanceId: string, actor: Actor): Promise<void> {
   const t = await c.db.targetInstance.findUniqueOrThrow({ where: { id: targetInstanceId }, include: { gameScene: true } });
-  await assertLegacyMutation(c, t.gameScene.gameId);
+  const legacy = await assertLegacyMutation(c, t.gameScene.gameId);
+  fixedStageAssert(legacy.styleVersion !== "local-patch-world-v1", "unsupported", "Local-patch games require their bound recovery controls");
   await c.db.targetInstance.update({ where: { id: t.id }, data: { status: "NEEDS_REGENERATION" } });
   // A spot that ran out of attempts is refused by the painter until someone with
   // a reason overrides it. Asking for it again IS that reason — without this the
@@ -357,7 +362,8 @@ export async function markTargetForRegeneration(c: Container, targetInstanceId: 
 export async function adjustTarget(c: Container, targetInstanceId: string, adjust: unknown, actor: Actor): Promise<void> {
   const parsed = TargetAdjustSchema.parse(adjust);
   const t = await c.db.targetInstance.findUniqueOrThrow({ where: { id: targetInstanceId }, include: { gameScene: true } });
-  await assertLegacyMutation(c, t.gameScene.gameId);
+  const legacy = await assertLegacyMutation(c, t.gameScene.gameId);
+  fixedStageAssert(legacy.styleVersion !== "local-patch-world-v1", "unsupported", "Local-patch games require their bound recovery controls");
   await c.db.targetInstance.update({ where: { id: t.id }, data: { adjustJson: JSON.stringify(parsed) } });
   await audit(c, actor, "target:adjusted", "TargetInstance", t.id, parsed);
   const game = await c.db.game.findUniqueOrThrow({ where: { id: t.gameScene.gameId } });
@@ -394,10 +400,15 @@ export async function recutAvatar(c: Container, gameId: string, actor: Actor): P
   const sheet = await readAssetBuffer(c, child.identityAssetId);
   const sourceSha256 = fullFace ? sha256Bytes(sheet) : null;
   const png = await (fullFace ? avatarDisplayFromSheet : avatarFromSheet)(sheet, Math.min(sheetAsset.width ?? 1024, sheetAsset.height ?? 1024));
-  const asset = await storeAsset(c, { ownerId: child.ownerId, type: "AVATAR", visibility: "GAME", buffer: png, mimeType: "image/png", width: AVATAR_SIZE, height: AVATAR_SIZE, provider: sheetAsset.provider });
+  const input = { ownerId: child.ownerId, type: "AVATAR", visibility: "GAME", buffer: png, mimeType: "image/png", width: AVATAR_SIZE, height: AVATAR_SIZE, provider: sheetAsset.provider } as const;
+  fixedStageAssert(!fullFace || c.storage.id === "db", "unsupported", "Full-face display repair requires transactional private storage");
+  // Historical collage storage stays unchanged. A local-patch derivative and
+  // its deletion lineage instead commit with the attachment, never before it.
+  const legacyAsset = fullFace ? null : await storeAsset(c, input);
   const previous = child.avatarAssetId;
+  let asset: Awaited<ReturnType<typeof storeAsset>>;
   try {
-    await c.db.$transaction(async tx => {
+    asset = await c.db.$transaction(async tx => {
       // The stager fences each Game row. Claim every sibling before changing
       // the shared child, so a concurrent stage either wins or sees this edit.
       const games = await tx.game.findMany({ where: { childProfileId: child.id, deletedAt: null }, select: { id: true, ownerId: true, styleVersion: true, updatedAt: true, configJson: true } });
@@ -422,6 +433,12 @@ export async function recutAvatar(c: Container, gameId: string, actor: Actor): P
           ...(fullFace ? { ownerId: child.ownerId } : {}) }, data: { updatedAt: new Date() } });
         fixedStageAssert(claim.count === 1, "conflict", "A shared game changed while the avatar was being cut");
       }
+      const asset = fullFace ? await storeAsset({ ...c, db: tx as Container["db"], storage: new DbStorage(tx) }, input) : legacyAsset!;
+      if (fullFace) await audit({ ...c, db: tx as Container["db"] }, { type: "SYSTEM" }, AVATAR_REPAIR_LINEAGE_ACTION, "ChildProfile", child.id, {
+        version: AVATAR_REPAIR_LINEAGE_ACTION, childId: child.id, ownerId: child.ownerId,
+        identityAssetId: child.identityAssetId, sourceSha256, previousAvatarId: previous, avatarId: asset.id,
+        gameIds: games.map(sibling => sibling.id).sort(),
+      });
       const changed = await tx.childProfile.updateMany({ where: { id: child.id, deletedAt: null, avatarAssetId: previous, identityAssetId: child.identityAssetId,
         ...(fullFace ? { ownerId: child.ownerId, ageYears: child.ageYears, originalPhotoAssetId: child.originalPhotoAssetId, photoCropJson: child.photoCropJson } : {}) }, data: { avatarAssetId: asset.id } });
       fixedStageAssert(changed.count === 1, "conflict", "The child's reviewed identity changed while the avatar was being cut");
@@ -434,12 +451,13 @@ export async function recutAvatar(c: Container, gameId: string, actor: Actor): P
           await tx.game.update({ where: { id: game.id }, data: { configJson: nextConfig } });
         }
       }
-    });
+      return asset;
+    }, fullFace ? { isolationLevel: Prisma.TransactionIsolationLevel.Serializable } : undefined);
   } catch (error) {
     // Only our deliberate callback rejection proves no attachment committed.
     // A storage/transaction exception may be a lost COMMIT acknowledgement:
     // retain both assets rather than delete a possibly referenced new avatar.
-    if (error instanceof FixedWorldStageError) await deleteAsset(c, asset.id).catch(() => console.warn("[avatar:recut] unattached avatar cleanup failed"));
+    if (legacyAsset && error instanceof FixedWorldStageError) await deleteAsset(c, legacyAsset.id).catch(() => console.warn("[avatar:recut] unattached avatar cleanup failed"));
     throw error;
   }
   if (previous) {
@@ -452,6 +470,7 @@ export async function recutAvatar(c: Container, gameId: string, actor: Actor): P
 
 export async function requestNewPhoto(c: Container, gameId: string, actor: Actor, note: string): Promise<void> {
   const game = await assertLegacyMutation(c, gameId);
+  fixedStageAssert(game.styleVersion !== "local-patch-world-v1", "unsupported", "Local-patch source changes require an identity source revision");
   if (game.childProfileId) await assertNoFixedChildGames(c, game.childProfileId);
   await c.db.game.update({ where: { id: gameId }, data: { lastError: note || "נדרשת תמונה חדשה" } });
   await transitionGame(c, gameId, "NEEDS_NEW_PHOTO", actor, { note });

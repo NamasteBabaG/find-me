@@ -5,6 +5,7 @@ import { PrismaClient } from "@prisma/client";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { applyTestSchema } from "../../../lib/test-schema";
 import { DbStorage } from "../../../infra/storage/db";
+import { retainedPurchaseKey } from "../../../infra/db/prisma-retained-purchase-store";
 import { BackgroundReviewRefused, type BackgroundReviewState, type BackgroundReviewTransport } from "../../../infra/generation/types";
 import type { Container } from "../../container";
 import { boardWizardBudgetOf, boardWizardWorldId } from "../board-conditioned-wizard";
@@ -12,7 +13,7 @@ import { askContinuityInBackground, advanceContinuityInBackground, backgroundRev
 import { WITHHELD_PROVIDER_ERROR_CODE } from "../../../domain/generation/background-provider-error";
 import { WorldBudget } from "../world-budget";
 import { LocalPatchRetainedPurchaseStore } from "../local-patch-lifecycle";
-import { purchaseOnce } from "../paid-operation";
+import { purchaseOnce, retainedPayloadDigest } from "../paid-operation";
 import { prepareVisualReview } from "../visual-review";
 import { providerFailureRefusal } from "../local-patch-review-interruption-recovery";
 import { LOCAL_PATCH_LEAN_ACTION, leanReleaseAuditId, leanReleaseReceipt } from "../lean-release";
@@ -90,6 +91,79 @@ describe("Sol continuity in the background: one create, polled by id, every char
       requestId: "resp_synthetic", model: "gpt-6.1-sol", finishReason: "stop", policy: ask.question.policy, fingerprint: ask.question.fingerprint });
     expect(await askContinuityInBackground(c, ask)).toEqual({ kind: "proceed" });
     expect(calls.create).toBe(1);
+  });
+  it.each(["billed", "unpriced", "missing", "lost"] as const)(
+    "finishes a terminal %s receipt after its accounting write was interrupted, without polling or changing evidence", async mode => {
+      const terminal: BackgroundReviewState = mode === "missing" ? { status: "missing" } : mode === "unpriced"
+        ? { status: "failed", reading: { responseId: "resp_synthetic", raw: null, usage: null, model: "gpt-6.1-sol",
+          finishReason: null, serviceTier: "default", providerError: { code: "server_is_overloaded", message: "Synthetic capacity failure" } } }
+        : completed("{\"cases\":[]}");
+      const { fake, calls } = transport(async () => {
+        if (mode === "lost") throw Error("synthetic lost create");
+        return { responseId: "resp_synthetic" };
+      }, [async () => ({ status: "in_progress" }), async () => terminal]);
+      const { c, ask, budget, store, worldId, requestKey } = await setup(`bg-terminal-crash-${mode}`, fake);
+      if (mode !== "lost") expect(await askContinuityInBackground(c, ask)).toMatchObject({ kind: "waiting" });
+      const stop = mode === "billed" ? vi.spyOn(WorldBudget.prototype, "settle").mockRejectedValueOnce(Error("accounting stopped"))
+        : vi.spyOn(WorldBudget.prototype, "markUnknown").mockRejectedValueOnce(Error("accounting stopped"));
+      try {
+        await expect(mode === "lost" ? askContinuityInBackground(c, ask) : advanceContinuityInBackground(c, ask.gameId)).rejects.toThrow("accounting stopped");
+      } finally { stop.mockRestore(); }
+      expect(await budget.readRequest(worldId, requestKey)).toMatchObject({ state: "pending", reserveMicroUsd: 66_000 });
+      const kept = (await store.get(worldId, requestKey))!;
+      const events = await db.auditLog.findMany({ where: { entityId: ask.gameId, action: "generation:sol-background-review" }, orderBy: { id: "asc" } });
+      // A sweep can finish local accounting even when its transport has been disabled.
+      const offline = { ...c, backgroundReview: undefined };
+      expect(await advanceContinuityInBackground(offline, ask.gameId)).toBe(1);
+      const request = await budget.readRequest(worldId, requestKey);
+      expect(request).toMatchObject(mode === "billed" ? { state: "settled", evidence: kept.evidence }
+        : { state: "unknown", reserveMicroUsd: 66_000, unknownReasons: [mode === "lost"
+          ? `${requestKey}: the background create's answer was lost; the charge is unknown and kept in full`
+          : mode === "missing" ? `${requestKey}: background response resp_synthetic is no longer available; the charge is unknown and kept in full`
+            : `${requestKey}: background response resp_synthetic ended failed (server_is_overloaded) without a charge that can be stated`] });
+      const ledger = await db.worldBudgetLedger.findUniqueOrThrow({ where: { worldId } });
+      expect(await askContinuityInBackground(offline, ask)).toEqual({ kind: "proceed" });
+      expect(await advanceContinuityInBackground(offline, ask.gameId)).toBe(0);
+      expect(await db.worldBudgetLedger.findUniqueOrThrow({ where: { worldId } })).toEqual(ledger);
+      expect(await store.get(worldId, requestKey)).toEqual(kept);
+      expect(await db.auditLog.findMany({ where: { entityId: ask.gameId, action: "generation:sol-background-review" }, orderBy: { id: "asc" } })).toEqual(events);
+      expect(calls).toEqual({ create: 1, retrieve: mode === "lost" ? 0 : 2, cancel: 0 });
+    });
+  it("also completes an interrupted terminal settlement when its exact question is asked again", async () => {
+    const { fake, calls } = transport(async () => ({ responseId: "resp_synthetic" }), [
+      async () => ({ status: "in_progress" }), async () => completed("{\"cases\":[]}")]);
+    const { c, ask, budget, worldId, requestKey } = await setup("bg-terminal-asked-again", fake);
+    await askContinuityInBackground(c, ask);
+    const stop = vi.spyOn(WorldBudget.prototype, "settle").mockRejectedValueOnce(Error("accounting stopped"));
+    try { await expect(advanceContinuityInBackground(c, ask.gameId)).rejects.toThrow("accounting stopped"); }
+    finally { stop.mockRestore(); }
+    expect(await askContinuityInBackground({ ...c, backgroundReview: undefined }, ask)).toEqual({ kind: "proceed" });
+    expect(await budget.readRequest(worldId, requestKey)).toMatchObject({ state: "settled" });
+    expect(calls).toEqual({ create: 1, retrieve: 2, cancel: 0 });
+  });
+  it.each(["operation", "policy", "response"] as const)("refuses terminal replay from a digest-valid receipt with a different %s", async changed => {
+    const { fake, calls } = transport(async () => ({ responseId: "resp_synthetic" }), [
+      async () => ({ status: "in_progress" }), async () => completed("{\"cases\":[]}")]);
+    const { c, ask, worldId, requestKey } = await setup(`bg-terminal-mismatch-${changed}`, fake);
+    await askContinuityInBackground(c, ask);
+    const stop = vi.spyOn(WorldBudget.prototype, "settle").mockRejectedValueOnce(Error("accounting stopped"));
+    try { await expect(advanceContinuityInBackground(c, ask.gameId)).rejects.toThrow("accounting stopped"); }
+    finally { stop.mockRestore(); }
+    // Keep a structurally valid retained envelope and its digest: replay must still prove its operation/response.
+    const key = retainedPurchaseKey(worldId, requestKey), row = await db.fileBlob.findUniqueOrThrow({ where: { key } });
+    const envelope = JSON.parse(Buffer.from(row.data).toString()), wire = JSON.parse(Buffer.from(envelope.bytesBase64, "base64").toString());
+    if (changed === "operation") envelope.operationFingerprint = "e".repeat(64);
+    else {
+      if (changed === "policy") wire.policy = { ...wire.policy, model: "a-different-model" };
+      else wire.responseId = "resp_someone_else";
+      const bytes = Buffer.from(JSON.stringify(wire));
+      envelope.bytesBase64 = bytes.toString("base64"); envelope.payloadSha256 = retainedPayloadDigest(bytes);
+    }
+    await db.fileBlob.update({ where: { key }, data: { data: new Uint8Array(Buffer.from(JSON.stringify(envelope))) } });
+    const ledger = await db.worldBudgetLedger.findUniqueOrThrow({ where: { worldId } });
+    await expect(advanceContinuityInBackground({ ...c, backgroundReview: undefined }, ask.gameId)).rejects.toThrow(/matching retained receipt|differs from its question|differs from its terminal record/);
+    expect(await db.worldBudgetLedger.findUniqueOrThrow({ where: { worldId } })).toEqual(ledger);
+    expect(calls).toEqual({ create: 1, retrieve: 2, cancel: 0 });
   });
   it("holds a lost create as a full unknown charge in the exact no-response shape, and never sends it again", async () => {
     const { fake, calls } = transport(async () => { throw Error("socket hang up"); });
@@ -226,6 +300,34 @@ describe("a lean world's background questions (local-patch-lean/v1)", () => {
     await askContinuityInBackground(plain.c, plain.ask);
     const plainIntent = await db.auditLog.findFirstOrThrow({ where: { entityId: "bg-plain", id: { endsWith: "_intent" } } });
     expect(JSON.parse(plainIntent.metaJson!).intent).not.toHaveProperty("policyVersion");
+  });
+  it.each(["flex", "default"] as const)("settles the retained lean %s bill after an interrupted accounting write, with no provider work or evidence changes", async tier => {
+    const amountMicroUsd = tier === "flex" ? 5_000 : 10_000;
+    const { fake, calls } = transport(async () => ({ responseId: "resp_synthetic" }), [
+      async () => ({ status: "in_progress" }), async () => flexAnswer(tier)]);
+    const { c, ask, budget, store, worldId, requestKey } = await setup(`bg-lean-terminal-${tier}`, fake, "Synthetic lean terminal settlement", tier);
+    expect(await askContinuityInBackground(c, ask)).toMatchObject({ kind: "waiting", running: true });
+    const stop = vi.spyOn(WorldBudget.prototype, "settle").mockRejectedValueOnce(Error("lean accounting stopped"));
+    try { await expect(advanceContinuityInBackground(c, ask.gameId)).rejects.toThrow("lean accounting stopped"); }
+    finally { stop.mockRestore(); }
+    expect(await budget.readRequest(worldId, requestKey)).toMatchObject({ state: "pending", reserveMicroUsd: 66_000 });
+    const kept = (await store.get(worldId, requestKey))!;
+    expect(kept).toMatchObject({ evidence: { amountMicroUsd, providerRequestId: "resp_synthetic", model: "gpt-6.1-sol" }, unknownReason: null });
+    expect(JSON.parse(kept.bytes.toString())).toMatchObject({ policy: { ...ask.question.policy, serviceTier: tier },
+      fingerprint: ask.question.fingerprint, transport: "openai-responses-background/v1", providerStatus: "completed", costUnknown: false });
+    const events = await db.auditLog.findMany({ where: { entityId: ask.gameId, action: "generation:sol-background-review" }, orderBy: { id: "asc" } });
+    const beforeCalls = { ...calls }, offline = { ...c, backgroundReview: undefined };
+    expect(await advanceContinuityInBackground(offline, ask.gameId)).toBe(1);
+    expect(await budget.readRequest(worldId, requestKey)).toMatchObject({ state: "settled", evidence: kept.evidence, unknownReasons: [], conflicts: [] });
+    expect(await budget.audit(worldId)).toMatchObject({ pendingRequestKeys: [], unknownRequestKeys: [], reservedMicroUsd: 0, held: false });
+    const ledger = await db.worldBudgetLedger.findUniqueOrThrow({ where: { worldId } });
+    expect(await askContinuityInBackground(offline, ask)).toEqual({ kind: "proceed" });
+    expect(await advanceContinuityInBackground(offline, ask.gameId)).toBe(0);
+    expect(await db.worldBudgetLedger.findUniqueOrThrow({ where: { worldId } })).toEqual(ledger);
+    expect(await store.get(worldId, requestKey)).toEqual(kept);
+    expect(await db.auditLog.findMany({ where: { entityId: ask.gameId, action: "generation:sol-background-review" }, orderBy: { id: "asc" } })).toEqual(events);
+    expect(calls).toEqual(beforeCalls);
+    expect(calls).toEqual({ create: 1, retrieve: 2, cancel: 0 });
   });
   it("holds an answer whose served tier is unstated or unknown as an unknown charge", async () => {
     for (const [gameId, tier] of [["bg-lean-null", null], ["bg-lean-priority", "priority"]] as const) {
