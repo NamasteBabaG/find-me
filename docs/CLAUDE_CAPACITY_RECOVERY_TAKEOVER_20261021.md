@@ -70,8 +70,12 @@ Synthetic providers only. Run in separate worktrees on 21–22 October.
 | TypeScript | passes |
 | `world-budget-capacity-recovery`, `LeanCapacityRecoveryForm`, `identity-source-revision` (service and admin action), status route | 5 files, 219/219 |
 | Capacity tier tests (pending default/Flex, completed Flex replay ×2) | 4/4 |
-| All27 capacity scenario, with the fix | see the result below |
+| All27 capacity scenario, with the fix | passes (618 s): READY after the grant, every round begun after it at the default tier, nothing asked twice |
 | The same scenario with the reuse-tier fix removed | fails the tier check, on rounds begun after the grant on Flex |
+| Full suite at `c4d8ae72` | TypeScript passes; 5633 tests pass; one file fails to load (see below) |
+| Full suite at `f1028ec9` (clean tree, 4 workers) | TypeScript passes; 418 files pass, 1 skipped; 5642 tests pass, 2 expected failures, 58 skipped |
+
+At `c4d8ae72`, `board-wizard-recovery.test.ts` fails before any of its tests run. It mocks `../board-wizard-identity-gate` with a single function. The budget's capacity reader now loads `identity-source-revision-state`, which builds its schema from that module's `identityProvenanceSchema`. `f1028ec9` keeps the module's real exports in the mock and replaces only the approval gate.
 
 ## Limits
 
