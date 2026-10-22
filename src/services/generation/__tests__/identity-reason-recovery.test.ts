@@ -62,7 +62,7 @@ async function fixture(reason = longReason, patch: Record<string, string> = {}) 
   await db.user.create({ data: { id: ownerId, email: id + "@example.invalid" } });
   for (const [assetId, type] of [[photoId, "ORIGINAL_PHOTO"], [sheetId, "IDENTITY_SHEET"], [avatarId, "AVATAR"]]) {
     const key = "private/" + assetId;
-    await db.asset.create({ data: { id: assetId!, ownerId, type: type!, visibility: "PRIVATE", status: "READY",
+    await db.asset.create({ data: { id: assetId!, ownerId, type: type!, visibility: type === "AVATAR" ? "GAME" : "PRIVATE", status: "READY",
       storagePath: key, mimeType: "image/png", width: 32, height: 32, bytes: png.length } });
     await db.fileBlob.create({ data: { key, contentType: "image/png", data: new Uint8Array(png) } });
   }
@@ -96,11 +96,12 @@ async function fixture(reason = longReason, patch: Record<string, string> = {}) 
   // Local synthetic historical fixture only: emulate the former 1200-char parser.
   await db.auditLog.update({ where: { id: row.id }, data: { metaJson: JSON.stringify(original) } });
   return { id, c, budget, input, deps, call, accepted, original, originalId: row.id,
-    sheetId, photoId, childId, jobId: "job_" + id };
+    sheetId, avatarId, photoId, childId, jobId: "job_" + id };
 }
 describe("identity explanation length and retained-response recovery", () => {
-  it("lets the normal cron tick resume the retained identity and call the normal pipeline without repainting", async () => {
+  it("lets the normal cron resume with its normal GAME avatar and call the pipeline without repainting", async () => {
     const f = await fixture();
+    expect((await db.asset.findUniqueOrThrow({ where: { id: f.avatarId } })).visibility).toBe("GAME");
     const dispatch = vi.mocked(runGenerationPipeline); dispatch.mockClear();
     const result = await tickGeneration(f.c, null, 30_000);
     expect(result).toMatchObject({ gameId: f.id, status: "AVATAR_GENERATING", pending: true });
@@ -108,6 +109,22 @@ describe("identity explanation length and retained-response recovery", () => {
     expect(dispatch.mock.calls[0]?.[0]).toBe(f.c);
     expect(dispatch.mock.calls[0]?.[1]).toBe(f.id);
     expect(dispatch.mock.calls[0]?.[2]).toMatchObject({ hardDeadlineAt: expect.any(Number) });
+    expect(f.call).toHaveBeenCalledTimes(1);
+  });
+  it("also retains compatibility with an owned PRIVATE avatar", async () => {
+    const f = await fixture();
+    await db.asset.update({ where: { id: f.avatarId }, data: { visibility: "PRIVATE" } });
+    expect(await resumeIdentityReasonHold(f.c, f.id)).toBe(f.id);
+    expect(f.call).toHaveBeenCalledTimes(1);
+  });
+  it.each(["photoId", "sheetId"] as const)("still refuses a GAME-visible %s and rolls back the job", async key => {
+    const f = await fixture();
+    await db.asset.update({ where: { id: f[key] }, data: { visibility: "GAME" } });
+    const before = await db.worldBudgetLedger.findUniqueOrThrow({ where: { worldId: boardWizardWorldId(f.id) } });
+    expect(await resumeIdentityReasonHold(f.c, f.id)).toBeNull();
+    expect((await db.game.findUniqueOrThrow({ where: { id: f.id } })).status).toBe("MANUAL_REVIEW");
+    expect((await db.generationJob.findUniqueOrThrow({ where: { id: f.jobId } })).status).toBe("DONE");
+    expect(await db.worldBudgetLedger.findUniqueOrThrow({ where: { worldId: boardWizardWorldId(f.id) } })).toEqual(before);
     expect(f.call).toHaveBeenCalledTimes(1);
   });
   it.each([1322, 20_000])("does not turn a %i-character explanation into a visual failure", async length => {

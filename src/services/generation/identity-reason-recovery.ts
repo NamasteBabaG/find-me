@@ -74,8 +74,8 @@ export async function resumeIdentityReasonHold(c: Container, requestedGameId: st
         ] as const) {
           demand(id);
           const asset = await tx.asset.findUnique({ where: { id } });
-          demand(asset?.ownerId === game.ownerId && asset.visibility === "PRIVATE" && asset.type === type
-            && asset.status === "READY" && !asset.deletedAt);
+          demand(asset?.ownerId === game.ownerId && asset.type === type && asset.status === "READY" && !asset.deletedAt
+            && (asset.visibility === "PRIVATE" || (type === "AVATAR" && asset.visibility === "GAME")));
           const blob = await tx.fileBlob.findUnique({ where: { key: asset.storagePath } });
           demand(blob && (!digest || sha256Bytes(Buffer.from(blob.data)) === digest));
         }
