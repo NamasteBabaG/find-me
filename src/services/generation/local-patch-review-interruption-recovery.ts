@@ -113,7 +113,7 @@ export async function recoverPreparedLocalPatchReviews(c: Container, prepared: P
   questions: readonly InterruptedQuestion[], fence?: (tx: Prisma.TransactionClient) => Promise<void>,
   /** `admitProviderFailed`: only the continuation that re-queues nothing it did not observe admits a provider-declared
    * failure (local-patch-continue-in-slice/v1); every other caller admits the no-response shape alone, as before. */
-  options: { releaseParkedJob?: boolean; admitProviderFailed?: boolean; why?: { reason?: string; transient?: boolean } } = {}): Promise<boolean> {
+  options: { releaseParkedJob?: boolean; admitProviderFailed?: boolean; roundCandidates?: readonly InterruptedQuestion[]; why?: { reason?: string; transient?: boolean } } = {}): Promise<boolean> {
   const refuse = (reason: string) => { if (options.why) options.why.reason = reason; return false; };
   if (!questions.length || new Set(questions.map(q => q.requestKey)).size !== questions.length) return refuse("no distinct interrupted questions to continue");
   if (options.admitProviderFailed && options.releaseParkedJob !== false) return refuse("a provider-declared failure is continued only without releasing the job");
@@ -140,7 +140,7 @@ export async function recoverPreparedLocalPatchReviews(c: Container, prepared: P
       + `${pinned ? `, ${counts[REVIEW_APPROVAL_V3] ?? 0}/${WORLD_AUTOMATIC_REVIEW_RECOVERY_V3_LIMIT} under v3` : ""}`
       + `${capacity ? `, ${counts[REVIEW_APPROVAL_V4] ?? 0}/${capacity.maxContinuations} under v4` : ""}); ${question.requestKey} stays reserved in full`
       + " until a person reconciles or authorizes it");
-    const one = await checkInterruption(c, prepared, question, release, !!options.admitProviderFailed);
+    const one = await checkInterruption(c, prepared, question, release, !!options.admitProviderFailed, options.roundCandidates ?? questions);
     if (!one) return refuse(`${question.requestKey}: its record no longer matches an interruption this continuation admits on these pixels`);
     // A failure of a kind never asked again, or past its image's bound: refused with exactly why, nothing written.
     if ("refused" in one) return refuse(one.refused);
@@ -205,7 +205,7 @@ async function writeApproval(c: Container, prepared: Prepared, { recovery }: Pla
 /** Everything one question's continuation must satisfy, and the approval it would write. Reads only. `refused`: an
  * interruption of a kind, or past a bound, that is never continued automatically, and exactly why. */
 async function checkInterruption(c: Container, prepared: Prepared, question: InterruptedQuestion, release: "v1" | "v2" | "v3" | "v4",
-  admitProviderFailed: boolean): Promise<Planned | { refused: string } | null> {
+  admitProviderFailed: boolean, roundCandidates: readonly InterruptedQuestion[]): Promise<Planned | { refused: string } | null> {
   const policyId = release === "v1" ? REVIEW_INTERRUPTION_POLICY : release === "v2" ? REVIEW_INTERRUPTION_POLICY_V2 : release === "v3" ? REVIEW_INTERRUPTION_POLICY_V3 : CAPACITY_REVIEW_POLICY;
   const { game, scene, request, worldId, budget } = prepared, { requestKey, fingerprint } = question;
   if (scene.sceneVersion !== 12 || prepared.extraPlan || request.reviewScope !== "ready-only/v1"
@@ -239,18 +239,17 @@ async function checkInterruption(c: Container, prepared: Prepared, question: Int
     failureKind = backgroundFailureKind(errorCode === null ? null : { code: errorCode, message: null });
   }
   const capacity = release === "v4" ? await leanCapacityRecoveryOf(c.db, game.id) : null;
+  let startedFlexRound: object | undefined;
   if (release === "v4") {
     if (!capacity || shape !== "provider-failed" || !capacityFailureCode(errorCode)
       || capacity.identitySha256 !== sha256Bytes(prepared.sheet)) return null;
     const round = await backgroundRoundOfKey(c.db, game.id, worldId, requestKey);
     if (!round || round.intent.binding.variantId !== selected.row.id || round.intent.binding.imageSha256 !== selected.imageSha256
       || round.intent.binding.geometrySha256 !== selected.geometrySha256 || round.intent.binding.identitySha256 !== capacity.identitySha256) return null;
-    if (!capacity.heldRequestKeys.includes(requestKey)) {
-      const { leanReviewPolicyOf } = await import("../../domain/generation/visual-review-policy");
-      const intent = await c.db.auditLog.findUnique({ where: { id: `aud_sb_${round.intent.roundId}_intent` } });
-      if (leanReviewPolicyOf(round.intent.policyVersion ?? "")?.serviceTier !== "default"
-        || !intent || intent.createdAt.getTime() < Date.parse(capacity.authorizedAt)) return null;
-    }
+    const { capacityReviewRoundAdmission } = await import("./lean-capacity-started-round");
+    const admission = await capacityReviewRoundAdmission(c.db, capacity, round, roundCandidates);
+    if (!admission) return null;
+    if (admission.kind === "started-flex") startedFlexRound = admission.anchor;
   }
   const wireFault = shape === "timeout" ? "timeout" as const : "http" as const;
   const proof = { policyId, gameId: game.id, ownerId: game.ownerId, sceneId: scene.id,
@@ -261,7 +260,8 @@ async function checkInterruption(c: Container, prepared: Prepared, question: Int
     ...(shape === "provider-failed" ? { providerFailed: PROVIDER_FAILED_SHAPE, responseId: reply.requestId } : {}),
     // Only a v3 proof names what the provider's own record said; every v1 and v2 proof is built exactly as before.
     ...((release === "v3" || release === "v4") && failureKind ? { failureKind, ...(errorCode ? { errorCode } : {}) } : {}),
-    ...(capacity ? { grantSha256: capacity.authorizationSha256 } : {}) };
+    ...(capacity ? { grantSha256: capacity.authorizationSha256 } : {}),
+    ...(startedFlexRound ? { startedFlexRound } : {}) };
   const proofHash = sha256Bytes(Buffer.from(JSON.stringify(proof)));
   const approvalId = release === "v1" ? `auto-review-${proofHash}` : `auto-review-${release}-${proofHash}`;
   const prior = await budget.readContinuationApproval(worldId, requestKey);

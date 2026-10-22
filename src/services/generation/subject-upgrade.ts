@@ -340,7 +340,7 @@ export async function continueAdmittedReviewInterruptions(c: Container, gameId: 
     if (questions.some(q => !q)) { why.transient = true; return blocked(`${requestKeys.join(", ")}: the interrupted questions cannot be rebuilt on the same pixels`); }
     if (!await recoverPreparedLocalPatchReviews(c, prepared,
       questions.map(q => ({ requestKey: q!.requestKey, fingerprint: q!.fingerprint, role: q!.role, strategy: q!.strategy })),
-      fence, { releaseParkedJob: false, admitProviderFailed: true, why })) return blocked(why.reason ?? `${requestKeys.join(", ")}: not continued`);
+      fence, { releaseParkedJob: false, admitProviderFailed: true, roundCandidates: candidates, why })) return blocked(why.reason ?? `${requestKeys.join(", ")}: not continued`);
   }
   return deferred ? "partial" : "done";
 }

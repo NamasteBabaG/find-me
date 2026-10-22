@@ -39,6 +39,9 @@ export async function boundLeanRecoveryHold(db: Pick<Prisma.TransactionClient, "
   const { boundLeanCapacityHold } = await import("./lean-capacity-recovery-pin");
   const capacity = await boundLeanCapacityHold(db, gameId, job);
   if (capacity) return capacity;
+  const { boundLeanCapacityStartedRoundHold } = await import("./lean-capacity-started-round");
+  const started = await boundLeanCapacityStartedRoundHold(db, gameId, job);
+  if (started) return started;
   const pin = await leanReviewRecoveryOf(db, gameId);
   return pin?.mode === "existing-world" && pin.binding.jobId === job.id && pin.binding.holdSha256 === parkedHoldSha256(job) ? pin.binding : null;
 }

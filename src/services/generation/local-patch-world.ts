@@ -140,8 +140,11 @@ async function resumeParkedInterruption(c: Container, gameId: string, observed: 
     await fenceLocalPatchImages(tx, gameId);
     if (!await identityRevisionPending(tx, gameId)) await tx.generationJob.updateMany({ where: unchanged, data });
   }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
-  const explain = async (reason: string) => { if (bound || LOCAL_PATCH_INTERRUPTION_HOLD.test(observed.lastError ?? ""))
-    await writeUnrevisedHold({ lastError: `${LOCAL_PATCH_CONTINUE_IN_SLICE}: ${reason}`.slice(0, 500) }); };
+  const explain = async (reason: string) => { if (bound || LOCAL_PATCH_INTERRUPTION_HOLD.test(observed.lastError ?? "")) {
+    const lastError = `${LOCAL_PATCH_CONTINUE_IN_SLICE}: ${reason}`.slice(0, 500);
+    // An unchanged explanation is the same hold; preserve its identity and finite wake budget.
+    if (lastError !== observed.lastError) await writeUnrevisedHold({ lastError });
+  } };
   const why: ContinuationWhy = {};
   const open = await openAdmittedInterruptions(c, gameId, why);
   if (open === "blocked") return explain(why.reason ?? "the automatic continuation cannot serve this world");
