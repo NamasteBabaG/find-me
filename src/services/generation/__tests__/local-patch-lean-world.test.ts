@@ -9,8 +9,12 @@ import { applyTestSchema } from "../../../lib/test-schema";
 import { DbStorage } from "../../../infra/storage/db";
 import { BackgroundReviewRefused, type BackgroundReviewState, type BackgroundReviewTransport } from "../../../infra/generation/types";
 import { localPatchBoardsForVersion } from "../../../domain/scene/local-patch-catalog";
-import { maskForHide } from "../../../domain/scene/local-patch-hides";
-import { SUBJECT_POLICY_V2, SUBJECT_READER_V2, subjectPlanFor } from "../../../domain/generation/subject-policy";
+import { maskForHide, type LocalPatchHide } from "../../../domain/scene/local-patch-hides";
+import { parseGameConfig } from "../../../domain/game/config";
+import { PrismaRetainedPurchaseStore } from "../../../infra/db/prisma-retained-purchase-store";
+import { SOURCE_NEIGHBOR_ANSWER_VERSION, SOURCE_NEIGHBOR_BUNDLE_VERSION, type SourceNeighborContract } from "../../../domain/scene/local-patch-source-neighbors";
+import type { SourceNeighborQualityBundleBinding } from "../../../domain/generation/source-neighbor-quality-bundle";
+import { SUBJECT_POLICY_V2, SUBJECT_READER_V2, subjectPlanFor, readSubjectAnswerV2 } from "../../../domain/generation/subject-policy";
 import { SUBJECT_QUALITY_BUNDLE_VERSION } from "../../../domain/generation/subject-quality-bundle";
 import { LEAN_WARM_HAT_VERSION, SUBJECT_PAINTER_V4 } from "../../../domain/generation/subject-painter";
 import { leanReviewPolicy } from "../../../domain/generation/visual-review-policy";
@@ -21,7 +25,8 @@ import { boardWizardBudgetOf, boardWizardWorldId } from "../board-conditioned-wi
 import { reviewBoardWizardIdentity } from "../board-wizard-identity-gate";
 import { readBoardConditionedCatalog } from "../board-conditioned-catalog";
 import { readShippedBoardArt, type LocalPatchHideDeps } from "../local-patch-hide";
-import type { DualReviewProof } from "../local-patch-dual-evidence";
+import { readQualityStage, readContinuityStage, subjectStageRaw, type DualReviewProof } from "../local-patch-dual-evidence";
+import { pinSourcePlacementRelease, resolveLocalPatchBoardsForGame, sourcePlacementForHide, sourcePlacementReleaseOf } from "../source-placement-release";
 import { allowedDualPublication } from "../local-patch-dual-publication";
 import { LEAN_RECOVERY_BACKOFF_MS, LOCAL_PATCH_STYLE, runLocalPatchWorldSlice } from "../local-patch-world";
 import { tickGeneration } from "../queue";
@@ -35,7 +40,7 @@ import { sha256Bytes } from "../fixed-sprite";
 import { SYSTEM_ENROLLMENT_OPERATOR, subjectUpgradeOf } from "../subject-enrollment";
 import type { SelfRepairWire } from "../local-patch-self-repair";
 import { localPatchHideEvidenceIds } from "../local-patch-judge";
-import { LOCAL_PATCH_LEAN_ACTION, leanReleaseAuditId, leanReleaseReceipt } from "../lean-release";
+import { LOCAL_PATCH_LEAN_ACTION, LOCAL_PATCH_LEAN_RELEASE, pinLeanRelease, leanReleaseAuditId, leanReleaseReceipt } from "../lean-release";
 import { interruptionShape, PROVIDER_FAILED_SHAPE } from "../local-patch-review-interruption-recovery";
 import { WORLD_AUTOMATIC_REVIEW_RECOVERY_V2_LIMIT } from "../../../domain/generation/world-budget";
 import { bill, paintedOk, seedApprovedGame } from "./local-patch-fixtures";
@@ -48,9 +53,9 @@ import { GOOD_V12_VERDICT, boundHide, longAnswer, publicationBinding } from "./l
  * once when the provider refuses Flex, repaints a child refused for who they are a third time with no diagnosis
  * (while a compositing refusal still gets one), publishes under its own Sol policies, and stays inside its ceiling (four dollars, aiming under three).
  */
-const fakes = vi.hoisted(() => ({ testers: [] as string[], apiKey: undefined as string | undefined }));
+const fakes = vi.hoisted(() => ({ testers: [] as string[], apiKey: undefined as string | undefined, promptRelease: undefined as string | undefined }));
 vi.mock("../../../lib/env", () => ({ env: () => ({ APP_ENV: "qa", GENERATION_ENABLED: "on", GENERATION_DAILY_CENTS: 0, LOCAL_PATCH_PLAYER_REVIEW: "on",
-  GENERATION_PROVIDER: "openai", GENERATION_MODEL: "gpt-image-2", GENERATION_QUALITY: "medium", OPENAI_API_KEY: fakes.apiKey, LOCAL_PATCH_PROMPT_RELEASE: "v15" }),
+  GENERATION_PROVIDER: "openai", GENERATION_MODEL: "gpt-image-2", GENERATION_QUALITY: "medium", OPENAI_API_KEY: fakes.apiKey, LOCAL_PATCH_PROMPT_RELEASE: fakes.promptRelease ?? "v15" }),
   spendGuard: () => ({ appEnv: "qa", realGeneration: true, testers: fakes.testers }), flag: () => false, adminEmails: () => [] }));
 
 const journey = new Set(boardsOfWorlds(["journey"]));
@@ -105,7 +110,7 @@ afterAll(async () => {
   if (path.dirname(directory) === realpathSync(tmpdir()) && path.basename(directory).startsWith("findme-lean-world-")) rmSync(directory, { recursive: true });
 });
 
-afterEach(() => { fakes.apiKey = undefined; });
+afterEach(() => { fakes.apiKey = undefined; fakes.promptRelease = undefined; });
 
 it("reuses only exact verified Journey artwork bytes and retries a failed read", async () => {
   const read = vi.fn(async (art: string, digest: string) => Buffer.from(`${art}:${digest}`)), memo = memoizedJourneyArt(read);
@@ -125,10 +130,24 @@ it("reuses only exact verified Journey artwork bytes and retries a failed read",
 });
 
 /** A paid nine-board v12 journey (synthetic child, age 8) with an approved identity, a stored synthetic photograph, dual review v3 and the lean pin. */
-async function leanWorld(gameId: string) {
-  const seeded = await seedApprovedGame(c, db, { gameId, approved: false, styleVersion: LOCAL_PATCH_STYLE, status: "TARGETS_GENERATING",
-    withJob: true, scenes: BOARDS.map(board => ({ slug: board.board, version: 12 })) });
+async function leanWorld(gameId: string, options: { sourceCompanion?: boolean } = {}) {
+  const seeded = await seedApprovedGame(c, db, { gameId, approved: false, styleVersion: LOCAL_PATCH_STYLE, status: options.sourceCompanion ? "DRAFT" : "TARGETS_GENERATING",
+    withJob: !options.sourceCompanion, scenes: BOARDS.map(board => ({ slug: board.board, version: 12 })) });
   fakes.testers.push(seeded.email);
+  if (options.sourceCompanion) {
+    // The prospective companion is enrolled before any payment, job or painting.
+    // All existing fixture callers retain their exact historical setup below.
+    expect(await db.order.count({ where: { gameId } })).toBe(0);
+    expect(await db.generationJob.count({ where: { gameId } })).toBe(0);
+    expect(await db.targetVariantAsset.count({ where: { targetInstance: { gameScene: { gameId } } } })).toBe(0);
+    await db.$transaction(async tx => {
+      await pinVisualReviewRelease(tx, gameId, DUAL_VISUAL_REVIEW_V3);
+      await pinLeanRelease(tx, gameId, LOCAL_PATCH_LEAN_RELEASE);
+      await pinSourcePlacementRelease(tx, gameId);
+    });
+    await db.game.update({ where: { id: gameId }, data: { status: "TARGETS_GENERATING" } });
+    await db.generationJob.create({ data: { id: "job_" + gameId, gameId, status: "QUEUED" } });
+  }
   await db.order.create({ data: { id: `ord-${gameId}`, gameId, userId: seeded.userId, provider: "mock", packageTier: "ONE_WORLD",
     amountAgorot: 3900, paymentStatus: "PAID", paidAt: new Date() } });
   const avatar = await sharp(seeded.sheet).resize(256, 256).png().toBuffer(), avatarId = `ast-avatar-${gameId}`;
@@ -147,18 +166,20 @@ async function leanWorld(gameId: string) {
     provenance: { promptVersion: "character-v6-painted-identity-geometry", quality: "medium", photoAssetId: `ast-photo-${gameId}`,
       photoSha256: sha256Bytes(seeded.sheet), ageYears: 8, crop: null,
       style: { version: "board-matched-identity/v4", catalogSha256: catalog.sha256, atlasSha256: sha256Bytes(seeded.sheet) } } });
-  await db.$transaction(tx => pinVisualReviewRelease(tx, gameId, DUAL_VISUAL_REVIEW_V3));
-  // The pin a lean draft receives at creation (lean-release.test.ts creates it through the real draft path).
-  await db.auditLog.create({ data: { id: leanReleaseAuditId(gameId), actorType: "SYSTEM", action: LOCAL_PATCH_LEAN_ACTION,
-    entityType: "Game", entityId: gameId, metaJson: JSON.stringify(leanReleaseReceipt(gameId)) } });
+  if (!options.sourceCompanion) {
+    await db.$transaction(tx => pinVisualReviewRelease(tx, gameId, DUAL_VISUAL_REVIEW_V3));
+    // The pin a lean draft receives at creation (lean-release.test.ts creates it through the real draft path).
+    await db.auditLog.create({ data: { id: leanReleaseAuditId(gameId), actorType: "SYSTEM", action: LOCAL_PATCH_LEAN_ACTION,
+      entityType: "Game", entityId: gameId, metaJson: JSON.stringify(leanReleaseReceipt(gameId)) } });
+  }
   return seeded;
 }
 
 /** Synthetic painter; every paid attempt differs, and every prompt and requested quality is kept. */
-function painter(gameId: string, prompts: Map<string, string>, qualities: Map<string, string | undefined>): LocalPatchHideDeps {
+function painter(gameId: string, prompts: Map<string, string>, qualities: Map<string, string | undefined>, hides: readonly LocalPatchHide[] = HIDES): LocalPatchHideDeps {
   return { readBoardArt: journeyArt.read, renderPolicySha256: "f".repeat(64), judge: async () => { throw Error("Per-hide judge forbidden"); },
     render: async ({ requestKey, stylePng, prompt, subjectQuality }) => {
-      const hide = HIDES.find(h => requestKey.startsWith(`${h.id}:`));
+      const hide = hides.find(h => requestKey.startsWith(`${h.id}:`));
       if (!hide) throw Error(`Unexpected synthetic request ${requestKey}`);
       prompts.set(requestKey, prompt); qualities.set(requestKey, subjectQuality);
       const attempt = Number(requestKey.split(":").at(-1)) + (requestKey.includes(":self-repair:") ? 3 : 0), mask = maskForHide(hide);
@@ -180,10 +201,11 @@ function painter(gameId: string, prompts: Map<string, string>, qualities: Map<st
  * `failCode`: the error code a failed response of that appearance names (background-provider-error/v1).
  * `failureUsage`: the usage a failed response reports (a bill), instead of none. */
 function sol(options: { lose?: string; slow?: string; released?: () => boolean; fail?: string; failContinuity?: string; failMany?: ReadonlySet<string>; failContinuityMany?: ReadonlySet<string>;
-  failFast?: string; failCode?: ReadonlyMap<string, string>; failureUsage?: Readonly<Record<string, number>> } = {}) {
+  failFast?: string; failCode?: ReadonlyMap<string, string>; failureUsage?: Readonly<Record<string, number>>; sourceCompanion?: boolean } = {}) {
   const creates: { hideId: string; kind: "bundle" | "continuity"; tier: unknown; attempts: number }[] = [];
   /** The digest of every body sent: a question sent twice is the same body twice. */
   const bodies: string[] = [];
+  const sourcePrompts = new Map<string, string>(), sourceQuestions: string[] = [];
   const polls = new Map<string, { hideId: string; kind: "bundle" | "continuity"; tier: unknown; n: number; reads: number }>();
   const bundles = new Map<string, number>(), continuities = new Map<string, number>(), refused = new Set<string>(), lost = new Set<string>();
   let slowResponse: string | null = null, slowReads = 0, failingContinuity: string | null = null;
@@ -195,7 +217,7 @@ function sol(options: { lose?: string; slow?: string; released?: () => boolean; 
       bodies.push(sha256Bytes(Buffer.from(JSON.stringify(body))));
       if (bound.hideId === options.lose && kind === "bundle" && !lost.has(bound.hideId)) { lost.add(bound.hideId); throw Error("socket hang up"); }
       // Flex capacity is unavailable once, for one appearance's quality question: documented, nothing created.
-      if (bound.hideId === REFUSED.id && kind === "bundle" && body.service_tier === "flex" && !refused.has(bound.hideId)) {
+      if (!options.sourceCompanion && bound.hideId === REFUSED.id && kind === "bundle" && body.service_tier === "flex" && !refused.has(bound.hideId)) {
         refused.add(bound.hideId); throw new BackgroundReviewRefused(429, null);
       }
       const counts = kind === "bundle" ? bundles : continuities;
@@ -203,6 +225,10 @@ function sol(options: { lose?: string; slow?: string; released?: () => boolean; 
       counts.set(bound.hideId, n);
       const responseId = `resp_lean${creates.length}`;
       polls.set(responseId, { hideId: bound.hideId, kind, tier: body.service_tier, n, reads: 0 });
+      if (options.sourceCompanion) {
+        sourcePrompts.set(responseId, prompt);
+        if (prompt.includes(SOURCE_NEIGHBOR_BUNDLE_VERSION)) sourceQuestions.push(prompt);
+      }
       if (kind === "continuity" && bound.hideId === options.slow && slowResponse === null) slowResponse = responseId;
       if (kind === "continuity" && bound.hideId === options.failContinuity && failingContinuity === null) failingContinuity = responseId;
       return { responseId };
@@ -219,11 +245,12 @@ function sol(options: { lose?: string; slow?: string; released?: () => boolean; 
         return { status: "failed", reading: { responseId, raw: null, usage: options.failureUsage ? { ...options.failureUsage } : null, model: "gpt-6.1-sol",
           finishReason: "failed", serviceTier: String(state.tier),
           ...(options.failCode?.has(state.hideId) ? { providerError: { code: options.failCode.get(state.hideId)!, message: "Synthetic provider message" } } : {}) } };
-      return { status: "completed", reading: { responseId, raw: state.kind === "bundle" ? bundleAnswer(state.hideId, state.n) : longAnswer(state.hideId, 400, 400, 160),
+      return { status: "completed", reading: { responseId, raw: state.kind === "bundle" ? options.sourceCompanion ? sourceCompanionAnswer(sourcePrompts.get(responseId)!)
+          : bundleAnswer(state.hideId, state.n) : longAnswer(state.hideId, 400, 400, 160),
         usage: { input_tokens: 2000, output_tokens: 500 }, model: "gpt-6.1-sol", finishReason: "stop", serviceTier: String(state.tier) } };
     },
     cancel: async () => {} };
-  return { fake, creates, bodies, bundles, slowReads: () => slowReads };
+  return { fake, creates, bodies, bundles, slowReads: () => slowReads, ...(options.sourceCompanion ? { sourceQuestions } : {}) };
 }
 
 /** The pin a new lean draft receives with its lean release (pinLeanRelease; lean-release.test.ts creates it through the real draft path). */
@@ -257,7 +284,117 @@ function bundleAnswer(hideId: string, n: number) {
     faults: stranger ? [{ check: "photoLikeness", where: IDENTITY_DEFECT }] : [] } });
 }
 
+/** Controlled clean answers for this ONE prospective whole-world integration.
+ * Original quality/subject documents and anatomy readers stay in force; this
+ * provides no visual assessment of the synthetic painted figures. */
+function sourceCompanionAnswer(prompt: string): string {
+  const assessmentRaw = bundleAnswer(boundHide(prompt).hideId, 3);
+  if (!prompt.includes(SOURCE_NEIGHBOR_BUNDLE_VERSION)) return assessmentRaw;
+  const line = prompt.split("\n").find(line => line.startsWith("AUTHORITATIVE SOURCE NEIGHBORS: "))!;
+  const { contract } = JSON.parse(line.slice("AUTHORITATIVE SOURCE NEIGHBORS: ".length)) as { contract: SourceNeighborContract };
+  const binding = JSON.parse(/Wrapper binding metadata \(do not add policy\/reader fields to the answer\): (\{[^\n]+\})\./.exec(prompt)![1]!) as SourceNeighborQualityBundleBinding;
+  return JSON.stringify({ version: SOURCE_NEIGHBOR_BUNDLE_VERSION, assessment: JSON.parse(assessmentRaw), sourceNeighbors: {
+    version: SOURCE_NEIGHBOR_ANSWER_VERSION, contractSha256: binding.contractSha256, candidateSha256: binding.candidateSha256,
+    neighbors: contract.neighbors.map((neighbor, index) => ({ sourceId: neighbor.sourceId,
+      outcome: neighbor.sourceId === "greatwall-source-dumpling-child" ? "replaced-whole" : "preserved", status: "pass",
+      after: [{ ref: "wholeworld-person-" + index, rect: neighbor.head }], remnants: "none", occluder: null,
+      observation: "One coherent synthetic correspondence without an original remnant or shifted duplicate." })) } });
+}
 describe("local-patch-lean/v1 on a whole paid world", () => {
+  it("completes all27 under the prospective source companion with exactly one wrapped quality answer", async () => {
+    fakes.promptRelease = "v19";
+    const gameId = "source-companion-complete-world-synthetic";
+    await leanWorld(gameId, { sourceCompanion: true });
+    const context = await resolveLocalPatchBoardsForGame(db, gameId, 12);
+    const inventory = context.boards.flatMap(board => board.hides);
+    expect(inventory).toHaveLength(54);
+    expect(inventory.filter(hide => !sourcePlacementForHide(context, hide.id)!.sourceNeighbors)).toHaveLength(53);
+    expect((await sourcePlacementReleaseOf(db, gameId))!.coverage).toEqual([expect.objectContaining({ hideId: "greatwall-v12-2" })]);
+    const effective = context.boards.filter(board => journey.has(board.board)).flatMap(board => board.hides);
+    expect(effective).toHaveLength(27);
+    const prompts = new Map<string, string>(), qualities = new Map<string, string | undefined>();
+    const provider = sol({ sourceCompanion: true });
+    const request = vi.fn<NonNullable<Container["visualReview"]>["request"]>(async () => { throw Error("Prospective lean world must use its background transport"); });
+    const container = { ...c, visualReview: { request }, backgroundReview: provider.fake } as Container;
+    const diagnose = vi.fn(async () => { throw Error("Controlled clean world must not buy a diagnosis"); });
+    const deps = painter(gameId, prompts, qualities, effective);
+    let result = { pending: true, attention: null as string | null }, ticks = 0;
+    for (; ticks < 900 && result.pending; ticks++) {
+      result = await runLocalPatchWorldSlice(container, deps, gameId, { hardDeadlineAt: Date.now() + 270_000, diagnose });
+      expect(result.attention).toBeNull();
+    }
+    expect(result.pending).toBe(false); expect(ticks).toBeLessThan(900);
+    const game = await db.game.findUniqueOrThrow({ where: { id: gameId } });
+    expect(["READY", "DELIVERED"]).toContain(game.status);
+    expect(game.readyAt).not.toBeNull(); expect(game.configJson).not.toBeNull();
+    const config = parseGameConfig(game.configJson!);
+    expect(config.scenes).toHaveLength(9);
+    expect(config.scenes.every(scene => scene.version === 12 && scene.playMode === "find-any" && scene.targets.length === 3)).toBe(true);
+    expect(config.scenes.flatMap(scene => scene.targets)).toHaveLength(27);
+    expect(new Set(config.scenes.flatMap(scene => scene.targets.map(target => scene.slug + ":" + target.id))).size).toBe(27);
+    const rows = await db.targetVariantAsset.findMany({ where: { variant: "A", targetInstance: { gameScene: { gameId } } } });
+    expect(rows).toHaveLength(27); expect(rows.every(row => row.status === "GENERATED" && row.attempts === 1)).toBe(true);
+    expect(prompts.size).toBe(27); expect([...qualities.values()].every(quality => quality === "medium")).toBe(true);
+    expect([...prompts].filter(([, prompt]) => prompt.includes("local-patch-authored-paint/v1"))).toHaveLength(1);
+    expect(provider.creates).toHaveLength(54);
+    expect(provider.creates.every(create => create.tier === "flex" && create.attempts === 1)).toBe(true);
+    expect(new Set(provider.bodies).size).toBe(54);
+    expect(provider.sourceQuestions).toHaveLength(1);
+    expect(boundHide(provider.sourceQuestions![0]!).hideId).toBe("greatwall-v12-2");
+    expect(diagnose).not.toHaveBeenCalled(); expect(request).not.toHaveBeenCalled();
+    const store = new PrismaRetainedPurchaseStore(db), worldId = boardWizardWorldId(gameId);
+    let annotated = 0;
+    for (const row of rows) {
+      const receipt = JSON.parse(row.judgeJson!), proof = receipt.boardReview.dual as DualReviewProof;
+      const covered = receipt.hide === "greatwall-v12-2";
+      if (covered) {
+        annotated++; expect(proof.quality.sourceNeighbors!.contract.neighbors).toHaveLength(5);
+        expect(JSON.parse(proof.quality.raw!).version).toBe(SOURCE_NEIGHBOR_BUNDLE_VERSION);
+        expect(proof.subject!.sourceNeighbors).toEqual(proof.quality.sourceNeighbors);
+      } else {
+        expect(Object.hasOwn(proof.quality, "sourceNeighbors")).toBe(false);
+        expect(Object.hasOwn(proof.subject!, "sourceNeighbors")).toBe(false);
+        expect(JSON.parse(proof.quality.raw!).version).toBe(SUBJECT_QUALITY_BUNDLE_VERSION);
+      }
+      expect(readQualityStage(proof.quality, receipt.hide)?.verdict).toBe("pass");
+      expect(readContinuityStage(proof.continuity!, receipt.hide, DUAL_VISUAL_REVIEW_V3)).toMatchObject({ ok: true });
+      expect(proof.quality.policy).toEqual(leanReviewPolicy("scene-quality", "flex"));
+      expect(proof.continuity!.policy).toEqual(leanReviewPolicy("head-continuity", "flex"));
+      expect(proof.subject).toMatchObject({ subjectPolicy: SUBJECT_POLICY_V2, reader: SUBJECT_READER_V2,
+        combined: SUBJECT_QUALITY_BUNDLE_VERSION, requestKey: proof.quality.requestKey });
+      const subject = readSubjectAnswerV2(subjectStageRaw(proof.subject!), { hideId: receipt.hide, ageYears: 8,
+        plan: subjectPlanFor(boardOf(receipt.hide), receipt.hide) });
+      expect(subject).toMatchObject({ ok: true, disposition: "pass" });
+      for (const stage of [proof.quality, proof.continuity!]) {
+        const retained = await store.get(worldId, stage.requestKey);
+        expect(retained).not.toBeNull(); expect(retained!.operationFingerprint).toBe(stage.fingerprint);
+        expect(JSON.parse(retained!.bytes.toString()).raw).toBe(stage.raw);
+        expect(retained!.evidence!.amountMicroUsd).toBe(stage.costMicroUsd);
+      }
+      expect(await allowedDualPublication(db, publicationBinding(gameId, row))).toBe(true);
+    }
+    expect(annotated).toBe(1); // The other26 appearances keep their original assessments.
+    const budget = await boardWizardBudgetOf(c).audit(worldId);
+    expect(budget).toMatchObject({ capMicroUsd: 4_000_000, held: false, reservedMicroUsd: 0, pendingRequestKeys: [], unknownRequestKeys: [] });
+    expect(budget.committedMicroUsd).toBe(budget.settledMicroUsd);
+    expect(budget.committedMicroUsd).toBeLessThanOrEqual(budget.capMicroUsd);
+    const snapshot = JSON.parse((await db.worldBudgetLedger.findUniqueOrThrow({ where: { worldId } })).snapshotJson) as { requests: { requestKey: string; state: string; reserveMicroUsd: number }[] };
+    const reviews = snapshot.requests.filter(row => row.requestKey.startsWith("self-repair:board:"));
+    expect(reviews).toHaveLength(54);
+    expect(reviews.every(row => row.state === "settled" && [200_000, 120_000].includes(row.reserveMicroUsd))).toBe(true);
+    const child = await db.childProfile.findUniqueOrThrow({ where: { id: "chl-" + gameId } });
+    const photo = await db.asset.findUniqueOrThrow({ where: { id: "ast-photo-" + gameId } });
+    expect(child.originalPhotoAssetId).toBeNull(); expect(photo.status).toBe("DELETED"); expect(photo.deletedAt).not.toBeNull();
+    expect(await db.fileBlob.findUnique({ where: { key: photo.storagePath } })).toBeNull();
+    const purge = await db.auditLog.findFirstOrThrow({ where: { action: "local-patch:photo-purged-after-approval",
+      actorType: "SYSTEM", entityType: "Asset", entityId: "ast-sheet-" + gameId } });
+    expect(JSON.parse(purge.metaJson!).photoAssetId).toBe(photo.id);
+    expect(game.configJson).not.toContain(photo.id); expect(game.configJson).not.toContain(photo.storagePath);
+    expect(await sourcePlacementReleaseOf(db, gameId)).not.toBeNull();
+    expect(fetch).not.toHaveBeenCalled();
+    console.info("synthetic-source-companion-all27", { ticks, boards: config.scenes.length, hides: rows.length,
+      wrappedQualityQuestions: provider.sourceQuestions!.length, reviewQuestions: provider.creates.length, committedMicroUsd: budget.committedMicroUsd });
+  }, 1_500_000);
   it("enrolls itself, paints MEDIUM with planned looks, asks Sol both questions together on Flex, repaints without a diagnosis and publishes inside its ceiling", async () => {
     const gameId = "lean-world"; await leanWorld(gameId);
     const budget = boardWizardBudgetOf(c), worldId = boardWizardWorldId(gameId), prompts = new Map<string, string>(), qualities = new Map<string, string | undefined>();

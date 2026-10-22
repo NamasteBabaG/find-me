@@ -149,7 +149,7 @@ describe("one paid attempt at one hide", () => {
     const w=world(), render=vi.fn(async (input: Parameters<LocalPatchRenderDeps["render"]>[0])=>({png:await sharp(input.stylePng).resize(768,1152).png().toBuffer(),rejected:null,quarantined:null,evidence:evidence("authored-return"),unknownReason:null}));
     const worker=w.process({render});
     const h={...hide,mask:maskForHide(hide),placement:{depth:"middle" as const,standingHeightPx:400,support:"Knees supported on the beach sand",lighting:"Soft local daylight matching nearby children",occlusion:"Own hands visible above the sand model",comparators:"Children playing at the same ground depth"},returnRect:{left:30,top:180,width:450,height:560}};
-    const options={contentVersion:12,hide:h,referenceMode:LOCAL_PATCH_PORTRAIT_ONLY_REFERENCE_MODE,paintRecipe:"scene-integration-v4"};
+    const options={contentVersion:12,hide:h,authoredSource:{sha256:"a".repeat(64),...BOARD},referenceMode:LOCAL_PATCH_PORTRAIT_ONLY_REFERENCE_MODE,paintRecipe:"scene-integration-v4"};
     expect(await attempt(worker.deps,options)).toMatchObject({accepted:true,compositionVersion:"bounded-return/v4-authored-source-boundaries"});
     expect(await attempt(worker.deps,options)).toMatchObject({accepted:true,replayed:true});
     expect(await attempt(worker.deps,{...options,hide:{...h,returnRect:{...h.returnRect,left:40,width:440}}})).toMatchObject({refusedBecause:"stopped"});

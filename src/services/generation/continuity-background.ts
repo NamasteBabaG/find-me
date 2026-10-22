@@ -131,7 +131,8 @@ export type ImageRound = {
 export async function backgroundRoundsOnImage(db: Pick<Prisma.TransactionClient, "auditLog">, gameId: string,
   binding: BackgroundReviewBinding): Promise<ImageRound[]> {
   const same = (other: BackgroundReviewBinding) => other.hideId === binding.hideId && other.variantId === binding.variantId
-    && other.imageSha256 === binding.imageSha256 && other.geometrySha256 === binding.geometrySha256 && other.identitySha256 === binding.identitySha256;
+    && other.imageSha256 === binding.imageSha256 && other.geometrySha256 === binding.geometrySha256 && other.identitySha256 === binding.identitySha256
+    && other.authoredReviewBinding === binding.authoredReviewBinding;
   return (await recordedRounds(db, gameId)).filter(({ round }) => same(round.intent.binding)).sort((a, b) => a.at - b.at).map(({ round, at }) => {
     const policy = backgroundPolicyOfIntent(round.intent);
     return { requestKey: round.intent.requestKey, fingerprint: round.intent.fingerprint, role: policy.role,
@@ -204,7 +205,8 @@ async function writeIntent(ctx: Ctx, intent: BackgroundReviewIntent) {
 
 /** Bytes in the dual review's retained shape, so its replay and its recovery read them unchanged. */
 function replyBytes(ctx: Ctx, reply: LocalPatchJudgeResult, extra: Record<string, unknown>) {
-  return Buffer.from(JSON.stringify({ ...reply, policy: ctx.question.policy, fingerprint: ctx.question.fingerprint, transport: BACKGROUND_REVIEW_TRANSPORT, ...extra }));
+  return Buffer.from(JSON.stringify({ ...reply, policy: ctx.question.policy, fingerprint: ctx.question.fingerprint, transport: BACKGROUND_REVIEW_TRANSPORT,
+    ...(ctx.binding.authoredReviewBinding ? { authoredReviewBinding: ctx.binding.authoredReviewBinding } : {}), ...extra }));
 }
 async function keep(ctx: Ctx, bytes: Buffer, outcome: Pick<RetainedPurchase, "evidence" | "unknownReason">) {
   const budget = boardWizardBudgetOf(ctx.c), store = new LocalPatchRetainedPurchaseStore(ctx.c, ctx.gameId, budget);
@@ -356,7 +358,7 @@ async function reconcileTerminalReceipt(ctx: Ctx, round: BackgroundReviewRound):
   let wire: Record<string, unknown>;
   try { wire = JSON.parse(kept.bytes.toString()); }
   catch { throw Error("BACKGROUND_REVIEW: a terminal receipt cannot be read"); }
-  if (!wire || typeof wire !== "object" || Array.isArray(wire) || wire.fingerprint !== ctx.question.fingerprint
+  if (!wire || typeof wire !== "object" || Array.isArray(wire) || wire.authoredReviewBinding !== ctx.binding.authoredReviewBinding || wire.fingerprint !== ctx.question.fingerprint
     || wire.transport !== BACKGROUND_REVIEW_TRANSPORT || JSON.stringify(wire.policy) !== JSON.stringify(ctx.question.policy))
     throw Error("BACKGROUND_REVIEW: a terminal receipt differs from its question");
   let unknownReason: string;
@@ -430,6 +432,8 @@ async function poll(ctx: Ctx, transport: BackgroundReviewTransport, responseId: 
  */
 export async function askContinuityInBackground(c: Container, ask: BackgroundAsk): Promise<BackgroundGate> {
   const { question } = ask;
+  if (ask.binding.authoredReviewBinding !== undefined && !/^[a-f0-9]{64}$/.test(ask.binding.authoredReviewBinding))
+    throw Error("BACKGROUND_REVIEW: invalid authored candidate attestation");
   // The historical Sol continuity contract, or exactly one of a lean world's policies (local-patch-lean/v1).
   const lean = isLeanReviewPolicy(question.policy) ? leanReviewPolicyOf(question.policy.version) : null;
   if (!isBackgroundReviewPolicy(question.policy) || (lean ? lean.role !== question.role : question.role !== "head-continuity"))
@@ -505,7 +509,8 @@ export async function advanceContinuityInBackground(c: Container, gameId: string
       || intent.roundId !== backgroundRoundIdOf(worldId, intent.requestKey) || row.id !== eventId(intent.roundId, "intent")
       || row.actorType !== "SYSTEM" || row.actorId !== null || !/^[a-f0-9]{64}$/.test(intent.fingerprint)
       || !/^[a-f0-9]{64}$/.test(intent.bodySha256) || !intent.requestKey.endsWith(`:${intent.fingerprint}`)
-      || (intent.policyVersion !== undefined && !leanReviewPolicyOf(intent.policyVersion)))
+      || (intent.policyVersion !== undefined && !leanReviewPolicyOf(intent.policyVersion))
+      || (intent.binding.authoredReviewBinding !== undefined && !/^[a-f0-9]{64}$/.test(intent.binding.authoredReviewBinding)))
       throw Error("BACKGROUND_REVIEW: invalid recorded sweep binding");
     const round = backgroundRoundOf(await readEvents(c.db, gameId, intent.roundId));
     const step = nextBackgroundStep(round, Date.now());

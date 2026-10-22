@@ -5,7 +5,8 @@ import { createHash } from "node:crypto";
 import type { Prisma } from "@prisma/client";
 import { GameConfigSchema, SpriteRefSchema, type GameConfig, type PlayWorld } from "../../domain/game/config";
 import { composeGame, composeScene, composeWorld } from "../../domain/game/compose";
-import { isLocalPatchAdvisoryVersion, localPatchBoardForVersion } from "../../domain/scene/local-patch-catalog";
+import { isLocalPatchAdvisoryVersion } from "../../domain/scene/local-patch-catalog";
+import { resolveLocalPatchBoardsForGame } from "./source-placement-release";
 import { newId } from "../../lib/ids";
 import type { Container } from "../container";
 import { signedAssetUrl } from "../asset.service";
@@ -46,6 +47,7 @@ export async function composeLocalPatchGame(c: Container, gameId: string): Promi
   demand(game.packageTier === "ONE_WORLD" && game.scenes.length === 9 && new Set(game.scenes.map(s => s.sceneSlug)).size === 9,
     "exactly nine distinct boards are required");
   demand(new Set(game.scenes.map(scene => scene.sceneVersion)).size === 1, "one pinned content version is required");
+  const placements = await resolveLocalPatchBoardsForGame(c.db, gameId, game.scenes[0]!.sceneVersion);
   const avatar = child.avatarAssetId ? await c.db.asset.findUnique({ where: { id: child.avatarAssetId } }) : null;
   demand(avatar && avatar.type === "AVATAR" && avatar.visibility === "GAME" && avatar.ownerId === game.ownerId
     && avatar.status === "READY" && !avatar.deletedAt, "the approved illustrated avatar is missing");
@@ -56,7 +58,7 @@ export async function composeLocalPatchGame(c: Container, gameId: string): Promi
   const worlds = new Map<string, PlayWorld>();
   let humanIdentitySha256: string | undefined;
   for (const scene of game.scenes) {
-    const board = localPatchBoardForVersion(scene.sceneSlug, scene.sceneVersion);
+    const board = placements.boards.find(board => board.board === scene.sceneSlug);
     const def = sceneBySlug(scene.sceneSlug, scene.sceneVersion);
     demand(board && `public${def.art.base}` === board.art, `the ${scene.sceneSlug} board is not the authored artwork`);
     demand(scene.targets.length === board.hides.length, `${scene.sceneSlug} needs exactly ${board.hides.length} painted targets`);

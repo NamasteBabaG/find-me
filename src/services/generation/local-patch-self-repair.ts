@@ -29,6 +29,11 @@ import { localPatchPublicationGeometryHash } from "./local-patch-publication-pol
 import { purchaseOnce } from "./paid-operation";
 import { sameChargeEvidence, type BudgetJson } from "./world-budget";
 import { sha256Bytes } from "./fixed-sprite";
+import { resolveLocalPatchBoardsForGame, sourcePlacementForHide } from "./source-placement-release";
+import { assertAuthoredLocalPatchPlacement, expectedAuthoredLocalPatchReturn, assertAuthoredLocalPatchRecoveryGeometry } from "./local-patch-authored-return";
+import { AUTHORED_RECOVERY_COMPOSITION_VERSION, AUTHORED_RECOVERY_CONTEXT_VERSION, authoredRecoveryContextSchema,
+  authoredRecoveryDiagnosisSchema, authoredRecoveryParentSha256, createAuthoredLocalPatchRecovery,
+  type AuthoredLocalPatchRecoveryContract } from "../../domain/scene/local-patch-authored-recovery";
 
 export const SELF_REPAIR_REQUEST_ACTION = "local-patch:automatic-recovery-request";
 /** What a diagnosis of an enrolled world is told about the child (frozen per cycle): the photograph, the v2 policy, the refusal. */
@@ -43,6 +48,9 @@ const stateSchema = z.object({ version: z.literal(SELF_REPAIR_VERSION), cycle: z
   phase: z.enum(["diagnosing", "applying", "awaiting-review", "rejected"]), contextSha256: z.string(),
   decision: selfRepairDecisionSchema.nullable(), history: z.array(historySchema), feedback: z.string().max(1200),
   sourceKeys: z.array(z.string()), imageCostCents: z.number().nonnegative(), diagnosisCostCents: z.number().nonnegative(),
+  // New authored companion cycles only; absent on all historical recovery state.
+  authoredContext: authoredRecoveryContextSchema.optional(),
+  authoredDiagnosis: authoredRecoveryDiagnosisSchema.optional(),
   // Absent on historical paid questions; pinned before dispatch on new cycles.
   excludedRegions: z.array(z.object({ left: z.number().int().nonnegative(), top: z.number().int().nonnegative(),
     width: z.number().int().positive(), height: z.number().int().positive() }).strict()).optional(),
@@ -72,7 +80,7 @@ export function refusedCompositionSource(previous: Record<string, unknown> | nul
   if (state?.phase === "rejected") {
     if (state.subjectContext) return state.subjectContext.failedSource;
     if (recorded) return recorded;
-    if (previous?.compositionVersion === SELF_REPAIR_COMPOSITION_VERSION) return null;
+    if (previous?.compositionVersion === SELF_REPAIR_COMPOSITION_VERSION || previous?.compositionVersion === AUTHORED_RECOVERY_COMPOSITION_VERSION) return null;
   }
   const purchase = (previous?.renderPurchase as { requestKey?: unknown } | undefined)?.requestKey;
   return typeof purchase === "string" && purchase.startsWith(`${hide.id}:${hide.pose}:render:`) ? purchase : `${hide.id}:${hide.pose}:render:${attempts}`;
@@ -119,6 +127,8 @@ export async function runLocalPatchSelfRepair(c: Container, input: { gameId: str
     && scene.gameId === gameId && isCollectionVersion(scene.sceneVersion) && scene.sceneSlug === board.board
     && game.orders.some(o => o.userId === game.ownerId && o.paymentStatus === "PAID" && o.paidAt && !o.refundedAt)
     && !game.orders.some(o => o.paymentStatus === "REFUNDED" || o.refundedAt), "A live paid complete collection and approved identity are required");
+  const placementContext = await resolveLocalPatchBoardsForGame(c.db, gameId, scene.sceneVersion);
+  assertAuthoredLocalPatchPlacement(board, hide, scene.sceneVersion, placementContext);
   const target = await c.db.targetInstance.findUniqueOrThrow({ where: { gameSceneId_targetId: { gameSceneId: scene.id, targetId: hide.targetId } } });
   const row = await c.db.targetVariantAsset.findUniqueOrThrow({ where: { targetInstanceId_variant: { targetInstanceId: target.id, variant: "A" } } });
   demand(row.status === "FAILED" && row.attempts >= 1 && row.attempts <= 3 && row.provider === LOCAL_PATCH_PROVIDER, "Only a concluded failed appearance may enter recovery");
@@ -132,8 +142,14 @@ export async function runLocalPatchSelfRepair(c: Container, input: { gameId: str
     catalogSha256: await identityStyleCatalogSha256(scene.sceneSlug, scene.sceneVersion), photoAssetId: child.originalPhotoAssetId, ageYears: child.ageYears,
     crop: child.photoCropJson ? JSON.parse(child.photoCropJson) : null, contentVersion: scene.sceneVersion });
   const definition = sceneBySlug(scene.sceneSlug, scene.sceneVersion), original = await (deps.readBoardArt ?? readShippedBoardArt)(board.art, definition.art.sha256 ?? "");
+  const authoredReturn = expectedAuthoredLocalPatchReturn(board, hide, scene.sceneVersion, placementContext);
+  const placement = sourcePlacementForHide(placementContext, hide.id);
+  if (authoredReturn) demand(placement?.sourceNeighbors && authoredReturn.sourcePlacement, "Authored recovery requires a source-annotated trusted companion");
+  const authoredContext = authoredReturn ? { version: AUTHORED_RECOVERY_CONTEXT_VERSION,
+    parentSha256: authoredRecoveryParentSha256(authoredReturn), sourcePngSha256: sha256Bytes(original) } : undefined;
   const crop = cropOf(hide), contextSha256 = hash({ gameId, rowId: row.id, attempts: row.attempts, hide,
-    originalSha256: sha256Bytes(original), identitySha256, ageYears: child.ageYears, policy: deps.renderPolicySha256, promptVersion: row.promptVersion });
+    originalSha256: sha256Bytes(original), identitySha256, ageYears: child.ageYears, policy: deps.renderPolicySha256, promptVersion: row.promptVersion,
+    ...(authoredReturn ? { authoredReturn } : {}) });
   // A v18 row's outline: restored in every join, told to the diagnosis, and never
   // allowed over a plan's face or protected child (refused before any image purchase).
   const foreground = foregroundForPinnedPrompt(hide, row.promptVersion);
@@ -152,6 +168,7 @@ export async function runLocalPatchSelfRepair(c: Container, input: { gameId: str
     const failedSource = refusedCompositionSource(previous, state, hide, row.attempts);
     const refusal = upgrade && plan ? subjectRefusalOf(previous, plan, upgrade.ageYears) : null;
     state = { version: SELF_REPAIR_VERSION, cycle: (state?.cycle ?? 0) + 1, phase: "diagnosing", contextSha256,
+      ...(authoredContext ? { authoredContext } : {}),
       decision: null, history, feedback: (state?.phase === "rejected" ? state.feedback : row.lastError ?? "Two completed attempts did not produce a publishable appearance").slice(0, 1200),
       sourceKeys: state?.sourceKeys ?? Array.from({ length: row.attempts }, (_, i) => `${hide.id}:${hide.pose}:render:${i + 1}`),
       ...(scene.sceneVersion === 12 ? { excludedRegions: selfRepairExcludedRegions(crop, board.hides.filter(h => h.id !== hide.id).map(cropOf)) } : {}),
@@ -161,7 +178,10 @@ export async function runLocalPatchSelfRepair(c: Container, input: { gameId: str
         intrinsic: refusal.intrinsic, failedSource } } : {}),
       imageCostCents: 0, diagnosisCostCents: 0 };
   }
-  const active = state;
+  // New companion states are frozen in their schema order immediately. Old
+  // states retain their exact historical serialization and replay behavior.
+  const active = authoredContext ? stateSchema.parse(state) : state;
+  if (authoredContext) demand(JSON.stringify(active.authoredContext) === JSON.stringify(authoredContext), "Pinned authored recovery context changed");
   demand(active.sourceKeys.every(key => Array.from({ length: row.attempts }, (_, i) => `${hide.id}:${hide.pose}:render:${i + 1}`).includes(key)
     || key.startsWith(`${hide.id}:${hide.pose}:self-repair:`) && /^[1-9]\d*$/.test(key.slice(`${hide.id}:${hide.pose}:self-repair:`.length))), "Recovery source belongs to a different appearance");
   const fenced = async (tx: Prisma.TransactionClient) => {
@@ -188,13 +208,14 @@ export async function runLocalPatchSelfRepair(c: Container, input: { gameId: str
   const save = async (changes: Partial<State>, costCents = 0) => c.db.$transaction(async tx => {
     await fenced(tx);
     await tx.targetVariantAsset.update({ where: { id: row.id }, data: {
-      judgeJson: JSON.stringify({ ...previous, selfRepair: { ...active, ...changes } }), costCents: row.costCents + Math.ceil(costCents),
+      judgeJson: JSON.stringify({ ...previous, selfRepair: authoredContext ? stateSchema.parse({ ...active, ...changes }) : { ...active, ...changes } }), costCents: row.costCents + Math.ceil(costCents),
     } });
   }, { timeout: 30_000 });
   // Freeze the cycle before any paid dispatch. A fresh tick starts at this exact
   // phase, even when this process loses the response after it was retained.
   if (!previous.selfRepair || JSON.stringify(previous.selfRepair) !== JSON.stringify(active)) { await save({}); return; }
   const raws = new Map<string, Buffer>();
+  const rawReferences = new Map<string, AuthoredLocalPatchRecoveryContract["source"]>();
   for (const key of active.sourceKeys) {
     const bill = await budget.readRequest(worldId, key), retained = await store.get(worldId, key);
     if (bill?.state === "unknown" && (await budget.readContinuationApproval(worldId, key))?.version === "world-automatic-image-recovery/v1") continue;
@@ -205,7 +226,11 @@ export async function runLocalPatchSelfRepair(c: Container, input: { gameId: str
     if (envelope.version !== RETAINED_RENDER_VERSION || envelope.rejected !== null || typeof envelope.bytesBase64 !== "string") continue;
     const raw = Buffer.from(envelope.bytesBase64, "base64");
     demand(raw.toString("base64") === envelope.bytesBase64, "Retained raw encoding changed");
-    raws.set(key, await sharp(raw, { limitInputPixels: 8_294_400 }).resize(512, 768, { fit: "fill" }).png().toBuffer());
+    const normalized = await sharp(raw, { limitInputPixels: 8_294_400 }).resize(512, 768, { fit: "fill" }).png().toBuffer();
+    if (authoredReturn) demand(JSON.stringify(envelope.authoredReturn) === JSON.stringify(authoredReturn), "Retained raw belongs to another authored source/window");
+    raws.set(key, normalized);
+    rawReferences.set(key, { requestKey: key, operationFingerprint: bill.operationFingerprint,
+      retainedRawSha256: sha256Bytes(raw), normalizedRawSha256: sha256Bytes(normalized) });
   }
   if (active.phase === "diagnosing") {
     const settings = selfRepairSettingsForVersion(scene.sceneVersion);
@@ -249,6 +274,9 @@ export async function runLocalPatchSelfRepair(c: Container, input: { gameId: str
     const prompt = scene.sceneVersion === 12 ? integrationDiagnosisPrompt({ ageYears: child.ageYears, pose: hide.pose,
       support: propSupport ? ageBodyPropPlacementText(support) : ageBody ? ageBodyPlacementText(support) : support, envelope: maskForHide(hide), sourceKeys: selected,
       excludedRegions: active.excludedRegions, ...(foreground ? { fixedForeground: foregroundDiagnosisData(foreground) } : {}),
+      ...(authoredReturn && placement?.sourceNeighbors ? { authoredRecovery: { parentSha256: authoredRecoveryParentSha256(authoredReturn),
+        child: authoredReturn.child, returnWindow: authoredReturn.local, sourceHeads: placement.sourceNeighbors.contract.neighbors.map(n => ({ sourceId: n.sourceId,
+          head: { ...n.head, left: n.head.left - crop.left, top: n.head.top - crop.top } })) } } : {}),
       ...(active.boundaryContext ? { boundaryContext: true } : {}), ...(ageBody ? { exactAge: true } : {}),
       ...(subject ? { subject: { codes: subject.codes, located: subject.located, intrinsic: subject.intrinsic, failedSource: subject.failedSource,
         suggestion: `${plan!.action}; head ${plan!.head}; expression ${plan!.expression}`, warmHat: plan!.warmHat } } : {}),
@@ -275,7 +303,7 @@ export async function runLocalPatchSelfRepair(c: Container, input: { gameId: str
         const wire = { prompt, images, imageLabels: labels, settings, timeoutMs: Math.min(timeoutMs ?? 90_000, 90_000) };
         demand(deps.diagnose || deps.apiKey, "Existing diagnostic provider credential is required");
         const reply = await (deps.diagnose ?? (request => requestJudgeWire(deps.apiKey!, request, fetch)))(wire);
-        const bytes = Buffer.from(JSON.stringify(reply)), charge = judgeCharge(reply.model ?? "", reply.usage ?? undefined, CURRENT_JUDGE_PRICING_VERSION);
+        const bytes = Buffer.from(JSON.stringify({ ...reply, ...(authoredContext ? { authoredRecoveryContext: authoredContext } : {}) })), charge = judgeCharge(reply.model ?? "", reply.usage ?? undefined, CURRENT_JUDGE_PRICING_VERSION);
         return reply.costUnknown || charge.costUnknown || !reply.requestId ? { bytes, unknownReason: "Recovery diagnosis charge is unresolved" }
           : { bytes, evidence: { providerNamespace: "openai:find-me-existing", providerRequestId: reply.requestId, usageId: hash(reply.usage),
             rawUsage: reply.usage as BudgetJson, model: reply.model!, amountMicroUsd: Math.ceil(charge.costCents * 10_000), costBasis: "conservative-upper-estimate" as const } };
@@ -285,7 +313,9 @@ export async function runLocalPatchSelfRepair(c: Container, input: { gameId: str
     let decision: SelfRepairDecision;
     try {
       demand(!reply.wireFault && isTheModelWeAsked(reply.model, SELF_REPAIR_SETTINGS.model) && reply.finishReason === "stop", "Diagnostic wire evidence was unreadable");
+      if (authoredContext) demand(JSON.stringify((reply as LocalPatchJudgeResult & { authoredRecoveryContext?: unknown }).authoredRecoveryContext) === JSON.stringify(authoredContext), "Retained diagnosis belongs to another authored context");
       decision = selfRepairDecisionSchema.parse(JSON.parse(reply.raw ?? "null"));
+      if (authoredReturn) assertAuthoredLocalPatchRecoveryGeometry(authoredReturn, placementContext, decision);
       demand(decision.action !== "restyle-retained" || scene.sceneVersion === 12, "Surface repair belongs to the integrated release");
       demand(selected.includes(decision.sourceKey) || !selected.length && decision.sourceKey === "new-image" && decision.action === "redraw-with-new-placement", "Diagnosis selected an unseen source");
       demand(!active.history.some(h => h.recipe === selfRepairRecipe(decision)), "Diagnosis repeated an already failed source and geometry; change approach");
@@ -303,13 +333,34 @@ export async function runLocalPatchSelfRepair(c: Container, input: { gameId: str
     } catch (error) {
       await save({ phase: "rejected", feedback: String(error).slice(0, 1200), diagnosisCostCents: bought.evidence.amountMicroUsd / 10_000 }, bought.evidence.amountMicroUsd / 10_000); return;
     }
-    await save({ phase: "applying", decision, diagnosisCostCents: bought.evidence.amountMicroUsd / 10_000 }, bought.evidence.amountMicroUsd / 10_000); return;
+    await save({ phase: "applying", decision,
+      ...(authoredReturn ? { authoredDiagnosis: { requestKey, operationFingerprint: fingerprint, rawSha256: sha256Bytes(Buffer.from(reply.raw!)) } } : {}),
+      diagnosisCostCents: bought.evidence.amountMicroUsd / 10_000 }, bought.evidence.amountMicroUsd / 10_000); return;
   }
   demand(active.phase === "applying" && active.decision, "Invalid recovery phase");
   const decision = active.decision;
   // A plan frozen before this rule existed is held to it here, before any purchase or
   // join: it goes back to diagnosis with the reason, recorded so it is never repeated.
-  const conflict = foreground ? foregroundPlanConflict(foreground, decision) : null;
+  let authoredConflict: string | null = null;
+  if (authoredReturn) try {
+    assertAuthoredLocalPatchRecoveryGeometry(authoredReturn, placementContext, decision);
+    const ref = authoredRecoveryDiagnosisSchema.parse(active.authoredDiagnosis);
+    demand(ref.requestKey === `self-repair:${hide.id}:diagnosis:${active.cycle}`, "Authored diagnosis key changed");
+    const bill = await budget.readRequest(worldId, ref.requestKey), kept = await store.get(worldId, ref.requestKey);
+    demand(bill && (bill.state === "settled" || bill.state === "linked") && bill.scope === "judge" && !bill.conflicts.length
+      && bill.operationFingerprint === ref.operationFingerprint && kept?.evidence && kept.operationFingerprint === ref.operationFingerprint
+      && sameChargeEvidence(kept.evidence, bill.evidence), "Authored diagnosis no longer proves its paid question");
+    const reply = JSON.parse(kept.bytes.toString()) as LocalPatchJudgeResult & { authoredRecoveryContext?: unknown };
+    demand(!reply.wireFault && reply.finishReason === "stop" && isTheModelWeAsked(reply.model, SELF_REPAIR_SETTINGS.model)
+      && reply.requestId === bill.evidence.providerRequestId && typeof reply.raw === "string" && sha256Bytes(Buffer.from(reply.raw)) === ref.rawSha256
+      && JSON.stringify(reply.authoredRecoveryContext) === JSON.stringify(authoredContext)
+      && JSON.stringify(selfRepairDecisionSchema.parse(JSON.parse(reply.raw))) === JSON.stringify(decision), "Authored applying plan differs from its immutable paid diagnosis");
+    const r = decision.returnWindow, world = { ...r, left: crop.left + r.left, top: crop.top + r.top };
+    demand(board.hides.filter(h => h.id !== hide.id).every(other => { const b = cropOf(other);
+      return world.left + world.width <= b.left || b.left + b.width <= world.left || world.top + world.height <= b.top || b.top + b.height <= world.top;
+    }), "Proposed authored repair overlaps another hide");
+  } catch (error) { authoredConflict = String(error); }
+  const conflict = authoredConflict ?? (foreground ? foregroundPlanConflict(foreground, decision) : null);
   if (conflict) {
     await save({ phase: "rejected", feedback: conflict.slice(0, 1200),
       history: [...active.history, { recipe: selfRepairRecipe(decision), cause: decision.cause, result: conflict.slice(0, 1200), imageSha256: null }] });
@@ -327,7 +378,9 @@ export async function runLocalPatchSelfRepair(c: Container, input: { gameId: str
     const subjectDirection = decision.action === "redraw-with-new-placement"
       ? await subjectDirectionFor(c, gameId, hide.id, scene.sceneVersion, row.judgeJson, { forceMedium: true }) : undefined;
     const result = await renderLocalPatchHide({ ledger: budget, store, render: deps.render, renderPolicySha256: deps.renderPolicySha256 }, {
-      worldId, board, hide, composedPng: original, contentVersion: scene.sceneVersion, ...references, ageYears: child.ageYears,
+      worldId, board, hide, composedPng: original, contentVersion: scene.sceneVersion, placementContext, ...references, ageYears: child.ageYears,
+      ...(authoredReturn ? { authoredSource: { sha256: authoredReturn.source.sha256, width: authoredReturn.source.width, height: authoredReturn.source.height },
+        authoredDiagnosis: active.authoredDiagnosis! } : {}),
       expectedPromptVersion: row.promptVersion ?? LOCAL_PATCH_AGE_PROMPT_VERSION,
       ...(paintRecipeForPinnedPrompt(row.promptVersion) ? { paintRecipe: paintRecipeForPinnedPrompt(row.promptVersion) } : {}),
       attempt: row.attempts, apiKey: deps.apiKey ?? "", selfRepair: { cycle: active.cycle, decision }, deadlineAt: input.deadlineAt,
@@ -340,8 +393,24 @@ export async function runLocalPatchSelfRepair(c: Container, input: { gameId: str
     if (!result.patchPng) { await save({ phase: "rejected", sourceKeys, imageCostCents,
       history: [...active.history, { recipe: selfRepairRecipe(decision), cause: decision.cause, result: result.renderFault ?? "provider-refused", imageSha256: null }] }, imageCostCents); return; }
     raw = result.patchPng;
+    if (authoredReturn) {
+      const bill = await budget.readRequest(worldId, key), retained = await store.get(worldId, key);
+      demand(bill && (bill.state === "settled" || bill.state === "linked") && retained?.evidence
+        && retained.operationFingerprint === bill.operationFingerprint && sameChargeEvidence(retained.evidence, bill.evidence), "New authored recovery image receipt changed");
+      const envelope = JSON.parse(retained.bytes.toString()), originalRaw = Buffer.from(envelope.bytesBase64, "base64");
+      demand(envelope.version === RETAINED_RENDER_VERSION && envelope.rejected === null
+        && JSON.stringify(envelope.authoredReturn) === JSON.stringify(authoredReturn)
+        && JSON.stringify(envelope.authoredDiagnosis) === JSON.stringify(active.authoredDiagnosis), "New authored recovery raw is not bound to its diagnosis");
+      rawReferences.set(key, { requestKey: key, operationFingerprint: bill.operationFingerprint,
+        retainedRawSha256: sha256Bytes(originalRaw), normalizedRawSha256: sha256Bytes(raw) });
+    }
   }
   demand(raw, "The selected paid source is unavailable");
+  const actualSourceKey = decision.action === "recompose-retained" ? decision.sourceKey : `${hide.id}:${hide.pose}:self-repair:${active.cycle}`;
+  const sourceReference = rawReferences.get(actualSourceKey);
+  if (authoredReturn) demand(sourceReference && sourceReference.normalizedRawSha256 === sha256Bytes(raw), "Authored recovery paid RAW binding changed");
+  const authoredRecovery = authoredReturn ? createAuthoredLocalPatchRecovery({ parent: authoredReturn, cycle: active.cycle,
+    diagnosis: active.authoredDiagnosis!, source: sourceReference!, sourcePngSha256: sha256Bytes(original), decision }) : undefined;
   const alpha = Buffer.alloc(512 * 768), r = decision.returnWindow;
   for (let y = 0; y < 768; y++) for (let x = 0; x < 512; x++) alpha[y * 512 + x] = Math.round(255 * Math.min(1,
     Math.max(0, Math.min(x - r.left, y - r.top, r.left + r.width - 1 - x, r.top + r.height - 1 - y) / 6)));
@@ -375,7 +444,8 @@ export async function runLocalPatchSelfRepair(c: Container, input: { gameId: str
     demand(sha256Bytes(Buffer.from(blob.data)) === joined.candidateSha256, "Candidate bytes changed");
     const rejected: string[] = JSON.parse(row.rejectedAssetIdsJson ?? "[]");
     const receipt = { ...previous, verdict: null, wireFault: null, boardReview: undefined, qualityDisposition: undefined,
-      reviewState: "pending-board-review", compositionVersion: SELF_REPAIR_COMPOSITION_VERSION,
+      reviewState: "pending-board-review", compositionVersion: authoredRecovery ? AUTHORED_RECOVERY_COMPOSITION_VERSION : SELF_REPAIR_COMPOSITION_VERSION,
+      ...(authoredRecovery ? { authoredReturn: authoredReturn!, authoredRecovery } : {}),
       judgedSha256: joined.candidateSha256, geometrySha256: localPatchPublicationGeometryHash(geometry),
       hide: hide.id, pose: hide.pose, seam: joined.audit.originalRawSeamReport, renderFault: null,
       selfRepair: { ...active, phase: "awaiting-review", sourceKeys, imageCostCents }, recoveryComposition: joined.audit,

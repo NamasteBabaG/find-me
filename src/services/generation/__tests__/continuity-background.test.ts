@@ -480,3 +480,22 @@ describe("a lean world's background questions (local-patch-lean/v1)", () => {
     expect(await reconcileRefusedBackgroundRound(c, ask.gameId, worldId, requestKey)).toBe(false);
   });
 });
+
+
+describe("authored v4 background attestation", () => {
+  it.each([false, true])("preserves the frozen intent through a poll-only sweep, authored=%s", async authored => {
+    const { fake, calls } = transport(async () => ({ responseId: "resp_synthetic" }), [
+      async () => ({ status: "in_progress" }), async () => completed("{\"cases\":[]}")]);
+    const s = await setup(`bg-authored-attest-${authored}`, fake);
+    const ask = { ...s.ask, binding: { ...s.ask.binding, ...(authored ? { authoredReviewBinding: "d".repeat(64) } : {}) } };
+    expect(await askContinuityInBackground(s.c, ask)).toMatchObject({ kind: "waiting" });
+    if (authored) await expect(askContinuityInBackground(s.c, { ...ask, binding: { ...ask.binding, authoredReviewBinding: "e".repeat(64) } }))
+      .rejects.toThrow("question differs from its round");
+    expect(await advanceContinuityInBackground(s.c, ask.gameId)).toBe(1);
+    const kept = await s.store.get(s.worldId, s.requestKey), wire = JSON.parse(kept!.bytes.toString());
+    expect(wire.authoredReviewBinding).toBe(authored ? "d".repeat(64) : undefined);
+    expect(Object.hasOwn(wire, "authoredReviewBinding")).toBe(authored);
+    expect(await s.replay()).toMatchObject({ kind: "bought", replayed: true });
+    expect(calls).toEqual({ create: 1, retrieve: 2, cancel: 0 });
+  });
+});

@@ -26,6 +26,7 @@ import { pinLocalPatchPainter } from "./generation/painter-release";
 import { pinQualityChannel } from "./generation/quality-channel";
 import { pinLeanRelease } from "./generation/lean-release";
 import { pinIdentitySourceRelease } from "./generation/identity-source-release";
+import { pinSourcePlacementRelease } from "./generation/source-placement-release";
 import { detectiveRelease, storedSearchLevel, type SearchLevel } from "@/domain/search-level";
 import { DETECTIVE_RELEASES } from "../../content/worlds/detective-releases";
 import { pinSearchLevelChoice, searchLevelAsked } from "./search-level-policy";
@@ -72,6 +73,7 @@ export async function createDraft(c: Container, ownerId: string | null, locale: 
       await pinQualityChannel(tx, created.id, lean ? undefined : c.qualityChannel);
       await pinLeanRelease(tx, created.id, lean);
       await pinIdentitySourceRelease(tx, created.id);
+      if (lean) await pinSourcePlacementRelease(tx, created.id);
     }
     if (options.askSearchLevel) await pinSearchLevelChoice(tx, created.id);
     return created;

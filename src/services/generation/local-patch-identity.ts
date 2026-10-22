@@ -2,7 +2,7 @@ import sharp from "sharp";
 import type { Container } from "../container";
 import { sceneBySlug } from "../scene-catalog.service";
 import { WORLD_LOCAL_PATCH_HIDES, cropOf } from "../../domain/scene/local-patch-hides";
-import { localPatchBoardForVersion } from "../../domain/scene/local-patch-catalog";
+import { resolveLocalPatchBoardsForGame } from "./source-placement-release";
 import { assertGenerationSpendAllowed, boardWizardBudgetOf, boardWizardWorldId } from "./board-conditioned-wizard";
 import { LOCAL_PATCH_STYLE } from "./local-patch-world";
 import { withBoardWizardIdentityClaim, type BoardWizardIdentityClaim } from "./board-wizard-identity-lifecycle";
@@ -43,8 +43,9 @@ export async function preflightLocalPatchIdentity(c: Container, gameId: string, 
     && new Set(game.scenes.map(scene => scene.sceneSlug)).size === WORLD_LOCAL_PATCH_HIDES.length, "Exactly the supported nine-board world is required");
   demand(new Set(game.scenes.map(scene => scene.sceneVersion)).size === 1, "Identity must use one pinned content version across every board");
   demand(worldsOwned(game.scenes.map(scene => scene.sceneSlug)).length === 1, "Identity requires one complete selected world");
+  const placements = await resolveLocalPatchBoardsForGame(c.db, gameId, game.scenes[0]!.sceneVersion);
   const selected = game.scenes.map(scene => {
-    const board = localPatchBoardForVersion(scene.sceneSlug, scene.sceneVersion);
+    const board = placements.boards.find(board => board.board === scene.sceneSlug);
     demand(board && /^public\/(?:scenes|worlds)\//.test(board.art), `Missing packaged art for ${scene.sceneSlug}`);
     const definition = sceneBySlug(scene.sceneSlug, scene.sceneVersion);
     demand(board.hides.every(hide => definition.targets.some(target => target.id === hide.targetId)), `Unbound local-patch targets for ${scene.sceneSlug}`);
@@ -52,6 +53,7 @@ export async function preflightLocalPatchIdentity(c: Container, gameId: string, 
     return { scene, board, definition };
   });
   const selectedSha256 = sha256Bytes(Buffer.from(JSON.stringify({
+    ...(placements.manifestSha256 ? { sourcePlacementReleaseSha256: placements.manifestSha256 } : {}),
     boards: selected.map(({ scene, board, definition }) => ({ slug: scene.sceneSlug, version: scene.sceneVersion,
       art: definition.art, targets: definition.targets, board })).sort((a, b) => a.slug.localeCompare(b.slug)),
   })));

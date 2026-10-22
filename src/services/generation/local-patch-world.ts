@@ -3,6 +3,7 @@ import type { Container } from "../container";
 import { type LocalPatchBoard, type LocalPatchHide } from "../../domain/scene/local-patch-hides";
 import { ALL_LOCAL_PATCH_BOARDS, localPatchBoardForVersion, isLocalPatchAdvisoryVersion, isLocalPatchStrictVersion } from "../../domain/scene/local-patch-catalog";
 import { worldsOwned } from "../world-catalog.service";
+import { resolveLocalPatchBoardsForGame } from "./source-placement-release";
 import { deliverLocalPatchNotifications } from "../local-patch-notifications";
 import { GenerationPaused, boardWizardBudgetOf, boardWizardWorldId } from "./board-conditioned-wizard";
 import { retainedPurchaseKeysFor } from "../../infra/db/prisma-retained-purchase-store";
@@ -233,6 +234,12 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
   if (game.scenes.length >= 9 && (game.scenes.length !== 9 || worldsOwned(game.scenes.map(scene => scene.sceneSlug)).length !== 1)) {
     throw new Error("LOCAL_PATCH_WORLD: all nine boards must belong to one complete world");
   }
+  // Resolve the draft's immutable source/placement companion once per content
+  // version. No pin retains the original catalog objects and geometry exactly.
+  const placementContexts = await Promise.all([...new Set(game.scenes.map(scene => scene.sceneVersion))]
+    .map(version => resolveLocalPatchBoardsForGame(c.db, gameId, version)));
+  const boardFor = (slug: string, version: number) => placementContexts.find(context => context.sceneVersion === version)
+    ?.boards.find(board => board.board === slug) ?? null;
   // local-patch-slice-pacing/v1: the provider passes below name each question whose answer the provider has just
   // said is still running (nothing in its board can move before it ends), take turns among their rounds, and stop
   // with room for one board review.
@@ -432,7 +439,7 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
   const blocked: { boardId: string; reason: string }[] = [];
   const work: { board: LocalPatchBoard; hide: LocalPatchHide; sceneId: string }[] = [];
   for (const scene of game.scenes) {
-    const board = localPatchBoardFor(scene.sceneSlug, scene.sceneVersion);
+    const board = boardFor(scene.sceneSlug, scene.sceneVersion);
     if (!board) { blocked.push({ boardId: scene.sceneSlug, reason: `${scene.sceneSlug} has no authored local-patch placements` }); continue; }
     const reason = localPatchBoardBlockedReason(board);
     if (reason) { blocked.push({ boardId: scene.sceneSlug, reason }); continue; }
@@ -636,7 +643,7 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
     for (const plan of plans) if (plan.awaiting) awaitingBoards.add(plan.scene.id);
     for (const { scene, ready, firstWork, retry } of plans) {
       if (scene.sceneVersion !== 12 || scene.generationStatus === "GENERATED" && !subjectPending.has(scene.id)) continue;
-      if (!(firstWork || retry) && ready.length !== localPatchBoardFor(scene.sceneSlug, scene.sceneVersion)?.hides.length) continue;
+      if (!(firstWork || retry) && ready.length !== boardFor(scene.sceneSlug, scene.sceneVersion)?.hides.length) continue;
       if (!firstWork && retry && !firstPassComplete) continue;
       // Every question it owes is sent: decided by a later slice, once its answer arrives.
       if (awaitingBoards.has(scene.id)) continue;
@@ -695,7 +702,7 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
     : localPatchSettled(row, attemptLimit);
   const plan = localPatchAttemptPlan(work.map(item => stateOf(item.sceneId, item.hide.targetId)), allowRepair);
   const normalReviewsPending = strict && game.scenes.some(scene => scene.generationStatus !== "GENERATED"
-    && localPatchBoardFor(scene.sceneSlug, scene.sceneVersion)?.hides.every(hide => stateOf(scene.id, hide.targetId)?.status === "GENERATED"));
+    && boardFor(scene.sceneSlug, scene.sceneVersion)?.hides.every(hide => stateOf(scene.id, hide.targetId)?.status === "GENERATED"));
   // A rendered but not reviewed normal candidate may still require attempt2.
   // Finish those reviews before handing any earlier failure its last attempt.
   // An enrolled world schedules by local-patch-progress/v1: paid work in flight first, then the
@@ -834,7 +841,7 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
   let continuityPending = automatic && !extraPlan && after.some(localPatchContinuityPending);
   const subjectAfter = subjectPendingScenes(after);
   for (const scene of game.scenes) {
-    const board = localPatchBoardFor(scene.sceneSlug, scene.sceneVersion);
+    const board = boardFor(scene.sceneSlug, scene.sceneVersion);
     if (!board || localPatchBoardBlockedReason(board)) continue;
     // Its questions await their provider: nothing to rebuild or decide yet, and the world is neither finished nor at rest.
     if (awaitingBoards.has(scene.id)) { pendingReviews++; continue; }
@@ -940,7 +947,7 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
       const row = after.find(r => r.targetInstance.gameSceneId === item.sceneId && r.targetInstance.targetId === item.hide.targetId);
       return !row || !["GENERATED", "APPROVED"].includes(row.status);
     });
-    const expected = game.scenes.reduce((sum, scene) => sum + (localPatchBoardFor(scene.sceneSlug, scene.sceneVersion)?.hides.length ?? 0), 0);
+    const expected = game.scenes.reduce((sum, scene) => sum + (boardFor(scene.sceneSlug, scene.sceneVersion)?.hides.length ?? 0), 0);
     if (!blocked.length && !failures.length && work.length === expected) {
       await finishLocalPatchGame(c, gameId, fence);
       // Readiness is already committed. Notification failure must never turn

@@ -3,9 +3,12 @@ import { localPatchRuntimeContinuityVerdict } from "../../domain/scene/local-pat
 import { SELF_REPAIR_COMPOSITION_VERSION, SELF_REPAIR_VERSION, selfRepairDecisionSchema } from "../../domain/scene/local-patch-self-repair";
 import { localPatchQualityDisposition, QUALITY_READER_STRICT } from "./local-patch-judge";
 import { dualVisualReviewVersion } from "./visual-review-release";
-import { qualityStageReader, readContinuityStage, readQualityStage, subjectStageRaw, verifiedDualStage, type DualReviewProof } from "./local-patch-dual-evidence";
+import { qualityStageReader, readContinuityStage, readQualityStage, subjectStageRaw, sourceNeighborPublicationMatches, verifiedDualStage, type DualReviewProof } from "./local-patch-dual-evidence";
 import { PLAYER_REVIEW_MODE } from "./local-patch-player-review";
 import { LOCAL_PATCH_COMPOSITION_VERSION } from "./local-patch-seam";
+import { AUTHORED_PATCH_COMPOSITION_VERSION } from "../../domain/scene/local-patch-return-region";
+import { AUTHORED_RECOVERY_COMPOSITION_VERSION } from "../../domain/scene/local-patch-authored-recovery";
+import { authoredLocalPatchPublicationMatches, authoredLocalPatchReviewBinding } from "./local-patch-authored-return";
 import type { LocalPatchPublicationBinding } from "./local-patch-publication-policy";
 import { poseOnlyV1Refusal, readSubjectAnswer, readSubjectAnswerV2, SUBJECT_POLICY_V2, SUBJECT_POLICY_VERSION, SUBJECT_READER,
   SUBJECT_READER_V2 } from "../../domain/generation/subject-policy";
@@ -32,12 +35,16 @@ export async function allowedDualPublication(db: Prisma.TransactionClient, input
       || receipt.geometrySha256 !== input.geometrySha256 || proof?.version !== version
       || proof.hideId !== input.hideId || proof.imageSha256 !== input.imageSha256 || proof.geometrySha256 !== input.geometrySha256
       || proof.identitySha256 !== input.identitySha256 || !proof.quality || !proof.continuity) return false;
-    if (receipt.compositionVersion !== LOCAL_PATCH_COMPOSITION_VERSION) {
+    if (!await authoredLocalPatchPublicationMatches(db, input)) return false;
+    if (!await sourceNeighborPublicationMatches(db, input, proof.quality)) return false;
+    if (!equal(proof.authoredReturn, receipt.authoredReturn) || !equal(proof.authoredRecovery, receipt.authoredRecovery)) return false;
+    if (receipt.compositionVersion !== LOCAL_PATCH_COMPOSITION_VERSION && receipt.compositionVersion !== AUTHORED_PATCH_COMPOSITION_VERSION && receipt.compositionVersion !== AUTHORED_RECOVERY_COMPOSITION_VERSION) {
       if (receipt.compositionVersion !== SELF_REPAIR_COMPOSITION_VERSION || receipt.selfRepair?.version !== SELF_REPAIR_VERSION
         || receipt.selfRepair.phase !== "awaiting-review" || !selfRepairDecisionSchema.safeParse(receipt.selfRepair.decision).success
         || receipt.recoveryComposition?.outsideChangedPixels !== 0 || receipt.recoveryComposition?.protectedChangedPixels !== 0) return false;
     }
     if (review.compositionVersion !== receipt.compositionVersion) return false;
+    const authoredReviewBinding = authoredLocalPatchReviewBinding({ ...input, authoredReturn: proof.authoredReturn, ...(proof.authoredRecovery ? { authoredRecovery: proof.authoredRecovery } : {}) });
     const worldId = `${input.gameId}:board-wizard`;
     // An enrolled world: its continuity may be a background answer, and every appearance
     // also needs its own subject approval. A pass written before the enrollment has none.
@@ -45,8 +52,8 @@ export async function allowedDualPublication(db: Prisma.TransactionClient, input
     // A lean world (local-patch-lean/v1) is judged by Sol alone, under its own policies, and is always enrolled.
     const lean = await isLeanWorld(db, input.gameId);
     if (lean && !upgrade) return false;
-    if (!await verifiedDualStage(db, worldId, proof.quality, "scene-quality", { allowLean: lean })
-      || !await verifiedDualStage(db, worldId, proof.continuity, "head-continuity", { allowBackground: !!upgrade, allowLean: lean })) return false;
+    if (!await verifiedDualStage(db, worldId, proof.quality, "scene-quality", { allowLean: lean, authoredReviewBinding })
+      || !await verifiedDualStage(db, worldId, proof.continuity, "head-continuity", { allowBackground: !!upgrade, allowLean: lean, authoredReviewBinding })) return false;
     if (upgrade && !await allowedSubject(db, worldId, upgrade, proof, input, lean)) return false;
     // Each answer is read by the reader its decision names, never a newer one.
     const quality = readQualityStage(proof.quality, input.hideId);
@@ -72,14 +79,15 @@ async function allowedSubject(db: Prisma.TransactionClient, worldId: string, upg
   const game = await db.game.findUnique({ where: { id: input.gameId }, include: { childProfile: true } });
   if (!game || game.ownerId !== upgrade.ownerId || game.childProfile?.ageYears !== upgrade.ageYears
     || game.childProfile.identityAssetId !== upgrade.identityAssetId) return false;
-  if (!await verifiedDualStage(db, worldId, subject, "scene-quality", { allowLean: lean })) return false;
+  if (!await verifiedDualStage(db, worldId, subject, "scene-quality", { allowLean: lean,
+    authoredReviewBinding: authoredLocalPatchReviewBinding({ ...input, authoredReturn: proof.authoredReturn, ...(proof.authoredRecovery ? { authoredRecovery: proof.authoredRecovery } : {}) }) })) return false;
   // A lean world's subject reading always came with its quality answer (one Sol request).
   if (lean && subject.combined !== SUBJECT_QUALITY_BUNDLE_VERSION) return false;
   if (subject.combined && (!proof.quality.subjectBundle || proof.quality.subjectBundle.version !== subject.combined
     || proof.quality.subjectBundle.photoSha256 !== subject.photoSha256 || proof.quality.subjectBundle.planSha256 !== subject.planSha256
     || (proof.quality.subjectBundle.subjectPolicy ?? SUBJECT_POLICY_VERSION) !== subject.subjectPolicy
     || subject.requestKey !== proof.quality.requestKey || subject.fingerprint !== proof.quality.fingerprint || subject.raw !== proof.quality.raw
-    || subject.costMicroUsd !== proof.quality.costMicroUsd)) return false;
+    || subject.costMicroUsd !== proof.quality.costMicroUsd || !equal(subject.sourceNeighbors, proof.quality.sourceNeighbors))) return false;
   const expected = { hideId: input.hideId, ageYears: upgrade.ageYears, plan };
   const reading = v2 ? readSubjectAnswerV2(subjectStageRaw(subject), expected) : readSubjectAnswer(subjectStageRaw(subject), expected);
   if (!reading.ok || reading.disposition !== "pass") return false;
@@ -91,7 +99,8 @@ async function allowedSubject(db: Prisma.TransactionClient, worldId: string, upg
   };
   const bundle = proof.quality.subjectBundle;
   if (bundle && !subject.combined) {
-    const inner = subjectStageRaw({ raw: proof.quality.raw, combined: SUBJECT_QUALITY_BUNDLE_VERSION });
+    const inner = subjectStageRaw({ raw: proof.quality.raw, combined: SUBJECT_QUALITY_BUNDLE_VERSION,
+      ...(proof.quality.sourceNeighbors ? { sourceNeighbors: proof.quality.sourceNeighbors } : {}) });
     if (bundle.subjectPolicy === SUBJECT_POLICY_V2) {
       const own = readSubjectAnswerV2(inner, expected);
       if (!own.ok || own.disposition !== "pass") return false;

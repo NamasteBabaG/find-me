@@ -8,6 +8,8 @@ import { applyTestSchema } from "../../../lib/test-schema";
 import { DbStorage } from "../../../infra/storage/db";
 import type { Container } from "../../container";
 import { createDraft } from "../../create-flow.service";
+import { beginWorldPurchase } from "../../world-purchase.service";
+import { sourcePlacementReleaseOf, sourcePlacementReleaseAuditId } from "../source-placement-release";
 import { boardsOfWorlds } from "../../world-catalog.service";
 import {
   LEAN_REVIEW_POLICIES, VISUAL_REVIEW_SOL_TIERS_PRICING_VERSION, leanReviewPolicy, leanReviewPolicyOf, visualReviewPolicy,
@@ -212,6 +214,11 @@ describe("a lean draft's pin", () => {
     expect(await leanReviewRecoveryOf(db, gameId)).toEqual(leanNewWorldRecoveryReceipt(gameId));
     expect(await db.auditLog.findUniqueOrThrow({ where: { id: leanReviewRecoveryAuditId(gameId) } })).toMatchObject({ actorType: "SYSTEM", actorId: null });
     expect(await leanReviewRecoveryOf(db, control)).toBeNull();
+    const companion = await sourcePlacementReleaseOf(db, gameId);
+    expect(companion).toMatchObject({ baseSceneVersion: 12, coverage: [{ boardId: "greatwall", hideId: "greatwall-v12-2" }] });
+    expect(await db.auditLog.findUniqueOrThrow({ where: { id: sourcePlacementReleaseAuditId(gameId) } }))
+      .toMatchObject({ actorType: "SYSTEM", actorId: null, entityId: gameId });
+    expect(await sourcePlacementReleaseOf(db, control)).toBeNull();
   });
 
   it("is refused outside QA, v19 and dual review v3, and on a draft that already carries another painter, channel or budget pin", async () => {
@@ -245,6 +252,37 @@ describe("a lean draft's pin", () => {
     expect(await leanReviewRecoveryOf(db, gameId)).toEqual(leanNewWorldRecoveryReceipt(gameId));
     await db.auditLog.update({ where: { id: leanReleaseAuditId(gameId) }, data: { metaJson: JSON.stringify({ ...leanReleaseReceipt(gameId), worldCapMicroUsd: 6_000_000 }) } });
     await expect(leanReleaseOf(db, gameId)).rejects.toThrow("Pinned lean release is invalid; refusing a fallback");
+  });
+});
+
+describe("prospective source placement in real draft transactions", () => {
+  it("pins a family world atomically and reuses its exact unpaid draft without enrolling twice", async () => {
+    const ownerId = "synthetic-placement-owner", childId = "synthetic-placement-child";
+    await db.user.create({ data: { id: ownerId, email: "placement-owner@example.invalid" } });
+    await db.familyChild.create({ data: { id: childId, ownerId, displayName: "Synthetic" } });
+    const input = { ownerId, familyChildId: childId, worldSlug: "kingdom", ageYears: 6, locale: "he" as const };
+    const first = await beginWorldPurchase(lean(), input);
+    expect(first.ok).toBe(true); if (!first.ok) throw Error(first.code);
+    expect(await sourcePlacementReleaseOf(db, first.gameId)).not.toBeNull();
+    expect(await db.gameScene.count({ where: { gameId: first.gameId, sceneVersion: 12 } })).toBe(9);
+    const original = await db.auditLog.findUniqueOrThrow({ where: { id: sourcePlacementReleaseAuditId(first.gameId) } });
+    const second = await beginWorldPurchase(lean(), input);
+    expect(second).toMatchObject({ ok: true, gameId: first.gameId, reused: true });
+    expect(await db.auditLog.findUniqueOrThrow({ where: { id: original.id } })).toEqual(original);
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("rolls back the whole draft and original policy pins if companion enrollment cannot commit", async () => {
+    const games = await db.game.count(), audits = await db.auditLog.count();
+    await db.$executeRawUnsafe(`CREATE TRIGGER synthetic_reject_source_companion BEFORE INSERT ON AuditLog
+      WHEN NEW.action = 'generation:source-placement-policy'
+      BEGIN SELECT RAISE(ABORT, 'synthetic companion write failure'); END`);
+    try {
+      await expect(createDraft(lean(), null, "he")).rejects.toThrow();
+      expect(await db.game.count()).toBe(games);
+      expect(await db.auditLog.count()).toBe(audits);
+      expect(fetch).not.toHaveBeenCalled();
+    } finally { await db.$executeRawUnsafe("DROP TRIGGER synthetic_reject_source_companion"); }
   });
 });
 

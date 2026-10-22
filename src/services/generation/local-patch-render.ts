@@ -1,6 +1,6 @@
 import { isCollectionVersion } from "../../domain/scene/local-patch-versions";
 import { SUBJECT_PAINTER_V2, SUBJECT_PAINTER_V3, SUBJECT_PAINTER_V4, isPlanLedPainter, type SubjectPainterVersion } from "../../domain/generation/subject-painter";
-import { localPatchReturnRegion, AUTHORED_PATCH_COMPOSITION_VERSION, type LocalPatchCompositionVersion } from "../../domain/scene/local-patch-return-region";
+import { localPatchReturnRegion, authoredLocalPatchReturnContract, AUTHORED_PATCH_COMPOSITION_VERSION, type AuthoredLocalPatchReturnContract, type LocalPatchCompositionVersion } from "../../domain/scene/local-patch-return-region";
 import { createHash } from "node:crypto";
 import sharp from "sharp";
 import { playerReviewEnabled } from "./local-patch-player-review";
@@ -24,6 +24,10 @@ import { selfRepairDecisionSchema, selfRepairRenderInstructions, type SelfRepair
 import { retainedRestylePrompt } from "./local-patch-restyle";
 import { ageBodyRequestDirections, LOCAL_PATCH_AGE_BODY_PROMPT_VERSION, LOCAL_PATCH_AGE_BODY_PROP_PROMPT_VERSION, LOCAL_PATCH_FIXED_SCENERY_PROMPT_VERSION, LOCAL_PATCH_FOREGROUND_PROMPT_VERSION, referenceNeutralHairDirections } from "./local-patch-prompt";
 import { foregroundForPinnedPrompt, foregroundPlanConflict, foregroundRecord, occludeLocalPatch, type LocalPatchForegroundRecord } from "./local-patch-foreground";
+import { assertAuthoredLocalPatchPlacement, assertAuthoredLocalPatchRecoveryGeometry, expectedAuthoredLocalPatchReturn } from "./local-patch-authored-return";
+import { assertTrustedSourcePlacementContext, sourcePlacementForHide, type TrustedSourcePlacementContext } from "./source-placement-release";
+import { authoredRecoveryDiagnosisSchema, type AuthoredRecoveryDiagnosis } from "../../domain/scene/local-patch-authored-recovery";
+import { prepareSourceNeighborContract } from "../../domain/scene/local-patch-source-neighbors";
 import { fixedSourceFailureReceiptSchema, type FixedSourceFailureReceipt } from "../../infra/generation/fixed-source-diagnostics";
 
 /**
@@ -96,6 +100,11 @@ export type LocalPatchAttemptInput = {
   readonly hide: LocalPatchHide;
   /** The board as it now stands, with any earlier hides already painted in. */
   readonly composedPng: Buffer;
+  /** Only authored v4 windows require the source manifest authenticated by the caller. */
+  readonly authoredSource?: { readonly sha256: string; readonly width: number; readonly height: number };
+  readonly placementContext?: TrustedSourcePlacementContext;
+  /** New companion recovery only; frozen paid diagnosis, never provider prose. */
+  readonly authoredDiagnosis?: AuthoredRecoveryDiagnosis;
   readonly identityPng: Buffer;
   readonly referenceMode?: LocalPatchReferenceMode;
   readonly canonicalIdentityPng?: Buffer;
@@ -165,6 +174,7 @@ export type LocalPatchAttempt = {
   /** v8 local blend permission only; never substitutes for final visual review. */
   readonly compositionPermission?: LocalPatchCompositionPermission;
   readonly compositionVersion?: LocalPatchCompositionVersion;
+  readonly authoredReturn?: AuthoredLocalPatchReturnContract;
   /** v18 rows of a hide with an authored outline: what was restored, bound to `shippingPng`. */
   readonly foreground?: LocalPatchForegroundRecord;
   readonly verdict: LocalPatchVerdict | null;
@@ -280,6 +290,8 @@ type RetainedRender = {
   readonly bytesBase64: string | null;
   /** Null when the bytes are a usable patch; why not, otherwise. */
   readonly rejected: string | null;
+  readonly authoredReturn?: AuthoredLocalPatchReturnContract;
+  readonly authoredDiagnosis?: AuthoredRecoveryDiagnosis;
 };
 
 /** The part of a judge's reply worth keeping: enough to re-derive the verdict. */
@@ -319,16 +331,31 @@ export async function renderLocalPatchHide(deps: LocalPatchRenderDeps, input: Lo
   if (input.expectedPromptVersion !== undefined && input.expectedPromptVersion !== promptVersionOf(input)) {
     throw new Error(`LOCAL_PATCH: prompt provenance conflict; stored ${input.expectedPromptVersion}, selected ${promptVersionOf(input)}`);
   }
+  if (input.placementContext) {
+    assertTrustedSourcePlacementContext(input.placementContext);
+    if (input.worldId !== `${input.placementContext.gameId}:board-wizard` || input.contentVersion !== input.placementContext.sceneVersion)
+      throw Error("LOCAL_PATCH: authored render context belongs to another game/version");
+    assertAuthoredLocalPatchPlacement(input.board, input.hide, input.contentVersion!, input.placementContext);
+  }
   if (input.hide.returnRect) {
-    // An authored source window is not interchangeable with a diagnosed recovery window.
-    // Keep this opt-in authoring contract out of historical and recovery purchases.
-    if (input.contentVersion !== 12 || input.selfRepair || input.adaptiveRecovery || input.recoveryDirective) {
-      throw new Error("LOCAL_PATCH: authored return windows require a v12 normal authoring attempt");
-    }
+    if (input.contentVersion !== 12 || input.recoveryDirective)
+      throw Error("LOCAL_PATCH: authored return windows require their pinned v12 recipe");
     localPatchReturnRegion(cropOf(input.hide), maskForHide(input.hide), input.hide.returnRect);
   }
-  const result = await renderLocalPatchHideInner(deps, input);
-  return { ...result, promptVersion: promptVersionOf(input),
+  const authoredReturn = input.hide.returnRect ? input.placementContext
+    ? expectedAuthoredLocalPatchReturn(input.board, input.hide, input.contentVersion!, input.placementContext)!
+    : authoredLocalPatchReturnContract({ contentVersion: input.contentVersion!, boardId: input.board.board, hideId: input.hide.id,
+      source: { art: input.board.art, sha256: input.authoredSource?.sha256 ?? "", width: input.authoredSource?.width ?? 0,
+        height: input.authoredSource?.height ?? 0 }, crop: cropOf(input.hide), child: maskForHide(input.hide), authored: input.hide.returnRect }) : undefined;
+  if (authoredReturn && input.authoredSource && (input.authoredSource.sha256 !== authoredReturn.source.sha256
+    || input.authoredSource.width !== authoredReturn.source.width || input.authoredSource.height !== authoredReturn.source.height))
+    throw Error("LOCAL_PATCH: authored source differs from the trusted context");
+  if (authoredReturn && input.selfRepair) {
+    assertAuthoredLocalPatchRecoveryGeometry(authoredReturn, input.placementContext, input.selfRepair.decision);
+    authoredRecoveryDiagnosisSchema.parse(input.authoredDiagnosis);
+  } else if (input.authoredDiagnosis !== undefined) throw Error("LOCAL_PATCH: authored diagnosis requires an authored recovery");
+  const result = await renderLocalPatchHideInner(deps, input, authoredReturn);
+  return { ...result, promptVersion: promptVersionOf(input), ...(authoredReturn ? { authoredReturn } : {}),
     ...(isLocalPatchStrictVersion(input.contentVersion) ? { compositionVersion: input.hide.returnRect ? AUTHORED_PATCH_COMPOSITION_VERSION : LOCAL_PATCH_COMPOSITION_VERSION } : {}) };
 }
 
@@ -347,7 +374,7 @@ function promptVersionOf(input: LocalPatchAttemptInput): string {
     : input.boardPeoplePng ? LOCAL_PATCH_BOARD_DRAWN_PROMPT_VERSION : LOCAL_PATCH_PROMPT_VERSION;
 }
 
-async function renderLocalPatchHideInner(deps: LocalPatchRenderDeps, input: LocalPatchAttemptInput): Promise<LocalPatchAttempt> {
+async function renderLocalPatchHideInner(deps: LocalPatchRenderDeps, input: LocalPatchAttemptInput, authoredReturn?: AuthoredLocalPatchReturnContract): Promise<LocalPatchAttempt> {
   const { worldId, board, hide, attempt } = input;
   if (isLocalPatchAgeVersion(input.contentVersion)) {
     if (input.referenceMode !== LOCAL_PATCH_PORTRAIT_ONLY_REFERENCE_MODE || input.canonicalIdentityPng || input.boardPeoplePng) {
@@ -401,11 +428,39 @@ async function renderLocalPatchHideInner(deps: LocalPatchRenderDeps, input: Loca
     || createHash("sha256").update(JSON.stringify([direction.text, direction.wardrobe ?? null,
       direction.photoSha256, direction.policySha256, direction.quality])).digest("hex") !== direction.sha256))
     throw Error("LOCAL_PATCH: a subject plan belongs only to a v12 painting and must match its digest");
+  // The painter sees only the crop. A source person clipped by that view is
+  // still present in the canonical board outside it; completing that person by
+  // shifting a new copy into the crop creates a double at the actual return.
+  // This prospective companion direction is absent from every old paid prompt.
+  const companion = authoredReturn?.sourcePlacement && input.placementContext
+    ? sourcePlacementForHide(input.placementContext, hide.id) : null;
+  const paintReturn = recovery?.returnWindow ?? authoredReturn?.local;
+  const neighborContext = companion && paintReturn ? { boardId: companion.boardId, hideId: companion.hideId,
+    source: companion.source, crop, returnRect: paintReturn } : null;
+  const painterNeighbors = companion?.sourceNeighbors && neighborContext
+    ? prepareSourceNeighborContract({ ...companion.sourceNeighbors.contract, ...neighborContext }, neighborContext) : null;
+  if (painterNeighbors && !painterNeighbors.ok) throw Error("LOCAL_PATCH: painter return crosses an authoritative source head");
+  const authoredPaint = companion ? [
+    "SOURCE-BOUND PAINTER local-patch-authored-paint/v1. This is a crop of the SAME continuous original scene, not a standalone picture to reframe or complete.",
+    `AUTHORITATIVE PLACEMENT DATA: ${JSON.stringify({ source: companion.source, crop, childEnvelope: mask,
+      returnWindow: paintReturn, sourcePlacement: authoredReturn!.sourcePlacement,
+      sourceNeighbors: painterNeighbors?.ok ? { contractSha256: painterNeighbors.contractSha256,
+        heads: painterNeighbors.contract.neighbors.map(n => ({ sourceId: n.sourceId,
+          head: { ...n.head, left: n.head.left - crop.left, top: n.head.top - crop.top } })) } : null })}.`,
+    "All child/return/head coordinates above use the original 512x768 crop; negative or outside head coordinates are intentional. Paint the canonical TARGET child only within childEnvelope. The returnWindow is the exact area that will join back into the original board; its exterior is never replaced.",
+    "The registered heads identify original people for comparison, not a required final person count. Replace the authored TARGET with the canonical child. A source person wholly covered by the opaque return may be coherently removed or replaced WHOLE, with no original face, body or limb remnant; complete replacement is not a defect by itself.",
+    "For every person continuing outside returnWindow, preserve their original scene coordinates, visible contours and anatomy. A person partly cut off by the INPUT CROP continues outside it in the original board: preserve that visible fragment exactly. Never complete a crop-clipped person by moving their head or body inward, inventing a foreground copy, erasing only half of them, or leaving their original head/face/body fragment beside a shifted replacement. Preserve continuous scenery across the return boundary.",
+    "Do not move or widen the crop/window to solve a defect. If a complete target or intact neighbour cannot fit, the result must fail independent review and return to the bounded recovery plan; this direction is never an approval.",
+  ].join("\n") : "";
   /** The pinned recipe alone, or with the subject plan (and its wardrobe in place of the authored one). */
-  const promptWith = (plan: SubjectRenderDirection | undefined) => plan
-    ? `${recipeFor(plan.wardrobe ?? authoredWardrobe, plan.painterVersion)}\n\n${plan.text}` : recipeFor(authoredWardrobe);
+  const promptWith = (plan: SubjectRenderDirection | undefined) => {
+    const base = plan ? `${recipeFor(plan.wardrobe ?? authoredWardrobe, plan.painterVersion)}\n\n${plan.text}` : recipeFor(authoredWardrobe);
+    return authoredPaint ? `${base}\n\n${authoredPaint}` : base;
+  };
 
   const meta = await sharp(input.composedPng, { limitInputPixels: 8_294_400 }).metadata();
+  if (authoredReturn && (meta.width !== authoredReturn.source.width || meta.height !== authoredReturn.source.height))
+    throw Error("LOCAL_PATCH: authored source pixels differ from the pinned dimensions");
   const stylePng = restyling ? await sharp(input.restyleSourcePng!, { limitInputPixels: 8_294_400 }).resize(512, 768, { fit: "fill" }).png().toBuffer()
     : await sharp(input.composedPng, { limitInputPixels: 8_294_400 }).extract(crop).png().toBuffer();
   // The already drawn target is its own locator during surface repair. Supplying
@@ -426,7 +481,7 @@ async function renderLocalPatchHideInner(deps: LocalPatchRenderDeps, input: Loca
     ...(plan ? { referenceMode: LOCAL_PATCH_PHOTO_REFERENCE_MODE }
       : input.referenceMode ? { referenceMode: input.referenceMode } : {}),
     ...(isLocalPatchStrictVersion(input.contentVersion) ? { composition: "bounded-return/v1" } : {}),
-    ...(hide.returnRect ? { authoredReturn: { version: AUTHORED_PATCH_COMPOSITION_VERSION, rect: hide.returnRect } } : {}),
+    ...(authoredReturn ? { authoredReturn } : {}),
     policy: plan?.policySha256 ?? deps.renderPolicySha256,
     // The SHAPE of what is kept, not only what was bought. A record written
     // before this envelope existed would otherwise be read under this same
@@ -436,6 +491,7 @@ async function renderLocalPatchHideInner(deps: LocalPatchRenderDeps, input: Loca
     retained: RETAINED_RENDER_VERSION,
     ...(input.adaptiveRecovery ? { adaptiveRecovery: input.adaptiveRecovery.sha256 } : {}),
     ...(input.selfRepair ? { selfRepair: input.selfRepair } : {}),
+    ...(input.authoredDiagnosis ? { authoredDiagnosis: input.authoredDiagnosis } : {}),
     ...(plan ? { subject: plan.sha256 } : {}),
   });
   // A started purchase keeps its exact v1 subject or pre-enrollment fingerprint.
@@ -471,6 +527,7 @@ async function renderLocalPatchHideInner(deps: LocalPatchRenderDeps, input: Loca
         bytesBase64: kept ? kept.toString("base64") : null,
         rejected: result.rejected,
         ...(result.failureReceipt ? { failureReceipt: fixedSourceFailureReceiptSchema.parse(result.failureReceipt) } : {}),
+        ...(authoredReturn?.sourcePlacement ? { authoredReturn, ...(input.authoredDiagnosis ? { authoredDiagnosis: input.authoredDiagnosis } : {}) } : {}),
       };
       const bytes = Buffer.from(JSON.stringify(keep));
       // A rejected picture is still a charge. Settling the bill the provider

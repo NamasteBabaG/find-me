@@ -18,6 +18,8 @@ import { identityStyleCatalogSha256 } from "./local-patch-identity-catalog";
 import { assertGenerationSpendAllowed, boardWizardBudgetOf, boardWizardWorldId } from "./board-conditioned-wizard";
 import { localPatchGeometry, type LocalPatchGeometry } from "./local-patch-geometry";
 import { renderLocalPatchHide, type LocalPatchRenderDeps } from "./local-patch-render";
+import { resolveLocalPatchBoardsForGame } from "./source-placement-release";
+import { assertAuthoredLocalPatchPlacement } from "./local-patch-authored-return";
 import { subjectDirectionFor } from "./local-patch-subject-review";
 import { LOCAL_PATCH_PROMPT_VERSION, LOCAL_PATCH_BOARD_DRAWN_PROMPT_VERSION, LOCAL_PATCH_FIVE_PROMPT_VERSION, LOCAL_PATCH_CANONICAL_PROMPT_VERSION, LOCAL_PATCH_AGE_PROMPT_VERSION, LOCAL_PATCH_IDENTITY_LOCK_PROMPT_VERSION, LOCAL_PATCH_INTEGRATED_PROMPT_VERSION, LOCAL_PATCH_REFERENCE_NEUTRAL_PROMPT_VERSION, LOCAL_PATCH_AGE_BODY_PROMPT_VERSION, LOCAL_PATCH_AGE_BODY_PROP_PROMPT_VERSION, LOCAL_PATCH_FOREGROUND_PROMPT_VERSION, LOCAL_PATCH_FIXED_SCENERY_PROMPT_VERSION, LOCAL_PATCH_BOARD_PAINT_PROMPT_VERSION, pinnedLocalPatchPromptVersion, paintRecipeForPinnedPrompt, localPatchRepairChecks, type LocalPatchRepairCheck } from "./local-patch-prompt";
 import { prepareLocalPatchIdentityReferences } from "./local-patch-identity-reference";
@@ -227,6 +229,8 @@ export async function runLocalPatchHide(c: Container, deps: LocalPatchHideDeps, 
   demand(scene, `this game has no ${board.board} board`);
   const definition = sceneBySlug(scene.sceneSlug, scene.sceneVersion);
   assertPlaceable(board, definition.art);
+  const placementContext = await resolveLocalPatchBoardsForGame(c.db, gameId, scene.sceneVersion);
+  assertAuthoredLocalPatchPlacement(board, hide, scene.sceneVersion, placementContext);
   const target = definition.targets.find(t => t.id === hide.targetId);
   demand(target, `${board.board} has no ${hide.targetId} mission for ${hide.id} to hide in`);
 
@@ -364,7 +368,8 @@ export async function runLocalPatchHide(c: Container, deps: LocalPatchHideDeps, 
     ledger: budget, store: new LocalPatchRetainedPurchaseStore(c, gameId, budget),
     renderPolicySha256: deps.renderPolicySha256, render: deps.render, ...(deps.judge ? { judge: deps.judge } : {}),
   }, {
-    worldId, board, hide, composedPng: artwork, contentVersion: scene.sceneVersion,
+    worldId, board, hide, composedPng: artwork, contentVersion: scene.sceneVersion, placementContext,
+    ...(hide.returnRect ? { authoredSource: { sha256: definition.art.sha256 ?? "", width: definition.art.width, height: definition.art.height } } : {}),
     expectedPromptVersion: promptVersion,
     ...(paintRecipeForPinnedPrompt(promptVersion) ? { paintRecipe: paintRecipeForPinnedPrompt(promptVersion) } : {}),
     ...identityReferences,
@@ -420,6 +425,7 @@ export async function runLocalPatchHide(c: Container, deps: LocalPatchHideDeps, 
       judgeJson: JSON.stringify({ ...(adaptiveRecovery ? { adaptiveRecovery, judgedSha256: attemptResult.judgedSha256 } : {}), verdict: attemptResult.verdict, wireFault: attemptResult.wireFault, seam: attemptResult.seam, promptVersion: attemptResult.promptVersion,
         ...(isLocalPatchStrictVersion(scene.sceneVersion) ? { renderFault: attemptResult.renderFault, compositionPermission: attemptResult.compositionPermission,
           compositionVersion: attemptResult.compositionVersion, hide: hide.id, pose: hide.pose } : {}),
+        ...(attemptResult.authoredReturn ? { authoredReturn: attemptResult.authoredReturn } : {}),
         ...(attemptResult.foreground ? { foreground: attemptResult.foreground } : {}) }),
       } });
     });
@@ -460,6 +466,7 @@ export async function runLocalPatchHide(c: Container, deps: LocalPatchHideDeps, 
       ...(isLocalPatchStrictVersion(scene.sceneVersion) ? { compositionPermission: attemptResult.compositionPermission, compositionVersion: attemptResult.compositionVersion } : {}),
       ...(isLocalPatchAdvisoryVersion(scene.sceneVersion) ? { wireFault: attemptResult.wireFault, reviewState: "pending-board-review", geometrySha256: localPatchPublicationGeometryHash(geometry) } : {}),
       ...(attemptResult.foreground ? { foreground: attemptResult.foreground } : {}),
+      ...(attemptResult.authoredReturn ? { authoredReturn: attemptResult.authoredReturn } : {}),
       geometryBasis: measured.basis, measuredFraction: Number(measured.measuredFraction.toFixed(4)), hide: hide.id, pose: hide.pose });
     await tx.targetVariantAsset.update({ where: { id: row.id }, data: {
       assetId,

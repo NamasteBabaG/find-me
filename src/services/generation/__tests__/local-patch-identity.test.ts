@@ -20,7 +20,7 @@ function fixture() {
   const game = { styleVersion: LOCAL_PATCH_STYLE, ownerId: "synthetic-owner", deletedAt: null, packageTier: "ONE_WORLD",
     scenes: WORLD_LOCAL_PATCH_HIDES.map(board => ({ sceneSlug: board.board, sceneVersion: sceneBySlug(board.board, 6).version })) };
   const c = { storage: { id: "db" }, avatars: { id: "openai", createCharacter: generate },
-    db: { game: { findUniqueOrThrow: async () => game }, user: { findUnique: async () => ({ email: "synthetic@example.invalid" }) } } } as unknown as Container;
+    db: { auditLog: { findUnique: async () => null }, game: { findUniqueOrThrow: async () => game }, user: { findUnique: async () => ({ email: "synthetic@example.invalid" }) } } } as unknown as Container;
   return { c, game, generate };
 }
 

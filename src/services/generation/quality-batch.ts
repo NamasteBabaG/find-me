@@ -459,7 +459,8 @@ async function recordOutcome(ctx: Context, round: QualityBatchRound, batchId: st
   const reading = { ...read, usage: read.usage ? JSON.parse(qualityBatchCanonicalJson(read.usage)) as typeof read.usage : read.usage };
   const charge = visualReviewBatchCharge(POLICY, reading.model, reading.usage);
   const reply = { ...reading, costUnknown: charge.costUnknown, verdict: null };
-  const bytes = Buffer.from(JSON.stringify({ ...reply, policy: POLICY, fingerprint: intent.fingerprint, channel: CHANNEL, batchId }));
+  const bytes = Buffer.from(JSON.stringify({ ...reply, policy: POLICY, fingerprint: intent.fingerprint, channel: CHANNEL, batchId,
+    ...(intent.authoredReviewBinding ? { authoredReviewBinding: intent.authoredReviewBinding } : {}) }));
   const store = new LocalPatchRetainedPurchaseStore(ctx.c, ctx.gameId, OUTCOME_LEDGER);
   const base = { version: RETAINED_PURCHASE_VERSION, worldId: intent.worldId, requestKey: intent.batchKey, scope: "judge",
     operationFingerprint: intent.fingerprint, payloadSha256: retainedPayloadDigest(bytes), bytes } as const;
@@ -826,8 +827,10 @@ function raise(failures: readonly unknown[]): void {
  */
 export async function askQualityThroughBatch(c: Container, input: {
   gameId: string; worldId: string; sceneId: string; board: string; hideId: string; variantId: string; imageSha256: string;
-  question: PreparedVisualReview; syncKey: string; reserveMicroUsd: number; fence: Fence; deadlineAt?: number;
+  question: PreparedVisualReview; syncKey: string; reserveMicroUsd: number; fence: Fence; deadlineAt?: number; authoredReviewBinding?: string;
 }): Promise<QualityBatchGate> {
+  if (input.authoredReviewBinding !== undefined && !/^[a-f0-9]{64}$/.test(input.authoredReviewBinding))
+    throw Error("QUALITY_BATCH: invalid authored candidate attestation");
   const channel = await qualityChannelOf(c.db, input.gameId);
   if (!channel || input.question.role !== "scene-quality") return proceed;
   const transport = c.qualityBatch;
@@ -837,7 +840,8 @@ export async function askQualityThroughBatch(c: Container, input: {
   const events = (await gameRounds(c.db, input.gameId)).get(roundId);
   if (events) {
     const { intent } = qualityBatchRoundOf(events);
-    if (intent.syncKey !== input.syncKey || intent.batchKey !== batchKey || intent.fingerprint !== input.question.fingerprint || intent.worldId !== input.worldId)
+    if (intent.syncKey !== input.syncKey || intent.batchKey !== batchKey || intent.fingerprint !== input.question.fingerprint || intent.worldId !== input.worldId
+      || intent.authoredReviewBinding !== input.authoredReviewBinding)
       throw Error("QUALITY_BATCH: a round's intent differs from its question");
     return advance(ctx, roundId);
   }
@@ -851,7 +855,8 @@ export async function askQualityThroughBatch(c: Container, input: {
     board: input.board, hideId: input.hideId, variantId: input.variantId, imageSha256: input.imageSha256, syncKey: input.syncKey, batchKey,
     customId: customIdOf(roundId, batchKey), fingerprint: input.question.fingerprint, model: POLICY.model,
     syncReserveMicroUsd: input.reserveMicroUsd, batchReserveMicroUsd: qualityBatchReserveMicroUsd(input.reserveMicroUsd),
-    paramsSha256: sha(JSON.stringify(qualityBatchParams(input.question))), intentAt: now, deadlineAt: now + channel.deadlineMs };
+    paramsSha256: sha(JSON.stringify(qualityBatchParams(input.question))), intentAt: now, deadlineAt: now + channel.deadlineMs,
+    ...(input.authoredReviewBinding ? { authoredReviewBinding: input.authoredReviewBinding } : {}) };
   await writeEvent(ctx, roundId, { kind: "intent", intent });
   return advance(ctx, roundId);
 }

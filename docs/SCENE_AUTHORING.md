@@ -71,3 +71,26 @@
 
 `SPRITE_PATCHES.md` מתעד את מנגנון הספרייט־טלאי והעריכה הוותיק; המלצות גודל/איכות שם
 אינן מחליפות מדיניות גרסה של local-patch או את בריף בורדי החיפוש.
+
+
+## Prospective source-neighbor companion
+
+New lean drafts in the qualified QA configuration pin `source-placement-policy/v1`
+inside the draft transaction, before any order, job or image attempt. The frozen
+`content/adventures/source-placement-release.ts` manifest binds all 54 original
+Journey/Kingdom v12 placements; only `greatwall-v12-2` has a changed envelope and
+five registered source people. The other 53 entries retain their original
+geometry and questions. Existing games retain their original pins and receipts.
+
+For the annotated hide, the painter receives the actual return window and source
+head positions. The quality question adds a source correspondence document;
+original quality, subject and independent AFTER-only anatomy checks remain
+mandatory. Duplicate representations and remnants require repair; malformed or
+ambiguous correspondence requires bounded evidence recovery. A same-crop derived
+repair must preserve its authored envelope, whole source heads, child core,
+foreground and sibling protections. Its diagnosis, paid RAW, deterministic join
+and independent review remain bound at both publication gates.
+
+A new manifest needs a new explicit release and registry entry. Annotation
+coverage, geometry tests, synthetic complete-world tests and a passing release
+check do not establish visual acceptance or coverage of unannotated crowds.

@@ -34,6 +34,33 @@ export function localPatchReturnRegion(crop: PatchRectangle, child: PatchRectang
     compositionVersion: authored ? AUTHORED_PATCH_COMPOSITION_VERSION : LOCAL_PATCH_COMPOSITION_VERSION };
 }
 
+/** The source, authored child envelope and actual return are one immutable v4
+ * contract. Historical v3 receipts do not carry it. Pixels are still unreviewed;
+ * a valid contract cannot supply an anatomy or visual verdict. */
+export function authoredLocalPatchReturnContract(input: {
+  contentVersion: number; boardId: string; hideId: string;
+  source: { art: string; sha256: string; width: number; height: number };
+  crop: PatchRectangle; child: PatchRectangle; authored: PatchRectangle;
+  sourcePlacement?: { manifestSha256: string; basePlacementSha256: string };
+}) {
+  const { source, crop } = input;
+  if (input.contentVersion !== 12 || !input.boardId || !input.hideId
+    || !source.art.startsWith("public/scenes/") || !/^[a-f0-9]{64}$/.test(source.sha256)
+    || !Number.isSafeInteger(source.width) || !Number.isSafeInteger(source.height)
+    || source.width < 1 || source.height < 1 || crop.left + crop.width > source.width
+    || crop.top + crop.height > source.height)
+    throw Error("LOCAL_PATCH: authored return requires its pinned v12 source geometry");
+  if (input.sourcePlacement && (Object.keys(input.sourcePlacement).sort().join(",") !== "basePlacementSha256,manifestSha256"
+    || ![input.sourcePlacement.manifestSha256, input.sourcePlacement.basePlacementSha256].every(v => /^[a-f0-9]{64}$/.test(v))))
+    throw Error("LOCAL_PATCH: invalid immutable source-placement binding");
+  const returned = localPatchReturnRegion(crop, input.child, input.authored);
+  return { version: AUTHORED_PATCH_COMPOSITION_VERSION, contentVersion: 12 as const,
+    boardId: input.boardId, hideId: input.hideId, source: { ...source }, crop: { ...crop },
+    child: { ...input.child }, local: returned.local, region: returned.region,
+    ...(input.sourcePlacement ? { sourcePlacement: { manifestSha256: input.sourcePlacement.manifestSha256, basePlacementSha256: input.sourcePlacement.basePlacementSha256 } } : {}) };
+}
+export type AuthoredLocalPatchReturnContract = ReturnType<typeof authoredLocalPatchReturnContract>;
+
 export function rectanglesIntersect(a: PatchRectangle, b: PatchRectangle): boolean {
   return a.left < b.left + b.width && b.left < a.left + a.width
     && a.top < b.top + b.height && b.top < a.top + a.height;
@@ -50,3 +77,5 @@ export function sourceHeadIntersectsReturnBoundary(region: PatchRectangle, head:
     || head.left + head.width > region.left + region.width - LOCAL_PATCH_RETURN_FEATHER
     || head.top + head.height > region.top + region.height - LOCAL_PATCH_RETURN_FEATHER;
 }
+
+export type { AuthoredLocalPatchRecoveryContract } from "./local-patch-authored-recovery";

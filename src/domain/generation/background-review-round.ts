@@ -42,7 +42,9 @@ export function backgroundCancelAfterMs(intent: Pick<BackgroundReviewIntent, "po
 }
 
 export type BackgroundReviewBinding = { readonly hideId: string; readonly variantId: string; readonly imageSha256: string;
-  readonly geometrySha256: string; readonly identitySha256: string };
+  readonly geometrySha256: string; readonly identitySha256: string;
+  /** v4 only: candidate and authored source/window, attested in the retained answer. */
+  readonly authoredReviewBinding?: string };
 export type BackgroundReviewIntent = {
   readonly version: typeof BACKGROUND_REVIEW_ROUND_VERSION; readonly roundId: string; readonly gameId: string; readonly worldId: string;
   readonly requestKey: string; readonly fingerprint: string; readonly bodySha256: string; readonly reserveMicroUsd: number;

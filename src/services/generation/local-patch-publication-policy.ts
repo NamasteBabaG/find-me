@@ -6,6 +6,8 @@ import type { Container } from "../container";
 import { isLocalPatchAdvisoryVersion, isLocalPatchAgeVersion, isLocalPatchStrictVersion, localPatchBoardForVersion } from "../../domain/scene/local-patch-catalog";
 import { isTheModelWeAsked, localPatchOccludedAgeWarning, localPatchQualityDisposition, parseLocalPatchBoardVerdicts } from "./local-patch-judge";
 import { LOCAL_PATCH_COMPOSITION_VERSION } from "./local-patch-seam";
+import { AUTHORED_PATCH_COMPOSITION_VERSION } from "../../domain/scene/local-patch-return-region";
+import { authoredLocalPatchPublicationMatches, authoredLocalPatchReviewBinding } from "./local-patch-authored-return";
 import { PrismaWorldBudgetStore } from "../../infra/db/prisma-world-budget-store";
 import { PrismaRetainedPurchaseStore } from "../../infra/db/prisma-retained-purchase-store";
 import { sameChargeEvidence } from "./world-budget";
@@ -14,6 +16,7 @@ import { SELF_REPAIR_COMPOSITION_VERSION, SELF_REPAIR_VERSION, selfRepairDecisio
 import { NEIGHBOR_QUADRANTS, RETURN_EDGES } from "./local-patch-integration-evidence";
 import { hasDualVisualReview, isDualVisualReviewVersion } from "./visual-review-release";
 import { allowedDualPublication } from "./local-patch-dual-publication";
+import { sourceNeighborPublicationMatches } from "./local-patch-dual-evidence";
 import { authoredLocalPatchFixedScenery, authoredLocalPatchForeground } from "../../domain/scene/local-patch-foreground";
 import { foregroundBound, foregroundForPinnedPrompt, foregroundPlanConflict } from "./local-patch-foreground";
 
@@ -196,7 +199,7 @@ function allowed(input: LocalPatchPublicationBinding): boolean {
       && receipt.recoveryComposition?.outsideChangedPixels === 0 && receipt.recoveryComposition?.protectedChangedPixels === 0
       && isTheModelWeAsked(receipt.boardReview?.model ?? null, "gpt-5.6-sol")
       && receipt.boardReview?.wireHashes?.length === repairWireCount && receipt.boardReview?.requestKey?.startsWith("self-repair:board:")
-      ? SELF_REPAIR_COMPOSITION_VERSION : LOCAL_PATCH_COMPOSITION_VERSION;
+      ? SELF_REPAIR_COMPOSITION_VERSION : receipt?.compositionVersion === AUTHORED_PATCH_COMPOSITION_VERSION ? AUTHORED_PATCH_COMPOSITION_VERSION : LOCAL_PATCH_COMPOSITION_VERSION;
     return receipt?.reviewState === "board-review-complete" && receipt.wireFault === null
       && receipt?.compositionVersion === compositionVersion
       && receipt?.boardReview?.compositionVersion === compositionVersion
@@ -241,10 +244,44 @@ export async function localPatchForegroundPublishable(db: Prisma.TransactionClie
 }
 
 async function allowedForGame(db: Prisma.TransactionClient, input: LocalPatchPublicationBinding) {
+  if (!await authoredLocalPatchPublicationMatches(db, input)) return false;
+  let sourceStage: Parameters<typeof sourceNeighborPublicationMatches>[2];
+  try { sourceStage = JSON.parse(input.judgeJson ?? "null")?.boardReview?.dual?.quality; } catch { /* Historical advisory receipt behavior stays with its original reader. */ }
+  if (!await sourceNeighborPublicationMatches(db, input, sourceStage)) return false;
   if (!await localPatchForegroundPublishable(db, input)) return false;
   if (await hasDualVisualReview(db, input.gameId)) return allowedDualPublication(db, input);
   // Never apply a prospective receipt to a game without its immutable pin.
   try { if (isDualVisualReviewVersion(JSON.parse(input.judgeJson ?? "null")?.boardReview?.version)) return false; }
   catch { /* Historical advisory versions did not require a structured verdict. */ }
-  return isRepair(input) ? allowedRepair(db, input) : allowed(input);
+  return isRepair(input) ? allowedRepair(db, input) : await authoredSingleReviewVerified(db, input) && allowed(input);
+}
+
+/** A v4 single-review pass names the exact candidate in its retained paid
+ * envelope. Mutable verdict/contract copies cannot borrow a different question.
+ * Historical receipts have no authored contract and take their original path. */
+async function authoredSingleReviewVerified(db: Prisma.TransactionClient, input: LocalPatchPublicationBinding): Promise<boolean> {
+  if (input.sceneVersion !== 12) return true;
+  try {
+    const receipt = JSON.parse(input.judgeJson ?? "null");
+    if (receipt?.authoredReturn === undefined) return true;
+    const expected = authoredLocalPatchReviewBinding({ ...input, authoredReturn: receipt.authoredReturn,
+      ...(receipt.authoredRecovery ? { authoredRecovery: receipt.authoredRecovery } : {}) }), review = receipt.boardReview;
+    if (!expected || !review?.requestKey || !review.fingerprint) return false;
+    const worldId = `${input.gameId}:board-wizard`;
+    const ledger = await PrismaWorldBudgetStore.forContinuationApprovalTransaction(db).read(worldId);
+    const bill = ledger?.snapshot.requests.find(row => row.requestKey === review.requestKey);
+    const retained = await new PrismaRetainedPurchaseStore(db).get(worldId, review.requestKey);
+    if (!bill || !["settled", "linked"].includes(bill.state) || !("evidence" in bill) || bill.scope !== "judge"
+      || bill.operationFingerprint !== review.fingerprint || bill.conflicts.length || !retained?.evidence
+      || retained.operationFingerprint !== review.fingerprint || !sameChargeEvidence(retained.evidence, bill.evidence)
+      || review.costMicroUsd !== bill.evidence.amountMicroUsd) return false;
+    const wire = JSON.parse(retained.bytes.toString());
+    const bindings: unknown = wire.authoredReviewBindings;
+    if (!Array.isArray(bindings) || bindings.filter(b => b?.hideId === input.hideId).length !== 1
+      || bindings.find(b => b?.hideId === input.hideId)?.binding !== expected) return false;
+    return wire.costUnknown === false && wire.wireFault === null && wire.finishReason === "stop"
+      && wire.raw === review.raw && wire.model === review.model && wire.model === bill.evidence.model
+      && wire.requestId === bill.evidence.providerRequestId
+      && sameChargeEvidence({ ...bill.evidence, rawUsage: wire.usage }, bill.evidence);
+  } catch { return false; }
 }

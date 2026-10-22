@@ -19,6 +19,8 @@ import { sameChargeEvidence } from "./world-budget";
 import { sha256Bytes } from "./fixed-sprite";
 import { SELF_REPAIR_COMPOSITION_VERSION } from "../../domain/scene/local-patch-self-repair";
 import { playerReviewEnabled, PLAYER_REVIEW_MODE } from "./local-patch-player-review";
+import { AUTHORED_PATCH_COMPOSITION_VERSION } from "../../domain/scene/local-patch-return-region";
+import { AUTHORED_RECOVERY_COMPOSITION_VERSION } from "../../domain/scene/local-patch-authored-recovery";
 import { foregroundForPinnedPrompt, foregroundRecord, occludeLocalPatch } from "./local-patch-foreground";
 
 export const LOCAL_PATCH_RECOMPOSE_ACTION = "local-patch:recomposed-from-paid-render";
@@ -32,6 +34,10 @@ export function localPatchNeedsRecomposition(row: { status: string; attempts: nu
   try {
     const receipt = JSON.parse(row.judgeJson ?? "null");
     if (receipt?.compositionVersion === SELF_REPAIR_COMPOSITION_VERSION) return false;
+    // Authored v4 is not a legacy v3 migration. Its exact source/window is
+    // verified by review and publication; malformed claims fail there rather
+    // than being silently recomposed under the historical 120px envelope.
+    if (receipt?.compositionVersion === AUTHORED_PATCH_COMPOSITION_VERSION || receipt?.compositionVersion === AUTHORED_RECOVERY_COMPOSITION_VERSION) return false;
     // Provider/schema/transport refusals have no recoverable compositor pixels.
     // They keep the ordinary bounded retry path, not a permanent refresh hold.
     if (row.status === "FAILED" && typeof receipt?.renderFault === "string" && !/^quality-seam(?::|$)/.test(receipt.renderFault)) return false;

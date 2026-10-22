@@ -5,6 +5,7 @@ import { pinLocalPatchPainter } from "./generation/painter-release";
 import { pinQualityChannel } from "./generation/quality-channel";
 import { pinLeanRelease } from "./generation/lean-release";
 import { pinIdentitySourceRelease } from "./generation/identity-source-release";
+import { pinSourcePlacementRelease } from "./generation/source-placement-release";
 import { createHash } from "node:crypto";
 import { validChildAge } from "@/domain/child-appearance";
 import { boardSlugs } from "@/domain/world";
@@ -139,6 +140,7 @@ export async function beginWorldPurchase(c: Container, input: WorldPurchaseInput
           await pinQualityChannel(tx, gameId, lean ? undefined : c.qualityChannel);
           await pinLeanRelease(tx, gameId, lean);
           await pinIdentitySourceRelease(tx, gameId);
+          if (lean) await pinSourcePlacementRelease(tx, gameId);
         }
         if (choice.shown) await pinSearchLevelChoice(tx, gameId);
         await tx.gameScene.createMany({ data: boards.map((slug, orderIndex) => ({ id: newId("gsc"), gameId, sceneSlug: slug, sceneVersion: sceneBySlug(slug, version).version, orderIndex })) });

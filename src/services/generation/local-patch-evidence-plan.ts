@@ -1,10 +1,11 @@
 import type { Container } from "../container";
-import { localPatchBoardForVersion } from "../../domain/scene/local-patch-catalog";
+import { resolveLocalPatchBoardsForGame } from "./source-placement-release";
 import { needsSelfRepair } from "../../domain/scene/local-patch-self-repair";
 import { boardWizardBudgetOf, boardWizardWorldId } from "./board-conditioned-wizard";
 import { LOCAL_PATCH_VARIANT } from "./local-patch-hide";
-import { localPatchContinuityPending, localPatchRetainedAnswerUndecided, type DualReviewProof } from "./local-patch-dual-evidence";
+import { localPatchContinuityPending, localPatchRetainedAnswerUndecided, sourceNeighborQualityEvidence, type DualReviewProof } from "./local-patch-dual-evidence";
 import { nextDualReviewPurchase, readRetainedAnswer, type DualQuestionAdmission } from "./local-patch-dual-review";
+import { expectedAuthoredLocalPatchReturn } from "./local-patch-authored-return";
 import { prepareLocalPatchBoardReview } from "./local-patch-board-review";
 import { localPatchEvidenceRecovery } from "./local-patch-review-recovery";
 import { hasLocalPatchPublicationPolicy, localPatchPublicationGeometryHash } from "./local-patch-publication-policy";
@@ -54,9 +55,13 @@ export async function planLocalPatchEvidenceRecovery(c: Container, gameId: strin
   const identitySha256 = identity && !identity.deletedAt ? sha256Bytes(await c.storage.get(identity.storagePath)) : null;
   const rows = await c.db.targetVariantAsset.findMany({ where: { variant: LOCAL_PATCH_VARIANT, targetInstance: { gameScene: { gameId } } },
     include: { targetInstance: { select: { targetId: true, gameSceneId: true } } } });
+  const placementContexts = await Promise.all([...new Set(game.scenes.map(scene => scene.sceneVersion))]
+    .map(sceneVersion => resolveLocalPatchBoardsForGame(c.db, gameId, sceneVersion)));
   const hides: LocalPatchEvidencePlanHide[] = [];
   for (const scene of game.scenes) {
-    for (const hide of localPatchBoardForVersion(scene.sceneSlug, scene.sceneVersion)?.hides ?? []) {
+    const board = placementContexts.find(context => context.sceneVersion === scene.sceneVersion)
+      ?.boards.find(board => board.board === scene.sceneSlug);
+    for (const hide of board?.hides ?? []) {
       const row = rows.find(r => r.targetInstance.gameSceneId === scene.id && r.targetInstance.targetId === hide.targetId);
       const entry = (plan: LocalPatchEvidencePlanHide["plan"], detail: string | null = null): LocalPatchEvidencePlanHide =>
         ({ hideId: hide.id, boardId: scene.sceneSlug, status: row?.status ?? "MISSING", attempts: row?.attempts ?? 0, plan, detail });
@@ -75,8 +80,17 @@ export async function planLocalPatchEvidenceRecovery(c: Container, gameId: strin
         continue;
       }
       if (version && localPatchRetainedAnswerUndecided(row)) {
-        const retained = imageSha256 && identitySha256 ? await readRetainedAnswer(c.db, worldId, version, receipt.boardReview?.dual,
-          { hideId: hide.id, imageSha256, geometrySha256: binding.geometrySha256, identitySha256 }) : { ok: false as const, reason: "Stored pixels or identity are unavailable" };
+        const retained = imageSha256 && identitySha256 ? await (async () => {
+          try {
+            const context = placementContexts.find(context => context.sceneVersion === scene.sceneVersion)!;
+            const sourceNeighbors = sourceNeighborQualityEvidence(context, hide.id, imageSha256, receipt);
+            return await readRetainedAnswer(c.db, worldId, version, receipt.boardReview?.dual,
+              { hideId: hide.id, imageSha256, geometrySha256: binding.geometrySha256, identitySha256,
+                ...(hide.returnRect ? { authoredReturn: expectedAuthoredLocalPatchReturn(board!, hide, scene.sceneVersion, context)! } : {}),
+                ...(receipt.authoredRecovery ? { authoredRecovery: receipt.authoredRecovery as NonNullable<DualReviewProof["authoredRecovery"]> } : {}),
+                ...(sourceNeighbors ? { sourceNeighbors } : {}) });
+          } catch { return { ok: false as const, reason: "Retained source geometry or recovery evidence is unverifiable" }; }
+        })() : { ok: false as const, reason: "Stored pixels or identity are unavailable" };
         if (!retained.ok) hides.push(entry("unverifiable", retained.reason));
         else if (retained.role === "quality") {
           // A refused Opus answer read again: a located defect is a free repair

@@ -86,6 +86,8 @@ export type QualityBatchIntent = {
   /** The key the dual review buys under, and the key this round reserves. */
   readonly syncKey: string; readonly batchKey: string; readonly customId: string;
   readonly fingerprint: string; readonly model: string;
+  /** v4 only; frozen before dispatch, copied into the immutable paid answer. */
+  readonly authoredReviewBinding?: string;
   /** The dual review's own reservation for this question, which its alias repeats. */
   readonly syncReserveMicroUsd: number;
   /** What the batch key holds: half of it, as every batch rate is half (`qualityBatchReserveMicroUsd`). */

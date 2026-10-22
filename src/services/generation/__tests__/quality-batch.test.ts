@@ -31,7 +31,8 @@ import { LOCAL_PATCH_STYLE, runLocalPatchWorldSlice } from "../local-patch-world
 import { verifiedDualStage } from "../local-patch-dual-evidence";
 import { DUAL_VISUAL_REVIEW_V3, DUAL_VISUAL_REVIEW_VERSION, pinVisualReviewRelease } from "../visual-review-release";
 import { QUALITY_BATCH_CHANNEL, QUALITY_BATCH_DEADLINE_MS, pinQualityChannel, qualityChannelAuditId, qualityChannelOf } from "../quality-channel";
-import { QUALITY_BATCH_ACTION, QUALITY_BATCH_SWEEP_ROUND_MS, advanceQualityBatches, qualityBatchCopyKeyOf, qualityBatchKeyOf, sweepQualityBatches } from "../quality-batch";
+import { QUALITY_BATCH_ACTION, QUALITY_BATCH_SWEEP_ROUND_MS, advanceQualityBatches, askQualityThroughBatch, qualityBatchCopyKeyOf, qualityBatchKeyOf, sweepQualityBatches } from "../quality-batch";
+import { prepareVisualReview } from "../visual-review";
 import { sha256Bytes } from "../fixed-sprite";
 import { SELF_REPAIR_REQUEST_ACTION } from "../local-patch-self-repair";
 import { planLocalPatchEvidenceRecovery } from "../local-patch-evidence-plan";
@@ -3445,5 +3446,30 @@ describe("the per-game quality channel pin", () => {
     const key = qualityBatchKeyOf("giza", "a".repeat(64));
     expect(key.startsWith("self-repair:")).toBe(true);
     expect(/^self-repair:board:[a-z]+:[a-f0-9]{64}$/.test(key)).toBe(false);
+  });
+});
+
+
+describe("authored v4 Batch attestation", () => {
+  it.each([false, true])("preserves only the frozen attestation through a linked answer, authored=%s", async authored => {
+    const gameId = `batch-authored-attest-${authored}`, w = await world(gameId), fake = new FakeBatches(opus());
+    const container = { ...c, qualityBatch: fake } as Container, board = BOARDS[0]!, hide = board.hides[0]!;
+    const question = prepareVisualReview({ role: "scene-quality", effort: "high", images: [Buffer.from("synthetic-png")], labels: ["synthetic original"],
+      prompt: `Synthetic transport question.\nImmutable candidate binding: ${JSON.stringify({ hideId: hide.id, attempts: 1 })}. Evidence attempt: 1.` });
+    const syncKey = `self-repair:board:${board.board}:${question.fingerprint}`;
+    const input = { gameId, worldId: w.worldId, sceneId: `gsc-${gameId}-${board.board}`, board: board.board, hideId: hide.id,
+      variantId: "tva-synthetic-attestation", imageSha256: "a".repeat(64), question, syncKey, reserveMicroUsd: 250_000, fence: async () => {},
+      ...(authored ? { authoredReviewBinding: "d".repeat(64) } : {}) };
+    expect(await askQualityThroughBatch(container, input)).toMatchObject({ kind: "waiting" });
+    if (authored) await expect(askQualityThroughBatch(container, { ...input, authoredReviewBinding: "e".repeat(64) })).rejects.toThrow("intent differs");
+    fake.end(); await advanceQualityBatches(container, gameId, async () => {});
+    const store = new PrismaRetainedPurchaseStore(db), batchKey = qualityBatchKeyOf(board.board, question.fingerprint);
+    const batch = await store.get(w.worldId, batchKey), sync = await store.get(w.worldId, syncKey);
+    expect(sync).toBeTruthy(); expect(sync!.bytes.equals(batch!.bytes)).toBe(true);
+    const wire = JSON.parse(sync!.bytes.toString());
+    expect(wire.authoredReviewBinding).toBe(authored ? "d".repeat(64) : undefined);
+    expect(Object.hasOwn(wire, "authoredReviewBinding")).toBe(authored);
+    expect(await w.budget.readRequest(w.worldId, syncKey)).toMatchObject({ state: "linked" });
+    expect(fake.creates).toBe(1);
   });
 });
