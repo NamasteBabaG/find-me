@@ -299,11 +299,11 @@ describe("full original source identity review (synthetic, zero paid calls)", ()
     expect(identityReceiptReadyForPublication(r, 12)).toBe(false);
   });
   it("retains bounded private schema diagnostics without converting a billable malformed answer into approval", async () => {
-    const content = { ...fullAnswer(), reason: "x".repeat(1300) };
+    const content = { ...fullAnswer(), checks: { ...fullAnswer().checks, age: "invalid" }, reason: "x".repeat(1300) };
     const f = await fullFixture(content), r = await reviewBoardWizardIdentity(f.deps, { ...f.input, contentVersion: 12 });
     expect(r.checks).toBeNull(); expect(r.approved).toBe(false); expect(r.costMicroUsd).toBeGreaterThan(0);
     expect(r.outcome).toMatchObject({ state: "schema-invalid", dispatchAttempted: true, httpStatus: 200, finishReason: "stop", choiceCount: 1, refusal: false,
-      rawContent: JSON.stringify(content), schemaIssues: [{ path: "reason", code: "too_big" }] });
+      rawContent: JSON.stringify(content), schemaIssues: [{ path: "checks.age", code: "invalid_enum_value" }] });
     expect(r.outcome?.contentSha256).toBe(sha256Bytes(Buffer.from(JSON.stringify(content))));
     expect(r.reason).toContain("schema-invalid");
     expect((await f.budget.audit("synthetic-game:board-wizard")).unknownRequestKeys).toHaveLength(0);
@@ -312,7 +312,8 @@ describe("full original source identity review (synthetic, zero paid calls)", ()
     const long = await fullFixture({ ...fullAnswer(), reason: "x".repeat(25_000) });
     const rejected = await reviewBoardWizardIdentity(long.deps, { ...long.input, contentVersion: 12 });
     expect(rejected.outcome?.rawContent).toBeNull(); expect(rejected.outcome?.excerpt).toHaveLength(1500);
-    expect(rejected.outcome?.contentLength).toBeGreaterThan(16_384); expect(rejected.approved).toBe(false);
+    expect(rejected.outcome?.contentLength).toBeGreaterThan(16_384); expect(rejected.approved).toBe(true);
+    expect(rejected.reason).toHaveLength(25_000);
   });
   it.each([400, 429])("keeps a provider HTTP%s code privately without inventing zero usage or another dispatch", async status => {
     const f = await fullFixture();
@@ -333,7 +334,8 @@ describe("full original source identity review (synthetic, zero paid calls)", ()
     const long = await fullFixture({ ...fullAnswer(), reason: "\u05d0".repeat(10_000) });
     const wide = await reviewBoardWizardIdentity(long.deps, { ...long.input, contentVersion: 12 });
     expect(wide.outcome!.contentLength).toBeLessThan(16_384); expect(wide.outcome!.contentBytes).toBeGreaterThan(16_384);
-    expect(wide.outcome!.rawContent).toBeNull(); expect(wide.outcome!.excerpt).toHaveLength(1500); expect(wide.checks).toBeNull();
+    expect(wide.outcome!.rawContent).toBeNull(); expect(wide.outcome!.excerpt).toHaveLength(1500);
+    expect(wide.checks).toEqual(fullAnswer().checks); expect(wide.approved).toBe(true);
   });
   it("keeps full-source image4 and first-candidate image5 in comparisons", async () => {
     const f = await fullFixture({ ...fullAnswer(), preferredCandidate: "second" });

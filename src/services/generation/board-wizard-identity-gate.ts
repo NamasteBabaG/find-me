@@ -84,7 +84,9 @@ function reviewOutcome(state: IdentityReviewOutcome["state"], dispatchAttempted:
     excerpt: content === null ? null : content.slice(0, 1500), schemaIssues: [] };
 }
 const isFullSourceGate = (version: string) => version === FULL_SOURCE_IDENTITY_GATE_VERSION || version === IDENTITY_SOURCE_REJUDGE_VERSION;
-const fullSourceAnswerSchema = z.object({ checks: fullSourceChecksSchema, reason: z.string().trim().min(1).max(1200) }).strict();
+// Explanation length is not a visual quality check. The provider request already
+// has a priced token/output ceiling; retain its complete explanation.
+const fullSourceAnswerSchema = z.object({ checks: fullSourceChecksSchema, reason: z.string().trim().min(1) }).strict();
 const answerSchema = z.object({ checks: checksSchema, reason: z.string().trim().min(1).max(1200) }).strict();
 export const identityGateReceiptSchema = z.object({ version: z.enum([LEGACY_IDENTITY_GATE_VERSION, IDENTITY_GATE_VERSION, ADVISORY_IDENTITY_GATE_VERSION, AGE_IDENTITY_GATE_VERSION, FULL_SOURCE_IDENTITY_GATE_VERSION, IDENTITY_SOURCE_REJUDGE_VERSION]), fingerprint: digest,
   identityAssetId: z.string(), sheetSha256: digest, provenance: identityProvenanceSchema,
@@ -240,6 +242,11 @@ export async function reviewBoardWizardIdentity(deps: {
     const receipt = receiptSchema.parse(JSON.parse(saved.metaJson!));
     demand(receipt.fingerprint === fingerprint, "Retained approval refers to different pixels or policy");
     await validateIdentityGateBill(deps.budget, input.gameId, receipt);
+    if (!rejudge && receipt.version === FULL_SOURCE_IDENTITY_GATE_VERSION && receipt.checks === null) {
+      const resolved = await identityGateReceiptOf(deps.db, input.identityAssetId);
+      demand(!resolved || resolved.fingerprint === receipt.fingerprint, "Reconciled question differs");
+      if (resolved) return resolved;
+    }
     return receipt;
   }
   if (rejudge) {
@@ -330,12 +337,83 @@ export async function reviewBoardWizardIdentity(deps: {
   return receipt;
 }
 
+export const IDENTITY_REASON_RECONCILIATION_VERSION = "identity-reason-reconciliation/v1";
+export const IDENTITY_REASON_RECONCILIATION_ACTION = "board-wizard:identity-reason-reconciled";
+export const identityReasonReconciliationId = (assetId: string) => `aud_identity_reason_${assetId}`;
+
+/** Re-decode only a retained, billed answer rejected solely for explanatory
+ * length. This is the same question and bill, not a new visual opinion. */
+export function reconciledIdentityReason(value: unknown): IdentityGateReceipt | null {
+  const parsed = receiptSchema.safeParse(value);
+  if (!parsed.success) return null;
+  const original = parsed.data, out = original.outcome;
+  if (original.version !== FULL_SOURCE_IDENTITY_GATE_VERSION || original.approved || original.checks !== null
+    || original.comparison || original.automaticSelection || original.rejudge || !original.requestId
+    || !original.usage || original.costMicroUsd <= 0 || !out || out.state !== "schema-invalid"
+    || !out.dispatchAttempted || out.httpStatus !== 200 || out.finishReason !== "stop"
+    || out.choiceCount !== 1 || out.refusal || !out.rawContent || out.rawContent.length !== out.contentLength
+    || Buffer.byteLength(out.rawContent) !== out.contentBytes || sha256Bytes(Buffer.from(out.rawContent)) !== out.contentSha256
+    || out.schemaIssues.length !== 1 || out.schemaIssues[0]?.path !== "reason" || out.schemaIssues[0]?.code !== "too_big")
+    return null;
+  try {
+    const answer = fullSourceAnswerSchema.safeParse(JSON.parse(out.rawContent));
+    if (!answer.success || answer.data.reason.length <= 1200) return null;
+    return receiptSchema.parse({ ...original, checks: answer.data.checks, reason: answer.data.reason,
+      approved: Object.values(answer.data.checks).every(check => check === "pass"),
+      outcome: { ...out, state: "decision", schemaIssues: [] } });
+  } catch { return null; }
+}
+type RetainedIdentityReviewRow = { id: string; actorType: string; actorId: string | null; entityType: string; entityId: string; action: string; metaJson: string | null };
+function identityReasonReconciliationRecord(row: RetainedIdentityReviewRow, original: IdentityGateReceipt) {
+  demand(row.actorType === "SYSTEM" && row.actorId === null && row.entityType === "Asset"
+    && row.action === IDENTITY_GATE_ACTION && row.entityId === original.identityAssetId && !!row.metaJson,
+  "Reason reconciliation requires its original system receipt");
+  const receipt = reconciledIdentityReason(original);
+  demand(receipt, "Retained answer is not a reason-length-only failure");
+  return { version: IDENTITY_REASON_RECONCILIATION_VERSION, originalAuditId: row.id,
+    originalReceiptSha256: sha256Bytes(Buffer.from(row.metaJson!)), originalFingerprint: original.fingerprint,
+    responseContentSha256: original.outcome!.contentSha256, receipt };
+}
+
+/** The caller supplies its game/job/child transaction fence. No provider request,
+ * ledger settlement, original receipt edit or invented pass occurs here. */
+export async function retainIdentityReasonReconciliation(db: Pick<Prisma.TransactionClient, "auditLog">,
+  row: RetainedIdentityReviewRow, gameId: string, budget: WorldBudget) {
+  const live = await db.auditLog.findUnique({ where: { id: row.id } });
+  demand(live && live.metaJson === row.metaJson, "Original review changed before reconciliation");
+  const original = receiptSchema.parse(JSON.parse(row.metaJson ?? "null"));
+  await validateIdentityGateBill(budget, gameId, original);
+  const charge = await budget.readRequest(worldId(gameId), identityReviewRequestKey(original));
+  demand(charge?.state === "settled", "Only a settled retained review may be reconciled");
+  const record = identityReasonReconciliationRecord(live, original);
+  const id = identityReasonReconciliationId(original.identityAssetId);
+  const prior = await db.auditLog.findUnique({ where: { id } });
+  if (prior) {
+    demand(prior.actorType === "SYSTEM" && prior.actorId === null && prior.action === IDENTITY_REASON_RECONCILIATION_ACTION
+      && prior.entityType === "Asset" && prior.entityId === original.identityAssetId
+      && prior.metaJson === JSON.stringify(record), "Reason reconciliation differs from retained evidence");
+  } else await db.auditLog.create({ data: { id, actorType: "SYSTEM", action: IDENTITY_REASON_RECONCILIATION_ACTION,
+    entityType: "Asset", entityId: original.identityAssetId, metaJson: JSON.stringify(record) } });
+  return record.receipt;
+}
+
 /** Shared by display, subject adoption, publication and notifications. Old receipts remain unchanged. */
 export async function identityGateReceiptOf(db: Pick<Prisma.TransactionClient, "auditLog">, assetId: string): Promise<IdentityGateReceipt | null> {
   const originalRow = await db.auditLog.findFirst({ where: { action: IDENTITY_GATE_ACTION, entityType: "Asset", entityId: assetId }, orderBy: { createdAt: "desc" } });
   if (!originalRow?.metaJson) return null;
   const original = receiptSchema.parse(JSON.parse(originalRow.metaJson));
   if (original.version !== FULL_SOURCE_IDENTITY_GATE_VERSION) return original;
+  if (original.checks === null) {
+    const reconciled = await db.auditLog.findUnique({ where: { id: identityReasonReconciliationId(assetId) } });
+    if (reconciled) {
+      const record = identityReasonReconciliationRecord(originalRow, original);
+      demand(reconciled.actorType === "SYSTEM" && reconciled.actorId === null
+        && reconciled.entityType === "Asset" && reconciled.entityId === assetId
+        && reconciled.action === IDENTITY_REASON_RECONCILIATION_ACTION
+        && reconciled.metaJson === JSON.stringify(record), "Retained reason reconciliation differs from its original answer");
+      return record.receipt;
+    }
+  }
   const row = await db.auditLog.findUnique({ where: { id: identitySourceRejudgeId(assetId) } });
   if (!row) return original;
   const receipt = receiptSchema.parse(JSON.parse(row.metaJson ?? "null"));
