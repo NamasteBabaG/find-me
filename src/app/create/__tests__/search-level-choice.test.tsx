@@ -13,9 +13,9 @@ vi.mock("../actions", () => ({ saveNameAction: action }));
 beforeEach(() => vi.stubGlobal("React", React));
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.clearAllMocks(); });
 
-function Controlled({ age = null as number | null, initial = null as "explorers" | "detectives" | null }) {
+function Controlled({ initial = null as "explorers" | "detectives" | null }) {
   const [value, setValue] = React.useState(initial);
-  return <SearchLevelChoice value={value} onChange={setValue} ageYears={age} />;
+  return <SearchLevelChoice value={value} onChange={setValue} />;
 }
 
 describe("the two cards", () => {
@@ -25,8 +25,8 @@ describe("the two cards", () => {
     const radios = within(group).getAllByRole("radio") as HTMLInputElement[];
     expect(radios).toHaveLength(2);
     expect(radios.map(radio => radio.checked)).toEqual([false, false]);
-    expect(within(group).getByRole("radio", { name: /Explorers Ages 3–5 A gentle first search/ })).toBeTruthy();
-    expect(within(group).getByRole("radio", { name: /Detectives Ages 6\+ More details, more challenge/ })).toBeTruthy();
+    expect(within(group).getByRole("radio", { name: /Explorers A gentle search for little ones/ })).toBeTruthy();
+    expect(within(group).getByRole("radio", { name: /Detectives More details, more challenge/ })).toBeTruthy();
   });
 
   it("the whole card chooses, and the choice is not shown by colour alone", () => {
@@ -40,22 +40,24 @@ describe("the two cards", () => {
     expect((view.getByRole("radio", { name: /Explorers/ }) as HTMLInputElement).checked).toBe(false);
   });
 
-  it.each([[4, "Explorers"], [5, "Explorers"], [6, "Detectives"], [8, "Detectives"]])("age %i suggests %s with a badge, without choosing it", (age, name) => {
-    const view = render(<I18nProvider locale="en" dict={en}><Controlled age={age} /></I18nProvider>);
-    const suggested = view.getByRole("radio", { name: new RegExp(`^${name}.*Suits age ${age}$`) }) as HTMLInputElement;
-    expect(suggested.checked).toBe(false);
-    expect(view.getAllByText(/Suits age/)).toHaveLength(1);
+  it.each(["en", "he"] as const)("describes search challenge without age labels in %s", locale => {
+    const dict = locale === "he" ? he : en;
+    const view = render(<I18nProvider locale={locale} dict={dict}><Controlled /></I18nProvider>);
+    const group = view.getByRole("group", { name: dict.create.level.title });
+    for (const level of ["explorers", "detectives"] as const) {
+      expect(within(group).getByRole("radio", { name: `${dict.create.level[level].name} ${dict.create.level[level].line}` })).toBeTruthy();
+    }
+    expect(group.textContent).not.toMatch(/Ages?\s*\d|גילאי|מומלץ לגיל|Suits age/);
   });
 
-  it("keeps a choice already made when the age suggests the other card", () => {
-    const view = render(<I18nProvider locale="he" dict={he}><Controlled age={9} initial="explorers" /></I18nProvider>);
+  it("keeps the chosen challenge and its copy independent of exact age", () => {
+    const view = render(<I18nProvider locale="he" dict={he}><NameForm initialName="Synthetic" initialAge={9} initialLevel="explorers" levelChoice /></I18nProvider>);
+    const group = view.getByRole("group", { name: he.create.level.title });
+    const copy = group.textContent;
+    fireEvent.change(view.getByLabelText(he.create.name.ageLabel), { target: { value: "4" } });
     expect((view.getByRole("radio", { name: /מגלים/ }) as HTMLInputElement).checked).toBe(true);
-    expect(view.getByRole("radio", { name: /בלשים.*מומלץ לגיל 9/ })).toBeTruthy();
-  });
-
-  it("writes Hebrew age ranges with an ASCII hyphen so they read in order right to left", () => {
-    expect(he.create.level.explorers.ages).toBe("גילאי 3-5");
-    for (const value of Object.values(he.create.level).flatMap(v => typeof v === "string" ? [v] : Object.values(v))) expect(value).not.toMatch(/\d–\d/);
+    expect(group.textContent).toBe(copy);
+    expect((view.getByLabelText(he.create.name.ageLabel) as HTMLSelectElement).value).toBe("4");
   });
 });
 

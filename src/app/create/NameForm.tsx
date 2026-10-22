@@ -66,7 +66,7 @@ export function NameForm({ initialName, initialAge, children = [], initialChildI
         </div>
         {asking ? (
           <>
-            <SearchLevelChoice value={level} ageYears={age ? Number(age) : null} invalid={levelInvalid} allowedLevels={offered}
+            <SearchLevelChoice value={level} invalid={levelInvalid} allowedLevels={offered}
               describedBy={levelMissing ? "level-error" : levelInvalid ? "child-form-error" : undefined}
               onChange={next => { setLevel(next); setLevelMissing(false); }} />
             {offered.length === 0 ? <p className="fm-hint" role="alert">{t.errors.SEARCH_LEVEL_UNAVAILABLE}{" "}

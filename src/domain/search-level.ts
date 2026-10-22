@@ -1,5 +1,3 @@
-import { validChildAge } from "./child-appearance";
-
 /**
  * How busy the boards are to search: the parent's explicit choice under the
  * child's name (Guy, 2026-10-09). Every board still has three hiding places.
@@ -24,14 +22,6 @@ export function storedSearchLevel(value: string | null | undefined): SearchLevel
   if (value == null) return "explorers";
   if (!isSearchLevel(value)) throw new Error("Unknown search level");
   return value;
-}
-
-/** The card a stated age suggests. A badge only: it never selects a level and
- * never replaces a choice already made. Age 2, below both cards, suggests the
- * gentler search. */
-export function recommendedSearchLevel(ageYears: unknown): SearchLevel | null {
-  if (!validChildAge(ageYears)) return null;
-  return ageYears <= 5 ? "explorers" : "detectives";
 }
 
 /** One content release that serves Detectives for one world on one engine. */

@@ -263,9 +263,8 @@ export const he: Dictionary = {
     },
     level: {
       title: "איזה מסלול מתאים לכם?",
-      explorers: { name: "מגלים", ages: "גילאי 3-5", line: "חיפוש נעים להתחלה" },
-      detectives: { name: "בלשים", ages: "גילאי 6+", line: "יותר פרטים, יותר אתגר" },
-      recommended: "מומלץ לגיל {age}",
+      explorers: { name: "מגלים", line: "חיפוש נעים לקטנים" },
+      detectives: { name: "בלשים", line: "יותר פרטים, יותר אתגר" },
       chosen: "מסלול: {level}",
       frozen: "מסלול {level} נשמר להרפתקה הזאת.",
     },

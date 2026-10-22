@@ -1,8 +1,7 @@
 "use client";
 
-import { tf } from "@/i18n";
 import { useI18n } from "@/i18n/client";
-import { recommendedSearchLevel, SEARCH_LEVELS, type SearchLevel } from "@/domain/search-level";
+import { SEARCH_LEVELS, type SearchLevel } from "@/domain/search-level";
 
 /**
  * Explorers or Detectives, under the child's name. Two answers of equal weight:
@@ -10,14 +9,12 @@ import { recommendedSearchLevel, SEARCH_LEVELS, type SearchLevel } from "@/domai
  * Native radios inside a fieldset give the group its name, arrow keys and the
  * announced state; the card is the whole tap target.
  */
-export function SearchLevelChoice({ value, onChange, ageYears, describedBy, invalid = false, disabled = false, allowedLevels = SEARCH_LEVELS }: {
-  value: SearchLevel | null; onChange: (level: SearchLevel) => void; ageYears?: number | null;
+export function SearchLevelChoice({ value, onChange, describedBy, invalid = false, disabled = false, allowedLevels = SEARCH_LEVELS }: {
+  value: SearchLevel | null; onChange: (level: SearchLevel) => void;
   describedBy?: string; invalid?: boolean; disabled?: boolean; allowedLevels?: readonly SearchLevel[];
 }) {
   const { t } = useI18n();
   const copy = t.create.level;
-  // A badge only: the age suggests, the parent decides.
-  const recommended = recommendedSearchLevel(ageYears);
   return (
     <fieldset className={`level-choice${invalid ? " level-choice--invalid" : ""}`} aria-describedby={describedBy} disabled={disabled}>
       <legend className="level-choice__title">{copy.title}</legend>
@@ -31,9 +28,7 @@ export function SearchLevelChoice({ value, onChange, ageYears, describedBy, inva
               <span className="level-card__check" aria-hidden="true" />
               <span className="level-card__art" aria-hidden="true"><SearchLevelArt level={level} /></span>{" "}
               <span className="level-card__name">{card.name}</span>{" "}
-              <span className="level-card__ages">{card.ages}</span>{" "}
               <span className="level-card__line">{card.line}</span>
-              {recommended === level ? <>{" "}<span className="level-card__badge">{tf(copy.recommended, { age: ageYears! })}</span></> : null}
             </label>
           );
         })}

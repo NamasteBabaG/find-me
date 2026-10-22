@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { detectiveRelease, isSearchLevel, recommendedSearchLevel, SEARCH_LEVELS, storedSearchLevel } from "../search-level";
+import { detectiveRelease, isSearchLevel, SEARCH_LEVELS, storedSearchLevel } from "../search-level";
 import { DETECTIVE_RELEASES } from "../../../content/worlds/detective-releases";
 
 describe("search level", () => {
@@ -15,12 +15,6 @@ describe("search level", () => {
     expect(storedSearchLevel(undefined)).toBe("explorers");
     expect(storedSearchLevel("detectives")).toBe("detectives");
     expect(() => storedSearchLevel("hard")).toThrow();
-  });
-
-  it("suggests a card from the exact age without choosing one", () => {
-    expect([2, 3, 4, 5].map(recommendedSearchLevel)).toEqual(["explorers", "explorers", "explorers", "explorers"]);
-    expect([6, 7, 8, 9, 10].map(recommendedSearchLevel)).toEqual(["detectives", "detectives", "detectives", "detectives", "detectives"]);
-    for (const age of [null, undefined, 0, 1, 11, 6.5, "8"]) expect(recommendedSearchLevel(age)).toBeNull();
   });
 
   it("pins one content version per engine for Detectives", () => {

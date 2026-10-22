@@ -268,9 +268,8 @@ export const en = {
     /** Explorers or Detectives: how busy the boards are. Never a judgement of the child. */
     level: {
       title: "Which path suits you?",
-      explorers: { name: "Explorers", ages: "Ages 3–5", line: "A gentle first search" },
-      detectives: { name: "Detectives", ages: "Ages 6+", line: "More details, more challenge" },
-      recommended: "Suits age {age}",
+      explorers: { name: "Explorers", line: "A gentle search for little ones" },
+      detectives: { name: "Detectives", line: "More details, more challenge" },
       chosen: "Path: {level}",
       frozen: "{level} is saved for this adventure.",
     },

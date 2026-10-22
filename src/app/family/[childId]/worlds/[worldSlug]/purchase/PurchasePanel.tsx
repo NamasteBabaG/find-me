@@ -31,7 +31,7 @@ export function PurchasePanel({ childId, worldSlug, ageYears, returnGameId, resu
     <input type="hidden" name="returnGame" value={returnGameId ?? ""} />
     {frozen ? <><input type="hidden" name="searchLevel" value={frozen} /><p className="fm-hint">{tf(t.create.level.frozen, { level: t.create.level[frozen].name })}</p></> : null}
     {asking ? <>
-      <SearchLevelChoice value={level} ageYears={age ? Number(age) : null} invalid={levelInvalid} disabled={pending}
+      <SearchLevelChoice value={level} invalid={levelInvalid} disabled={pending}
         describedBy={levelMissing ? "world-level-error" : undefined} onChange={next => { setLevel(next); setLevelMissing(false); }} />
       {levelMissing ? <p id="world-level-error" className="fm-error" role="alert">{t.errors.SEARCH_LEVEL_REQUIRED}</p> : null}
     </> : null}
