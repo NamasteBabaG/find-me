@@ -162,7 +162,8 @@ describe("parent-managed friends invitations", () => {
     const label = text[operation]; fireEvent.click(within(dialog).getByRole("button", { name: label }));
     const confirm = page.getByRole("dialog", { name: label }); fireEvent.click(within(confirm).getByRole("button", { name: label }));
     await within(dialog).findByText(text.adult);
-    expect(page.queryByRole("dialog", { name: label })).toBeNull();
+    // The adult notice renders before the dialog's passive effect closes the native confirmation (as in FriendPlay).
+    await waitFor(() => expect(page.queryByRole("dialog", { name: label })).toBeNull());
     fireEvent.click(within(dialog).getByRole("button", { name: text.reauth }));
     await within(dialog).findByText(text.emailed);
     expect((within(dialog).getByRole("button", { name: text.reauth }) as HTMLButtonElement).disabled).toBe(true);
