@@ -20,14 +20,14 @@ import { isFixedWorldStyle } from "./generation/fixed-world-stage-record";
 import { LOCAL_PATCH_STYLE } from "./generation/local-patch-world";
 import { INTEGRATED_COLLECTION_VERSION } from "../domain/scene/local-patch-versions";
 import { assertNoOutstandingCheckout, DraftCheckoutInProgress, hasOutstandingCheckout } from "./draft-checkout-lock";
-import { pinVisualReviewRelease } from "./generation/visual-review-release";
+import { pinVisualReviewRelease, DUAL_VISUAL_REVIEW_V3 } from "./generation/visual-review-release";
 import { pinNewQaWorldBudget } from "./generation/local-patch-qa-budget";
 import { pinLocalPatchPainter } from "./generation/painter-release";
 import { pinQualityChannel } from "./generation/quality-channel";
-import { pinLeanRelease } from "./generation/lean-release";
+import { pinLeanRelease, LOCAL_PATCH_LEAN_RELEASE } from "./generation/lean-release";
 import { pinIdentitySourceRelease } from "./generation/identity-source-release";
-import { pinSourcePlacementRelease } from "./generation/source-placement-release";
-import { detectiveRelease, storedSearchLevel, type SearchLevel } from "@/domain/search-level";
+import { localPatchSourceSelectionAllowed, pinLocalPatchSourceFamily } from "./generation/source-placement-release";
+import { detectiveRelease, isSearchLevel, storedSearchLevel, type SearchLevel } from "@/domain/search-level";
 import { DETECTIVE_RELEASES } from "../../content/worlds/detective-releases";
 import { pinSearchLevelChoice, searchLevelAsked } from "./search-level-policy";
 
@@ -53,15 +53,20 @@ export function gameLocale(game: { locale: string }): Locale {
 
 /** `askSearchLevel`: the parent was shown the Explorers/Detectives cards while
  * creating this draft, so it must answer them before payment (and only then). */
-export async function createDraft(c: Container, ownerId: string | null, locale: Locale, options: { askSearchLevel?: boolean } = {}): Promise<{ gameId: string; draftToken: string }> {
+export async function createDraft(c: Container, ownerId: string | null, locale: Locale, options: { askSearchLevel?: boolean; searchLevel?: SearchLevel } = {}): Promise<{ gameId: string; draftToken: string }> {
   const draftToken = newDraftToken();
   const styleVersion = newDraftStyleVersion();
+  if (options.searchLevel !== undefined && !isSearchLevel(options.searchLevel)) throw Error("Invalid new draft search level");
+  const selectedLevel = options.searchLevel ?? "explorers";
+  const selectedVersion = sceneVersionForLevel(styleVersion, selectedLevel);
+  if (selectedLevel === "detectives" && (selectedVersion === null || !(await searchLevelChoice(c, styleVersion)).detectives))
+    throw Error("Detectives is unavailable for a new draft");
   // Pin the QA engine before the first generated preview. Existing games and
   // production drafts retain their own engine; no later flag can change this one.
   if (c.pinDualVisualReview && !c.visualReview) throw Error("Dual visual review credentials are not configured");
   const game = await c.db.$transaction(async tx => {
     const created = await tx.game.create({ data: { id: newId("game"), draftToken, ownerId, status: "DRAFT", locale,
-      ...(styleVersion ? { styleVersion } : {}) } });
+      ...(styleVersion ? { styleVersion } : {}), ...(options.searchLevel === undefined ? {} : { searchLevel: options.searchLevel }) } });
     // A lean draft (local-patch-lean/v1) takes its own painter, judges and four-dollar ceiling instead.
     const lean = styleVersion === LOCAL_PATCH_STYLE ? c.leanRelease : undefined;
     if (styleVersion === LOCAL_PATCH_STYLE && c.pinDualVisualReview) {
@@ -73,7 +78,10 @@ export async function createDraft(c: Container, ownerId: string | null, locale: 
       await pinQualityChannel(tx, created.id, lean ? undefined : c.qualityChannel);
       await pinLeanRelease(tx, created.id, lean);
       await pinIdentitySourceRelease(tx, created.id);
-      if (lean) await pinSourcePlacementRelease(tx, created.id);
+      if (lean || selectedLevel === "detectives") {
+        if (selectedVersion === null || selectedVersion === undefined) throw Error("A local-patch source family requires its exact scene version");
+        await pinLocalPatchSourceFamily(tx, created.id, { sceneVersion: selectedVersion, searchLevel: selectedLevel });
+      }
     }
     if (options.askSearchLevel) await pinSearchLevelChoice(tx, created.id);
     return created;
@@ -298,15 +306,24 @@ export async function worldsForDraft(c: Container, styleVersion = newDraftStyleV
   if (level === "explorers") return purchasableWorlds(c, sceneVersionForDraft(styleVersion));
   const release = detectiveRelease(DETECTIVE_RELEASES, draftEngine(styleVersion));
   if (env().SEARCH_LEVEL_CHOICE !== "on" || !release) return [];
+  if (styleVersion === LOCAL_PATCH_STYLE && release.sceneVersion === 13) {
+    const e = env();
+    // A new family is offered only in the same configuration that can seal its
+    // mandatory pins. Withdrawing new offers does not change an existing pin.
+    if (e.APP_ENV !== "qa" || e.LOCAL_PATCH_PROMPT_RELEASE !== "v19" || e.LOCAL_PATCH_IDENTITY_SOURCE !== "full-source-v1"
+      || c.leanRelease !== LOCAL_PATCH_LEAN_RELEASE || !c.pinDualVisualReview || c.dualVisualReviewRelease !== DUAL_VISUAL_REVIEW_V3 || !c.visualReview) return [];
+  }
   return (await purchasableWorlds(c, release.sceneVersion)).filter(world => release.worlds.has(world.slug));
 }
 
 /** A Detectives selection is sellable only as whole worlds that are eligible
  * now, with exactly their boards at the release's version: no withdrawn world,
  * no stray or missing board, no other version under the Detectives name. */
-export async function detectiveSelectionEligible(c: Container, game: { styleVersion: string; scenes: readonly { sceneSlug: string; sceneVersion: number }[] }): Promise<boolean> {
+export async function detectiveSelectionEligible(c: Container, game: { id?: string; styleVersion: string; scenes: readonly { sceneSlug: string; sceneVersion: number }[] }): Promise<boolean> {
   const version = sceneVersionForLevel(game.styleVersion, "detectives");
   if (version == null || !game.scenes.length) return false;
+  if (game.styleVersion === LOCAL_PATCH_STYLE && (!game.id || !await localPatchSourceSelectionAllowed(c.db,
+    { id: game.id, styleVersion: game.styleVersion }, "detectives", game.scenes))) return false;
   const held = new Set(game.scenes.map(scene => scene.sceneSlug));
   const chosen = (await worldsForDraft(c, game.styleVersion, "detectives")).filter(world => boardSlugs(world).some(slug => held.has(slug)));
   const expected = new Set(chosen.flatMap(world => boardSlugs(world)));
@@ -333,6 +350,8 @@ export async function searchLevelChoice(c: Container, styleVersion = newDraftSty
 }
 
 export interface SearchLevelTerms {
+  /** Only levels compatible with this immutable draft family are offered. */
+  allowedLevels: readonly SearchLevel[];
   /** The name step shows the cards, and its action needs an answer. */
   asked: boolean;
   /** This draft was created while the cards were shown, so an answer must exist before payment. */
@@ -356,13 +375,18 @@ export interface SearchLevelTerms {
 export async function searchLevelTerms(c: Container, draft: { id: string; styleVersion: string; searchLevel: string | null } | null): Promise<SearchLevelTerms> {
   const styleVersion = draft?.styleVersion ?? newDraftStyleVersion();
   const choice = await searchLevelChoice(c, styleVersion);
-  if (!draft) return { asked: choice.shown, required: choice.shown, stale: false, openPayment: false, detectives: choice.detectives };
+  const offered: readonly SearchLevel[] = choice.detectives ? ["explorers", "detectives"] : ["explorers"];
+  if (!draft) return { asked: choice.shown, required: choice.shown, stale: false, openPayment: false,
+    detectives: choice.detectives, allowedLevels: offered };
+  const compatible = await Promise.all(offered.map(async level => ({ level, allowed: await localPatchSourceSelectionAllowed(c.db, draft, level) })));
+  const allowedLevels = compatible.filter(row => row.allowed).map(row => row.level);
   const [pinned, openPayment] = await Promise.all([searchLevelAsked(c.db, draft.id), hasOutstandingCheckout(c.db, draft.id)]);
-  const stale = storedSearchLevel(draft.searchLevel) === "detectives" && !choice.detectives;
+  const stored = storedSearchLevel(draft.searchLevel);
+  const stale = stored === "detectives" && !choice.detectives || !await localPatchSourceSelectionAllowed(c.db, draft, stored);
   // Shown again while the choice is offered, while the draft still owes its answer, or
   // when its answer can no longer be sold; never over an open payment.
   const asked = !openPayment && (stale || pinned && (choice.shown || !draft.searchLevel));
-  return { asked, required: pinned, stale, openPayment, detectives: choice.detectives };
+  return { asked, required: pinned, stale, openPayment, detectives: choice.detectives && allowedLevels.includes("detectives"), allowedLevels };
 }
 
 const levelUnavailable = () => flowError("SEARCH_LEVEL_UNAVAILABLE", "מסלול הבלשים עוד לא פתוח בעולם הזה.");
@@ -378,7 +402,7 @@ export async function selectPackage(c: Container, gameId: string, tierRaw: strin
 
   const level = storedSearchLevel(game.searchLevel);
   const version = sceneVersionForLevel(game.styleVersion, level);
-  if (version === null) return levelUnavailable();
+  if (version === null || !await localPatchSourceSelectionAllowed(c.db, game, level)) return levelUnavailable();
   const worlds = await worldsForDraft(c, game.styleVersion, level);
   if (level === "detectives" && !worlds.length) return levelUnavailable();
   if (!purchasableTiers(worlds.length).some((p) => p.tier === tier)
@@ -452,7 +476,7 @@ export async function selectWorlds(c: Container, gameId: string, slugs: string[]
   const unique = Array.from(new Set(slugs));
   if (unique.length !== want) return flowError("WRONG_SCENE_COUNT", `בחרו בדיוק ${want} עולמות.`, { want });
   const level = storedSearchLevel(game.searchLevel);
-  if (sceneVersionForLevel(game.styleVersion, level) === null) return levelUnavailable();
+  if (sceneVersionForLevel(game.styleVersion, level) === null || !await localPatchSourceSelectionAllowed(c.db, game, level)) return levelUnavailable();
   const offered = await worldsForDraft(c, game.styleVersion, level);
   if (level === "detectives" && !offered.length) return levelUnavailable();
   const available = new Set(offered.map((w) => w.slug));
@@ -493,6 +517,7 @@ async function replaceDraftSelection(c: Container, game: DraftGame, slugs: strin
   // Resolve every version before touching the existing selection.
   const data = slugs.map((slug, i) => ({ id: newId("gsc"), gameId: game.id, sceneSlug: slug, sceneVersion: sceneBySlug(slug, version).version, orderIndex: i }));
   return fencedDraftEdit(c, game, async tx => {
+      if (!await localPatchSourceSelectionAllowed(tx, game, storedSearchLevel(game.searchLevel), data)) return levelUnavailable();
       await tx.game.update({ where: { id: game.id }, data: { sceneCount: data.length, ...(tier ? { packageTier: tier } : {}) } });
       await tx.gameScene.deleteMany({ where: { gameId: game.id } });
       await tx.gameScene.createMany({ data });

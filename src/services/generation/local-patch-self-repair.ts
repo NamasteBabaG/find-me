@@ -1,3 +1,4 @@
+import { hasLocalPatchCapability } from "../../domain/scene/local-patch-family";
 import { isCollectionVersion } from "../../domain/scene/local-patch-versions";
 import { childBodyDirection } from "../../domain/child-body";
 import { Prisma } from "@prisma/client";
@@ -39,7 +40,7 @@ export const SELF_REPAIR_REQUEST_ACTION = "local-patch:automatic-recovery-reques
 /** What a diagnosis of an enrolled world is told about the child (frozen per cycle): the photograph, the v2 policy, the refusal. */
 export const SUBJECT_DIAGNOSIS_VERSION = "subject-diagnosis/v1" as const;
 export const SELF_REPAIR_SETTINGS = Object.freeze({ ...LOCAL_PATCH_JUDGE, model: "gpt-5.6-sol", maxOutputTokens: 2200 });
-export const selfRepairSettingsForVersion = (version: number) => version === 12
+export const selfRepairSettingsForVersion = (version: number) => hasLocalPatchCapability(version, "integratedQuality")
   ? { ...SELF_REPAIR_SETTINGS, effort: "medium" as const, maxOutputTokens: 4000 } : SELF_REPAIR_SETTINGS;
 const hash = (value: unknown) => sha256Bytes(Buffer.from(JSON.stringify(value)));
 const demand: (ok: unknown, message: string) => asserts ok = (ok, message) => { if (!ok) throw Error(`SELF_REPAIR: ${message}`); };
@@ -155,8 +156,8 @@ export async function runLocalPatchSelfRepair(c: Container, input: { gameId: str
   const foreground = foregroundForPinnedPrompt(hide, row.promptVersion);
   let state: State | null = previous.selfRepair ? stateSchema.parse(previous.selfRepair) : null;
   if (state) demand(state.contextSha256 === contextSha256, "Pinned recovery context changed");
-  const upgrade = scene.sceneVersion === 12 ? await subjectUpgradeOf(c.db, gameId) : null;
-  const plan = upgrade ? subjectPlanOfHide(hide.id) : null;
+  const upgrade = hasLocalPatchCapability(scene.sceneVersion, "integratedQuality") ? await subjectUpgradeOf(c.db, gameId) : null;
+  const plan = upgrade ? subjectPlanOfHide(hide.id, scene.sceneVersion) : null;
   // Keep the last review's actual refusal. A new cycle can never erase the old
   // paid attempt, and an identical geometry/source recipe is never repurchased.
   if (!state || state.phase === "awaiting-review" || state.phase === "rejected") {
@@ -171,8 +172,8 @@ export async function runLocalPatchSelfRepair(c: Container, input: { gameId: str
       ...(authoredContext ? { authoredContext } : {}),
       decision: null, history, feedback: (state?.phase === "rejected" ? state.feedback : row.lastError ?? "Two completed attempts did not produce a publishable appearance").slice(0, 1200),
       sourceKeys: state?.sourceKeys ?? Array.from({ length: row.attempts }, (_, i) => `${hide.id}:${hide.pose}:render:${i + 1}`),
-      ...(scene.sceneVersion === 12 ? { excludedRegions: selfRepairExcludedRegions(crop, board.hides.filter(h => h.id !== hide.id).map(cropOf)) } : {}),
-      ...(scene.sceneVersion === 12 && previous.boardReview?.assessmentMode === PLAYER_REVIEW_MODE ? { boundaryContext: true as const } : {}),
+      ...(hasLocalPatchCapability(scene.sceneVersion, "integratedQuality") ? { excludedRegions: selfRepairExcludedRegions(crop, board.hides.filter(h => h.id !== hide.id).map(cropOf)) } : {}),
+      ...(hasLocalPatchCapability(scene.sceneVersion, "integratedQuality") && previous.boardReview?.assessmentMode === PLAYER_REVIEW_MODE ? { boundaryContext: true as const } : {}),
       ...(upgrade ? { subjectV2Cycles: (state?.subjectV2Cycles ?? 0) + 1 } : {}),
       ...(refusal ? { subjectContext: { version: SUBJECT_DIAGNOSIS_VERSION, codes: refusal.codes, located: refusal.located,
         intrinsic: refusal.intrinsic, failedSource } } : {}),
@@ -271,7 +272,7 @@ export async function runLocalPatchSelfRepair(c: Container, input: { gameId: str
       || row.promptVersion === LOCAL_PATCH_FIXED_SCENERY_PROMPT_VERSION;
     const ageBody = propSupport || row.promptVersion === LOCAL_PATCH_AGE_BODY_PROMPT_VERSION;
     const support = hide.placement?.support ?? board.ground;
-    const prompt = scene.sceneVersion === 12 ? integrationDiagnosisPrompt({ ageYears: child.ageYears, pose: hide.pose,
+    const prompt = hasLocalPatchCapability(scene.sceneVersion, "integratedQuality") ? integrationDiagnosisPrompt({ ageYears: child.ageYears, pose: hide.pose,
       support: propSupport ? ageBodyPropPlacementText(support) : ageBody ? ageBodyPlacementText(support) : support, envelope: maskForHide(hide), sourceKeys: selected,
       excludedRegions: active.excludedRegions, ...(foreground ? { fixedForeground: foregroundDiagnosisData(foreground) } : {}),
       ...(authoredReturn && placement?.sourceNeighbors ? { authoredRecovery: { parentSha256: authoredRecoveryParentSha256(authoredReturn),
@@ -316,7 +317,7 @@ export async function runLocalPatchSelfRepair(c: Container, input: { gameId: str
       if (authoredContext) demand(JSON.stringify((reply as LocalPatchJudgeResult & { authoredRecoveryContext?: unknown }).authoredRecoveryContext) === JSON.stringify(authoredContext), "Retained diagnosis belongs to another authored context");
       decision = selfRepairDecisionSchema.parse(JSON.parse(reply.raw ?? "null"));
       if (authoredReturn) assertAuthoredLocalPatchRecoveryGeometry(authoredReturn, placementContext, decision);
-      demand(decision.action !== "restyle-retained" || scene.sceneVersion === 12, "Surface repair belongs to the integrated release");
+      demand(decision.action !== "restyle-retained" || hasLocalPatchCapability(scene.sceneVersion, "integratedQuality"), "Surface repair belongs to the integrated release");
       demand(selected.includes(decision.sourceKey) || !selected.length && decision.sourceKey === "new-image" && decision.action === "redraw-with-new-placement", "Diagnosis selected an unseen source");
       demand(!active.history.some(h => h.recipe === selfRepairRecipe(decision)), "Diagnosis repeated an already failed source and geometry; change approach");
       // A defect inside the painted child (who they are, their age, face or hat) is not in the join: recomposing

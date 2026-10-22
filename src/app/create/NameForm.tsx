@@ -9,13 +9,14 @@ import type { SearchLevel } from "@/domain/search-level";
 import { saveNameAction, type ActionResult } from "./actions";
 import { SearchLevelChoice } from "./SearchLevelChoice";
 
-export function NameForm({ initialName, initialAge, children = [], initialChildId = "", fresh = false, levelChoice = false, freshLevelChoice = levelChoice, initialLevel = null, draftChild = null }: {
+export function NameForm({ initialName, initialAge, children = [], initialChildId = "", fresh = false, levelChoice = false, freshLevelChoice = levelChoice, initialLevel = null, draftChild = null, allowedLevels = ["explorers", "detectives"], freshAllowedLevels = allowedLevels }: {
   initialName: string; initialAge?: number | null; children?: Array<{ id: string; displayName: string }>; initialChildId?: string; fresh?: boolean;
   /** Ask Explorers or Detectives for the draft being continued (the server decides; it re-checks on save). */
   levelChoice?: boolean; initialLevel?: SearchLevel | null;
   /** The continued draft already has a child: choosing another one starts a new draft on
    * save, which follows a new draft's terms (`freshLevelChoice`), not the continued one's. */
   draftChild?: { familyChildId: string } | null; freshLevelChoice?: boolean;
+  allowedLevels?: readonly SearchLevel[]; freshAllowedLevels?: readonly SearchLevel[];
 }) {
   const { t } = useI18n();
   const n = t.create.name;
@@ -28,6 +29,7 @@ export function NameForm({ initialName, initialAge, children = [], initialChildI
   const startsFresh = (childId: string) => Boolean(draftChild) && childId !== draftChild!.familyChildId;
   // The cards follow the draft the save will use, so an answer the server needs is never out of reach.
   const asking = startsFresh(selectedId) ? freshLevelChoice : levelChoice;
+  const offered = startsFresh(selectedId) ? freshAllowedLevels : allowedLevels;
   const selected = children.find(child => child.id === selectedId);
   const [state, action, pending] = useActionState<ActionResult | null, FormData>(saveNameAction, null);
   const ageInvalid = Boolean(state && !state.ok && state.code === "INVALID_CHILD_AGE");
@@ -35,7 +37,7 @@ export function NameForm({ initialName, initialAge, children = [], initialChildI
   return (
     <form action={action} className="fm-card fm-card--pad-6 fm-stack fm-stack--3" onSubmit={event => {
       // Answered on the spot, in the product's words, before a round trip.
-      if (!asking || level) return;
+      if (!asking || level && offered.includes(level)) return;
       event.preventDefault();
       setLevelMissing(true);
       event.currentTarget.querySelector<HTMLInputElement>('input[name="searchLevel"]')?.focus();
@@ -64,9 +66,11 @@ export function NameForm({ initialName, initialAge, children = [], initialChildI
         </div>
         {asking ? (
           <>
-            <SearchLevelChoice value={level} ageYears={age ? Number(age) : null} invalid={levelInvalid}
+            <SearchLevelChoice value={level} ageYears={age ? Number(age) : null} invalid={levelInvalid} allowedLevels={offered}
               describedBy={levelMissing ? "level-error" : levelInvalid ? "child-form-error" : undefined}
               onChange={next => { setLevel(next); setLevelMissing(false); }} />
+            {offered.length === 0 ? <p className="fm-hint" role="alert">{t.errors.SEARCH_LEVEL_UNAVAILABLE}{" "}
+              <a className="fm-btn fm-btn--secondary" href="/create?fresh=1">{t.worldPurchase.start}</a></p> : null}
             {levelMissing ? <p id="level-error" className="fm-error" role="alert">{t.errors.SEARCH_LEVEL_REQUIRED}</p> : null}
           </>
         ) : null}
@@ -87,7 +91,7 @@ export function NameForm({ initialName, initialAge, children = [], initialChildI
       ) : null}
       {/* The step's own step count is on the stepper above; it was said twice. */}
       <div className="create__actions">
-        <Button type="submit" size="lg" loading={pending}>
+        <Button type="submit" size="lg" loading={pending} disabled={asking && offered.length === 0}>
           {pending ? t.common.savingStep : n.next}
           <span className="fm-btn__arrow" aria-hidden>
             ➜

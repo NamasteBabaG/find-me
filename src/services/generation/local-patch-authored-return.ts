@@ -1,3 +1,4 @@
+import { hasLocalPatchCapability } from "../../domain/scene/local-patch-family";
 import { createHash } from "node:crypto";
 import type { Prisma } from "@prisma/client";
 import sharp from "sharp";
@@ -82,7 +83,7 @@ export function assertAuthoredLocalPatchRecoveryGeometry(parent: AuthoredLocalPa
 export function authoredLocalPatchSourceNeighborContract(entry: SourcePlacementHideContract, receipt: AuthoredLocalPatchReceipt) {
   if (!entry.sourceNeighbors) return null;
   const parent = receipt.authoredReturn as AuthoredLocalPatchReturnContract;
-  const canonical = parent && authoredLocalPatchReturnContract({ contentVersion: 12, boardId: entry.boardId, hideId: entry.hideId,
+  const canonical = parent && authoredLocalPatchReturnContract({ contentVersion: entry.sceneVersion, boardId: entry.boardId, hideId: entry.hideId,
     source: entry.source, crop: entry.effective.crop, child: entry.effective.child, authored: entry.effective.returnRect,
     ...(parent.sourcePlacement ? { sourcePlacement: parent.sourcePlacement } : {}) });
   if (!parent?.sourcePlacement || parent.sourcePlacement.basePlacementSha256 !== entry.basePlacementSha256 || !equal(parent, canonical))
@@ -103,7 +104,7 @@ export function authoredLocalPatchReturnMatches(receipt: AuthoredLocalPatchRecei
   const v4 = receipt?.compositionVersion === AUTHORED_PATCH_COMPOSITION_VERSION;
   const recovery = receipt?.compositionVersion === AUTHORED_RECOVERY_COMPOSITION_VERSION;
   if (!v4 && !recovery && receipt?.authoredReturn === undefined && receipt?.authoredRecovery === undefined && !hide.returnRect) return true;
-  if ((!v4 && !recovery) || contentVersion !== 12 || !hide.returnRect) return false;
+  if ((!v4 && !recovery) || !hasLocalPatchCapability(contentVersion, "integratedQuality") || !hide.returnRect) return false;
   try {
     const expected = expectedAuthoredLocalPatchReturn(board, hide, contentVersion, placementContext);
     if (!expected || !equal(receipt?.authoredReturn, expected)) return false;

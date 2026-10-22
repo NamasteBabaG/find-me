@@ -101,6 +101,8 @@ export type SubjectStage = DualStageBase & { subjectPolicy: typeof SUBJECT_POLIC
   collectionRefusal?: string };
 export type DualReviewStage = ContinuityStage | QualityStage | SubjectStage;
 export type DualReviewProof = { version: DualVisualReviewVersion; hideId: string;
+  /** New Detective proof only; absent on every historical proof. */
+  sceneVersion?: 13;
   imageSha256: string; geometrySha256: string; identitySha256: string;
   /** Only v4 authored windows; also part of both immutable paid questions. */
   authoredReturn?: AuthoredLocalPatchReturnContract;
@@ -128,10 +130,10 @@ export function qualityStageReader(stage: Pick<QualityStage, "reader" | "reading
 
 /** A retained quality answer read exactly as its decision was made, or null. A
  * re-reading must still describe this exact answer and agree with itself. */
-export function readQualityStage(stage: QualityStage, hideId: string): LocalPatchVerdict | null {
+export function readQualityStage(stage: QualityStage, hideId: string, sceneVersion = 12): LocalPatchVerdict | null {
   const reader = qualityStageReader(stage);
   if (!reader || !visualStageReadable(stage)) return null;
-  let verdict = parseVisualSceneVerdicts(qualityStageRaw(stage), [hideId], 12, "ready-only/v1", PLAYER_REVIEW_MODE, reader)[hideId] ?? null;
+  let verdict = parseVisualSceneVerdicts(qualityStageRaw(stage), [hideId], sceneVersion, "ready-only/v1", PLAYER_REVIEW_MODE, reader)[hideId] ?? null;
   const neighbors = readSourceNeighborQualityStage(stage);
   if (neighbors && (!neighbors.ok || neighbors.sourceNeighbors.disposition === "unresolved")) return null;
   if (verdict && neighbors?.ok && neighbors.sourceNeighbors.disposition === "repair") {
@@ -146,13 +148,13 @@ export function readQualityStage(stage: QualityStage, hideId: string): LocalPatc
     });
     verdict = parseLocalPatchVerdict({ ...wire, neighborsIntact: "fail", verdict: "fail",
       reason: "Source comparison found a duplicated, fragmented or damaged source neighbor",
-      faults: [...locations, ...verdict.faults].slice(0, 16) }, 12, reader);
+      faults: [...locations, ...verdict.faults].slice(0, 16) }, sceneVersion, reader);
   }
   const reading = stage.reading;
   if (reading && (reading.version !== "quality-reading/v1" || reading.previousReader !== (stage.reader ?? QUALITY_READER_STRICT)
     || reading.reader === reading.previousReader || reading.sourceRequestKey !== stage.requestKey
     || reading.sourceFingerprint !== stage.fingerprint || reading.rawSha256 !== sha256Bytes(Buffer.from(stage.raw ?? ""))
-    || reading.disposition !== localPatchQualityDisposition(verdict, 12, { hideId, reader }).state)) return null;
+    || reading.disposition !== localPatchQualityDisposition(verdict, sceneVersion, { hideId, reader }).state)) return null;
   return verdict;
 }
 
@@ -231,8 +233,8 @@ export function localPatchRetainedAnswerUndecided(row: { status: string; lastErr
     if (!proof.continuity) {
       if (receipt.verdict !== null || proof.quality.reading || !visualStageReadable(proof.quality)
         || !qualityReaderReadsMore(CURRENT_QUALITY_READER, proof.quality.reader)) return false;
-      const verdict = parseVisualSceneVerdicts(proof.quality.raw, [proof.hideId], 12, "ready-only/v1", PLAYER_REVIEW_MODE, CURRENT_QUALITY_READER)[proof.hideId] ?? null;
-      return localPatchQualityDisposition(verdict, 12, { hideId: proof.hideId, reader: CURRENT_QUALITY_READER }).state !== "acceptable";
+      const verdict = parseVisualSceneVerdicts(proof.quality.raw, [proof.hideId], proof.sceneVersion ?? 12, "ready-only/v1", PLAYER_REVIEW_MODE, CURRENT_QUALITY_READER)[proof.hideId] ?? null;
+      return localPatchQualityDisposition(verdict, proof.sceneVersion ?? 12, { hideId: proof.hideId, reader: CURRENT_QUALITY_READER }).state !== "acceptable";
     }
     if (proof.continuity.reading) return false;
     return visualStageReadable(proof.quality) && visualStageReadable(proof.continuity)
@@ -248,8 +250,8 @@ export function localPatchContinuityPending(row: { status: string; judgeJson?: s
     const receipt = JSON.parse(row.judgeJson ?? "null"), proof = receipt?.dualQualityCheckpoint as DualReviewProof | undefined;
     if (!proof || receipt.boardReview || !isDualVisualReviewVersion(proof.version) || !proof.quality || proof.continuity
       || proof.hideId !== receipt.hide || proof.imageSha256 !== receipt.judgedSha256 || proof.geometrySha256 !== receipt.geometrySha256) return false;
-    const reader = qualityStageReader(proof.quality), verdict = readQualityStage(proof.quality, proof.hideId);
-    return reader !== null && localPatchQualityDisposition(verdict, 12, { hideId: proof.hideId, reader }).state === "acceptable";
+    const reader = qualityStageReader(proof.quality), verdict = readQualityStage(proof.quality, proof.hideId, proof.sceneVersion ?? 12);
+    return reader !== null && localPatchQualityDisposition(verdict, proof.sceneVersion ?? 12, { hideId: proof.hideId, reader }).state === "acceptable";
   } catch { return false; }
 }
 

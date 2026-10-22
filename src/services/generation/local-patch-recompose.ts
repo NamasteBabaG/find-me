@@ -1,3 +1,4 @@
+import { hasLocalPatchCapability } from "../../domain/scene/local-patch-family";
 import { Prisma } from "@prisma/client";
 import sharp from "sharp";
 import type { Container } from "../container";
@@ -30,6 +31,7 @@ function demand(value: unknown, reason: string): asserts value { if (!value) thr
 /** Pending attempts use the ordinary same-key purchase replay and account once.
  * Only concluded rows need this free migration; old v6/v7 are never touched. */
 export function localPatchNeedsRecomposition(row: { status: string; attempts: number; judgeJson: string | null }, contentVersion: number, playerReview = false): boolean {
+  if (contentVersion === 13) return false; // New authored source-family images never enter a historical v3 migration.
   if (!isLocalPatchStrictVersion(contentVersion) || !["GENERATED", "FAILED"].includes(row.status) || row.attempts < 1) return false;
   try {
     const receipt = JSON.parse(row.judgeJson ?? "null");
@@ -41,7 +43,7 @@ export function localPatchNeedsRecomposition(row: { status: string; attempts: nu
     // Provider/schema/transport refusals have no recoverable compositor pixels.
     // They keep the ordinary bounded retry path, not a permanent refresh hold.
     if (row.status === "FAILED" && typeof receipt?.renderFault === "string" && !/^quality-seam(?::|$)/.test(receipt.renderFault)) return false;
-    if (playerReview && contentVersion === 12 && row.status === "FAILED" && receipt?.renderFault?.startsWith("quality-seam:")
+    if (playerReview && hasLocalPatchCapability(contentVersion, "integratedQuality") && row.status === "FAILED" && receipt?.renderFault?.startsWith("quality-seam:")
       && receipt.playerSeamReview !== PLAYER_REVIEW_MODE && receipt.seam?.verdict === "misaligned"
       && Number.isFinite(receipt.seam.borderMeanDiff) && receipt.seam.borderMeanDiff <= 24 && receipt.seam.borderMeanDiff >= 0
       && Number.isInteger(receipt.seam.shift?.dx) && Number.isInteger(receipt.seam.shift?.dy)
@@ -119,7 +121,7 @@ export async function recomposeLocalPatchHide(c: Container, input: {
     const patch = await sharp(raw, { limitInputPixels: 8_294_400 }).resize(LOCAL_PATCH_CROP.width, LOCAL_PATCH_CROP.height, { fit: "fill" }).png().toBuffer();
     const occluded = foreground ? await occludeLocalPatch(patch, boardCrop!, foreground) : null;
     const result = await composeBoundedLocalPatch(original, crop, occluded?.png ?? patch, maskForHide(hide), {
-      playerReview: scene.sceneVersion === 12 && playerReviewEnabled(),
+      playerReview: hasLocalPatchCapability(scene.sceneVersion, "integratedQuality") && playerReviewEnabled(),
     });
     inspected.push({ requestKey, payloadSha256: retained.payloadSha256, usable: result.usable,
       report: result.report, compositionPermission: result.compositionPermission });
@@ -149,7 +151,7 @@ export async function recomposeLocalPatchHide(c: Container, input: {
   const key = `${result.usable ? "game" : "private"}/${assetId}.png`;
   const auditId = `aud_lpc_${hash([gameId, row.id, row.attempts, LOCAL_PATCH_COMPOSITION_VERSION, imageSha256]).slice(0, 28)}`;
   const judgeJson = JSON.stringify({ verdict: null, wireFault: null, seam: result.report, compositionPermission: result.compositionPermission,
-    ...(scene.sceneVersion === 12 && playerReviewEnabled() ? { playerSeamReview: PLAYER_REVIEW_MODE } : {}),
+    ...(hasLocalPatchCapability(scene.sceneVersion, "integratedQuality") && playerReviewEnabled() ? { playerSeamReview: PLAYER_REVIEW_MODE } : {}),
     compositionVersion: LOCAL_PATCH_COMPOSITION_VERSION, judgedSha256: imageSha256, geometrySha256: localPatchPublicationGeometryHash(geometry),
     geometryBasis: measured.basis, measuredFraction: Number(measured.measuredFraction.toFixed(4)), hide: hide.id, pose: hide.pose,
     reviewState: result.usable ? "pending-board-review" : "composition-refused", renderFault: result.usable ? null : `quality-seam: ${result.report.reason}`,

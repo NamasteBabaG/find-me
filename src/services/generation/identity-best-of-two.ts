@@ -1,4 +1,4 @@
-import { isRefreshedCollectionVersion } from "../../domain/scene/local-patch-versions";
+import { localPatchFamilyForVersion } from "../../domain/scene/local-patch-family";
 import { z } from "zod";
 import type { Prisma } from "@prisma/client";
 import type { Container } from "../container";
@@ -58,7 +58,7 @@ async function saveCheckpoint(tx: Prisma.TransactionClient, jobId: string, value
  * actual identity/age pass and diagnoses failed candidates before another
  * budgeted attempt. The first candidate remains retained across worker slices. */
 export async function selectBestIdentity(c: Container, initialClaim: BoardWizardIdentityClaim, input: {
-  atlas: Buffer; contentVersion: 9 | 10 | 11 | 12; deadlineAt?: number; preflight(): Promise<void>;
+  atlas: Buffer; contentVersion: 9 | 10 | 11 | 12 | 13; deadlineAt?: number; preflight(): Promise<void>;
 }): Promise<BoardWizardIdentityClaim | null> {
   const budget = boardWizardBudgetOf(c), worldId = boardWizardWorldId(initialClaim.gameId);
   let claim = initialClaim;
@@ -67,7 +67,7 @@ export async function selectBestIdentity(c: Container, initialClaim: BoardWizard
   const saved = JSON.parse(job.stepsJson).identityBestOfTwo;
   let checkpoint: Checkpoint = saved ? checkpointSchema.parse(saved) : {
     policy: IDENTITY_SELECTION_POLICY, first: { identityAssetId: claim.identityAssetId, avatarAssetId: claim.avatarAssetId },
-    ...(input.contentVersion === 12 && isAgeBodyPromptRelease(env().LOCAL_PATCH_PROMPT_RELEASE) ? { feedback: IDENTITY_FEEDBACK_ORDER } : {}),
+    ...(localPatchFamilyForVersion(input.contentVersion)?.capabilities.integratedQuality && isAgeBodyPromptRelease(env().LOCAL_PATCH_PROMPT_RELEASE) ? { feedback: IDENTITY_FEEDBACK_ORDER } : {}),
   };
   const expectedCurrent = checkpoint.selected ?? checkpoint.second ?? checkpoint.recovery?.current ?? checkpoint.first;
   demand(expectedCurrent.identityAssetId === claim.identityAssetId && expectedCurrent.avatarAssetId === claim.avatarAssetId, "Checkpoint/child differ");
@@ -77,7 +77,10 @@ export async function selectBestIdentity(c: Container, initialClaim: BoardWizard
   const photo = await readAssetBuffer(c, claim.photoAssetId);
   const firstSheet = await readAssetBuffer(c, checkpoint.first.identityAssetId);
   const deferReservation = async (error: unknown, expected: Pick<WorldReservationInput, "requestKey" | "scope" | "reserveMicroUsd">): Promise<boolean> => {
-    if (input.contentVersion !== 12 || !(error instanceof WorldBudgetError) || error.code !== "cap_exceeded") return false;
+    if (!(error instanceof WorldBudgetError) || error.code !== "cap_exceeded") return false;
+    // Detective drafts never inherit a historical v12 emergency grant.
+    if (input.contentVersion === 13) throw new LocalPatchIdentityDeferred();
+    if (input.contentVersion !== 12) return false;
     if (!error.refusedReservation) return deferLocalPatchIdentityAtAuthorizedCap(c, claim.gameId, error, expected,
       tx => fenceBoardWizardIdentityClaim(tx, claim));
     if (error.refusedReservation.worldId !== worldId) return false;
@@ -117,8 +120,8 @@ export async function selectBestIdentity(c: Container, initialClaim: BoardWizard
       // Historical selection keeps its aggregate planning floor. V12 requests
       // each real reservation so its actual base-cap refusal can activate the
       // standing $5 policy; settlement releases any unused image reservation.
-      if (input.contentVersion !== 12 && (await budget.audit(worldId)).remainingMicroUsd < 540_000) {
-        if (isRefreshedCollectionVersion(input.contentVersion)) throw new LocalPatchIdentityDeferred();
+      if (!localPatchFamilyForVersion(input.contentVersion)?.capabilities.integratedQuality && (await budget.audit(worldId)).remainingMicroUsd < 540_000) {
+        if (localPatchFamilyForVersion(input.contentVersion)?.capabilities.refreshedIdentity) throw new LocalPatchIdentityDeferred();
         reason = "budget-fallback";
       }
       else {
@@ -158,10 +161,10 @@ export async function selectBestIdentity(c: Container, initialClaim: BoardWizard
     }
   }
   if ((await budget.audit(worldId)).held) { await holdBoardWizardIdentity(c, claim, "unresolved-identity"); return null; }
-  const winner = isRefreshedCollectionVersion(input.contentVersion)
+  const winner = localPatchFamilyForVersion(input.contentVersion)?.capabilities.refreshedIdentity
     ? identityReceiptReadyForPublication(first, input.contentVersion) ? 1 : second && identityReceiptReadyForPublication(second, input.contentVersion) ? 2 : null
     : chooseIdentityCandidate(first, second);
-  if (!winner && isRefreshedCollectionVersion(input.contentVersion) && second && checkpoint.second) {
+  if (!winner && localPatchFamilyForVersion(input.contentVersion)?.capabilities.refreshedIdentity && second && checkpoint.second) {
     const diagnosis = diagnoseIdentityFailures(first, second, claim.ageYears!);
     checkpoint = { policy: IDENTITY_SELECTION_POLICY, first: checkpoint.first, ...(checkpoint.feedback ? { feedback: checkpoint.feedback } : {}),
       recovery: { nextAttempt: (checkpoint.recovery?.nextAttempt ?? 2) + 1, current: checkpoint.second, diagnosis,

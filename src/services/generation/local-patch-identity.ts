@@ -10,7 +10,7 @@ import { requireBoardWizardIdentityApproval } from "./board-wizard-identity-gate
 import { sha256Bytes } from "./fixed-sprite";
 import { readShippedBoardArt } from "./local-patch-hide";
 import { worldsOwned } from "../world-catalog.service";
-import { isRefreshedCollectionVersion } from "../../domain/scene/local-patch-versions";
+import { localPatchFamilyForVersion } from "../../domain/scene/local-patch-family";
 import { readCollectionArt, MAX_IDENTITY_ART_CACHE_BYTES, type IdentityArtCache } from "./collection-art";
 
 function demand(ok: unknown, message: string): asserts ok {
@@ -66,7 +66,7 @@ export async function preflightLocalPatchIdentity(c: Container, gameId: string, 
   const validateBoard = async ({ scene, board, definition }: typeof selected[number]) => {
     const hash = definition.art.sha256 ?? "";
     let bytes: Buffer;
-    if (isRefreshedCollectionVersion(scene.sceneVersion) && identityArtCache) {
+    if (localPatchFamilyForVersion(scene.sceneVersion)?.capabilities.refreshedIdentity && identityArtCache) {
       const retained = identityArtCache.get(hash);
       demand(!retained || sha256Bytes(retained) === hash, "Retained public identity art changed");
       const source = retained ?? await readCollectionArt(board.art, hash, root);
@@ -86,7 +86,7 @@ export async function preflightLocalPatchIdentity(c: Container, gameId: string, 
   // At most three full-board decoders/readers are active. Nine 20-second CDN
   // requests finish in three batches, preserving the portrait's request window.
   // Historical packaged PNG paths keep their original sequential decode load.
-  const batchSize = isRefreshedCollectionVersion(game.scenes[0]?.sceneVersion) ? 3 : 1;
+  const batchSize = localPatchFamilyForVersion(game.scenes[0]?.sceneVersion)?.capabilities.refreshedIdentity ? 3 : 1;
   for (let index = 0; index < selected.length; index += batchSize) {
     const results = await Promise.allSettled(selected.slice(index, index + batchSize).map(validateBoard));
     for (const result of results) if (result.status === "rejected") throw result.reason;

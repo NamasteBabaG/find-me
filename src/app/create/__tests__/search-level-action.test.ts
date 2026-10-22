@@ -81,7 +81,7 @@ describe("a saved draft whose child is changed in the form", () => {
     expect(f.terms).toHaveBeenCalledWith(expect.anything(), null);
     expect(f.create).not.toHaveBeenCalled(); expect(f.cookie).not.toHaveBeenCalled();
     await expect(saveNameAction(null, forChild(other, "explorers"))).rejects.toThrow("redirect:/create/photo");
-    expect(f.create).toHaveBeenCalledWith(expect.anything(), "synthetic-parent", "he", { askSearchLevel: true });
+    expect(f.create).toHaveBeenCalledWith(expect.anything(), "synthetic-parent", "he", { askSearchLevel: true, searchLevel: "explorers" });
     expect(f.choose).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ gameId: "new-draft", familyChildId: other || null, searchLevel: "explorers" }));
   });
 
@@ -99,8 +99,20 @@ it("pins a new draft to the question it was asked, and checks the answer before 
   expect(f.terms).toHaveBeenCalledWith(expect.anything(), null);
   expect(f.create).not.toHaveBeenCalled(); expect(f.cookie).not.toHaveBeenCalled();
   await expect(saveNameAction(null, form("detectives"))).rejects.toThrow("redirect:/create/photo");
-  expect(f.create).toHaveBeenCalledWith(expect.anything(), null, "he", { askSearchLevel: true });
+  expect(f.create).toHaveBeenCalledWith(expect.anything(), null, "he", { askSearchLevel: true, searchLevel: "detectives" });
   f.terms.mockResolvedValue(terms(false, false)); f.create.mockClear();
   await expect(saveNameAction(null, form())).rejects.toThrow("redirect:/create/photo");
   expect(f.create).toHaveBeenCalledWith(expect.anything(), null, "he", { askSearchLevel: false });
+});
+
+
+it("rejects a forged cross-family answer before child edits, creation or a cookie", async () => {
+  f.terms.mockResolvedValue({ ...terms(true, true), allowedLevels: ["explorers"] });
+  expect(await saveNameAction(null, form("detectives"))).toMatchObject({ ok: false, code: "SEARCH_LEVEL_UNAVAILABLE" });
+  expect(f.choose).not.toHaveBeenCalled(); expect(f.create).not.toHaveBeenCalled(); expect(f.cookie).not.toHaveBeenCalled();
+});
+it("does not set a cookie or attach a child if atomic family pinning fails", async () => {
+  f.lookup.mockResolvedValue(null); f.create.mockRejectedValueOnce(Error("synthetic family pin conflict"));
+  await expect(saveNameAction(null, form("detectives"))).rejects.toThrow("synthetic family pin conflict");
+  expect(f.cookie).not.toHaveBeenCalled(); expect(f.choose).not.toHaveBeenCalled();
 });

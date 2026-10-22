@@ -16,16 +16,16 @@ import { subjectPlanOfHide } from "./subject-enrollment";
  *   the collection refused for variety. Uncertainty is not a refusal of who the child is.
  * Anything else (a quality or continuity defect, an unread or uncertain answer) goes to self-repair and its diagnosis.
  */
-export function leanSubjectOnlyRefusal(judgeJson: string | null, ageYears: number): boolean {
+export function leanSubjectOnlyRefusal(judgeJson: string | null, ageYears: number, sceneVersion = 12): boolean {
   try {
     const receipt = JSON.parse(judgeJson ?? "null"), dual = receipt?.boardReview?.dual as DualReviewProof | undefined;
-    const hideId = receipt?.hide, plan = typeof hideId === "string" ? subjectPlanOfHide(hideId) : null;
+    const hideId = receipt?.hide, plan = typeof hideId === "string" ? subjectPlanOfHide(hideId, sceneVersion) : null;
     if (!dual || !plan || receipt.reviewState !== "board-review-complete" || typeof receipt.judgedSha256 !== "string"
       || dual.imageSha256 !== receipt.judgedSha256 || dual.hideId !== hideId || !isDualVisualReviewVersion(dual.version)) return false;
     const quality = dual.quality, continuity = dual.continuity, subject = dual.subject;
     if (!quality || !continuity || !subject) return false;
     const qualityReader = qualityStageReader(quality);
-    if (!qualityReader || localPatchQualityDisposition(readQualityStage(quality, hideId), 12, { hideId, reader: qualityReader }).state !== "acceptable") return false;
+    if (!qualityReader || localPatchQualityDisposition(readQualityStage(quality, hideId, sceneVersion), sceneVersion, { hideId, reader: qualityReader }).state !== "acceptable") return false;
     const read = visualStageReadable(continuity) ? readContinuityStage(continuity, hideId, dual.version) : null;
     if (!read || localPatchRuntimeContinuityVerdict(read).disposition !== "pass") return false;
     if (subject.subjectPolicy !== SUBJECT_POLICY_V2 || subject.reader !== SUBJECT_READER_V2 || subject.combined !== SUBJECT_QUALITY_BUNDLE_VERSION) return false;

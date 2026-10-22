@@ -13,6 +13,7 @@ import { canTransition, isAfterPayment, type GameStatus } from "@/domain/order-s
 import { ensureUser } from "./auth.service";
 import { detectiveSelectionEligible, draftBelongsTo, loadDraft, selectPackage, worldsForDraft, sceneVersionForLevel, searchLevelTerms } from "./create-flow.service";
 import { storedSearchLevel } from "@/domain/search-level";
+import { localPatchSourceSelectionAllowed } from "./generation/source-placement-release";
 import { GameStatusConflict, statusOf, transitionGame } from "./game-status";
 import { WEBHOOK, audit, type Actor } from "./audit.service";
 import { bindCheckoutFamilyChild, reconcilePaidFamilyChildren } from "./family.service";
@@ -51,6 +52,8 @@ export async function startCheckout(c: Container, input: { gameId: string; email
   if (!game.packageTier || !isPackageTier(game.packageTier)) return flowError("PICK_PACKAGE_FIRST", "קודם בוחרים חבילה.");
   if (game.scenes.length !== boardsFor(game.packageTier)) return flowError("SCENES_INCOMPLETE", "בחירת העולמות לא הושלמה.");
   const level = storedSearchLevel(game.searchLevel);
+  if (!await localPatchSourceSelectionAllowed(c.db, game, level, game.scenes))
+    return flowError("SEARCH_LEVEL_UNAVAILABLE", "מסלול החיפוש אינו תואם לטיוטה הזאת.");
   const terms = await searchLevelTerms(c, game);
   // Only a draft that was asked must have answered; a family world purchase answered when it began.
   if (terms.required && !game.searchLevel) return flowError("SEARCH_LEVEL_REQUIRED", "בחרו מגלים או בלשים.");

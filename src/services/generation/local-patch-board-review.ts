@@ -1,3 +1,5 @@
+import { sourceNeighborReviewContext } from "../../domain/scene/local-patch-review-context";
+import { hasLocalPatchCapability } from "../../domain/scene/local-patch-family";
 import sharp from "sharp";
 import { prepareNeighborComparisons, prepareBoundaryComparisons } from "./local-patch-integration-evidence";
 import type { Prisma, Asset, TargetVariantAsset } from "@prisma/client";
@@ -53,7 +55,7 @@ export const LOCAL_PATCH_REVIEW_COMPOSITION_HISTORY = [null, "bounded-return/v2-
 export const localPatchBoardReviewKey = (boardId: string, attempts?: readonly number[], compositionVersion: string | null = LOCAL_PATCH_COMPOSITION_VERSION, contentVersion = 8, maximumAttempt: 3 | 4 = LOCAL_PATCH_MAX_ATTEMPTS) => {
   if (!attempts) return `board:${boardId}:five-review:1`;
   if (attempts.length !== localPatchHidesPerBoard(contentVersion) || attempts.some(n => !Number.isInteger(n) || n < 1 || n > maximumAttempt)) throw new Error("Invalid board-review attempt revision");
-  if (compositionVersion !== LOCAL_PATCH_COMPOSITION_VERSION && !(contentVersion === 12 && compositionVersion === AUTHORED_PATCH_COMPOSITION_VERSION) && !LOCAL_PATCH_REVIEW_COMPOSITION_HISTORY.some(version => version === compositionVersion)) throw new Error("Unsupported board-review composition revision");
+  if (compositionVersion !== LOCAL_PATCH_COMPOSITION_VERSION && !(hasLocalPatchCapability(contentVersion, "integratedQuality") && compositionVersion === AUTHORED_PATCH_COMPOSITION_VERSION) && !LOCAL_PATCH_REVIEW_COMPOSITION_HISTORY.some(version => version === compositionVersion)) throw new Error("Unsupported board-review composition revision");
   return `board:${boardId}:${isCollectionVersion(contentVersion) ? "three" : "five"}-review:v${isCollectionVersion(contentVersion) ? contentVersion : isLocalPatchAgeVersion(contentVersion) ? 9 : 8}:${attempts.join("-")}${compositionVersion === null ? "" : `:${compositionVersion.replaceAll("/", ".")}`}${isLocalPatchAgeVersion(contentVersion) ? ":evidence-v5" : ""}`;
 };
 /** All bounded candidates, including a paid reply retained before its row commit. */
@@ -63,7 +65,7 @@ export function localPatchBoardReviewKeys(boardId: string, contentVersion = 8): 
     const prior = vectors.splice(0);
     for (const vector of prior) for (let attempt = 1; attempt <= LOCAL_PATCH_MAX_ATTEMPTS; attempt++) vectors.push([...vector, attempt]);
   }
-  const versions = [...new Set<string | null>([...LOCAL_PATCH_REVIEW_COMPOSITION_HISTORY, LOCAL_PATCH_COMPOSITION_VERSION, ...(contentVersion === 12 ? [AUTHORED_PATCH_COMPOSITION_VERSION] : [])])];
+  const versions = [...new Set<string | null>([...LOCAL_PATCH_REVIEW_COMPOSITION_HISTORY, LOCAL_PATCH_COMPOSITION_VERSION, ...(hasLocalPatchCapability(contentVersion, "integratedQuality") ? [AUTHORED_PATCH_COMPOSITION_VERSION] : [])])];
   const current = vectors.flatMap(vector => versions.map(version => localPatchBoardReviewKey(boardId, vector, version, contentVersion)));
   // V4's unlabelled paid evidence remains discoverable. It is never reparsed as
   // the new labelled question, nor forgotten by privacy deletion/reconciliation.
@@ -119,7 +121,7 @@ export async function prepareLocalPatchBoardReview(c: Container, input: { gameId
   const board = placementContext.boards.find(b => b.board === scene.sceneSlug);
   const stagedExtra = isLocalPatchAgeVersion(scene.sceneVersion) ? await readLocalPatchExtraAttemptPlan(c, game.id) : null;
   const extraPlan = stagedExtra && [...stagedExtra.selected, ...stagedExtra.reviewOnly].some(entry => entry.sceneId === scene.id) ? stagedExtra : null;
-  const incremental = scene.sceneVersion === 12 && !extraPlan && !options.recovery;
+  const incremental = hasLocalPatchCapability(scene.sceneVersion, "integratedQuality") && !extraPlan && !options.recovery;
   if (options.onlyHideId && (!incremental || !board?.hides.some(hide => hide.id === options.onlyHideId)))
     return { ready: false as const, reason: "The selected hide is not an ordinary v12 candidate of this board" };
   demand(!options.playerReview || incremental, "Player calibration requires an ordinary v12 review");
@@ -185,9 +187,8 @@ export async function prepareLocalPatchBoardReview(c: Container, input: { gameId
     demand(sprite.kind === "image" && sprite.rect && sprite.rect.x === crop.left / meta.width! && sprite.rect.y === crop.top / meta.height!
       && sprite.rect.w === crop.width / meta.width! && sprite.rect.h === crop.height / meta.height!, "Shipping placement differs from the authored crop");
     const annotated = sourcePlacementForHide(placementContext, hide.id)?.sourceNeighbors;
-    const reviewContextRect = annotated ? { left: Math.max(0, crop.left - 192), top: Math.max(0, crop.top - 192),
-      width: Math.min(meta.width!, crop.left + crop.width + 192) - Math.max(0, crop.left - 192),
-      height: Math.min(meta.height!, crop.top + crop.height + 192) - Math.max(0, crop.top - 192) } : undefined;
+    const reviewContextRect = annotated ? sourceNeighborReviewContext(crop, { width: meta.width!, height: meta.height! },
+      annotated.contract.neighbors.map(neighbor => neighbor.head), scene.sceneVersion) : undefined;
     if (annotated && reviewContextRect) demand(annotated.contract.neighbors.every(n => n.head.left >= reviewContextRect.left
       && n.head.top >= reviewContextRect.top && n.head.left + n.head.width <= reviewContextRect.left + reviewContextRect.width
       && n.head.top + n.head.height <= reviewContextRect.top + reviewContextRect.height), "Annotated source head is outside the actual review context");
@@ -202,7 +203,7 @@ export async function prepareLocalPatchBoardReview(c: Container, input: { gameId
   // siblings. Previously unreviewed siblings DO receive their first real review.
   const protectedRows = new Set(extraPlan?.others.filter(entry => entry.reviewState === "board-review-complete").map(entry => entry.rowId));
   const recovering = isCollectionVersion(scene.sceneVersion) && entries.some(e => [SELF_REPAIR_COMPOSITION_VERSION, AUTHORED_RECOVERY_COMPOSITION_VERSION].includes(JSON.parse(e.row.judgeJson!).compositionVersion));
-  if (recovering && scene.sceneVersion !== 12) settings = LOCAL_PATCH_JUDGE;
+  if (recovering && !hasLocalPatchCapability(scene.sceneVersion, "integratedQuality")) settings = LOCAL_PATCH_JUDGE;
   if (recovering || incremental) for (const e of entries) {
     if (await hasLocalPatchPublicationPolicy(c, { gameId: game.id, sceneVersion: scene.sceneVersion, hideId: e.hide.id,
       variantId: e.row.id, attempts: e.row.attempts, identityAssetId: identity.id, identitySha256: sha256Bytes(sheet),
@@ -300,7 +301,7 @@ export async function prepareLocalPatchBoardReview(c: Container, input: { gameId
       const returnedWindow = { ...returned, left: e.crop.left - context.left + returned.left, top: e.crop.top - context.top + returned.top };
       return { hideId: e.hide.id, beforePng, afterPng, ...(closeupPng && afterEvidencePng ? { closeupPng, afterEvidencePng } : {}),
         ...(options.playerReview ? { boundaryComparisons: await prepareBoundaryComparisons(beforePng, afterPng, returnedWindow), returnedWindow }
-          : scene.sceneVersion === 12 ? { neighborComparisons: await prepareNeighborComparisons(beforePng, afterPng) } : {}),
+          : hasLocalPatchCapability(scene.sceneVersion, "integratedQuality") ? { neighborComparisons: await prepareNeighborComparisons(beforePng, afterPng) } : {}),
         expectation: { ageYears: child.ageYears, support: `${e.hide.pose} on ${board.ground}` } };
     })),
   };
@@ -351,7 +352,7 @@ export async function prepareLocalPatchBoardReview(c: Container, input: { gameId
   let { prompt, fingerprint, requestKey } = request.reviewScope ? question(request) : fullQuestion ?? question(request);
   // Preserve any already-paid full question on replay. A new repair question
   // can omit ONLY siblings with matching image/geometry/identity approvals.
-  if (!incremental && recovering && scene.sceneVersion === 12 && !extraPlan && protectedRows.size > 0 && protectedRows.size < entries.length
+  if (!incremental && recovering && hasLocalPatchCapability(scene.sceneVersion, "integratedQuality") && !extraPlan && protectedRows.size > 0 && protectedRows.size < entries.length
     && !await budget.readRequest(worldId, requestKey)) {
     const unapproved = new Set(entries.filter(e => !protectedRows.has(e.row.id)).map(e => e.hide.id));
     request = { ...request, reviewScope: "unapproved-only/v1", hides: request.hides.filter(h => unapproved.has(h.hideId)) };
@@ -376,7 +377,7 @@ export async function reviewLocalPatchBoard(c: Container, input: { gameId: strin
   const calibrated = dual || playerReviewEnabled();
   const preparation = { includePlayerCandidates: calibrated, skipApprovedEvidence: true, ...(options.decideRetained ? { decideRetained: true } : {}) };
   let prepared = await prepareLocalPatchBoardReview(c, input, deps, { ...preparation, ...(dual ? { playerReview: true } : {}) });
-  if (!dual && prepared.ready && calibrated && prepared.scene.sceneVersion === 12 && !prepared.extraPlan) {
+  if (!dual && prepared.ready && calibrated && hasLocalPatchCapability(prepared.scene.sceneVersion, "integratedQuality") && !prepared.extraPlan) {
     const suppliedIds = new Set(prepared.request.hides.map(h => h.hideId));
     const selected = prepared.entries.filter(e => suppliedIds.has(e.hide.id));
     // Existing purchases, including unknown/pending ones, keep their exact
@@ -384,13 +385,15 @@ export async function reviewLocalPatchBoard(c: Container, input: { gameId: strin
     if (selected.some(e => needsPlayerReview(e.row)) || !await prepared.budget.readRequest(prepared.worldId, prepared.requestKey))
       prepared = await prepareLocalPatchBoardReview(c, input, deps, { ...preparation, playerReview: true });
   }
+  if (prepared.ready && prepared.scene.sceneVersion === 13 && !dual)
+    throw Error("DETECTIVES_REVIEW: the pinned independent dual roles are required before purchase");
   if (!prepared.ready) return { state: "alreadyReviewed" in prepared && prepared.boardComplete ? "done" : "pending",
     reason: "alreadyReviewed" in prepared && prepared.boardComplete ? null : prepared.reason, costCents: 0,
     replayed: "alreadyReviewed" in prepared };
   const { scene, game, budget, worldId, identity, sheet, entries, request, fingerprint,
     requestKey, settings, strict, reviewVersion, composed, extraPlan, protectedRows, recovering, prompt, evidenceReviewAttempt } = prepared;
   const boardComplete = entries.length === prepared.board.hides.length;
-  if ((recovering || scene.sceneVersion === 12) && protectedRows.size === entries.length)
+  if ((recovering || hasLocalPatchCapability(scene.sceneVersion, "integratedQuality")) && protectedRows.size === entries.length)
     return { state: boardComplete ? "done" : "pending", reason: boardComplete ? null : "Other appearances await generation or review", costCents: 0, replayed: true };
   demand(game.ownerId, "A review requires its verified owner");
   if (!options.decideRetained) {
@@ -408,7 +411,7 @@ export async function reviewLocalPatchBoard(c: Container, input: { gameId: strin
   if (evaluated?.kind === "waiting") return evaluated.outcome;
   const bought = evaluated?.bought ?? await purchaseOnce({ ledger: budget, store: new LocalPatchRetainedPurchaseStore(c, game.id, budget) }, {
     worldId, requestKey, scope: "judge", operationFingerprint: fingerprint,
-    reserveMicroUsd: request.reviewScope ? 200_000 + 100_000 * request.hides.length : recovering || scene.sceneVersion === 11 || scene.sceneVersion === 12 ? 500_000 : 30_000,
+    reserveMicroUsd: request.reviewScope ? 200_000 + 100_000 * request.hides.length : recovering || scene.sceneVersion === 11 || hasLocalPatchCapability(scene.sceneVersion, "integratedQuality") ? 500_000 : 30_000,
     ...(input.deadlineAt === undefined ? {} : { dispatchWindow: { deadlineAt: input.deadlineAt,
       needMs: LOCAL_PATCH_MIN_PROVIDER_MS.judge + LOCAL_PATCH_PHASE_MARGIN_MS, retainMs: LOCAL_PATCH_PHASE_MARGIN_MS } }),
     buy: async ({ timeoutMs }) => {

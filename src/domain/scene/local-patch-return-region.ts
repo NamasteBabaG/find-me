@@ -44,17 +44,17 @@ export function authoredLocalPatchReturnContract(input: {
   sourcePlacement?: { manifestSha256: string; basePlacementSha256: string };
 }) {
   const { source, crop } = input;
-  if (input.contentVersion !== 12 || !input.boardId || !input.hideId
+  if (![12, 13].includes(input.contentVersion) || input.contentVersion === 13 && !input.sourcePlacement || !input.boardId || !input.hideId
     || !source.art.startsWith("public/scenes/") || !/^[a-f0-9]{64}$/.test(source.sha256)
     || !Number.isSafeInteger(source.width) || !Number.isSafeInteger(source.height)
     || source.width < 1 || source.height < 1 || crop.left + crop.width > source.width
     || crop.top + crop.height > source.height)
-    throw Error("LOCAL_PATCH: authored return requires its pinned v12 source geometry");
+    throw Error("LOCAL_PATCH: authored return requires its pinned integrated-family source geometry");
   if (input.sourcePlacement && (Object.keys(input.sourcePlacement).sort().join(",") !== "basePlacementSha256,manifestSha256"
     || ![input.sourcePlacement.manifestSha256, input.sourcePlacement.basePlacementSha256].every(v => /^[a-f0-9]{64}$/.test(v))))
     throw Error("LOCAL_PATCH: invalid immutable source-placement binding");
   const returned = localPatchReturnRegion(crop, input.child, input.authored);
-  return { version: AUTHORED_PATCH_COMPOSITION_VERSION, contentVersion: 12 as const,
+  return { version: AUTHORED_PATCH_COMPOSITION_VERSION, contentVersion: input.contentVersion as 12 | 13,
     boardId: input.boardId, hideId: input.hideId, source: { ...source }, crop: { ...crop },
     child: { ...input.child }, local: returned.local, region: returned.region,
     ...(input.sourcePlacement ? { sourcePlacement: { manifestSha256: input.sourcePlacement.manifestSha256, basePlacementSha256: input.sourcePlacement.basePlacementSha256 } } : {}) };

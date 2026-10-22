@@ -1,3 +1,4 @@
+import { hasLocalPatchCapability } from "../../domain/scene/local-patch-family";
 import sharp from "sharp";
 import { LEAN_WARM_HAT_WARDROBE, SUBJECT_PAINTER_V2, SUBJECT_PAINTER_V3, SUBJECT_PAINTER_V4, locatedDefects, subjectRenderDirectionV2, subjectRenderDirectionV3,
   subjectRenderDirectionV4 } from "../../domain/generation/subject-painter";
@@ -138,10 +139,10 @@ export function subjectRefusalOf(prior: unknown, plan: SubjectPlan, ageYears: nu
 export async function subjectDirectionFor(c: Pick<Container, "db" | "storage">, gameId: string, hideId: string,
   contentVersion: number, judgeJson: string | null,
   painter: { basePolicySha256?: string; attemptNumber?: number; forceMedium?: boolean } = {}): Promise<LocalPatchAttemptInput["subjectDirection"]> {
-  if (contentVersion !== 12) return undefined;
+  if (!hasLocalPatchCapability(contentVersion, "subjectEnrollment")) return undefined;
   const upgrade = await subjectUpgradeOf(c.db, gameId);
   if (!upgrade) return undefined;
-  const plan = subjectPlanOfHide(hideId);
+  const plan = subjectPlanOfHide(hideId, contentVersion);
   if (!plan) throw Error(`SUBJECT_PLAN: enrolled ${hideId} has no subject plan`);
   let prior: unknown = null;
   try { prior = JSON.parse(judgeJson ?? "null"); } catch { prior = null; }
@@ -195,7 +196,7 @@ export async function subjectDirectionFor(c: Pick<Container, "db" | "storage">, 
  * subject result that is not a pass can never leave the verdict acceptable.
  */
 export function withSubject(verdicts: LocalPatchBoardJudgeResult["verdicts"], hideId: string, reading: Extract<SubjectReading, { ok: true }>,
-  reader: QualityReader): LocalPatchBoardJudgeResult["verdicts"] {
+  reader: QualityReader, sceneVersion = 12): LocalPatchBoardJudgeResult["verdicts"] {
   const current = verdicts[hideId];
   if (!current || reading.disposition === "pass") return verdicts;
   const wire = Object.fromEntries(Object.entries(current).filter(([key]) =>
@@ -206,7 +207,7 @@ export function withSubject(verdicts: LocalPatchBoardJudgeResult["verdicts"], hi
     const faults = reading.faults.filter(f => (failed as readonly string[]).includes(f.check))
       .map(f => ({ check: SUBJECT_REPAIR_ROUTE[f.check as typeof failed[number]], where: `SUBJECT ${f.check}: ${f.where}`.slice(0, 300) }));
     return { ...verdicts, [hideId]: parseLocalPatchVerdict({ ...wire, ...Object.fromEntries(routed.map(k => [k, "fail"])), verdict: "fail",
-      reason: "Independent subject review found a located subject defect", faults: [...current.faults, ...faults].slice(0, 16) }, 12, reader) };
+      reason: "Independent subject review found a located subject defect", faults: [...current.faults, ...faults].slice(0, 16) }, sceneVersion, reader) };
   }
   const uncertain = SUBJECT_CHECKS.filter(k => reading.checks[k] !== "pass");
   // An unclassified fault beside all-pass checks is still not a pass.
@@ -216,7 +217,7 @@ export function withSubject(verdicts: LocalPatchBoardJudgeResult["verdicts"], hi
   const routed = [...new Set([...targets.map(k => SUBJECT_REPAIR_ROUTE[k]), "childPresent"])];
   return { ...verdicts, [hideId]: parseLocalPatchVerdict({ ...wire, ...Object.fromEntries(routed.map(k => [k, "unsure"])), verdict: "unsure",
     reason: "Independent subject review could not establish the subject for these pixels",
-    faults: current.faults.filter(f => !(routed as readonly string[]).includes(f.check)) }, 12, reader) };
+    faults: current.faults.filter(f => !(routed as readonly string[]).includes(f.check)) }, sceneVersion, reader) };
 }
 
 /** The codes a v2 refusal names, for the stage's record and the next painting: its failed or
@@ -233,7 +234,7 @@ export function subjectV2RefusalCodes(reading: Extract<SubjectReadingV2, { ok: t
  * with that reason. A pass the collection accepts leaves the verdict as the quality reader read it.
  */
 export function withSubjectV2(verdicts: LocalPatchBoardJudgeResult["verdicts"], hideId: string, reading: Extract<SubjectReadingV2, { ok: true }>,
-  collectionRefusal: string | null, reader: QualityReader): LocalPatchBoardJudgeResult["verdicts"] {
+  collectionRefusal: string | null, reader: QualityReader, sceneVersion = 12): LocalPatchBoardJudgeResult["verdicts"] {
   const current = verdicts[hideId];
   if (!current || reading.disposition === "pass" && !collectionRefusal) return verdicts;
   const wire = Object.fromEntries(Object.entries(current).filter(([key]) =>
@@ -247,11 +248,11 @@ export function withSubjectV2(verdicts: LocalPatchBoardJudgeResult["verdicts"], 
     return { ...verdicts, [hideId]: parseLocalPatchVerdict({ ...wire, ...Object.fromEntries(routed.map(k => [k, "fail"])), verdict: "fail",
       reason: reading.disposition === "repair" ? "Independent subject review found a located subject defect"
         : "This look already covers a third of the world; this appearance is repainted for variety",
-      faults: [...current.faults, ...located].slice(0, 16) }, 12, reader) };
+      faults: [...current.faults, ...located].slice(0, 16) }, sceneVersion, reader) };
   }
   const uncertain = SUBJECT_CHECKS_V2.filter(k => reading.checks[k] !== "pass");
   const routed = [...new Set([...uncertain.map(k => SUBJECT_REPAIR_ROUTE_V2[k]), "childPresent"])];
   return { ...verdicts, [hideId]: parseLocalPatchVerdict({ ...wire, ...Object.fromEntries(routed.map(k => [k, "unsure"])), verdict: "unsure",
     reason: "Independent subject review could not establish the subject for these pixels",
-    faults: current.faults.filter(f => !(routed as readonly string[]).includes(f.check)) }, 12, reader) };
+    faults: current.faults.filter(f => !(routed as readonly string[]).includes(f.check)) }, sceneVersion, reader) };
 }

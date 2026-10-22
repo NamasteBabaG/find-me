@@ -65,7 +65,7 @@ export async function nextPendingGame(c: Container): Promise<string | null> {
         // Paused by this deployment's spend guard: looked at again every ten minutes, never claimed meanwhile.
         { NOT: { jobs: { some: { currentStep: LOCAL_PATCH_SPEND_PAUSED, updatedAt: { gt: new Date(Date.now() - LOCAL_PATCH_SPEND_PAUSE_RECHECK_MS) } } } } },
         { NOT: { jobs: { some: { currentStep: LOCAL_PATCH_QUALITY_FAILED } }, OR: [
-          { scenes: { none: {} } }, { scenes: { some: { sceneVersion: { notIn: [10, 11, 12] } } } },
+          { scenes: { none: {} } }, { scenes: { some: { sceneVersion: { notIn: [10, 11, 12, 13] } } } },
         ] } },
         { NOT: { styleVersion: LOCAL_PATCH_STYLE, status: "TARGETS_GENERATING", jobs: { some: {
           status: "RUNNING", updatedAt: { gte: new Date(Date.now() - LOCAL_PATCH_LEASE_MS) },

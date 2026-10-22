@@ -33,7 +33,11 @@ describe("search level", () => {
     expect(() => detectiveRelease([{ worldSlug: "journey", styleVersion: "s", sceneVersion: 13 }, { worldSlug: "journey", styleVersion: "s", sceneVersion: 13 }], "s")).toThrow();
   });
 
-  it("sells no Detectives world until a complete release is registered", () => {
-    expect(DETECTIVE_RELEASES).toEqual([]);
+  it("registers only the complete Journey13 local-patch family with no legacy-engine fallback", () => {
+    expect(DETECTIVE_RELEASES).toEqual([{ worldSlug: "journey", styleVersion: "local-patch-world-v1", sceneVersion: 13 }]);
+    const release = detectiveRelease(DETECTIVE_RELEASES, "local-patch-world-v1");
+    expect(release?.sceneVersion).toBe(13);
+    expect([...release!.worlds]).toEqual(["journey"]);
+    expect(detectiveRelease(DETECTIVE_RELEASES, "collage-v1")).toBeNull();
   });
 });

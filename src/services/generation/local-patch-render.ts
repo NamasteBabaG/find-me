@@ -1,3 +1,4 @@
+import { hasLocalPatchCapability } from "../../domain/scene/local-patch-family";
 import { isCollectionVersion } from "../../domain/scene/local-patch-versions";
 import { SUBJECT_PAINTER_V2, SUBJECT_PAINTER_V3, SUBJECT_PAINTER_V4, isPlanLedPainter, type SubjectPainterVersion } from "../../domain/generation/subject-painter";
 import { localPatchReturnRegion, authoredLocalPatchReturnContract, AUTHORED_PATCH_COMPOSITION_VERSION, type AuthoredLocalPatchReturnContract, type LocalPatchCompositionVersion } from "../../domain/scene/local-patch-return-region";
@@ -331,6 +332,10 @@ export async function renderLocalPatchHide(deps: LocalPatchRenderDeps, input: Lo
   if (input.expectedPromptVersion !== undefined && input.expectedPromptVersion !== promptVersionOf(input)) {
     throw new Error(`LOCAL_PATCH: prompt provenance conflict; stored ${input.expectedPromptVersion}, selected ${promptVersionOf(input)}`);
   }
+  if (input.contentVersion === 13 && (input.paintRecipe !== "scene-integration-v8" || deps.renderPolicySha256 !== localPatchRenderPolicySha256(LOCAL_PATCH_IMAGE_POLICY)))
+    throw Error("LOCAL_PATCH: Detective painting requires its pinned v19 MEDIUM recipe");
+  if (hasLocalPatchCapability(input.contentVersion, "requiresFamilyPin") && !input.placementContext)
+    throw Error("LOCAL_PATCH: Detective rendering requires its trusted source-family context");
   if (input.placementContext) {
     assertTrustedSourcePlacementContext(input.placementContext);
     if (input.worldId !== `${input.placementContext.gameId}:board-wizard` || input.contentVersion !== input.placementContext.sceneVersion)
@@ -338,7 +343,7 @@ export async function renderLocalPatchHide(deps: LocalPatchRenderDeps, input: Lo
     assertAuthoredLocalPatchPlacement(input.board, input.hide, input.contentVersion!, input.placementContext);
   }
   if (input.hide.returnRect) {
-    if (input.contentVersion !== 12 || input.recoveryDirective)
+    if (!hasLocalPatchCapability(input.contentVersion, "integratedQuality") || input.recoveryDirective)
       throw Error("LOCAL_PATCH: authored return windows require their pinned v12 recipe");
     localPatchReturnRegion(cropOf(input.hide), maskForHide(input.hide), input.hide.returnRect);
   }
@@ -398,7 +403,7 @@ async function renderLocalPatchHideInner(deps: LocalPatchRenderDeps, input: Loca
   const conflict = recovery && foreground ? foregroundPlanConflict(foreground, recovery) : null;
   if (conflict) throw new Error(`LOCAL_PATCH_FOREGROUND: ${hide.id}: ${conflict}`);
   const restyling = recovery?.action === "restyle-retained";
-  if (restyling ? input.contentVersion !== 12 || !input.restyleSourcePng?.length : input.restyleSourcePng !== undefined)
+  if (restyling ? !hasLocalPatchCapability(input.contentVersion, "integratedQuality") || !input.restyleSourcePng?.length : input.restyleSourcePng !== undefined)
     throw Error("Retained surface repair requires a v12 diagnosis and authenticated source");
   const mask = recovery?.protectedCore ?? maskForHide(hide);
   if (input.adaptiveRecovery && (attempt !== 3 || !isLocalPatchStrictVersion(input.contentVersion) || input.recoveryDirective)) {
@@ -421,7 +426,7 @@ async function renderLocalPatchHideInner(deps: LocalPatchRenderDeps, input: Loca
   const authoredWardrobe = hide.wardrobe ?? board.wardrobe;
   const legacy = input.subjectDirection?.legacy;
   const directions = input.subjectDirection ? [input.subjectDirection, ...(Array.isArray(legacy) ? legacy : legacy ? [legacy as SubjectRenderDirection] : [])] : [];
-  if (directions.some(direction => input.contentVersion !== 12 || restyling || !direction.text.trim()
+  if (directions.some(direction => !hasLocalPatchCapability(input.contentVersion, "integratedQuality") || restyling || !direction.text.trim()
     || direction.painterVersion !== undefined && !isPlanLedPainter(direction.painterVersion)
     || sha(direction.photoPng) !== direction.photoSha256 || !["low", "medium"].includes(direction.quality)
     || direction.policySha256 !== localPatchRenderPolicySha256(direction.quality === "low" ? LOCAL_PATCH_LOW_IMAGE_POLICY : LOCAL_PATCH_IMAGE_POLICY)
@@ -557,8 +562,8 @@ async function renderLocalPatchHideInner(deps: LocalPatchRenderDeps, input: Loca
   const restored = (shipping: Buffer) => occluded ? { foreground: foregroundRecord(foreground!, occluded.restoredPixels, sha(shipping)) } : {};
   const bounded = isLocalPatchStrictVersion(input.contentVersion)
     ? await composeBoundedLocalPatch(input.composedPng, crop, occluded?.png ?? patchPng, mask, {
-      requireAligned: input.contentVersion === 12 && !playerReviewEnabled(),
-      playerReview: input.contentVersion === 12 && playerReviewEnabled(),
+      requireAligned: hasLocalPatchCapability(input.contentVersion, "integratedQuality") && !playerReviewEnabled(),
+      playerReview: hasLocalPatchCapability(input.contentVersion, "integratedQuality") && playerReviewEnabled(),
       ...(hide.returnRect ? { returnRect: hide.returnRect } : {}),
     }) : null;
   const seam = bounded?.report ?? await analysePatchSeam(input.composedPng, crop, patchPng, { allowedRect: { left: 0, top: 0, ...LOCAL_PATCH_CROP } });

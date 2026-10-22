@@ -16,17 +16,20 @@ import { closeDraftCheckout } from "../checkout-close.service";
 import { startCheckout } from "../order.service";
 import { beginWorldPurchase } from "../world-purchase.service";
 import { boardsOfWorlds } from "../world-catalog.service";
+import { LOCAL_PATCH_LEAN_RELEASE } from "../generation/lean-release";
+import { DUAL_VISUAL_REVIEW_V3 } from "../generation/visual-review-release";
+import { sourceFamilyAuditId, sourcePlacementReleaseAuditId, sourcePlacementReleaseOf } from "../generation/source-placement-release";
 
-// Synthetic flags and synthetic Detectives releases. They point journey (and, where a test says
-// so, kingdom) at the existing v12 boards ONLY to exercise the plumbing; no real Detectives content is implied.
+// Synthetic accounts/payment/photos, with the real prospective13 content family and immutable base pins.
+// No image or review provider is called by these creator/payment-boundary checks.
 const f = vi.hoisted(() => ({ env: { APP_ENV: "qa", SEARCH_LEVEL_CHOICE: "off" } as Record<string, string>, releases: [] as DetectiveRelease[] }));
 vi.mock("@/lib/env", () => ({ env: () => f.env, spendGuard: () => ({ appEnv: "qa", realGeneration: false, testers: [] }) }));
 vi.mock("@/domain/spend-policy", () => ({ spendAllowedFor: () => true }));
 vi.mock("../../../content/worlds/detective-releases", () => ({ get DETECTIVE_RELEASES() { return f.releases; } }));
 
 const STYLE = "local-patch-world-v1";
-const JOURNEY_AT_12: DetectiveRelease = { worldSlug: "journey", styleVersion: STYLE, sceneVersion: 12 };
-const KINGDOM_AT_12: DetectiveRelease = { ...JOURNEY_AT_12, worldSlug: "kingdom" };
+const JOURNEY_AT_13: DetectiveRelease = { worldSlug: "journey", styleVersion: STYLE, sceneVersion: 13 };
+const INVALID_KINGDOM_AT_13: DetectiveRelease = { ...JOURNEY_AT_13, worldSlug: "kingdom" };
 let db: PrismaClient, scratch: string, photo: Buffer, c: Container, sequence = 0;
 beforeAll(async () => {
   scratch = mkdtempSync(path.join(realpathSync(tmpdir()), "findme-search-level-"));
@@ -34,6 +37,7 @@ beforeAll(async () => {
   await applyTestSchema(db);
   photo = await sharp({ create: { width: 400, height: 400, channels: 3, background: "#71869a" } }).png().toBuffer();
   c = { db, storage: new DbStorage(db), payment: new MockPaymentProvider("https://levels.invalid", "synthetic-level-secret"), appUrl: "https://levels.invalid",
+    leanRelease: LOCAL_PATCH_LEAN_RELEASE, pinDualVisualReview: true, dualVisualReviewRelease: DUAL_VISUAL_REVIEW_V3, visualReview: {},
     analytics: { track: vi.fn() }, generation: { createAvatar: vi.fn(() => { throw Error("No generation authorized"); }) } } as unknown as Container;
 });
 afterAll(async () => {
@@ -41,13 +45,14 @@ afterAll(async () => {
   const absolute = path.resolve(scratch);
   if (path.dirname(absolute) === realpathSync(tmpdir()) && path.basename(absolute).startsWith("findme-search-level-")) rmSync(absolute, { recursive: true, force: true });
 });
-beforeEach(() => { f.env = { APP_ENV: "qa", SEARCH_LEVEL_CHOICE: "on" }; f.releases = [JOURNEY_AT_12]; });
+beforeEach(() => { f.env = { APP_ENV: "qa", SEARCH_LEVEL_CHOICE: "on", LOCAL_PATCH_PROMPT_RELEASE: "v19",
+  LOCAL_PATCH_IDENTITY_SOURCE: "full-source-v1" }; f.releases = [JOURNEY_AT_13]; });
 // A failed assertion must not leave a provider or transaction spy counting into the next test.
 afterEach(() => { vi.restoreAllMocks(); });
 
 /** A draft made the way the name step makes one: pinned exactly when its cards are shown. */
 async function named(input: { ageYears: number; searchLevel?: "explorers" | "detectives" }) {
-  const draft = await createDraft(c, null, "he", { askSearchLevel: (await searchLevelTerms(c, null)).asked });
+  const draft = await createDraft(c, null, "he", { askSearchLevel: (await searchLevelTerms(c, null)).asked, ...(input.searchLevel === undefined ? {} : { searchLevel: input.searchLevel }) });
   expect(await chooseDraftChild(db, { gameId: draft.gameId, actorId: null, draftToken: draft.draftToken, familyChildId: null, name: "Synthetic", ...input })).toEqual({ ok: true });
   return draft;
 }
@@ -83,7 +88,7 @@ describe("whether the parent is asked", () => {
     expect(await searchLevelChoice(c, STYLE)).toEqual({ shown: false, detectives: false });
     f.env.SEARCH_LEVEL_CHOICE = "on"; f.releases = [];
     expect(await searchLevelChoice(c, STYLE)).toEqual({ shown: false, detectives: false });
-    f.releases = [JOURNEY_AT_12];
+    f.releases = [JOURNEY_AT_13];
     expect(await searchLevelChoice(c, STYLE)).toEqual({ shown: true, detectives: true });
     expect(await searchLevelChoice(c, STYLE, "journey")).toEqual({ shown: true, detectives: true });
     expect(await searchLevelChoice(c, STYLE, "kingdom")).toEqual({ shown: false, detectives: false });
@@ -141,15 +146,17 @@ describe("the level on the draft", () => {
     expect(await game(draft.gameId)).toMatchObject({ searchLevel: "detectives", childProfile: { ageYears: 7 } });
   });
 
-  it("drops boards pinned for the other level, and keeps them when the level stays", async () => {
+  it("keeps a sealed source family and its boards when a cross-family choice is forged", async () => {
     const draft = await photographed({ ageYears: 8, searchLevel: "explorers" });
     expect(await selectPackage(c, draft.gameId, "ONE_WORLD")).toEqual({ ok: true });
     expect((await game(draft.gameId)).scenes).toHaveLength(9);
     const again = { gameId: draft.gameId, actorId: null, draftToken: draft.draftToken, familyChildId: null, name: "Synthetic", ageYears: 8 };
     expect(await chooseDraftChild(db, { ...again, searchLevel: "explorers" })).toEqual({ ok: true });
     expect((await game(draft.gameId)).scenes).toHaveLength(9);
-    expect(await chooseDraftChild(db, { ...again, searchLevel: "detectives" })).toEqual({ ok: true });
-    expect(await game(draft.gameId)).toMatchObject({ searchLevel: "detectives", sceneCount: 0, scenes: [] });
+    const before = await game(draft.gameId), pins = await db.auditLog.findMany({ where: { entityId: draft.gameId } });
+    expect(await chooseDraftChild(db, { ...again, searchLevel: "detectives" })).toMatchObject({ ok: false, code: "SEARCH_LEVEL_UNAVAILABLE" });
+    expect(await game(draft.gameId)).toEqual(before);
+    expect(await db.auditLog.findMany({ where: { entityId: draft.gameId } })).toEqual(pins);
   });
 
   it("a draft from before the cards keeps its boards when the parent then chooses Explorers", async () => {
@@ -169,7 +176,7 @@ describe("boards and checkout follow the level", () => {
     expect(await selectPackage(c, draft.gameId, "ONE_WORLD")).toEqual({ ok: true });
     const pinned = await game(draft.gameId);
     expect(pinned.scenes.map(s => s.sceneSlug)).toEqual(boardsOfWorlds(["journey"]));
-    expect(new Set(pinned.scenes.map(s => s.sceneVersion))).toEqual(new Set([12]));
+    expect(new Set(pinned.scenes.map(s => s.sceneVersion))).toEqual(new Set([13]));
     expect(await selectWorlds(c, draft.gameId, ["kingdom"])).toMatchObject({ ok: false, code: "SCENE_UNAVAILABLE" });
   });
 
@@ -177,7 +184,7 @@ describe("boards and checkout follow the level", () => {
     const draft = await photographed({ ageYears: 9, searchLevel: "detectives" });
     f.releases = [];
     expect(await selectPackage(c, draft.gameId, "ONE_WORLD")).toMatchObject({ ok: false, code: "SEARCH_LEVEL_UNAVAILABLE" });
-    f.releases = [JOURNEY_AT_12]; f.env.SEARCH_LEVEL_CHOICE = "off";
+    f.releases = [JOURNEY_AT_13]; f.env.SEARCH_LEVEL_CHOICE = "off";
     expect(await selectPackage(c, draft.gameId, "ONE_WORLD")).toMatchObject({ ok: false, code: "SEARCH_LEVEL_UNAVAILABLE" });
     expect((await game(draft.gameId)).scenes).toEqual([]);
   });
@@ -223,12 +230,12 @@ describe("boards and checkout follow the level", () => {
   });
 
   it("refuses a new checkout for a withdrawn Detectives world even while another world keeps that version", async () => {
-    f.releases = [JOURNEY_AT_12, KINGDOM_AT_12];
+    f.releases = [JOURNEY_AT_13, INVALID_KINGDOM_AT_13];
     const draft = await photographed({ ageYears: 8, searchLevel: "detectives" });
     expect(await selectPackage(c, draft.gameId, "ONE_WORLD")).toEqual({ ok: true });
-    expect(await selectWorlds(c, draft.gameId, ["kingdom"])).toEqual({ ok: true });
-    f.releases = [JOURNEY_AT_12];
-    expect((await worldsForDraft(c, STYLE, "detectives")).map(w => w.slug)).toEqual(["journey"]);
+    expect(await selectWorlds(c, draft.gameId, ["kingdom"])).toMatchObject({ ok: false, code: "SCENE_UNAVAILABLE" });
+    f.releases = [INVALID_KINGDOM_AT_13];
+    expect(await worldsForDraft(c, STYLE, "detectives")).toEqual([]);
     expect(await startCheckout(c, checkout(draft))).toMatchObject({ ok: false, code: "SEARCH_LEVEL_UNAVAILABLE" });
     expect(await orders(draft.gameId)).toEqual([]);
   });
@@ -244,7 +251,7 @@ describe("boards and checkout follow the level", () => {
     expect(await startCheckout(c, checkout(draft))).toMatchObject({ ok: false, code: "SEARCH_LEVEL_UNAVAILABLE" });
     await db.gameScene.update({ where: { id: stray.id }, data: { sceneSlug: stray.sceneSlug, sceneVersion: 11 } });
     expect(await detectiveSelectionEligible(c, await game(draft.gameId))).toBe(false);
-    await db.gameScene.update({ where: { id: stray.id }, data: { sceneVersion: 12 } });
+    await db.gameScene.update({ where: { id: stray.id }, data: { sceneVersion: 13 } });
     expect(await startCheckout(c, checkout(draft))).toMatchObject({ ok: true });
     expect(await orders(draft.gameId)).toHaveLength(1);
   });
@@ -361,4 +368,63 @@ describe("adding a world from the family area", () => {
     expect(await beginWorldPurchase(c, { ...input, worldSlug: "journey", searchLevel: "explorers" })).toMatchObject({ ok: false, code: "DRAFT_LOCKED" });
     expect(await games(input.familyChildId)).toBe(1);
   });
+});
+
+
+describe("atomic source-family creation", () => {
+  it("pins Detectives and all base policies before any scene, photo, order or job", async () => {
+    const draft = await named({ ageYears: 5, searchLevel: "detectives" });
+    expect(await sourcePlacementReleaseOf(db, draft.gameId)).toMatchObject({ familyId: "journey-detectives/v1", baseSceneVersion: 13,
+      searchLevel: "detectives", worldSlug: "journey", coverage: expect.any(Array) });
+    expect(await db.auditLog.findUnique({ where: { id: sourcePlacementReleaseAuditId(draft.gameId) } })).toBeNull();
+    expect(await db.auditLog.findUnique({ where: { id: sourceFamilyAuditId(draft.gameId) } })).not.toBeNull();
+    expect(await db.order.count({ where: { gameId: draft.gameId } })).toBe(0);
+    expect(await db.generationJob.count({ where: { gameId: draft.gameId } })).toBe(0);
+    expect((await game(draft.gameId)).scenes).toEqual([]);
+  });
+  it("offers and creates no Detective draft without the qualified full-source configuration", async () => {
+    const before = { games: await db.game.count(), audits: await db.auditLog.count(), profiles: await db.childProfile.count() };
+    f.env.LOCAL_PATCH_IDENTITY_SOURCE = "legacy";
+    await expect(createDraft(c, null, "he", { askSearchLevel: true, searchLevel: "detectives" })).rejects.toThrow("Detectives is unavailable");
+    expect({ games: await db.game.count(), audits: await db.auditLog.count(), profiles: await db.childProfile.count() }).toEqual(before);
+  });
+});
+
+
+it.each(["lean", "dual", "review", "prompt"] as const)("does not offer or create an unqualified Detective %s configuration", async key => {
+  const candidate = { ...c };
+  if (key === "lean") candidate.leanRelease = undefined;
+  if (key === "dual") candidate.pinDualVisualReview = false;
+  if (key === "review") candidate.visualReview = undefined;
+  if (key === "prompt") f.env.LOCAL_PATCH_PROMPT_RELEASE = "v18";
+  const count = await db.game.count();
+  expect(await worldsForDraft(candidate, STYLE, "detectives")).toEqual([]);
+  await expect(createDraft(candidate, null, "he", { searchLevel: "detectives", askSearchLevel: true })).rejects.toThrow("Detectives is unavailable");
+  expect(await db.game.count()).toBe(count);
+});
+
+it("rolls back already-created draft/base pins when the final family write fails", async () => {
+  const before = { games: await db.game.count(), audits: await db.auditLog.count(), profiles: await db.childProfile.count() };
+  const realTransaction = db.$transaction.bind(db) as unknown as (fn: (tx: import("@prisma/client").Prisma.TransactionClient) => Promise<unknown>, options: unknown) => Promise<unknown>;
+  let sawCreatedDraftAndPins = false;
+  const spy = vi.spyOn(db, "$transaction").mockImplementationOnce((async (fn: (tx: import("@prisma/client").Prisma.TransactionClient) => Promise<unknown>, options: unknown) =>
+    realTransaction(async tx => {
+      const audit = new Proxy(tx.auditLog, { get(target, key, receiver) {
+        if (key === "upsert") return async (args: { create: { action: string; entityId: string } }) => {
+          if (args.create.action === "generation:source-family-policy") {
+            sawCreatedDraftAndPins = await tx.game.count({ where: { id: args.create.entityId } }) === 1
+              && await tx.auditLog.count({ where: { entityId: args.create.entityId } }) >= 3;
+            throw Error("synthetic family storage interruption");
+          }
+          return target.upsert(args as never);
+        };
+        return Reflect.get(target, key, receiver);
+      } });
+      const wrapped = new Proxy(tx, { get(target, key, receiver) { return key === "auditLog" ? audit : Reflect.get(target, key, receiver); } });
+      return fn(wrapped);
+    }, options)) as unknown as typeof db.$transaction);
+  try { await expect(createDraft(c, null, "he", { askSearchLevel: true, searchLevel: "detectives" })).rejects.toThrow("synthetic family storage interruption"); }
+  finally { spy.mockRestore(); }
+  expect(sawCreatedDraftAndPins).toBe(true);
+  expect({ games: await db.game.count(), audits: await db.auditLog.count(), profiles: await db.childProfile.count() }).toEqual(before);
 });

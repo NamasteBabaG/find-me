@@ -1,3 +1,4 @@
+import { hasLocalPatchCapability } from "../../domain/scene/local-patch-family";
 import type { Container } from "../container";
 import { resolveLocalPatchBoardsForGame } from "./source-placement-release";
 import { needsSelfRepair } from "../../domain/scene/local-patch-self-repair";
@@ -85,7 +86,7 @@ export async function planLocalPatchEvidenceRecovery(c: Container, gameId: strin
             const context = placementContexts.find(context => context.sceneVersion === scene.sceneVersion)!;
             const sourceNeighbors = sourceNeighborQualityEvidence(context, hide.id, imageSha256, receipt);
             return await readRetainedAnswer(c.db, worldId, version, receipt.boardReview?.dual,
-              { hideId: hide.id, imageSha256, geometrySha256: binding.geometrySha256, identitySha256,
+              { ...(scene.sceneVersion === 13 ? { sceneVersion: 13 as const } : {}), hideId: hide.id, imageSha256, geometrySha256: binding.geometrySha256, identitySha256,
                 ...(hide.returnRect ? { authoredReturn: expectedAuthoredLocalPatchReturn(board!, hide, scene.sceneVersion, context)! } : {}),
                 ...(receipt.authoredRecovery ? { authoredRecovery: receipt.authoredRecovery as NonNullable<DualReviewProof["authoredRecovery"]> } : {}),
                 ...(sourceNeighbors ? { sourceNeighbors } : {}) });
@@ -129,7 +130,7 @@ export async function planLocalPatchEvidenceRecovery(c: Container, gameId: strin
     const continuityFirst = (sceneId: string) => Number(!rows.some(r => r.targetInstance.gameSceneId === sceneId && localPatchContinuityPending(r)));
     const asking = new Set(hides.filter(h => ["first-review", "continuity-review", "evidence-question"].includes(h.plan)).map(h => h.boardId));
     for (const scene of [...game.scenes].sort((a, b) => continuityFirst(a.id) - continuityFirst(b.id))) {
-      if (scene.sceneVersion !== 12 || !asking.has(scene.sceneSlug)
+      if (!hasLocalPatchCapability(scene.sceneVersion, "integratedQuality") || !asking.has(scene.sceneSlug)
         || rows.some(r => r.targetInstance.gameSceneId === scene.id && localPatchRetainedAnswerUndecided(r))) continue;
       let prepared;
       try { prepared = await prepareLocalPatchBoardReview(c, { gameId, sceneId: scene.id }, {}, { includePlayerCandidates: true, skipApprovedEvidence: true, playerReview: true }); }

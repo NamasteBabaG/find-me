@@ -1,3 +1,4 @@
+import { hasLocalPatchCapability } from "../../domain/scene/local-patch-family";
 import type { Prisma } from "@prisma/client";
 import { localPatchRuntimeContinuityVerdict } from "../../domain/scene/local-patch-body-continuity";
 import { SELF_REPAIR_COMPOSITION_VERSION, SELF_REPAIR_VERSION, selfRepairDecisionSchema } from "../../domain/scene/local-patch-self-repair";
@@ -28,7 +29,7 @@ export async function allowedDualPublication(db: Prisma.TransactionClient, input
     const version = await dualVisualReviewVersion(db, input.gameId);
     const receipt = JSON.parse(input.judgeJson ?? "null"), review = receipt?.boardReview;
     const proof = review?.dual as DualReviewProof | undefined;
-    if (!version || input.sceneVersion !== 12 || review?.version !== version || review.effort !== "high"
+    if (!version || proof?.sceneVersion !== (input.sceneVersion === 13 ? 13 : undefined) || !hasLocalPatchCapability(input.sceneVersion, "integratedQuality") || review?.version !== version || review.effort !== "high"
       || review.assessmentMode !== PLAYER_REVIEW_MODE || review.reviewScope !== "ready-only/v1"
       || !equal(review.reviewedHideIds, [input.hideId]) || receipt.reviewState !== "board-review-complete"
       || receipt.wireFault !== null || receipt.renderFault != null || receipt.judgedSha256 !== input.imageSha256
@@ -56,11 +57,11 @@ export async function allowedDualPublication(db: Prisma.TransactionClient, input
       || !await verifiedDualStage(db, worldId, proof.continuity, "head-continuity", { allowBackground: !!upgrade, allowLean: lean, authoredReviewBinding })) return false;
     if (upgrade && !await allowedSubject(db, worldId, upgrade, proof, input, lean)) return false;
     // Each answer is read by the reader its decision names, never a newer one.
-    const quality = readQualityStage(proof.quality, input.hideId);
+    const quality = readQualityStage(proof.quality, input.hideId, input.sceneVersion);
     const continuity = readContinuityStage(proof.continuity, input.hideId, version);
     return review.raw === proof.quality.raw && review.model === proof.quality.model
       && equal(quality, receipt.verdict)
-      && localPatchQualityDisposition(quality ?? null, 12, { hideId: input.hideId, reader: qualityStageReader(proof.quality) ?? QUALITY_READER_STRICT }).state === "acceptable"
+      && localPatchQualityDisposition(quality ?? null, input.sceneVersion, { hideId: input.hideId, reader: qualityStageReader(proof.quality) ?? QUALITY_READER_STRICT }).state === "acceptable"
       && !!continuity && localPatchRuntimeContinuityVerdict(continuity).disposition === "pass";
   } catch { return false; }
 }
@@ -71,7 +72,7 @@ export async function allowedDualPublication(db: Prisma.TransactionClient, input
  * collection refusal. Each stage is read only by its own policy's reader. */
 async function allowedSubject(db: Prisma.TransactionClient, worldId: string, upgrade: SubjectUpgradeReceipt, proof: DualReviewProof,
   input: LocalPatchPublicationBinding, lean = false): Promise<boolean> {
-  const subject = proof.subject, plan = subjectPlanOfHide(input.hideId);
+  const subject = proof.subject, plan = subjectPlanOfHide(input.hideId, input.sceneVersion);
   const v2 = subject?.subjectPolicy === SUBJECT_POLICY_V2 && subject.reader === SUBJECT_READER_V2;
   if (!subject || !plan || !(v2 || subject.subjectPolicy === SUBJECT_POLICY_VERSION && subject.reader === SUBJECT_READER)
     || subject.collectionRefusal !== undefined

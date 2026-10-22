@@ -1,3 +1,4 @@
+import { localPatchFamilyForVersion } from "../../domain/scene/local-patch-family";
 import sharp from "sharp";
 import { isLocalPatchAgeVersion, isLocalPatchStrictVersion } from "../../domain/scene/local-patch-catalog";
 import { LOCAL_PATCH_PORTRAIT_ONLY_REFERENCE_MODE, type LocalPatchReferenceMode } from "../../infra/generation/openai-local-patch";
@@ -34,7 +35,7 @@ export async function prepareLocalPatchIdentityReferences(sheet: Buffer, content
     // V12 paints a small scene figure. A full-resolution portrait encourages
     // photographic micro-detail absent from its neighbours. Retain geometry at
     // a comparable scale; the independent judge still gets the full portrait.
-    identityPng: await sharp(portrait).resize(contentVersion === 12 ? 192 : 1024, contentVersion === 12 ? 192 : 1024, { fit: "inside", withoutEnlargement: true }).png().toBuffer(),
+    identityPng: await sharp(portrait).resize(localPatchFamilyForVersion(contentVersion)?.capabilities.integratedQuality ? 192 : 1024, localPatchFamilyForVersion(contentVersion)?.capabilities.integratedQuality ? 192 : 1024, { fit: "inside", withoutEnlargement: true }).png().toBuffer(),
     judgeIdentityPng: await sharp(portrait).resize(512, 512, { fit: "inside", withoutEnlargement: true }).png().toBuffer(),
     ...(isLocalPatchAgeVersion(contentVersion)
       ? { referenceMode: LOCAL_PATCH_PORTRAIT_ONLY_REFERENCE_MODE }

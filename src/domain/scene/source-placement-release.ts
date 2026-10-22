@@ -35,7 +35,13 @@ export const sourcePlacementHideContractSchema = z.object({
   sourceNeighbors: z.object({ contract: sourceNeighborContractSchema, contractSha256: hex }).strict().nullable(),
   recovery: recoverySchema,
 }).strict();
-export type SourcePlacementHideContract = z.infer<typeof sourcePlacementHideContractSchema>;
+/** The original v12 decoder stays exact. Detectives has a separate schema;
+ * only shared algorithms accept the explicit discriminated union. */
+export const detectiveSourcePlacementHideContractSchema = sourcePlacementHideContractSchema.extend({ sceneVersion: z.literal(13) });
+export const sourcePlacementContractSchema = z.discriminatedUnion("sceneVersion", [sourcePlacementHideContractSchema, detectiveSourcePlacementHideContractSchema]);
+export type SourcePlacementHideContract = z.infer<typeof sourcePlacementContractSchema>;
+export const DETECTIVE_SOURCE_PLACEMENT_RELEASE_VERSION = "source-placement-release/v2" as const;
+export const DETECTIVE_SOURCE_FAMILY = "journey-detectives/v1" as const;
 export const sourcePlacementManifestSchema = z.object({
   version: z.literal(SOURCE_PLACEMENT_RELEASE_VERSION), releaseId: id, baseSceneVersion: z.literal(12),
   qualification: z.object({
@@ -160,7 +166,7 @@ export function sourcePlacementRecoveryGeometryAllowed(contract: SourcePlacement
   const contains = (outer: PatchRectangle, inner: PatchRectangle) => inner.left >= outer.left && inner.top >= outer.top
     && inner.left + inner.width <= outer.left + outer.width && inner.top + inner.height <= outer.top + outer.height;
   try {
-    const g = geometrySchema.parse(geometry), c = sourcePlacementHideContractSchema.parse(contract);
+    const g = geometrySchema.parse(geometry), c = sourcePlacementContractSchema.parse(contract);
     if (!same(g.crop, c.effective.crop) || !contains(c.effective.child, g.child) || !contains(c.effective.returnRect, g.returnRect)) return false;
     localPatchReturnRegion(g.crop, g.child, g.returnRect);
     if (!c.sourceNeighbors) return false; // no invented annotation authority for unlisted hides
@@ -168,4 +174,93 @@ export function sourcePlacementRecoveryGeometryAllowed(contract: SourcePlacement
     const prepared = prepareSourceNeighborContract({ ...c.sourceNeighbors.contract, ...context }, context);
     return prepared.ok && c.recovery.minimumFeather === LOCAL_PATCH_RETURN_FEATHER;
   } catch { return false; }
+}
+
+/** A new content family is a separate release. Its corrected runtime boards
+ * are the immutable base before enrollment; a paid recovery still cannot move
+ * their crop, pose, source or authored return envelope. */
+export const detectiveSourcePlacementManifestSchema = z.object({
+  version: z.literal(DETECTIVE_SOURCE_PLACEMENT_RELEASE_VERSION), releaseId: id,
+  familyId: z.literal(DETECTIVE_SOURCE_FAMILY), baseSceneVersion: z.literal(13),
+  qualification: sourcePlacementManifestSchema.shape.qualification.extend({
+    familyId: z.literal(DETECTIVE_SOURCE_FAMILY), sceneVersion: z.literal(13),
+  }),
+  inventory: z.array(detectiveSourcePlacementHideContractSchema).length(27),
+}).strict();
+export type DetectiveSourcePlacementManifest = z.infer<typeof detectiveSourcePlacementManifestSchema>;
+export type DetectiveSourcePlacementBaseBoard = { board: LocalPatchBoard; sceneVersion: 13;
+  source: z.infer<typeof sourceSchema> };
+export type DetectiveSourceNeighborhood = { boardId: string; hideId: string;
+  neighbors: readonly SourceNeighborContract["neighbors"][number][] };
+
+function detectiveBaseEntries(base: readonly DetectiveSourcePlacementBaseBoard[]) {
+  const entries = new Map<string, z.infer<typeof detectiveSourcePlacementHideContractSchema>>();
+  const hideIds = new Set<string>();
+  demand(base.length === 9 && new Set(base.map(b => b.board.board)).size === 9, "nine unique Detective boards are required");
+  for (const input of base) {
+    const board = LocalPatchBoardSchema.parse(input.board), source = sourceSchema.parse(input.source);
+    demand(input.sceneVersion === 13 && board.art === source.art && board.hides.length === 3, "Detective base scene/source/inventory differs");
+    assertPlaceable(board, source);
+    for (const hide of board.hides) {
+      const crop = cropOf(hide), child = maskForHide(hide), returned = localPatchReturnRegion(crop, child, hide.returnRect);
+      const geometry = { crop, child, returnRect: returned.local };
+      const entry: z.infer<typeof detectiveSourcePlacementHideContractSchema> = {
+        boardId: board.board, hideId: hide.id, sceneVersion: 13, source,
+        basePlacementSha256: sourcePlacementSha256({ sceneVersion: 13, source, board: { ...board, hides: undefined }, hide }),
+        base: geometry, effective: geometry, sourceNeighbors: null,
+        recovery: { version: SOURCE_PLACEMENT_RECOVERY_VERSION, crop: "fixed", childEnvelope: "within-authored",
+          returnWindow: "within-authored", minimumFeather: 12, sourceHeads: "not-annotated" },
+      };
+      const address = key(board.board, hide.id);
+      demand(!entries.has(address) && !hideIds.has(hide.id), "duplicate Detective hide");
+      hideIds.add(hide.id); entries.set(address, entry);
+    }
+  }
+  return entries;
+}
+
+/** Source heads are measured on the new family art, not inherited from another
+ * board with the same slug. Listed coverage is required for every new placement
+ * in this release, and does not claim recognition of a whole board's crowd. */
+export function materializeDetectiveSourcePlacementRelease(input: { releaseId: string;
+  base: readonly DetectiveSourcePlacementBaseBoard[]; neighborhoods: readonly DetectiveSourceNeighborhood[] }): DetectiveSourcePlacementManifest {
+  const entries = detectiveBaseEntries(input.base), seen = new Set<string>();
+  for (const neighborhood of input.neighborhoods) {
+    const address = key(neighborhood.boardId, neighborhood.hideId), entry = entries.get(address);
+    demand(entry && !seen.has(address), "unknown or repeated Detective neighborhood"); seen.add(address);
+    const context = { boardId: entry!.boardId, hideId: entry!.hideId, source: entry!.source,
+      crop: entry!.effective.crop, returnRect: entry!.effective.returnRect };
+    const prepared = prepareSourceNeighborContract({ version: SOURCE_NEIGHBOR_CONTRACT_VERSION, ...context,
+      neighbors: neighborhood.neighbors }, context);
+    demand(prepared.ok, prepared.ok ? "" : `invalid Detective source annotations: ${prepared.fault.code}/${prepared.fault.path}`);
+    if (prepared.ok) entry!.sourceNeighbors = { contract: prepared.contract, contractSha256: prepared.contractSha256 };
+    entry!.recovery = { ...entry!.recovery, sourceHeads: "intact-at-boundary" };
+  }
+  demand(seen.size === entries.size, "complete Detective placement neighborhood coverage is required");
+  return validateDetectiveSourcePlacementRelease({ version: DETECTIVE_SOURCE_PLACEMENT_RELEASE_VERSION,
+    releaseId: input.releaseId, familyId: DETECTIVE_SOURCE_FAMILY, baseSceneVersion: 13,
+    qualification: { ...SOURCE_PLACEMENT_QUALIFICATION, familyId: DETECTIVE_SOURCE_FAMILY, sceneVersion: 13 },
+    inventory: [...entries.values()] }, input.base);
+}
+
+export function validateDetectiveSourcePlacementRelease(value: unknown,
+  base: readonly DetectiveSourcePlacementBaseBoard[]): DetectiveSourcePlacementManifest {
+  const manifest = detectiveSourcePlacementManifestSchema.parse(value), expected = detectiveBaseEntries(base), seen = new Set<string>();
+  for (const entry of manifest.inventory) {
+    const address = key(entry.boardId, entry.hideId), original = expected.get(address);
+    demand(original && !seen.has(address), "unknown or duplicate Detective inventory hide"); seen.add(address);
+    demand(entry.sceneVersion === 13 && same(entry.source, original!.source)
+      && entry.basePlacementSha256 === original!.basePlacementSha256 && same(entry.base, original!.base)
+      && same(entry.effective, original!.effective), "Detective base placement/source changed after authoring");
+    demand(entry.sourceNeighbors && entry.recovery.sourceHeads === "intact-at-boundary", "Detective neighborhood coverage is required");
+    const context = { boardId: entry.boardId, hideId: entry.hideId, source: entry.source,
+      crop: entry.effective.crop, returnRect: entry.effective.returnRect };
+    const prepared = prepareSourceNeighborContract(entry.sourceNeighbors!.contract, context);
+    demand(prepared.ok && prepared.contractSha256 === entry.sourceNeighbors!.contractSha256, "Detective source-neighbor contract/hash differs");
+    localPatchReturnRegion(entry.effective.crop, entry.effective.child, entry.effective.returnRect);
+  }
+  demand(seen.size === expected.size, "complete Detective base inventory is required");
+  return { ...manifest, inventory: [...manifest.inventory].sort((a, b) => {
+    const x = key(a.boardId, a.hideId), y = key(b.boardId, b.hideId); return x < y ? -1 : x > y ? 1 : 0;
+  }) };
 }

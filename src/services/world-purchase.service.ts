@@ -5,7 +5,7 @@ import { pinLocalPatchPainter } from "./generation/painter-release";
 import { pinQualityChannel } from "./generation/quality-channel";
 import { pinLeanRelease } from "./generation/lean-release";
 import { pinIdentitySourceRelease } from "./generation/identity-source-release";
-import { pinSourcePlacementRelease } from "./generation/source-placement-release";
+import { localPatchSourceSelectionAllowed, pinLocalPatchSourceFamily } from "./generation/source-placement-release";
 import { createHash } from "node:crypto";
 import { validChildAge } from "@/domain/child-appearance";
 import { boardSlugs } from "@/domain/world";
@@ -109,6 +109,8 @@ export async function beginWorldPurchase(c: Container, input: WorldPurchaseInput
             return flowError("DRAFT_LOCKED", "ההרפתקה בעולם הזה כבר נשמרה במסלול אחר.");
           }
           if (state !== "closed") {
+            if (!owned && !await localPatchSourceSelectionAllowed(tx, active, storedSearchLevel(active.searchLevel), active.scenes))
+              return flowError("DRAFT_LOCKED", "מסלול החיפוש אינו תואם לטיוטה הזאת.");
             if (!owned) await tx.childWorldPurchase.upsert({ where: { familyChildId_worldSlug: { familyChildId: child.id, worldSlug: world.slug } },
               create: { id: `wpr_${createHash("sha256").update(JSON.stringify([child.id, world.slug])).digest("hex").slice(0, 32)}`, ownerId: input.ownerId, familyChildId: child.id, worldSlug: world.slug, activeGameId: active.id,
                 returnGameId: input.returnGameId && games.some(g => g.id === input.returnGameId) ? input.returnGameId : null }, update: { activeGameId: active.id } });
@@ -140,7 +142,10 @@ export async function beginWorldPurchase(c: Container, input: WorldPurchaseInput
           await pinQualityChannel(tx, gameId, lean ? undefined : c.qualityChannel);
           await pinLeanRelease(tx, gameId, lean);
           await pinIdentitySourceRelease(tx, gameId);
-          if (lean) await pinSourcePlacementRelease(tx, gameId);
+          if (lean || requested === "detectives") {
+            if (version === undefined) throw Error("A local-patch source family requires its exact scene version");
+            await pinLocalPatchSourceFamily(tx, gameId, { sceneVersion: version, searchLevel: requested ?? "explorers" });
+          }
         }
         if (choice.shown) await pinSearchLevelChoice(tx, gameId);
         await tx.gameScene.createMany({ data: boards.map((slug, orderIndex) => ({ id: newId("gsc"), gameId, sceneSlug: slug, sceneVersion: sceneBySlug(slug, version).version, orderIndex })) });

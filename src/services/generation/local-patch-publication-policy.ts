@@ -1,3 +1,5 @@
+import { hasLocalPatchCapability } from "../../domain/scene/local-patch-family";
+import { localPatchHideForVersion } from "../../domain/scene/local-patch-family-hide";
 import { isCollectionVersion } from "../../domain/scene/local-patch-versions";
 import { createHash } from "node:crypto";
 import { PLAYER_REVIEW_MODE, PLAYER_REVIEW_VERSION, LEGACY_PLAYER_REVIEW_MODE, LEGACY_PLAYER_REVIEW_VERSION } from "./local-patch-player-review";
@@ -176,17 +178,18 @@ function allowed(input: LocalPatchPublicationBinding): boolean {
     const review = receipt?.boardReview;
     const boundaryReview = review?.assessmentMode === PLAYER_REVIEW_MODE;
     const playerReview = boundaryReview || review?.assessmentMode === LEGACY_PLAYER_REVIEW_MODE;
-    if (playerReview && (input.sceneVersion !== 12 || review.reviewScope !== "ready-only/v1"
+    if (playerReview && (!hasLocalPatchCapability(input.sceneVersion, "integratedQuality") || review.reviewScope !== "ready-only/v1"
       || review.reviewedHideIds?.length !== 1)) return false;
-    let repairWireCount = input.sceneVersion === 12 ? 20 : 8;
+    let repairWireCount = hasLocalPatchCapability(input.sceneVersion, "integratedQuality") ? 20 : 8;
     if (review?.reviewScope !== undefined) {
       const ids: unknown = review.reviewedHideIds;
-      if (input.sceneVersion !== 12 || !["unapproved-only/v1", "ready-only/v1"].includes(review.reviewScope) || !Array.isArray(ids)
+      if (!hasLocalPatchCapability(input.sceneVersion, "integratedQuality") || !["unapproved-only/v1", "ready-only/v1"].includes(review.reviewScope) || !Array.isArray(ids)
         || ids.length < 1 || ids.length > 3 || new Set(ids).size !== ids.length || !ids.includes(input.hideId)) return false;
-      const boardId = /^([a-z]+)-v12-[123]$/.exec(input.hideId)?.[1];
-      const board = boardId && localPatchBoardForVersion(boardId, 12);
+      const authored = localPatchHideForVersion(input.hideId, input.sceneVersion);
+      const boardId = authored?.board.board;
+      const board = authored?.board;
       if (!board || ids.some(id => !board.hides.some(h => h.id === id))) return false;
-      const hideIds = ids as string[], parsed = parseLocalPatchBoardVerdicts(review.raw, hideIds, 12, review.reviewScope, review.assessmentMode);
+      const hideIds = ids as string[], parsed = parseLocalPatchBoardVerdicts(review.raw, hideIds, input.sceneVersion, review.reviewScope, review.assessmentMode);
       if (!parsed[input.hideId] || !equalJson(parsed[input.hideId], receipt.verdict)) return false;
       const evidenceIds = [`${boardId}:original-board`, `${boardId}:canonical-portrait`,
         ...hideIds.flatMap(id => [`${id}:before`, `${id}:after`, ...(boundaryReview ? RETURN_EDGES.map(edge => `${id}:return:${edge}`) : NEIGHBOR_QUADRANTS.map(q => `${id}:neighbors:${q}`))])];
@@ -235,8 +238,8 @@ export async function localPatchForegroundPublishable(db: Prisma.TransactionClie
   let receipt: { foreground?: unknown; selfRepair?: { decision?: unknown } } | null;
   try { receipt = JSON.parse(input.judgeJson ?? "null"); } catch { receipt = null; }
   if (!authoredLocalPatchForeground(input.hideId) && !authoredLocalPatchFixedScenery(input.hideId) && receipt?.foreground === undefined) return true;
-  const boardId = /^([a-z]+)-v12-[123]$/.exec(input.hideId)?.[1];
-  const hide = input.sceneVersion === 12 && boardId ? localPatchBoardForVersion(boardId, 12)?.hides.find(h => h.id === input.hideId) : undefined;
+  const authored = localPatchHideForVersion(input.hideId, input.sceneVersion);
+  const hide = hasLocalPatchCapability(input.sceneVersion, "integratedQuality") ? authored?.hide : undefined;
   const row = await db.targetVariantAsset.findUnique({ where: { id: input.variantId }, select: { promptVersion: true } });
   if (!hide || !row || !foregroundBound(receipt, hide, row.promptVersion, input.imageSha256)) return false;
   const applied = foregroundForPinnedPrompt(hide, row.promptVersion), plan = selfRepairDecisionSchema.safeParse(receipt?.selfRepair?.decision);
@@ -250,6 +253,7 @@ async function allowedForGame(db: Prisma.TransactionClient, input: LocalPatchPub
   if (!await sourceNeighborPublicationMatches(db, input, sourceStage)) return false;
   if (!await localPatchForegroundPublishable(db, input)) return false;
   if (await hasDualVisualReview(db, input.gameId)) return allowedDualPublication(db, input);
+  if (input.sceneVersion === 13) return false; // A Detective never downgrades to historical single-role review.
   // Never apply a prospective receipt to a game without its immutable pin.
   try { if (isDualVisualReviewVersion(JSON.parse(input.judgeJson ?? "null")?.boardReview?.version)) return false; }
   catch { /* Historical advisory versions did not require a structured verdict. */ }
@@ -260,7 +264,7 @@ async function allowedForGame(db: Prisma.TransactionClient, input: LocalPatchPub
  * envelope. Mutable verdict/contract copies cannot borrow a different question.
  * Historical receipts have no authored contract and take their original path. */
 async function authoredSingleReviewVerified(db: Prisma.TransactionClient, input: LocalPatchPublicationBinding): Promise<boolean> {
-  if (input.sceneVersion !== 12) return true;
+  if (!hasLocalPatchCapability(input.sceneVersion, "integratedQuality")) return true;
   try {
     const receipt = JSON.parse(input.judgeJson ?? "null");
     if (receipt?.authoredReturn === undefined) return true;

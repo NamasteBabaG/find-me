@@ -1,6 +1,7 @@
+import { hasLocalPatchCapability } from "../../domain/scene/local-patch-family";
 import { childBodyDirection } from "../../domain/child-body";
 import { SUBJECT_PAINTER_V2, SUBJECT_PAINTER_V3, SUBJECT_PAINTER_V4, subjectSupportPose, subjectSupportPoseV3, subjectSupportPoseV4, type SubjectPainterVersion } from "../../domain/generation/subject-painter";
-import { REFRESHED_COLLECTION_VERSION, INTEGRATED_COLLECTION_VERSION } from "../../domain/scene/local-patch-versions";
+import { REFRESHED_COLLECTION_VERSION } from "../../domain/scene/local-patch-versions";
 import { INTEGRATION_REPAIR_DIRECTIONS } from "./local-patch-integration";
 import { childAgeDirection, validChildAge } from "../../domain/child-appearance";
 import type { LocalPatchHide, LocalPatchPose } from "../../domain/scene/local-patch-hides";
@@ -100,7 +101,8 @@ export const isAgeBodyPromptRelease = (release: LocalPatchPromptRelease | undefi
 
 export function pinnedLocalPatchPromptVersion(existing: { promptVersion: string | null; attempts: number } | null, legacyVersion: string, contentVersion?: number,
   release: LocalPatchPromptRelease = "v15"): string {
-  if (!existing) return contentVersion === INTEGRATED_COLLECTION_VERSION
+  if (!existing && contentVersion === 13) return LOCAL_PATCH_FIXED_SCENERY_PROMPT_VERSION;
+  if (!existing) return hasLocalPatchCapability(contentVersion, "integratedQuality")
     ? release === "v19" ? LOCAL_PATCH_FIXED_SCENERY_PROMPT_VERSION : release === "v18" ? LOCAL_PATCH_FOREGROUND_PROMPT_VERSION : release === "v17" ? LOCAL_PATCH_AGE_BODY_PROP_PROMPT_VERSION
       : release === "v16" ? LOCAL_PATCH_AGE_BODY_PROMPT_VERSION : LOCAL_PATCH_REFERENCE_NEUTRAL_PROMPT_VERSION
     : contentVersion === REFRESHED_COLLECTION_VERSION ? LOCAL_PATCH_IDENTITY_LOCK_PROMPT_VERSION : LOCAL_PATCH_BOARD_PAINT_PROMPT_VERSION;
@@ -157,7 +159,7 @@ export function localPatchRepairChecks(judgeJson: string | null, contentVersion?
     const value = JSON.parse(judgeJson ?? "null");
     const verdict = value?.verdict;
     if (isLocalPatchStrictVersion(contentVersion)) {
-      const directions = contentVersion === INTEGRATED_COLLECTION_VERSION ? { ...BOARD_PAINT_REPAIR_DIRECTIONS, ...INTEGRATION_REPAIR_DIRECTIONS } : isLocalPatchAgeVersion(contentVersion) ? AGE_REPAIR_DIRECTIONS : CANONICAL_REPAIR_DIRECTIONS;
+      const directions = hasLocalPatchCapability(contentVersion, "integratedQuality") ? { ...BOARD_PAINT_REPAIR_DIRECTIONS, ...INTEGRATION_REPAIR_DIRECTIONS } : isLocalPatchAgeVersion(contentVersion) ? AGE_REPAIR_DIRECTIONS : CANONICAL_REPAIR_DIRECTIONS;
       const uncertainty = localPatchExplicitUncertaintyChecks(verdict, contentVersion, context);
       const result = (Object.keys(directions) as LocalPatchRepairCheck[]).filter(check =>
         verdict?.[check] === "fail" || uncertainty.includes(check)
@@ -409,7 +411,7 @@ function fixedSceneryIntegratedPrompt(input: LocalPatchPromptInput, recoveryText
 }
 
 function integratedScenePrompt(input: LocalPatchPromptInput, recoveryText?: string): string {
-  if (input.contentVersion !== INTEGRATED_COLLECTION_VERSION || !validChildAge(input.ageYears)) throw Error("Integrated scene recipe requires its age-bound release");
+  if (!hasLocalPatchCapability(input.contentVersion, "integratedQuality") || !validChildAge(input.ageYears)) throw Error("Integrated scene recipe requires its age-bound release");
   const { placement, mask } = input;
   if (!placement || !mask) throw Error("Integrated scene requires authored placement and mask");
   const directions = { ...BOARD_PAINT_REPAIR_DIRECTIONS, ...INTEGRATION_REPAIR_DIRECTIONS, ageAppropriate: childBodyDirection(input.ageYears) };

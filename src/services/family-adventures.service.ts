@@ -45,7 +45,7 @@ export async function familyAdventures(c: Pick<Container, "db" | "secret">, owne
       const row = rows.get(game.id);
       if (!PLAYABLE.includes(game.status)) return { gameId: game.id, title: game.title, ready: false, worlds: [], shareableWorldSlugs: [], tracked: false,
         preparation: preparationState({ ...game, job: game.jobs[0], automaticRecovery: game.styleVersion === "local-patch-world-v1"
-          && game.scenes.length === 9 && game.scenes.every(scene => [10, 11, 12].includes(scene.sceneVersion)) }) };
+          && game.scenes.length === 9 && game.scenes.every(scene => [10, 11, 12, 13].includes(scene.sceneVersion)) }) };
       if (!row?.configJson) return { gameId: game.id, title: game.title, ready: false, worlds: [], shareableWorldSlugs: [], tracked: false, preparation: "unavailable" };
       let config: GameConfig;
       try {

@@ -6,8 +6,8 @@ import sharp, { type OverlayOptions } from "sharp";
 import { readBoardConditionedCatalog, loadBoardConditionedCatalogBoard, type BoardConditionedCatalog } from "./board-conditioned-catalog";
 import { sha256Bytes } from "./fixed-sprite";
 import type { QaCharacterStyleContract } from "../../infra/generation/types";
-import { identityStyleCatalogSha256 } from "./local-patch-identity-catalog";
-import { INTEGRATED_COLLECTION_VERSION } from "../../domain/scene/local-patch-versions";
+import { detectiveIdentityStyleSources, identityStyleCatalogSha256 } from "./local-patch-identity-catalog";
+import { DETECTIVES_SCENE_VERSION, INTEGRATED_COLLECTION_VERSION } from "../../domain/scene/local-patch-versions";
 
 export const BOARD_WIZARD_IDENTITY_STYLE_VERSION = "board-matched-identity/v2" as const;
 export const LEGACY_BOARD_WIZARD_IDENTITY_STYLE_VERSION = "board-matched-identity/v1" as const;
@@ -67,7 +67,13 @@ export async function buildBoardPeopleStyle(boardId: string, root = process.cwd(
   return { ...await boardPeopleTile(catalog, boardId, root), catalogSha256, version: BOARD_WIZARD_IDENTITY_STYLE_VERSION };
 }
 export async function buildBoardWizardIdentityStyle(root = process.cwd(), version: QaCharacterStyleContract["version"] = BOARD_WIZARD_IDENTITY_STYLE_VERSION,
-  worldSlug: "journey" | "kingdom" = "journey", identityArtCache?: IdentityArtCache) {
+  worldSlug: "journey" | "kingdom" = "journey", identityArtCache?: IdentityArtCache,
+  runtimeSource?: { sceneVersion: typeof DETECTIVES_SCENE_VERSION }) {
+  if (runtimeSource) {
+    if (runtimeSource.sceneVersion !== DETECTIVES_SCENE_VERSION || worldSlug !== "journey" || version !== "board-matched-identity/v6")
+      throw Error("BOARD_IDENTITY_STYLE: Detective sources require their full-source Journey family");
+    return buildDetectiveIdentityStyle(root, identityArtCache);
+  }
   // v5 is the v4 atlas with the reference's own hair in the sheet prompt; the pixels are the same.
   if (worldSlug === "kingdom" && version !== "board-matched-identity/v4" && version !== "board-matched-identity/v5" && version !== "board-matched-identity/v6") throw Error("Kingdom requires its integrated identity style");
   if (version === "board-matched-identity/v3" || version === "board-matched-identity/v4" || version === "board-matched-identity/v5" || version === "board-matched-identity/v6")
@@ -140,4 +146,28 @@ async function buildRefreshedIdentityStyle(root: string, worldSlug: "journey" | 
   if (examples.length !== 9) throw Error("Nine refreshed identity style sources required");
   const png = await sharp({ create: { width: 1024, height: 1024, channels: 4, background: "#e4dfd5" } }).composite(composites).png().toBuffer();
   return { png, version: "board-matched-identity/v3" as const, catalogSha256, atlasSha256: sha256Bytes(png), examples };
+}
+
+
+/** The new family has its own measured original-person contexts. No Explorer
+ * atlas, generated child, face-only enlargement or style fallback enters it. */
+async function buildDetectiveIdentityStyle(root: string, identityArtCache?: IdentityArtCache) {
+  const sources = detectiveIdentityStyleSources();
+  const catalogSha256 = await identityStyleCatalogSha256(sources[0]!.boardId, DETECTIVES_SCENE_VERSION, root);
+  const composites: OverlayOptions[] = [], examples = [];
+  for (const [i, source] of sources.entries()) {
+    const retained = identityArtCache?.get(source.sha256);
+    if (retained && sha256Bytes(retained) !== source.sha256) throw Error("BOARD_IDENTITY_STYLE: cached Detective source changed");
+    const bytes = retained ?? await readCollectionArt(source.art, source.sha256, root);
+    if (!bytes || sha256Bytes(bytes) !== source.sha256) throw Error("BOARD_IDENTITY_STYLE: Detective source missing from manifest");
+    const metadata = await sharp(bytes, { limitInputPixels: 8_294_400 }).metadata();
+    if (metadata.width !== source.width || metadata.height !== source.height || (metadata.pages ?? 1) !== 1 || (metadata.orientation ?? 1) !== 1)
+      throw Error("BOARD_IDENTITY_STYLE: wrong Detective source raster");
+    const native = await sharp(bytes).extract(source.crop).png().toBuffer();
+    const tile = await sharp(native).resize(320, 320, { fit: "contain", background: "#e4dfd5" }).png().toBuffer();
+    composites.push({ input: tile, left: 16 + (i % 3) * 336, top: 16 + Math.floor(i / 3) * 336 });
+    examples.push({ boardId: source.boardId, boardSha256: source.sha256, crop: source.crop, cropSha256: sha256Bytes(native) });
+  }
+  const png = await sharp({ create: { width: 1024, height: 1024, channels: 4, background: "#e4dfd5" } }).composite(composites).png().toBuffer();
+  return { png, version: "board-matched-identity/v6" as const, catalogSha256, atlasSha256: sha256Bytes(png), examples };
 }

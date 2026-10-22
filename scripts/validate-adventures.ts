@@ -6,11 +6,13 @@ import { ADVENTURE_DENSITY_BOARDS } from "../content/adventures/density-boards";
 import { WIZARD_ADVENTURE_CATALOG } from "../content/adventures/wizard-release";
 import { REFRESHED_WIZARD_CATALOG } from "../content/adventures/wizard-refresh-release";
 import { INTEGRATED_WIZARD_CATALOG } from "../content/adventures/wizard-integrated-release";
+import { DETECTIVE_ADVENTURE_CATALOG } from "../content/detectives/runtime-release";
 import { validateAdventureAssets } from "../src/services/adventure-content.service";
 
 const publicRoot = path.join(process.cwd(), "public");
-void Promise.all([validateAdventureAssets(ADVENTURE_PILOT, publicRoot), validateAdventureAssets(ADVENTURE_TEST_BOARD, publicRoot), validateAdventureAssets(ADVENTURE_THREE_BOARDS, publicRoot),validateAdventureAssets(ADVENTURE_EXPANDED_BOARDS,publicRoot),validateAdventureAssets(ADVENTURE_DENSITY_BOARDS,publicRoot),validateAdventureAssets(WIZARD_ADVENTURE_CATALOG,publicRoot),validateAdventureAssets(REFRESHED_WIZARD_CATALOG,publicRoot),validateAdventureAssets(INTEGRATED_WIZARD_CATALOG,publicRoot)])
-  .then(([pilot, test, three,expanded,density,wizard,refreshed,integrated]) => {
+void Promise.all([validateAdventureAssets(ADVENTURE_PILOT, publicRoot), validateAdventureAssets(ADVENTURE_TEST_BOARD, publicRoot), validateAdventureAssets(ADVENTURE_THREE_BOARDS, publicRoot),validateAdventureAssets(ADVENTURE_EXPANDED_BOARDS,publicRoot),validateAdventureAssets(ADVENTURE_DENSITY_BOARDS,publicRoot),validateAdventureAssets(WIZARD_ADVENTURE_CATALOG,publicRoot),validateAdventureAssets(REFRESHED_WIZARD_CATALOG,publicRoot),validateAdventureAssets(INTEGRATED_WIZARD_CATALOG,publicRoot),validateAdventureAssets(DETECTIVE_ADVENTURE_CATALOG,publicRoot)])
+  .then(([pilot, test, three,expanded,density,wizard,refreshed,integrated,detectives]) => {
+    console.log(`Detectives scene13: ${detectives.ready} actual native masters,27 prospective hides,54 mapped discoveries; runtime/output qualification and sales admission remain separate.`);
     console.log(`Adventure content: ${pilot.planned} planned, ${pilot.ready} ready. Planned boards are NOT playable or purchasable.`);
     console.log(`Test board: ${test.ready} ready dummy board (art bytes, hash and size verified). It is for the local pilot only, never sold.`);
     console.log(`Three-board pilot: ${three.ready} native 4K art assets verified; personal render approval and activation are separate.`);

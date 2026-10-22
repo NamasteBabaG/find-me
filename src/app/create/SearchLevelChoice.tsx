@@ -10,9 +10,9 @@ import { recommendedSearchLevel, SEARCH_LEVELS, type SearchLevel } from "@/domai
  * Native radios inside a fieldset give the group its name, arrow keys and the
  * announced state; the card is the whole tap target.
  */
-export function SearchLevelChoice({ value, onChange, ageYears, describedBy, invalid = false, disabled = false }: {
+export function SearchLevelChoice({ value, onChange, ageYears, describedBy, invalid = false, disabled = false, allowedLevels = SEARCH_LEVELS }: {
   value: SearchLevel | null; onChange: (level: SearchLevel) => void; ageYears?: number | null;
-  describedBy?: string; invalid?: boolean; disabled?: boolean;
+  describedBy?: string; invalid?: boolean; disabled?: boolean; allowedLevels?: readonly SearchLevel[];
 }) {
   const { t } = useI18n();
   const copy = t.create.level;
@@ -22,7 +22,7 @@ export function SearchLevelChoice({ value, onChange, ageYears, describedBy, inva
     <fieldset className={`level-choice${invalid ? " level-choice--invalid" : ""}`} aria-describedby={describedBy} disabled={disabled}>
       <legend className="level-choice__title">{copy.title}</legend>
       <div className="level-choice__options">
-        {SEARCH_LEVELS.map(level => {
+        {SEARCH_LEVELS.filter(level => allowedLevels.includes(level)).map(level => {
           const card = copy[level];
           const checked = value === level;
           return (

@@ -1,3 +1,4 @@
+import { hasLocalPatchCapability } from "../../domain/scene/local-patch-family";
 import { createHash } from "node:crypto";
 import { Prisma } from "@prisma/client";
 import { readFile } from "node:fs/promises";
@@ -304,7 +305,9 @@ export async function runLocalPatchHide(c: Container, deps: LocalPatchHideDeps, 
   // A stored recipe is a constraint, not a label to overwrite on success.
   // Historical recipes require their original scene/reference contract; do
   // not guess one when data disagrees, even if no receipt has yet been bought.
-  if (!(scene.sceneVersion === 12 && (promptVersion === LOCAL_PATCH_INTEGRATED_PROMPT_VERSION || promptVersion === LOCAL_PATCH_REFERENCE_NEUTRAL_PROMPT_VERSION
+  if (scene.sceneVersion === 13 && promptVersion !== LOCAL_PATCH_FIXED_SCENERY_PROMPT_VERSION)
+    return { ...base, state: "stopped", reason: "Detective prompt provenance requires the pinned v19 recipe" };
+  if (!(hasLocalPatchCapability(scene.sceneVersion, "integratedQuality") && (promptVersion === LOCAL_PATCH_INTEGRATED_PROMPT_VERSION || promptVersion === LOCAL_PATCH_REFERENCE_NEUTRAL_PROMPT_VERSION
     || promptVersion === LOCAL_PATCH_AGE_BODY_PROMPT_VERSION || promptVersion === LOCAL_PATCH_AGE_BODY_PROP_PROMPT_VERSION || promptVersion === LOCAL_PATCH_FOREGROUND_PROMPT_VERSION
     || promptVersion === LOCAL_PATCH_FIXED_SCENERY_PROMPT_VERSION)) && !(scene.sceneVersion === 11 && promptVersion === LOCAL_PATCH_IDENTITY_LOCK_PROMPT_VERSION) && promptVersion !== LOCAL_PATCH_BOARD_PAINT_PROMPT_VERSION && promptVersion !== legacyPromptVersion) {
     return { ...base, state: "stopped", reason: `Prompt provenance conflict: stored ${promptVersion}, scene requires ${legacyPromptVersion}; operator review required` };

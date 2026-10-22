@@ -1,6 +1,6 @@
 import { readLeanCapacityRecoveryBudget } from "./lean-capacity-recovery";
 import { readLeanCompletionBudget } from "./lean-completion-budget";
-import { isRefreshedCollectionVersion } from "../../domain/scene/local-patch-versions";
+import { localPatchFamilyForVersion } from "../../domain/scene/local-patch-family";
 import { dailyGenerationSpend } from "./daily-generation-spend";
 import { Prisma } from "@prisma/client";
 import { z } from "zod";
@@ -168,7 +168,7 @@ export async function reserveBoardWizardIdentity(c: Container, gameId: string, f
   if (!Number.isSafeInteger(attempt) || attempt < 1) throw Error("Invalid identity attempt");
   if (attempt > 2) {
     const scenes = await c.db.gameScene.findMany({ where: { gameId }, select: { sceneVersion: true } });
-    if (scenes.length !== 9 || scenes.some(s => !isRefreshedCollectionVersion(s.sceneVersion))) throw Error("Additional identity attempts require the refreshed collection");
+    if (scenes.length !== 9 || scenes.some(s => !localPatchFamilyForVersion(s.sceneVersion)?.capabilities.refreshedIdentity)) throw Error("Additional identity attempts require the refreshed collection");
   }
   const result = await budgetOf(c).reserve(scope(gameId), { requestKey: `wizard:identity:${attempt}`, scope: "identity", operationFingerprint: boardConditioningHash(fingerprintInput), reserveMicroUsd: 500_000 });
   demand(result.acquired, "Identity dispatch is already reserved or paid; recover its retained output instead of buying again");

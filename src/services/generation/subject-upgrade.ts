@@ -1,3 +1,4 @@
+import { detectiveAutomaticRecoveryQualified } from "./detective-automatic-recovery";
 import { createHash } from "node:crypto";
 import { Prisma } from "@prisma/client";
 import type { Container } from "../container";
@@ -263,6 +264,11 @@ export async function openAdmittedInterruptions(c: Container, gameId: string, wh
   // Not a world this continuation serves: nothing of it is blocked, so no reason replaces the world's own.
   if (!await subjectUpgradeOf(c.db, gameId)) return "blocked";
   const budget = boardWizardBudgetOf(c), worldId = boardWizardWorldId(gameId), audit = await budget.audit(worldId);
+  if (audit.unknownRequestKeys.length) {
+    const selected = await c.db.game.findUnique({ where: { id: gameId }, include: { scenes: true } });
+    if (selected?.scenes.some(scene => scene.sceneVersion === 13) && !await detectiveAutomaticRecoveryQualified(c.db, gameId))
+      return blocked("Detective continuation requires its original fresh-world receipt and exact whole-family pin");
+  }
   if (audit.overCapMicroUsd) return blocked(`the world ledger is over its cap by ${audit.overCapMicroUsd} micro-USD`);
   if (audit.conflictRequestKeys.length) return blocked(`charge evidence conflicts on ${audit.conflictRequestKeys.join(", ")}`);
   if (audit.overrunRequestKeys.length) return blocked(`charges exceed their reservations on ${audit.overrunRequestKeys.join(", ")}`);
@@ -373,7 +379,8 @@ export async function recoverEnrolledReviewInterruptions(c: Container, gameId: s
   if (!await subjectUpgradeOf(c.db, gameId)) return 0;
   const version = await dualVisualReviewVersion(c.db, gameId);
   const game = await c.db.game.findUnique({ where: { id: gameId }, include: { scenes: true } });
-  if (!version || !game || game.status !== "TARGETS_GENERATING" || game.deletedAt) return 0;
+  if (!version || !game || game.status !== "TARGETS_GENERATING" || game.deletedAt
+    || game.scenes.some(scene => scene.sceneVersion === 13) && !await detectiveAutomaticRecoveryQualified(c.db, gameId)) return 0;
   const budget = boardWizardBudgetOf(c), worldId = boardWizardWorldId(gameId), audit = await budget.audit(worldId);
   const pending = await Promise.all(audit.unknownRequestKeys.filter(key => key.startsWith("self-repair:board:"))
     .map(async key => await budget.readContinuationApproval(worldId, key) ? null : key));
@@ -382,7 +389,7 @@ export async function recoverEnrolledReviewInterruptions(c: Container, gameId: s
   for (const scene of game.scenes) {
     if (!unknown.size) break;
     if (![...unknown].some(key => key.startsWith(`self-repair:board:${scene.sceneSlug}:`))) continue;
-    for (const hide of localPatchBoardForVersion(scene.sceneSlug, 12)?.hides ?? []) {
+    for (const hide of localPatchBoardForVersion(scene.sceneSlug, scene.sceneVersion)?.hides ?? []) {
     if (!unknown.size) break;
     const prepared = await prepareLocalPatchBoardReview(c, { gameId, sceneId: scene.id }, deps,
       { includePlayerCandidates: true, playerReview: true, onlyHideId: hide.id });

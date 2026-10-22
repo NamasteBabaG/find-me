@@ -1,8 +1,10 @@
+import { hasLocalPatchCapability } from "../../domain/scene/local-patch-family";
 import { createHash } from "node:crypto";
 import { Prisma } from "@prisma/client";
 import type { Container } from "../container";
 import { BACKGROUND_REVIEW_TRANSPORT } from "../../domain/generation/background-review-round";
 import { SUBJECT_POLICY_VERSION, subjectPlanCanonical, subjectPlansForBoard } from "../../domain/generation/subject-policy";
+import { resolveLocalPatchBoardsForGame } from "./source-placement-release";
 import { localPatchBoardForVersion } from "../../domain/scene/local-patch-catalog";
 import { validChildAge } from "../../domain/child-appearance";
 import { worldsOwned } from "../world-catalog.service";
@@ -33,8 +35,9 @@ export async function enrollLeanWorld(c: Container, gameId: string, fence: (tx: 
   const game = await c.db.game.findUnique({ where: { id: gameId }, include: { scenes: true, orders: true, childProfile: true } });
   if (!game || game.status !== "TARGETS_GENERATING" || game.deletedAt || game.configJson || game.readyAt || !game.ownerId
     || game.styleVersion !== "local-patch-world-v1") return refused("the world is not a live local-patch world in generation");
-  if (game.scenes.length !== 9 || game.scenes.some(s => s.sceneVersion !== 12) || worldsOwned(game.scenes.map(s => s.sceneSlug)).length !== 1)
-    return refused("the world is not one complete nine-board v12 world");
+  const sceneVersion = game.scenes[0]?.sceneVersion;
+  if (game.scenes.length !== 9 || !hasLocalPatchCapability(sceneVersion, "subjectEnrollment") || game.scenes.some(s => s.sceneVersion !== sceneVersion) || worldsOwned(game.scenes.map(s => s.sceneSlug)).length !== 1)
+    return refused("the world is not one complete supported nine-board world");
   if (!game.orders.some(o => o.userId === game.ownerId && o.paymentStatus === "PAID" && o.paidAt && !o.refundedAt)
     || game.orders.some(o => o.paymentStatus === "REFUNDED" || o.refundedAt)) return refused("there is no confirmed, unrefunded payment by the owner");
   if (await dualVisualReviewVersion(c.db, gameId) !== DUAL_VISUAL_REVIEW_V3) return refused("the world is not pinned to dual review v3");
@@ -49,8 +52,9 @@ export async function enrollLeanWorld(c: Container, gameId: string, fence: (tx: 
     return refused("the privately owned original photograph is not available");
   if (await c.db.targetVariantAsset.findFirst({ where: { targetInstance: { gameScene: { gameId } }, attempts: { gt: 0 } } }))
     return refused("a painting was started before the enrollment");
-  const boards = game.scenes.map(scene => localPatchBoardForVersion(scene.sceneSlug, 12));
-  if (boards.some(board => !board)) return refused("a board has no authored v12 placements");
+  const placements = sceneVersion === 13 ? await resolveLocalPatchBoardsForGame(c.db, gameId, sceneVersion) : null;
+  const boards = game.scenes.map(scene => placements ? placements.boards.find(board => board.board === scene.sceneSlug) : localPatchBoardForVersion(scene.sceneSlug, 12));
+  if (boards.some(board => !board) || boards.some(board => board!.hides.length !== 3)) return refused("a board has no complete authored placements");
   const receipt = subjectUpgradeReceiptSchema.parse({ version: SUBJECT_UPGRADE_VERSION, gameId, ownerId: game.ownerId,
     subjectPolicy: SUBJECT_POLICY_VERSION, continuityTransport: BACKGROUND_REVIEW_TRANSPORT, reviewRecovery: SUBJECT_REVIEW_RECOVERY,
     dualReviewRelease: DUAL_VISUAL_REVIEW_V3, photoAssetId: photo.id, photoSha256: sha256Bytes(await c.storage.get(photo.storagePath)),
@@ -62,6 +66,12 @@ export async function enrollLeanWorld(c: Container, gameId: string, fence: (tx: 
   try {
     await c.db.$transaction(async tx => {
       await fenceLocalPatchImages(tx, gameId); await fence(tx);
+      if (sceneVersion === 13) {
+        const pinned = await resolveLocalPatchBoardsForGame(tx, gameId, sceneVersion);
+        const actual = game.scenes.map(scene => pinned.boards.find(board => board.board === scene.sceneSlug));
+        if (actual.some(board => !board) || sha(JSON.stringify(actual.map(board => subjectPlansForBoard(board!).map(subjectPlanCanonical)))) !== receipt.planSha256)
+          throw Error("LEAN_ENROLLMENT: Detective source family or subject plans changed before enrollment");
+      }
       const current = await tx.game.findUniqueOrThrow({ where: { id: gameId }, include: { childProfile: true } });
       const live = await tx.asset.findMany({ where: { id: { in: [receipt.photoAssetId, receipt.identityAssetId] }, ownerId: receipt.ownerId,
         visibility: "PRIVATE", status: "READY", deletedAt: null } });

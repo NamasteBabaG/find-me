@@ -8,11 +8,18 @@ import { LocalPatchBoardSchema, type LocalPatchBoard } from "../../domain/scene/
 import { SOURCE_PLACEMENT_POLICY_ACTION, SOURCE_PLACEMENT_POLICY_VERSION, sourcePlacementCanonical,
   sourcePlacementSha256, validateSourcePlacementRelease, type SourcePlacementHideContract } from "../../domain/scene/source-placement-release";
 import { env } from "../../lib/env";
-import { leanReleaseOf, leanReleaseReceipt, LOCAL_PATCH_LEAN_RELEASE } from "./lean-release";
+import { storedSearchLevel, type SearchLevel } from "../../domain/search-level";
+import { IDENTITY_SOURCE_RELEASE, identitySourceAuditId, identitySourceReleaseOf } from "./identity-source-release";
+import { DETECTIVE_SOURCE_PLACEMENT_BASE, DETECTIVE_SOURCE_PLACEMENT_RELEASE,
+  DETECTIVE_SOURCE_PLACEMENT_RELEASE_ID, DETECTIVE_SOURCE_PLACEMENT_RELEASE_SHA256,
+  DETECTIVE_RUNTIME_CATALOG_SHA256, DETECTIVE_SOURCE_INPUT_SHA256, DETECTIVE_IDENTITY_STYLE_SHA256,
+  assertDetectiveSourcePlacementReleaseHash } from "../../../content/detectives/source-placement-release";
+import { DETECTIVE_SOURCE_FAMILY, validateDetectiveSourcePlacementRelease } from "../../domain/scene/source-placement-release";
+import { leanReleaseAuditId, leanReleaseOf, leanReleaseReceipt, LOCAL_PATCH_LEAN_RELEASE } from "./lean-release";
 import { dualVisualReviewVersion, DUAL_VISUAL_REVIEW_V3 } from "./visual-review-release";
 
 export type { SourcePlacementHideContract } from "../../domain/scene/source-placement-release";
-type Reader = Pick<Prisma.TransactionClient, "auditLog">;
+type Reader = Pick<Prisma.TransactionClient, "auditLog"> & Partial<Pick<Prisma.TransactionClient, "game">>;
 const hex = z.string().regex(/^[a-f0-9]{64}$/);
 const pinSchema = z.object({ version: z.literal(SOURCE_PLACEMENT_POLICY_VERSION),
   gameId: z.string().min(1).max(200).regex(/^[A-Za-z0-9_:-]+$/),
@@ -20,12 +27,23 @@ const pinSchema = z.object({ version: z.literal(SOURCE_PLACEMENT_POLICY_VERSION)
   leanPinSha256: hex, compositeQualificationSha256: hex,
   coverage: z.array(z.object({ boardId: z.string(), hideId: z.string(), contractSha256: hex }).strict()).max(54),
 }).strict();
-export type SourcePlacementReleasePin = z.infer<typeof pinSchema>;
+export const DETECTIVE_SOURCE_FAMILY_VERSION = "local-patch-source-family/v1" as const;
+export const DETECTIVE_SOURCE_FAMILY_ACTION = "generation:source-family-policy" as const;
+export const sourceFamilyAuditId = (gameId: string) => `aud_source_family_${gameId}`;
+const detectivePinSchema = z.object({ version: z.literal(DETECTIVE_SOURCE_FAMILY_VERSION),
+  gameId: pinSchema.shape.gameId, familyId: z.literal(DETECTIVE_SOURCE_FAMILY),
+  searchLevel: z.literal("detectives"), worldSlug: z.literal("journey"),
+  releaseId: z.literal(DETECTIVE_SOURCE_PLACEMENT_RELEASE_ID), manifestSha256: hex, baseSceneVersion: z.literal(13),
+  sourceInputSha256: hex, runtimeCatalogSha256: hex, identityStyleSha256: hex,
+  leanPinSha256: hex, dualPinSha256: hex, identityPinSha256: hex, compositeQualificationSha256: hex,
+  coverage: z.array(pinSchema.shape.coverage.element).length(27),
+}).strict();
+export type SourcePlacementReleasePin = z.infer<typeof pinSchema> | z.infer<typeof detectivePinSchema>;
 export const sourcePlacementReleaseAuditId = (gameId: string) => `aud_source_placement_${gameId}`;
 const hashBytes = (value: string) => createHash("sha256").update(value).digest("hex");
 const demand = (ok: unknown, reason: string): void => { if (!ok) throw Error(`SOURCE_PLACEMENT: ${reason}`); };
 
-function qualifiedReceipt(gameId: string): SourcePlacementReleasePin {
+function qualifiedReceipt(gameId: string): z.infer<typeof pinSchema> {
   assertSourcePlacementReleaseHash();
   const leanPinSha256 = hashBytes(JSON.stringify(leanReleaseReceipt(gameId)));
   return pinSchema.parse({ version: SOURCE_PLACEMENT_POLICY_VERSION, gameId,
@@ -45,7 +63,22 @@ async function requireBasePins(db: Reader, gameId: string): Promise<void> {
 /** Null means the historical path exactly. A malformed or mismatched companion
  * throws; it is never treated as absent or as the nearest known release. */
 export async function sourcePlacementReleaseOf(db: Reader, gameId: string): Promise<SourcePlacementReleasePin | null> {
-  const row = await db.auditLog.findUnique({ where: { id: sourcePlacementReleaseAuditId(gameId) } });
+  const [row, family] = await Promise.all([
+    db.auditLog.findUnique({ where: { id: sourcePlacementReleaseAuditId(gameId) } }),
+    db.auditLog.findUnique({ where: { id: sourceFamilyAuditId(gameId) } }),
+  ]);
+  demand(!(row && family), "a game cannot hold two source families");
+  if (family) {
+    let value: unknown;
+    try { value = JSON.parse(family.metaJson ?? "null"); } catch { throw Error("SOURCE_PLACEMENT: invalid family pin encoding"); }
+    const parsed = detectivePinSchema.safeParse(value);
+    demand(parsed.success && family.actorType === "SYSTEM" && family.actorId === null && family.action === DETECTIVE_SOURCE_FAMILY_ACTION
+      && family.entityType === "Game" && family.entityId === gameId, "invalid Detective family pin");
+    const expected = await qualifiedDetectiveReceipt(db, gameId);
+    demand(parsed.success && parsed.data.gameId === gameId && family.metaJson === sourcePlacementCanonical(expected),
+      "pinned Detective family differs from its original qualified release");
+    return Object.freeze(expected);
+  }
   if (!row) return null;
   let value: unknown;
   try { value = JSON.parse(row.metaJson ?? "null"); } catch { throw Error("SOURCE_PLACEMENT: invalid pin encoding"); }
@@ -70,12 +103,82 @@ export async function pinSourcePlacementRelease(tx: Prisma.TransactionClient, ga
     && !await tx.targetVariantAsset.findFirst({ where: { targetInstance: { gameScene: { gameId } }, attempts: { gt: 0 } } }),
   "orders, jobs or prior image attempts cannot gain a prospective companion");
   await requireBasePins(tx, gameId);
+  demand(storedSearchLevel(game.searchLevel) === "explorers"
+    && !await tx.auditLog.findUnique({ where: { id: sourceFamilyAuditId(gameId) } }), "a Detective family cannot gain the Explorer companion");
   const receipt = qualifiedReceipt(gameId), metaJson = sourcePlacementCanonical(receipt);
   const row = await tx.auditLog.upsert({ where: { id: sourcePlacementReleaseAuditId(gameId) }, update: {},
     create: { id: sourcePlacementReleaseAuditId(gameId), actorType: "SYSTEM", action: SOURCE_PLACEMENT_POLICY_ACTION,
       entityType: "Game", entityId: gameId, metaJson } });
   demand(row.actorType === "SYSTEM" && row.actorId === null && row.action === SOURCE_PLACEMENT_POLICY_ACTION
     && row.entityType === "Game" && row.entityId === gameId && row.metaJson === metaJson, "companion enrollment conflicts with its original pin");
+}
+
+async function qualifiedDetectiveReceipt(db: Reader, gameId: string): Promise<z.infer<typeof detectivePinSchema>> {
+  assertDetectiveSourcePlacementReleaseHash();
+  await requireBasePins(db, gameId);
+  demand(await identitySourceReleaseOf(db, gameId) === IDENTITY_SOURCE_RELEASE, "Detectives requires the exact full-source identity pin");
+  const [lean, dual, identity] = await Promise.all([
+    db.auditLog.findUnique({ where: { id: leanReleaseAuditId(gameId) } }),
+    db.auditLog.findUnique({ where: { id: `aud_visual_policy_${gameId}` } }),
+    db.auditLog.findUnique({ where: { id: identitySourceAuditId(gameId) } }),
+  ]);
+  // The base readers above authenticate each exact SYSTEM receipt before these
+  // bytes are included in the composite. A flag is never substitute authority.
+  demand(lean?.metaJson && dual?.metaJson && identity?.metaJson, "complete original base receipts are required");
+  const pins = { leanPinSha256: hashBytes(lean!.metaJson!), dualPinSha256: hashBytes(dual!.metaJson!), identityPinSha256: hashBytes(identity!.metaJson!) };
+  const data = { version: DETECTIVE_SOURCE_FAMILY_VERSION, gameId, familyId: DETECTIVE_SOURCE_FAMILY,
+    searchLevel: "detectives" as const, worldSlug: "journey" as const,
+    releaseId: DETECTIVE_SOURCE_PLACEMENT_RELEASE_ID, manifestSha256: DETECTIVE_SOURCE_PLACEMENT_RELEASE_SHA256, baseSceneVersion: 13 as const,
+    sourceInputSha256: DETECTIVE_SOURCE_INPUT_SHA256, runtimeCatalogSha256: DETECTIVE_RUNTIME_CATALOG_SHA256,
+    identityStyleSha256: DETECTIVE_IDENTITY_STYLE_SHA256, ...pins,
+    coverage: DETECTIVE_SOURCE_PLACEMENT_RELEASE.inventory.map(e => ({ boardId: e.boardId, hideId: e.hideId,
+      contractSha256: e.sourceNeighbors!.contractSha256 })) };
+  return detectivePinSchema.parse({ ...data, compositeQualificationSha256: sourcePlacementSha256({ ...data,
+    qualification: DETECTIVE_SOURCE_PLACEMENT_RELEASE.qualification }) });
+}
+
+/** Select the new draft's content family before it can receive a photo/order.
+ * Existing pins remain immutable; changing a level never rewrites a pin. */
+export async function pinLocalPatchSourceFamily(tx: Prisma.TransactionClient, gameId: string,
+  input: { sceneVersion: number; searchLevel: SearchLevel }): Promise<void> {
+  demand(input.sceneVersion === 12 && input.searchLevel === "explorers"
+    || input.sceneVersion === 13 && input.searchLevel === "detectives", "source family and selected level differ");
+  const game = await tx.game.findUniqueOrThrow({ where: { id: gameId } });
+  demand(storedSearchLevel(game.searchLevel) === input.searchLevel, "the stored draft level differs from its source family");
+  if (input.sceneVersion === 12) {
+    demand(!await tx.auditLog.findUnique({ where: { id: sourceFamilyAuditId(gameId) } }), "a Detective family cannot gain the Explorer companion");
+    return pinSourcePlacementRelease(tx, gameId);
+  }
+  demand(env().APP_ENV === "qa" && env().LOCAL_PATCH_PROMPT_RELEASE === "v19", "only the qualified QA configuration may enroll Detectives");
+  demand(game.status === "DRAFT" && game.styleVersion === "local-patch-world-v1" && !game.deletedAt
+    && !game.readyAt && !game.configJson && !game.paidAt, "only a new unstarted Detective draft may enroll");
+  demand(!await tx.order.findFirst({ where: { gameId } }) && !await tx.generationJob.findFirst({ where: { gameId } })
+    && !await tx.targetVariantAsset.findFirst({ where: { targetInstance: { gameScene: { gameId } }, attempts: { gt: 0 } } }),
+    "orders, jobs or prior image attempts cannot gain a prospective Detective family");
+  demand(!await tx.auditLog.findUnique({ where: { id: sourcePlacementReleaseAuditId(gameId) } }), "an Explorer companion cannot gain a Detective family");
+  const receipt = await qualifiedDetectiveReceipt(tx, gameId), metaJson = sourcePlacementCanonical(receipt);
+  const row = await tx.auditLog.upsert({ where: { id: sourceFamilyAuditId(gameId) }, update: {},
+    create: { id: sourceFamilyAuditId(gameId), actorType: "SYSTEM", action: DETECTIVE_SOURCE_FAMILY_ACTION,
+      entityType: "Game", entityId: gameId, metaJson } });
+  demand(row.actorType === "SYSTEM" && row.actorId === null && row.action === DETECTIVE_SOURCE_FAMILY_ACTION
+    && row.entityType === "Game" && row.entityId === gameId && row.metaJson === metaJson,
+    "Detective family enrollment conflicts with its original pin");
+}
+
+/** Selection fence used before draft edits and inside the payment claim.
+ * Old local-patch drafts may continue Explorers. Only a fresh matching13 pin
+ * can select Detectives, and a sealed pin cannot switch to the other level. */
+export async function localPatchSourceSelectionAllowed(db: Reader,
+  game: { id: string; styleVersion: string }, level: SearchLevel,
+  scenes?: readonly { sceneSlug: string; sceneVersion: number }[]): Promise<boolean> {
+  if (game.styleVersion !== "local-patch-world-v1") return true;
+  const release = await sourcePlacementReleaseOf(db, game.id);
+  if (!release) return level === "explorers" && (!scenes || scenes.every(s => s.sceneVersion !== 13));
+  const version = release.baseSceneVersion;
+  if (level !== (version === 13 ? "detectives" : "explorers")) return false;
+  if (!scenes) return true;
+  const inventory = version === 13 ? DETECTIVE_SOURCE_PLACEMENT_RELEASE.inventory : SOURCE_PLACEMENT_RELEASE.inventory;
+  return scenes.every(s => s.sceneVersion === version && inventory.some(e => e.boardId === s.sceneSlug));
 }
 
 const contextBrand: unique symbol = Symbol("trusted-source-placement-context");
@@ -105,11 +208,25 @@ function contextDigest(c: TrustedSourcePlacementContext) {
  * Load once per world/slice; placementForHide below performs no DB reads. */
 export async function resolveLocalPatchBoardsForGame(db: Reader, gameId: string, sceneVersion: number): Promise<TrustedSourcePlacementContext> {
   const release = await sourcePlacementReleaseOf(db, gameId);
+  demand(sceneVersion !== 13 || release?.baseSceneVersion === 13, "Detective source context cannot fall back without its exact family pin");
   let boards = localPatchBoardsForVersion(sceneVersion), contracts = new Map<string, SourcePlacementHideContract>();
   if (release) {
-    demand(sceneVersion === 12, "companion cannot reinterpret another scene version");
-    assertSourcePlacementReleaseHash();
-    const manifest = validateSourcePlacementRelease(SOURCE_PLACEMENT_RELEASE, SOURCE_PLACEMENT_BASE);
+    demand(sceneVersion === release.baseSceneVersion, "companion cannot reinterpret another scene version");
+    let manifest;
+    if (release.baseSceneVersion === 13) {
+      assertDetectiveSourcePlacementReleaseHash();
+      demand(db.game, "Detective context requires authoritative game selection");
+      const game = await db.game!.findUnique({ where: { id: gameId }, include: { scenes: true } });
+      const expectedBoards = new Set(DETECTIVE_SOURCE_PLACEMENT_BASE.map(e => e.board.board));
+      demand(game && !game.deletedAt && game.styleVersion === "local-patch-world-v1" && game.searchLevel === "detectives"
+        && game.scenes.length === 9 && new Set(game.scenes.map(s => s.sceneSlug)).size === 9
+        && game.scenes.every(s => s.sceneVersion === 13 && expectedBoards.has(s.sceneSlug)),
+        "Detective game requires its exact whole Journey family selection");
+      manifest = validateDetectiveSourcePlacementRelease(DETECTIVE_SOURCE_PLACEMENT_RELEASE, DETECTIVE_SOURCE_PLACEMENT_BASE);
+    } else {
+      assertSourcePlacementReleaseHash();
+      manifest = validateSourcePlacementRelease(SOURCE_PLACEMENT_RELEASE, SOURCE_PLACEMENT_BASE);
+    }
     const inventory = freeze(manifest.inventory);
     contracts = new Map(inventory.map(entry => [entry.hideId, entry]));
     // Clone only for the prospective context. No legacy source object is frozen,

@@ -1,3 +1,4 @@
+import { hasLocalPatchCapability } from "../../domain/scene/local-patch-family";
 import { createHash } from "node:crypto";
 import sharp from "sharp";
 import { isLocalPatchAdvisoryVersion } from "../../domain/scene/local-patch-catalog";
@@ -63,7 +64,7 @@ export const LOCAL_PATCH_IMAGE_POLICY: FixedSourcePolicy = Object.freeze({
  * Initial character creation uses its separate MEDIUM contract, unchanged. */
 const FIVE_HIDE_IMAGE_POLICY: FixedSourcePolicy = Object.freeze({ ...LOCAL_PATCH_IMAGE_POLICY, quality: "low" });
 export const localPatchImagePolicyForVersion = (contentVersion?: number): FixedSourcePolicy =>
-  contentVersion === 12 ? LOCAL_PATCH_IMAGE_POLICY : isLocalPatchAdvisoryVersion(contentVersion) ? FIVE_HIDE_IMAGE_POLICY : LOCAL_PATCH_IMAGE_POLICY;
+  hasLocalPatchCapability(contentVersion, "mediumPainter") ? LOCAL_PATCH_IMAGE_POLICY : isLocalPatchAdvisoryVersion(contentVersion) ? FIVE_HIDE_IMAGE_POLICY : LOCAL_PATCH_IMAGE_POLICY;
 /** Cost experiment E2 only (docs/CLAUDE_COST_EXPERIMENTS_PLAN_20261014.md); no version
  * selects either. LOW is today's v12 request at low quality: the five-hide policy. */
 export const LOCAL_PATCH_LOW_IMAGE_POLICY: FixedSourcePolicy = FIVE_HIDE_IMAGE_POLICY;

@@ -1,3 +1,4 @@
+import { hasLocalPatchCapability } from "../../domain/scene/local-patch-family";
 import { Prisma } from "@prisma/client";
 import type { Container } from "../container";
 import { type LocalPatchBoard, type LocalPatchHide } from "../../domain/scene/local-patch-hides";
@@ -275,7 +276,7 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
     await recoverLocalPatchImageInterruptions(c, gameId);
     const budget = boardWizardBudgetOf(c), worldId = boardWizardWorldId(gameId);
     const audit = await budget.audit(worldId);
-    if (game.scenes.every(scene => scene.sceneVersion === 12) && audit.unknownRequestKeys.some(key => key.startsWith("self-repair:board:"))) {
+    if (game.scenes.every(scene => hasLocalPatchCapability(scene.sceneVersion, "integratedQuality")) && audit.unknownRequestKeys.some(key => key.startsWith("self-repair:board:"))) {
       for (const scene of game.scenes) {
         const prepared = await prepareLocalPatchBoardReview(c, { gameId, sceneId: scene.id }, { readBoardArt: deps.readBoardArt });
         if (prepared.ready && audit.unknownRequestKeys.includes(prepared.requestKey)) await recoverPreparedLocalPatchReview(c, prepared);
@@ -538,7 +539,7 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
   // reasons, as its second was, and no paid diagnosis. Any other refusal, and a third one, goes to self-repair.
   const leanWorld = !!subjectUpgrade && await isLeanWorld(c.db, gameId);
   const leanThirdPainting = (row: { status: string; attempts: number; judgeJson: string | null } | undefined) => leanWorld && !!row
-    && row.status === "FAILED" && row.attempts === LOCAL_PATCH_NORMAL_ATTEMPTS && leanSubjectOnlyRefusal(row.judgeJson, subjectUpgrade!.ageYears);
+    && row.status === "FAILED" && row.attempts === LOCAL_PATCH_NORMAL_ATTEMPTS && leanSubjectOnlyRefusal(row.judgeJson, subjectUpgrade!.ageYears, game.scenes[0]!.sceneVersion);
   /** A v1 pose-plan refusal awaiting its v2 question about the same pixels (subject-rejudge/v1), read at the enrolled age. */
   const rejudgePending = (row: Parameters<typeof subjectRejudgePending>[0]) => !!subjectUpgrade && subjectRejudgePending(row, subjectUpgrade.ageYears);
   // A board also owes its v2 re-judgments (subject-rejudge/v1), whatever status the board itself carries.
@@ -561,7 +562,7 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
     // ordinary route; the free reading refuses it after rebuilding the board's
     // evidence, so it is not asked here (local-patch-slice-pacing/v1).
     if (dual && !subjectUpgrade) for (const scene of game.scenes) {
-      if (scene.sceneVersion !== 12) continue;
+      if (!hasLocalPatchCapability(scene.sceneVersion, "integratedQuality")) continue;
       for (let turn = 0; turn < 3 && rows.some(row => row.targetInstance.gameSceneId === scene.id && localPatchRetainedAnswerUndecided(row)); turn++) {
         // Out of time is not out of options: yield the claim with the rest of the
         // free work runnable. The next tick starts here again, before anything
@@ -642,7 +643,7 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
     }).sort((a, b) => Number(!a.continuityPending) - Number(!b.continuityPending) || Number(!a.firstWork) - Number(!b.firstWork));
     for (const plan of plans) if (plan.awaiting) awaitingBoards.add(plan.scene.id);
     for (const { scene, ready, firstWork, retry } of plans) {
-      if (scene.sceneVersion !== 12 || scene.generationStatus === "GENERATED" && !subjectPending.has(scene.id)) continue;
+      if (!hasLocalPatchCapability(scene.sceneVersion, "integratedQuality") || scene.generationStatus === "GENERATED" && !subjectPending.has(scene.id)) continue;
       if (!(firstWork || retry) && ready.length !== boardFor(scene.sceneSlug, scene.sceneVersion)?.hides.length) continue;
       if (!firstWork && retry && !firstPassComplete) continue;
       // Every question it owes is sent: decided by a later slice, once its answer arrives.
@@ -713,7 +714,7 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
   };
   const automaticWork = automatic && !extraPlan ? work.filter(item => {
     const row = stateOf(item.sceneId, item.hide.targetId);
-    return needsSelfRepair(row) && !leanThirdPainting(row) && !(game.scenes.find(scene => scene.id === item.sceneId)?.sceneVersion === 12
+    return needsSelfRepair(row) && !leanThirdPainting(row) && !(hasLocalPatchCapability(game.scenes.find(scene => scene.id === item.sceneId)?.sceneVersion, "integratedQuality")
       && (localPatchEvidenceRecovery(row!) || playerReviewEnabled() && needsPlayerReview(row!)))
       // Re-asked under v2 about the same pixels before any repair (subject-rejudge/v1).
       && !rejudgePending(row!);
@@ -738,7 +739,7 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
     : plan.indices.map(index => work[index]!)).filter(item => {
     if (automaticWork.includes(item)) return false;
     const candidate = stateOf(item.sceneId, item.hide.targetId);
-    if (automatic && game.scenes.find(scene => scene.id === item.sceneId)?.sceneVersion === 12 && candidate && localPatchEvidenceRecovery(candidate)) return false;
+    if (automatic && hasLocalPatchCapability(game.scenes.find(scene => scene.id === item.sceneId)?.sceneVersion, "integratedQuality") && candidate && localPatchEvidenceRecovery(candidate)) return false;
     if (playerReviewEnabled() && candidate && needsPlayerReview(candidate)) return false;
     if (candidate && rejudgePending(candidate)) return false;
     // A ready appearance is reviewed, never repainted ahead of its review.
@@ -853,7 +854,7 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
     const reviewOnlyReady = !!extraPlan && mine.every(row => row && (row.status === "GENERATED"
       || row.status === "FAILED" && extraPlan.reviewOnly.some(entry => entry.rowId === row.id)));
     if (advisory && (good || reviewOnlyReady) && scene.generationStatus !== "GENERATED") {
-      if (scene.sceneVersion === 12 && continuityPending && !mine.some(row => row && localPatchContinuityPending(row))) { pendingReviews++; continue; }
+      if (hasLocalPatchCapability(scene.sceneVersion, "integratedQuality") && continuityPending && !mine.some(row => row && localPatchContinuityPending(row))) { pendingReviews++; continue; }
       if (reviewedScenes.has(scene.id)) { pendingReviews++; continue; }
       if (attention || paused) { pendingReviews++; continue; }
       // local-patch-slice-pacing/v1: a review this slice cannot finish is the next tick's.
@@ -863,7 +864,7 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
           ...(options.hardDeadlineAt === undefined ? {} : { deadlineAt: options.hardDeadlineAt }) }, {
           fence, apiKey: deps.apiKey, judge: options.boardJudge, readBoardArt: deps.readBoardArt,
         }));
-        if (automatic && !extraPlan && scene.sceneVersion === 12 && reviewed.costCents > 0) {
+        if (automatic && !extraPlan && hasLocalPatchCapability(scene.sceneVersion, "integratedQuality") && reviewed.costCents > 0) {
           after = await c.db.targetVariantAsset.findMany({ where: { variant: LOCAL_PATCH_VARIANT, targetInstance: { gameScene: { gameId } } },
             include: { targetInstance: { select: { targetId: true, gameSceneId: true } } } });
           continuityPending = after.some(localPatchContinuityPending);
@@ -1036,7 +1037,7 @@ export function localPatchPainterDeps(_c: Container, contentVersion = 6, release
     apiKey,
     renderPolicySha256: localPatchRenderPolicySha256(policy),
     render: async input => buyLocalPatch(apiKey, input, { policy: input.subjectPhotoPng
-      ? input.subjectQuality === "low" ? painterReleasePolicy("local-patch-painter/low-v1", 12) : localPatchImagePolicyForVersion(12) : policy }),
+      ? input.subjectQuality === "low" ? painterReleasePolicy("local-patch-painter/low-v1", 12) : localPatchImagePolicyForVersion(contentVersion) : policy }),
   };
 }
 
@@ -1106,7 +1107,7 @@ export async function localPatchPrivateInventory(c: { db: Pick<Prisma.Transactio
     }
   }
   for (const boardId of new Set(ALL_LOCAL_PATCH_BOARDS.map(board => board.board))) {
-    for (const version of [8, 9, 10, 11, 12]) requestKeys.push(...localPatchBoardReviewKeys(boardId, version));
+    for (const version of [8, 9, 10, 11, 12, 13]) requestKeys.push(...localPatchBoardReviewKeys(boardId, version));
   }
   const extraPlan = await readLocalPatchExtraAttemptPlan(c as Pick<Container, "db">, gameId);
   if (extraPlan) requestKeys.push(...extraPlan.selected.map(entry => entry.requestKey), ...extraPlan.reviewRequestKeys);

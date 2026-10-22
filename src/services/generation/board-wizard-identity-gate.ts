@@ -1,7 +1,9 @@
 import { IDENTITY_SOURCE_REJUDGE_VERSION, IDENTITY_SOURCE_REJUDGE_ACTION, identitySourceRejudgeId, identitySourceRejudgeKey,
   identitySourceRejudgeBindingSchema, identitySourceRejudgeBinding, type IdentitySourceRejudgeBinding } from "./identity-source-rejudge-binding";
 import { FULL_SOURCE_STRICT_RESPONSE_FORMAT } from "../../infra/generation/identity-style-reviewer";
-import { isRefreshedCollectionVersion } from "../../domain/scene/local-patch-versions";
+import { localPatchFamilyForVersion } from "../../domain/scene/local-patch-family";
+import { DETECTIVES_SCENE_VERSION } from "../../domain/scene/local-patch-versions";
+import { DETECTIVE_IDENTITY_STYLE_CATALOG_SHA256 } from "../../../content/detectives/identity-style-release";
 import { childBodyDirection } from "../../domain/child-body";
 import sharp from "sharp";
 import { z } from "zod";
@@ -187,7 +189,9 @@ export async function reviewBoardWizardIdentity(deps: {
   demand(sha256Bytes(input.photo) === provenance.photoSha256
     && sha256Bytes(input.atlas) === provenance.style.atlasSha256, "Source/style provenance differs from actual inputs");
   const fullSource = provenance.style.version === "board-matched-identity/v6";
-  demand(!fullSource || input.contentVersion === 12, "Full-source identity is qualified only for v12");
+  demand(!fullSource || localPatchFamilyForVersion(input.contentVersion)?.capabilities.fullSourceIdentity, "Full-source identity is qualified only for v12 or the separately pinned Detective family");
+  demand(input.contentVersion !== DETECTIVES_SCENE_VERSION || fullSource
+    && provenance.style.catalogSha256 === DETECTIVE_IDENTITY_STYLE_CATALOG_SHA256, "Detective identity requires its full-source style catalog");
   const croppedPhoto = await prepareCharacterPhoto(input.photo, provenance.crop as CropBox | null, 512);
   const images: Buffer[] = await Promise.all([croppedPhoto, input.sheet, input.atlas].map((png, i) => sharp(png, { limitInputPixels: 25_000_000 })
     .rotate().resize(i === 0 ? 512 : 1024, i === 0 ? 512 : 1024, { fit: "inside" }).flatten({ background: "#808080" }).png().toBuffer()));
@@ -204,7 +208,7 @@ export async function reviewBoardWizardIdentity(deps: {
   const settings = fullSource ? fullSourceSettings : advisory ? advisorySettings : { model: BOARD_JUDGE_MODEL, effort: "high", maxOutputTokens: BOARD_JUDGE_MAX_TOKENS } as const;
   const comparison = input.compareWith ? { firstIdentityAssetId: input.compareWith.identityAssetId,
     firstSheetSha256: sha256Bytes(input.compareWith.sheet), preferredCandidate: null } : undefined;
-  const prompt = identityGatePrompt(provenance.ageYears, input.rejudge ? FULL_SOURCE_IDENTITY_GATE_VERSION : version) + (isRefreshedCollectionVersion(input.contentVersion) ? "\n" + childBodyDirection(provenance.ageYears) + "\nThe atlas shows original scene contexts, not enlarged face tiles. Photo alone establishes facial identity. Explicitly compare facial geometry and hair against the photo; do not accept an atlas bystander lookalike. Report identity and body age failures separately, with concrete visible evidence." : "") + (!fullSource && input.contentVersion === 12 ? "\nPainted style also requires explicit pass. Compare the portrait's skin modelling, eye treatment, contour weight and hair detail against the original atlas people. Smooth photographic gradients, tiny individually drawn hairs or a fine-art portrait finish fail paintedStyle even when likeness is excellent. Feature geometry must remain accurate while surface detail matches the board. No automatic best-of-two selection may waive this check." : "") + (comparison
+  const prompt = identityGatePrompt(provenance.ageYears, input.rejudge ? FULL_SOURCE_IDENTITY_GATE_VERSION : version) + (localPatchFamilyForVersion(input.contentVersion)?.capabilities.refreshedIdentity ? "\n" + childBodyDirection(provenance.ageYears) + "\nThe atlas shows original scene contexts, not enlarged face tiles. Photo alone establishes facial identity. Explicitly compare facial geometry and hair against the photo; do not accept an atlas bystander lookalike. Report identity and body age failures separately, with concrete visible evidence." : "") + (!fullSource && input.contentVersion === 12 ? "\nPainted style also requires explicit pass. Compare the portrait's skin modelling, eye treatment, contour weight and hair detail against the original atlas people. Smooth photographic gradients, tiny individually drawn hairs or a fine-art portrait finish fail paintedStyle even when likeness is excellent. Feature geometry must remain accurate while surface detail matches the board. No automatic best-of-two selection may waive this check." : "") + (comparison
     ? fullSource
       ? "\nCompare TWO candidates: image2 is the SECOND/new candidate, image5 is the FIRST candidate. Image4 remains the complete original source; image1 selects the child. Checks describe the SECOND candidate. Add preferredCandidate: first|second to the JSON and concrete visible comparison evidence. Prefer the more recognizable, age-correct, consistent painted child; natural pose differences are allowed. A preference cannot waive any check. Prefer first if tied."
       : "\nAlso compare TWO candidates directly: image2 is the SECOND (new) candidate, image4 is the FIRST candidate, image5 is the uncropped source photo for missing facial context. Image1 selects the child when the full photo contains other people. Your checks describe the SECOND candidate. Add preferredCandidate: first|second to the JSON. Choose the more recognizable likeness to the source child (face geometry, eye spacing/size, nose, mouth, hair shape/colour); do not reward photographic realism or a generic cute face. Both must remain illustrated. Use age-appropriate proportions as a tie-breaker. Prefer first if genuinely tied. Give concrete comparison evidence in reason. This choice is advisory and bounded to these two images, not a request for more attempts."
@@ -424,11 +428,13 @@ export function identityReceiptReadyForPublication(value: unknown, contentVersio
   // verdict, but do not ask a parent to resolve subjective likeness/age doubt.
   // v12 accepts its integrated style (v4) and the same style with the reference's own hair (v5).
   const style = receipt.provenance.style.version;
-  if (isFullSourceGate(receipt.version)) return contentVersion === 12 && style === "board-matched-identity/v6"
+  if (contentVersion === DETECTIVES_SCENE_VERSION && (!isFullSourceGate(receipt.version)
+    || receipt.provenance.style.catalogSha256 !== DETECTIVE_IDENTITY_STYLE_CATALOG_SHA256)) return false;
+  if (isFullSourceGate(receipt.version)) return !!localPatchFamilyForVersion(contentVersion)?.capabilities.fullSourceIdentity && style === "board-matched-identity/v6"
     && receipt.approved && fullSourceChecksSchema.safeParse(receipt.checks).success
     && Object.values(receipt.checks!).every(check => check === "pass")
     && !!receipt.requestId && !!receipt.usage && receipt.costMicroUsd > 0;
-  if (isRefreshedCollectionVersion(contentVersion) && (!(contentVersion === 12 ? style === "board-matched-identity/v4" || style === "board-matched-identity/v5" : style === "board-matched-identity/v3")
+  if (localPatchFamilyForVersion(contentVersion)?.capabilities.refreshedIdentity && (!(contentVersion === 12 ? style === "board-matched-identity/v4" || style === "board-matched-identity/v5" : style === "board-matched-identity/v3")
     || receipt.checks?.identity !== "pass" || receipt.checks?.age !== "pass")) return false;
   if (contentVersion === 12 && receipt.checks?.paintedStyle !== "pass") return false;
   if (isLocalPatchAgeVersion(contentVersion) && receipt.automaticSelection) return receipt.version === AGE_IDENTITY_GATE_VERSION

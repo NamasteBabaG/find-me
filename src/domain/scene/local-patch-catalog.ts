@@ -1,6 +1,7 @@
+import { DETECTIVE_PATCH_BOARDS } from "../../../content/detectives/runtime-release";
 import { REFRESHED_COLLECTION_BOARDS } from "../../../content/adventures/wizard-refresh-release";
 import { INTEGRATED_COLLECTION_BOARDS } from "../../../content/adventures/wizard-integrated-release";
-import { isCollectionVersion, REFRESHED_COLLECTION_VERSION, INTEGRATED_COLLECTION_VERSION } from "./local-patch-versions";
+import { isCollectionVersion, REFRESHED_COLLECTION_VERSION, INTEGRATED_COLLECTION_VERSION, DETECTIVES_SCENE_VERSION } from "./local-patch-versions";
 export { isCollectionVersion, REFRESHED_COLLECTION_VERSION };
 import { WORLD_LOCAL_PATCH_HIDES, type LocalPatchBoard } from "./local-patch-hides";
 import { FIVE_HIDE_BOARDS } from "./local-patch-five-hides";
@@ -18,9 +19,9 @@ export const isLocalPatchAdvisoryVersion = (version: number | undefined): boolea
 
 /** No default-to-latest: a missing historical version must never move a paid child. */
 export function localPatchBoardsForVersion(version: number): readonly LocalPatchBoard[] {
-  return version === INTEGRATED_COLLECTION_VERSION ? INTEGRATED_COLLECTION_BOARDS : version === REFRESHED_COLLECTION_VERSION ? REFRESHED_COLLECTION_BOARDS : version === COLLECTION_SCENE_VERSION ? COLLECTION_PATCH_BOARDS : version === 6 ? WORLD_LOCAL_PATCH_HIDES : isLocalPatchAdvisoryVersion(version) ? FIVE_HIDE_BOARDS : [];
+  return version === DETECTIVES_SCENE_VERSION ? DETECTIVE_PATCH_BOARDS : version === INTEGRATED_COLLECTION_VERSION ? INTEGRATED_COLLECTION_BOARDS : version === REFRESHED_COLLECTION_VERSION ? REFRESHED_COLLECTION_BOARDS : version === COLLECTION_SCENE_VERSION ? COLLECTION_PATCH_BOARDS : version === 6 ? WORLD_LOCAL_PATCH_HIDES : isLocalPatchAdvisoryVersion(version) ? FIVE_HIDE_BOARDS : [];
 }
 export function localPatchBoardForVersion(slug: string, version: number): LocalPatchBoard | null {
   return localPatchBoardsForVersion(version).find(board => board.board === slug) ?? null;
 }
-export const ALL_LOCAL_PATCH_BOARDS = [...WORLD_LOCAL_PATCH_HIDES, ...FIVE_HIDE_BOARDS, ...COLLECTION_PATCH_BOARDS, ...REFRESHED_COLLECTION_BOARDS, ...INTEGRATED_COLLECTION_BOARDS] as const;
+export const ALL_LOCAL_PATCH_BOARDS = [...WORLD_LOCAL_PATCH_HIDES, ...FIVE_HIDE_BOARDS, ...COLLECTION_PATCH_BOARDS, ...REFRESHED_COLLECTION_BOARDS, ...INTEGRATED_COLLECTION_BOARDS, ...DETECTIVE_PATCH_BOARDS] as const;

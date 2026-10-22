@@ -1,5 +1,6 @@
+import { hasLocalPatchCapability } from "../../domain/scene/local-patch-family";
 import { childBodyDirection } from "../../domain/child-body";
-import { REFRESHED_COLLECTION_VERSION, INTEGRATED_COLLECTION_VERSION } from "../../domain/scene/local-patch-versions";
+import { REFRESHED_COLLECTION_VERSION } from "../../domain/scene/local-patch-versions";
 import { INTEGRATION_CHECKS, INTEGRATION_REVIEW_DIRECTION } from "./local-patch-integration";
 import { PLAYER_REVIEW_MODE, LEGACY_PLAYER_REVIEW_MODE, boundaryReviewInstructions, leanBoundaryReviewInstructions, objectJoinInstructions, playerReviewInstructions } from "./local-patch-player-review";
 import { NEIGHBOR_QUADRANTS, RETURN_EDGES, type NeighborComparison, type BoundaryComparison, type JoinDetail } from "./local-patch-integration-evidence";
@@ -64,14 +65,14 @@ export const AGE_LOCAL_PATCH_JUDGE = Object.freeze({ ...QUALITY_LOCAL_PATCH_JUDG
 export const REFRESHED_LOCAL_PATCH_JUDGE = Object.freeze({ ...AGE_LOCAL_PATCH_JUDGE, model: "gpt-5.6-sol", policyVersion: "local-patch-sol-low-identity-body/v4" });
 export const INTEGRATED_LOCAL_PATCH_JUDGE = Object.freeze({ ...REFRESHED_LOCAL_PATCH_JUDGE, effort: "medium" as const, maxOutputTokens: 6500, policyVersion: "local-patch-sol-medium-scene-integration/v5" });
 export function localPatchJudgeSettings(contentVersion?: number) {
-  if (contentVersion === INTEGRATED_COLLECTION_VERSION) return INTEGRATED_LOCAL_PATCH_JUDGE;
+  if (hasLocalPatchCapability(contentVersion, "integratedQuality")) return INTEGRATED_LOCAL_PATCH_JUDGE;
   if (contentVersion === REFRESHED_COLLECTION_VERSION) return REFRESHED_LOCAL_PATCH_JUDGE;
   if (isLocalPatchAgeVersion(contentVersion)) return AGE_LOCAL_PATCH_JUDGE;
   if (isLocalPatchStrictVersion(contentVersion)) return QUALITY_LOCAL_PATCH_JUDGE;
   return isLocalPatchAdvisoryVersion(contentVersion) ? ADVISORY_LOCAL_PATCH_JUDGE : LOCAL_PATCH_JUDGE;
 }
 export function localPatchBoardJudgeSettings(contentVersion?: number) {
-  if (contentVersion === INTEGRATED_COLLECTION_VERSION) return INTEGRATED_LOCAL_PATCH_JUDGE;
+  if (hasLocalPatchCapability(contentVersion, "integratedQuality")) return INTEGRATED_LOCAL_PATCH_JUDGE;
   if (contentVersion === REFRESHED_COLLECTION_VERSION) return REFRESHED_LOCAL_PATCH_JUDGE;
   if (isLocalPatchAgeVersion(contentVersion)) return AGE_LOCAL_PATCH_JUDGE;
   return isLocalPatchStrictVersion(contentVersion) ? QUALITY_LOCAL_PATCH_JUDGE : ADVISORY_LOCAL_PATCH_JUDGE;
@@ -225,7 +226,7 @@ export type LocalPatchQualityVerdict = z.infer<typeof localPatchQualityVerdictSc
 export const LOCAL_PATCH_AGE_SEVERE_CHECKS = Object.freeze([...LOCAL_PATCH_SEVERE_CHECKS, "ageAppropriate", "scaleRight"] as const);
 export const REFRESHED_REQUIRED_CHECKS = [...LOCAL_PATCH_AGE_SEVERE_CHECKS, "childPresent", "childOnlyOnce", "childComplete", "pictureWhole"] as const;
 export const INTEGRATED_REQUIRED_CHECKS = [...REFRESHED_REQUIRED_CHECKS, ...INTEGRATION_CHECKS, "groundContact"] as const;
-export const localPatchSevereChecks = (contentVersion?: number) => contentVersion === INTEGRATED_COLLECTION_VERSION ? INTEGRATED_REQUIRED_CHECKS : contentVersion === REFRESHED_COLLECTION_VERSION ? REFRESHED_REQUIRED_CHECKS : isLocalPatchAgeVersion(contentVersion)
+export const localPatchSevereChecks = (contentVersion?: number) => hasLocalPatchCapability(contentVersion, "integratedQuality") ? INTEGRATED_REQUIRED_CHECKS : contentVersion === REFRESHED_COLLECTION_VERSION ? REFRESHED_REQUIRED_CHECKS : isLocalPatchAgeVersion(contentVersion)
   ? LOCAL_PATCH_AGE_SEVERE_CHECKS : LOCAL_PATCH_SEVERE_CHECKS;
 
 /** V9 adds an explicit body-age judgement. Never reinterpret an old paid reply
@@ -323,7 +324,7 @@ const integratedVerdictSchema = (reader: QualityReader) => localPatchVerdictWire
 /** The strict historical reading: unchanged for every existing caller and receipt. */
 export const localPatchIntegratedVerdictSchema = integratedVerdictSchema(QUALITY_READER_STRICT);
 const LOCATED_INTEGRATED_VERDICT_SCHEMA = integratedVerdictSchema(QUALITY_READER_LOCATED);
-const verdictSchemaFor = (contentVersion?: number, reader: QualityReader = QUALITY_READER_STRICT) => contentVersion === INTEGRATED_COLLECTION_VERSION
+const verdictSchemaFor = (contentVersion?: number, reader: QualityReader = QUALITY_READER_STRICT) => hasLocalPatchCapability(contentVersion, "integratedQuality")
   ? reader === QUALITY_READER_LOCATED || reader === QUALITY_READER_LOCATED_V2 ? LOCATED_INTEGRATED_VERDICT_SCHEMA : localPatchIntegratedVerdictSchema
   : isLocalPatchAgeVersion(contentVersion) ? localPatchAgeVerdictSchema
   : isLocalPatchStrictVersion(contentVersion) ? localPatchQualityVerdictSchema : localPatchVerdictSchema;
@@ -391,7 +392,7 @@ export function localPatchOccludedAgeWarning(verdict: unknown, contentVersion?: 
  * uncertainty answerable. This is NOT approval or a substitute for the caller's
  * wire/model/evidence-ID and paid-image bindings. Bad evidence parses as null. */
 export function localPatchExplicitUncertaintyChecks(verdict: unknown, contentVersion?: number, context?: LocalPatchQualityContext): string[] {
-  if (contentVersion === INTEGRATED_COLLECTION_VERSION) {
+  if (hasLocalPatchCapability(contentVersion, "integratedQuality")) {
     const v = readIntegratedNormalizedVerdict(verdict, restoresDowngrades(context?.reader));
     if (!v || v.downgraded.length || v.contradicted.length || v.unclassified.length) return [];
     return INTEGRATED_REQUIRED_CHECKS.filter(key => v[key] === "unsure" && !v.faults.some(f => f.check === key));
@@ -412,7 +413,7 @@ export function localPatchExplicitUncertaintyChecks(verdict: unknown, contentVer
 export function localPatchQualityDisposition(verdict: LocalPatchVerdict | null, contentVersion?: number, context?: LocalPatchQualityContext): {
   state: "acceptable" | "retry" | "unresolved"; faults: string[]; contextualWarning?: LocalPatchOccludedAgeWarning;
 } {
-  if (contentVersion === INTEGRATED_COLLECTION_VERSION) {
+  if (hasLocalPatchCapability(contentVersion, "integratedQuality")) {
     const v = readIntegratedNormalizedVerdict(verdict, restoresDowngrades(context?.reader));
     if (!v) return { state: "unresolved", faults: ["integration-review-unreadable"] };
     const failures = INTEGRATED_REQUIRED_CHECKS.filter(key => v[key] === "fail" && v.faults.some(f => f.check === key));
@@ -482,7 +483,7 @@ export type LocalPatchExpectation = {
 };
 
 export function localPatchJudgePrompt(hideId: string, expectation: LocalPatchExpectation = {}, contentVersion?: number): string {
-  if (contentVersion === INTEGRATED_COLLECTION_VERSION) {
+  if (hasLocalPatchCapability(contentVersion, "integratedQuality")) {
     if (!validChildAge(expectation.ageYears)) throw Error("Integration review requires a confirmed target age");
     return [integratedReviewInstructions(expectation.ageYears), `Review ${hideId}. Images in order: BEFORE original scene, AFTER actual returned player crop, PORTRAIT identity reference. Support: ${expectation.support ?? "authored support"}.`,
       `Return ONLY JSON: one verdict object with ${integratedVerdictFields()}.`].join("\n");
@@ -730,10 +731,10 @@ export function localPatchBoardJudgeImages(request: LocalPatchBoardJudgeRequest)
   const boundary = request.assessmentMode === PLAYER_REVIEW_MODE, joins = objectJoins(request), strips = returnStrips(request);
   if (strips && request.hides.some(h => h.boundaryComparisons?.length !== 4 || h.boundaryComparisons.some((p, i) => p.edge !== RETURN_EDGES[i] || !p.png.length
     || !Number.isInteger(p.joinOffset) || p.joinOffset < 0))) throw Error("Boundary review requires four continuous native return comparisons per hide");
-  if (!boundary && request.contentVersion === INTEGRATED_COLLECTION_VERSION && request.hides.some(h => h.neighborComparisons?.length !== 4
+  if (!boundary && hasLocalPatchCapability(request.contentVersion, "integratedQuality") && request.hides.some(h => h.neighborComparisons?.length !== 4
     || h.neighborComparisons.some((p, i) => p.quadrant !== NEIGHBOR_QUADRANTS[i] || !p.png.length))) throw Error("Integration review requires four registered native neighbour comparisons per hide");
   return [request.boardPng, request.identityPng, ...request.hides.flatMap(hide => strict
-    ? [hide.beforePng, hide.afterEvidencePng!, ...(boundary ? strips ? hide.boundaryComparisons!.map(p => p.png) : [] : request.contentVersion === INTEGRATED_COLLECTION_VERSION ? hide.neighborComparisons!.map(p => p.png) : []),
+    ? [hide.beforePng, hide.afterEvidencePng!, ...(boundary ? strips ? hide.boundaryComparisons!.map(p => p.png) : [] : hasLocalPatchCapability(request.contentVersion, "integratedQuality") ? hide.neighborComparisons!.map(p => p.png) : []),
       ...(joins ? hide.joinDetails!.map(d => d.png) : [])]
     : [hide.beforePng, hide.afterPng])];
 }
@@ -743,7 +744,7 @@ export function localPatchBoardEvidenceIds(request: Pick<LocalPatchBoardJudgeReq
   const joins = objectJoins(request), strips = returnStrips(request);
   return [`${request.boardId}:original-board`, `${request.boardId}:canonical-portrait`,
     ...request.hides.flatMap(hide => [...localPatchHideEvidenceIds(hide.hideId), ...(request.assessmentMode === PLAYER_REVIEW_MODE ? strips ? RETURN_EDGES.map(edge => `${hide.hideId}:return:${edge}`) : []
-      : request.contentVersion === INTEGRATED_COLLECTION_VERSION ? NEIGHBOR_QUADRANTS.map(q => `${hide.hideId}:neighbors:${q}`) : []),
+      : hasLocalPatchCapability(request.contentVersion, "integratedQuality") ? NEIGHBOR_QUADRANTS.map(q => `${hide.hideId}:neighbors:${q}`) : []),
       ...(joins ? RETURN_EDGES.map(edge => `${hide.hideId}:join:${edge}`) : [])])];
 }
 export function localPatchHideEvidenceIds(hideId: string): [string, string] {
@@ -760,7 +761,7 @@ export function localPatchBoardJudgeImageLabels(request: Pick<LocalPatchBoardJud
       `EVIDENCE_ID=${hide.hideId}:before | HIDE_ID=${hide.hideId} | ROLE=BEFORE | Untouched original context for this hide only. Compare ONLY with EVIDENCE_ID=${hide.hideId}:after.`,
       `EVIDENCE_ID=${hide.hideId}:after | HIDE_ID=${hide.hideId} | ROLE=AFTER | One serial appearance. LEFT panel is actual player context; RIGHT panel beyond the white gutter is a native closeup of this SAME appearance, not another hide or an extra evidence image. Compare ONLY with EVIDENCE_ID=${hide.hideId}:before.`,
       ...(request.assessmentMode === PLAYER_REVIEW_MODE ? !strips ? [] : hide.boundaryComparisons!.map(p => `EVIDENCE_ID=${hide.hideId}:return:${p.edge} | HIDE_ID=${hide.hideId} | ROLE=RETURN_BOUNDARY | ${p.edge} join at ${p.axis}=${p.joinOffset} native pixels within EACH panel; LEFT=BEFORE, RIGHT=AFTER. Continuous full-span context across this actual returned edge. Follow every crossing head, neck, torso and visible limb; distinguish coherent occlusion from half-erased anatomy. Outer crop edges are not return edges.`)
-        : request.contentVersion === INTEGRATED_COLLECTION_VERSION ? NEIGHBOR_QUADRANTS.map(q => `EVIDENCE_ID=${hide.hideId}:neighbors:${q} | HIDE_ID=${hide.hideId} | ROLE=NEIGHBOR_COMPARISON | ${q} at native scale: LEFT=BEFORE original, RIGHT=AFTER player. Inspect EVERY head and connected body, including near all four image edges. One pair of the same location, not two targets.`) : []),
+        : hasLocalPatchCapability(request.contentVersion, "integratedQuality") ? NEIGHBOR_QUADRANTS.map(q => `EVIDENCE_ID=${hide.hideId}:neighbors:${q} | HIDE_ID=${hide.hideId} | ROLE=NEIGHBOR_COMPARISON | ${q} at native scale: LEFT=BEFORE original, RIGHT=AFTER player. Inspect EVERY head and connected body, including near all four image edges. One pair of the same location, not two targets.`) : []),
       ...(joins ? hide.joinDetails!.map(d => `EVIDENCE_ID=${hide.hideId}:join:${d.edge} | HIDE_ID=${hide.hideId} | ROLE=JOIN_DETAIL | the ${d.edge} returned join magnified ${d.scale}x: `
         + `${d.edge === "left" || d.edge === "right" ? "LEFT=BEFORE, RIGHT=AFTER" : "TOP=BEFORE, BOTTOM=AFTER"}. The red ticks in the white margin mark the join line, ${d.joinOffset} magnified pixels into each band. `
         + "Inside AFTER, compare what lies on the two sides of that line.") : []),
@@ -771,7 +772,7 @@ export type LocalPatchBoardJudgeResult = LocalPatchJudgeResult & { verdicts: Rec
 const AGE_REVIEW_DIRECTION = "For this new contract five checks require explicit pass: faceLikeness, faceReadable, severeSeam, ageAppropriate and scaleRight. Image2 authorizes FACE AND HAIR identity, not an old target age or the body from its source sheet. A coherent generic child is NOT sufficient: the same characteristic facial shapes and hair must be recognizable; use unsure if the pixels cannot establish likeness. ageAppropriate checks the stated age in face AND whole body: for age 4 or 5 expect a preschool torso, narrow small shoulders, short child limbs, small hands and feet, not an older school-age or adult build or mature stance. Judge visible anatomy, not clothing or assumed age from a name. scaleRight compares the whole child against children of the SAME age at the SAME ground depth, never nearby adults. A small adult-shaped figure is not a preschool body. Do not solve age or readability with a giant head, imagined zoom detail, photographic texture, blind whole-figure shrinking or a foreground move. Do not demand hidden limbs through natural occlusion; use unsure when the visible evidence cannot establish the required check. Each fail needs its own located fault; advisory complaints never invent severe failure.";
 export function localPatchBoardJudgePrompt(request: Pick<LocalPatchBoardJudgeRequest, "boardId" | "hides" | "contentVersion" | "assessmentMode" | "reviewScope" | "qualityQuestion">): string {
   if (request.assessmentMode === PLAYER_REVIEW_MODE || request.assessmentMode === LEGACY_PLAYER_REVIEW_MODE) {
-    if (request.contentVersion !== INTEGRATED_COLLECTION_VERSION || request.reviewScope !== "ready-only/v1"
+    if (!hasLocalPatchCapability(request.contentVersion, "integratedQuality") || request.reviewScope !== "ready-only/v1"
       || request.hides.length !== 1 || !validChildAge(request.hides[0]?.expectation?.ageYears))
       throw Error("Player assessment requires one age-bound integrated appearance");
     const hide = request.hides[0]!;
@@ -788,9 +789,9 @@ export function localPatchBoardJudgePrompt(request: Pick<LocalPatchBoardJudgeReq
       `Return JSON only: {"hides":[{"hideId":"${hide.hideId}","evidenceIds":${JSON.stringify(localPatchHideEvidenceIds(hide.hideId))},"verdict":{${integratedVerdictFields()}${boundary ? ',"boundaryIntegrity":{"left":{"status":"pass|fail|unsure","observation":"specific crossing anatomy"},"top":{"status":"pass|fail|unsure","observation":"specific crossing anatomy"},"right":{"status":"pass|fail|unsure","observation":"specific crossing anatomy"},"bottom":{"status":"pass|fail|unsure","observation":"specific crossing anatomy"}}' : ""}}}]}. Exactly one supplied hide.`,
     ].join("\n");
   }
-  if (request.reviewScope && (!["unapproved-only/v1", "ready-only/v1"].includes(request.reviewScope) || request.contentVersion !== INTEGRATED_COLLECTION_VERSION))
+  if (request.reviewScope && (!["unapproved-only/v1", "ready-only/v1"].includes(request.reviewScope) || !hasLocalPatchCapability(request.contentVersion, "integratedQuality")))
     throw Error("Scoped review requires the integrated release");
-  if (request.contentVersion === INTEGRATED_COLLECTION_VERSION) {
+  if (hasLocalPatchCapability(request.contentVersion, "integratedQuality")) {
     const scoped = !!request.reviewScope;
     if ((scoped ? request.hides.length < 1 || request.hides.length > 3 : request.hides.length !== 3)
       || new Set(request.hides.map(h => h.hideId)).size !== request.hides.length
@@ -894,7 +895,7 @@ export function parseLocalPatchBoardVerdicts(raw: string | null, hideIds: readon
     const shape = z.object({ hideId: z.string(), verdict: z.unknown() });
     const rowSchema = isLocalPatchAgeVersion(contentVersion)
       ? shape.extend({ evidenceIds: z.tuple([z.string(), z.string()]) }).strict() : shape.strict();
-    if (reviewScope && (!["unapproved-only/v1", "ready-only/v1"].includes(reviewScope) || contentVersion !== INTEGRATED_COLLECTION_VERSION)) return missing;
+    if (reviewScope && (!["unapproved-only/v1", "ready-only/v1"].includes(reviewScope) || !hasLocalPatchCapability(contentVersion, "integratedQuality"))) return missing;
     if (reviewScope ? hideIds.length < 1 || hideIds.length > 3 : hideIds.length !== localPatchHidesPerBoard(contentVersion)) return missing;
     if (new Set(hideIds).size !== hideIds.length) return missing;
     const rows = z.object({ hides: z.array(rowSchema).length(hideIds.length) }).strict().parse(JSON.parse(raw ?? "null")).hides;
@@ -902,7 +903,7 @@ export function parseLocalPatchBoardVerdicts(raw: string | null, hideIds: readon
     return Object.fromEntries(rows.map(row => {
       if (isLocalPatchAgeVersion(contentVersion) && (!("evidenceIds" in row)
         || JSON.stringify(row.evidenceIds) !== JSON.stringify(localPatchHideEvidenceIds(row.hideId)))) return [row.hideId, null];
-      if (assessmentMode === PLAYER_REVIEW_MODE && (contentVersion !== 12 || !boundaryIntegritySchema.safeParse((row.verdict as Record<string, unknown> | null)?.boundaryIntegrity).success)) return [row.hideId, null];
+      if (assessmentMode === PLAYER_REVIEW_MODE && (!hasLocalPatchCapability(contentVersion, "integratedQuality") || !boundaryIntegritySchema.safeParse((row.verdict as Record<string, unknown> | null)?.boundaryIntegrity).success)) return [row.hideId, null];
       return [row.hideId, parseLocalPatchVerdict(row.verdict, contentVersion, reader)];
     }));
   } catch { return missing; }
@@ -933,7 +934,7 @@ export function diagnoseLocalPatchBoardAnswer(text: string | null, hideIds: read
   if (hideIds.length && hideIds.every(id => verdicts[id])) return null;
   let value: unknown;
   try { value = JSON.parse(text); } catch { return fault("syntax"); }
-  if (reviewScope && (!["unapproved-only/v1", "ready-only/v1"].includes(reviewScope) || contentVersion !== INTEGRATED_COLLECTION_VERSION)
+  if (reviewScope && (!["unapproved-only/v1", "ready-only/v1"].includes(reviewScope) || !hasLocalPatchCapability(contentVersion, "integratedQuality"))
     || (reviewScope ? hideIds.length < 1 || hideIds.length > 3 : hideIds.length !== localPatchHidesPerBoard(contentVersion))
     || new Set(hideIds).size !== hideIds.length) return fault("ids");
   const top = z.object({ hides: z.array(z.unknown()) }).strict().safeParse(value);
@@ -952,7 +953,7 @@ export function diagnoseLocalPatchBoardAnswer(text: string | null, hideIds: read
     const at = `hides.${index}`;
     if (evidence && JSON.stringify(row.evidenceIds) !== JSON.stringify(localPatchHideEvidenceIds(row.hideId))) return fault("ids", `${at}.evidenceIds`);
     if (assessmentMode === PLAYER_REVIEW_MODE) {
-      if (contentVersion !== INTEGRATED_COLLECTION_VERSION) return fault("shape", `${at}.verdict`);
+      if (!hasLocalPatchCapability(contentVersion, "integratedQuality")) return fault("shape", `${at}.verdict`);
       const boundary = boundaryIntegritySchema.safeParse((row.verdict as Record<string, unknown> | null)?.boundaryIntegrity);
       if (!boundary.success) return fromIssue(boundary.error, `${at}.verdict.boundaryIntegrity`);
     }

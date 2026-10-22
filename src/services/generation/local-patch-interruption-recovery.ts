@@ -1,3 +1,5 @@
+import { detectiveAutomaticRecoveryQualified } from "./detective-automatic-recovery";
+import { hasLocalPatchCapability } from "../../domain/scene/local-patch-family";
 import type { Container } from "../container";
 import { fixedSourceFailureReceiptSchema } from "../../infra/generation/fixed-source-diagnostics";
 import { boardWizardBudgetOf, boardWizardWorldId } from "./board-conditioned-wizard";
@@ -23,11 +25,12 @@ export async function localPatchBudgetReadyForPublication(budget: Pick<WorldBudg
   const audit = await budget.audit(worldId);
   if (audit.held || audit.pendingRequestKeys.length) return false;
   if (audit.reservedMicroUsd === 0) return true;
-  if (contentVersion !== 12 || !audit.unknownRequestKeys.length) return false;
+  if (!hasLocalPatchCapability(contentVersion, "integratedQuality") || !audit.unknownRequestKeys.length
+    || contentVersion === 13 && !options.reviewRecoveryV3) return false;
   for (const key of audit.unknownRequestKeys) {
     const approval = await budget.readContinuationApproval(worldId, key), version = approval?.version;
-    if (approval?.version === "world-unknown-continuation/v1" && options.sourceReferenceContinuation && await options.sourceReferenceContinuation(approval)) continue;
-    if (approval?.version === "world-automatic-review-recovery/v4" && options.capacityContinuation && await options.capacityContinuation(approval)) continue;
+    if (contentVersion === 12 && approval?.version === "world-unknown-continuation/v1" && options.sourceReferenceContinuation && await options.sourceReferenceContinuation(approval)) continue;
+    if (contentVersion === 12 && approval?.version === "world-automatic-review-recovery/v4" && options.capacityContinuation && await options.capacityContinuation(approval)) continue;
     if (version !== "world-automatic-image-recovery/v1" && version !== "world-automatic-review-recovery/v1"
       && !(options.reviewRecoveryV2 && version === "world-automatic-review-recovery/v2")
       && !(options.reviewRecoveryV3 && version === "world-automatic-review-recovery/v3")) return false;
@@ -43,9 +46,10 @@ export async function recoverLocalPatchImageInterruptions(c: Container, gameId: 
   fence?: (tx: Prisma.TransactionClient) => Promise<void>): Promise<number> {
   const game = await c.db.game.findUnique({ where: { id: gameId }, include: { scenes: true, orders: true } });
   if (!game || game.styleVersion !== "local-patch-world-v1" || game.status !== "TARGETS_GENERATING" || game.deletedAt
-    || game.configJson || !game.ownerId || game.scenes.length !== 9 || game.scenes.some(s => s.sceneVersion !== 12)
+    || game.configJson || !game.ownerId || game.scenes.length !== 9 || new Set(game.scenes.map(s => s.sceneVersion)).size !== 1 || game.scenes.some(s => !hasLocalPatchCapability(s.sceneVersion, "integratedQuality"))
     || !game.orders.some(o => o.userId === game.ownerId && o.paymentStatus === "PAID" && o.paidAt && !o.refundedAt)
     || game.orders.some(o => o.refundedAt || o.paymentStatus === "REFUNDED")) return 0;
+  if (game.scenes[0]!.sceneVersion === 13 && !await detectiveAutomaticRecoveryQualified(c.db, gameId)) return 0;
   const worldId = boardWizardWorldId(gameId), budget = boardWizardBudgetOf(c), audit = await budget.audit(worldId);
   if (audit.overCapMicroUsd || audit.conflictRequestKeys.length || audit.overrunRequestKeys.length) return 0;
   const store = new LocalPatchRetainedPurchaseStore(c, gameId, budget);
@@ -55,7 +59,7 @@ export async function recoverLocalPatchImageInterruptions(c: Container, gameId: 
     if (!authored || authored.attempt !== 1) continue;
     const scene = game.scenes.find(s => s.sceneSlug === authored.board.board);
     const hide = authored.hide;
-    if (!scene || !hide) continue;
+    if (!scene || !hide || scene.sceneVersion !== (authored.sceneVersion ?? 12)) continue;
     const row = await c.db.targetVariantAsset.findFirst({ where: { variant: "A", targetInstance: { gameSceneId: scene.id, targetId: hide.targetId } } });
     if (!row || row.attempts !== 1 || row.assetId || row.provider !== "local-patch") continue;
     const priorReceipt = JSON.parse(row.judgeJson ?? "{}");
@@ -105,7 +109,8 @@ export async function recoverLocalPatchImageInterruptions(c: Container, gameId: 
       await fenceLocalPatchImages(tx, gameId); await fence?.(tx);
       const live = await tx.game.findUniqueOrThrow({ where: { id: gameId }, include: { orders: true } });
       if (live.status !== "TARGETS_GENERATING" || live.ownerId !== game.ownerId || live.configJson
-        || live.orders.some(o => o.paymentStatus === "REFUNDED" || o.refundedAt)) throw Error("Interrupted game changed before recovery");
+        || live.orders.some(o => o.paymentStatus === "REFUNDED" || o.refundedAt)
+        || scene.sceneVersion === 13 && !await detectiveAutomaticRecoveryQualified(tx, gameId)) throw Error("Interrupted game changed before recovery");
       const changed = await tx.targetVariantAsset.updateMany({ where: { id: row.id, status: row.status, attempts: 1, assetId: null, judgeJson: row.judgeJson },
         data: { status: "FAILED", lastError: "image-interruption: no image returned; unknown charge remains fully reserved; use the next attempt",
           judgeJson: JSON.stringify({ ...priorReceipt, renderFault: "image-interruption: no image returned; the next image requires a new request key",

@@ -7,6 +7,7 @@ import { normalizeChildName } from "@/lib/copy";
 import { newId } from "@/lib/ids";
 import { flowError, type FlowResult } from "@/i18n/errors";
 import { assertNoOutstandingCheckout, DraftCheckoutInProgress } from "./draft-checkout-lock";
+import { localPatchSourceSelectionAllowed } from "./generation/source-placement-release";
 
 export async function listFamilyChildren(db: PrismaClient, ownerId: string) {
   if (!ownerId) return [];
@@ -100,6 +101,10 @@ export async function chooseDraftChild(db: PrismaClient, input: {
       // A level that differs from the stored one is a new choice. NULL plays Explorers, so choosing
       // Explorers for a draft from before the cards keeps its boards.
       const levelChanged = input.searchLevel !== undefined && storedSearchLevel(game.searchLevel) !== input.searchLevel;
+      if (!await localPatchSourceSelectionAllowed(tx, game, input.searchLevel ?? storedSearchLevel(game.searchLevel))) {
+        await assertNoOutstandingCheckout(tx, game.id);
+        return flowError("SEARCH_LEVEL_UNAVAILABLE", "מסלול החיפוש אינו תואם לטיוטה הזאת.");
+      }
       if (continuation) {
         const profile = game.childProfileId ? await tx.childProfile.findUnique({ where: { id: game.childProfileId } }) : null;
         if (continuation.familyChildId !== input.familyChildId || !profile || profile.deletedAt

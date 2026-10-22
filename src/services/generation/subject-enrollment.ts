@@ -1,8 +1,10 @@
+import { hasLocalPatchCapability } from "../../domain/scene/local-patch-family";
 import { createHash } from "node:crypto";
 import type { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { BACKGROUND_REVIEW_TRANSPORT } from "../../domain/generation/background-review-round";
 import { SUBJECT_POLICY_VERSION, subjectPlanCanonical, subjectPlanFor, type SubjectPlan } from "../../domain/generation/subject-policy";
+import { localPatchHideForVersion } from "../../domain/scene/local-patch-family-hide";
 import { localPatchBoardForVersion } from "../../domain/scene/local-patch-catalog";
 import { DUAL_VISUAL_REVIEW_V3 } from "./visual-review-release";
 
@@ -76,7 +78,12 @@ const sha = (value: string) => createHash("sha256").update(value).digest("hex");
 export const subjectPlanSha256 = (plan: SubjectPlan) => sha(subjectPlanCanonical(plan));
 
 /** The subject plan of one v12 hide, by its authored id; null for any other id. */
-export function subjectPlanOfHide(hideId: string): SubjectPlan | null {
+export function subjectPlanOfHide(hideId: string, sceneVersion = 12): SubjectPlan | null {
+  if (sceneVersion !== 12) {
+    if (!hasLocalPatchCapability(sceneVersion, "subjectEnrollment")) return null;
+    const authored = localPatchHideForVersion(hideId, sceneVersion);
+    return authored ? subjectPlanFor(authored.board, hideId) : null;
+  }
   const boardId = /^([a-z]+)-v12-[123]$/.exec(hideId)?.[1];
   const board = boardId ? localPatchBoardForVersion(boardId, 12) : null;
   return board ? subjectPlanFor(board, hideId) : null;

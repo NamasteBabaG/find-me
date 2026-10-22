@@ -1,4 +1,5 @@
-import { isRefreshedCollectionVersion } from "../../domain/scene/local-patch-versions";
+import { localPatchFamilyForVersion } from "../../domain/scene/local-patch-family";
+import { DETECTIVES_SCENE_VERSION, isRefreshedCollectionVersion } from "../../domain/scene/local-patch-versions";
 import { dailyGenerationSpend } from "./daily-generation-spend";
 import { newId } from "@/lib/ids";
 import { env, flag, spendGuard } from "@/lib/env";
@@ -175,7 +176,7 @@ export async function runGenerationPipeline(c: Container, gameId: string, option
     // A missing historical definition must never silently use today's board.
     for (const gs of game.scenes) sceneBySlug(gs.sceneSlug, gs.sceneVersion);
     const contentVersion = localPatch ? game.scenes[0]?.sceneVersion : undefined;
-    if (localPatch && isRefreshedCollectionVersion(contentVersion)) identityArtCache = new Map();
+    if (localPatch && localPatchFamilyForVersion(contentVersion)?.capabilities.refreshedIdentity) identityArtCache = new Map();
     const preflightIdentity = async () => {
       if (localPatch) identityPreflightProof = await preflightLocalPatchIdentity(c, gameId, undefined, identityArtCache, identityPreflightProof);
       else await preflightBoardConditionedWizard(c, gameId);
@@ -205,7 +206,8 @@ export async function runGenerationPipeline(c: Container, gameId: string, option
     // An interrupted identity/review keeps the exact original style recipe.
     // Upgrading the default must not replace a purchased v1 atlas with v2 pixels.
     const sourceRelease = qaIdentityClaim && localPatch ? await identitySourceReleaseOf(c.db, gameId) : null;
-    if (sourceRelease && contentVersion !== 12) throw Error("Full-source identity requires the pinned v12 collection");
+    if (sourceRelease && !localPatchFamilyForVersion(contentVersion)?.capabilities.fullSourceIdentity) throw Error("Full-source identity requires a qualified pinned collection");
+    if (contentVersion === DETECTIVES_SCENE_VERSION && !sourceRelease) throw Error("Detective identity requires its pinned full-source contract");
     let retainedIdentityStyleVersion;
     if (qaIdentityClaim && child.identityAssetId) {
       const retained = await c.db.auditLog.findFirst({ where: { action: "sheet:painted", entityId: child.identityAssetId, entityType: "Asset" }, orderBy: { createdAt: "desc" } });
@@ -218,7 +220,8 @@ export async function runGenerationPipeline(c: Container, gameId: string, option
       // hair from the photograph (v5) instead of v4's default broad dark curls.
       if (qaIdentityClaim) identityStyle = await buildBoardWizardIdentityStyle(undefined, retainedIdentityStyleVersion ?? (sourceRelease ? "board-matched-identity/v6" : contentVersion === 12
         ? isAgeBodyPromptRelease(env().LOCAL_PATCH_PROMPT_RELEASE) ? "board-matched-identity/v5" : "board-matched-identity/v4"
-        : isRefreshedCollectionVersion(contentVersion) ? "board-matched-identity/v3" : undefined), identityWorld, identityArtCache);
+        : isRefreshedCollectionVersion(contentVersion) ? "board-matched-identity/v3" : undefined), identityWorld, identityArtCache,
+        contentVersion === DETECTIVES_SCENE_VERSION ? { sceneVersion: DETECTIVES_SCENE_VERSION } : undefined);
     } finally {
       // Release the full public masters before reading private reference photos
       // or dispatching providers. Later preflights revalidate without retaining.
@@ -326,7 +329,7 @@ export async function runGenerationPipeline(c: Container, gameId: string, option
       const current = await c.db.childProfile.findUniqueOrThrow({ where: { id: child.id } });
       if (!current.identityAssetId || !current.avatarAssetId || !identityStyle) throw new Error("QA identity is not ready for review");
       const publicationClaim = { ...qaIdentityClaim, identityAssetId: current.identityAssetId, avatarAssetId: current.avatarAssetId };
-      if (localPatch && (contentVersion === 9 || contentVersion === 10 || isRefreshedCollectionVersion(contentVersion))) {
+      if (localPatch && (contentVersion === 9 || contentVersion === 10 || isRefreshedCollectionVersion(contentVersion) || contentVersion === DETECTIVES_SCENE_VERSION)) {
         const { selectBestIdentity } = await import("./identity-best-of-two");
         const selected = await selectBestIdentity(c, publicationClaim, { atlas: identityStyle.png, contentVersion,
           deadlineAt: options.hardDeadlineAt, preflight: preflightIdentity });

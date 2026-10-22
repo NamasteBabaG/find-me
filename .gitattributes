@@ -2,3 +2,5 @@
 *.png binary
 *.jpg binary
 *.webp binary
+# Preserve the immutable staged source snapshot bytes used by its qualified pin.
+content/detectives/source-v1.json -text whitespace=cr-at-eol

@@ -13,6 +13,8 @@ import { boardsFor, isPackageTier, priceFor } from "@/domain/package";
 import { childHasPaidWorld } from "./child-pricing.service";
 import { outstandingCheckout, DraftCheckoutInProgress } from "./draft-checkout-lock";
 import { checkoutCloseReceiptId, closeReceiptState } from "./checkout-close.service";
+import { storedSearchLevel } from "@/domain/search-level";
+import { localPatchSourceSelectionAllowed } from "./generation/source-placement-release";
 
 /** Shared by ordinary same-child checkout and the explicit world handoff. */
 export async function claimChildWorldForCheckout(tx: Prisma.TransactionClient, input: {
@@ -79,6 +81,7 @@ async function startClaimedCheckout(c: Container, input: CheckoutClaimInput, req
         || !game.packageTier || !isPackageTier(game.packageTier) || game.scenes.length !== boardsFor(game.packageTier)
         || game.deletedAt || !["PACKAGE_SELECTED", "CHECKOUT_PENDING", "PAYMENT_FAILED"].includes(game.status)
         || !game.childProfile?.originalPhotoAssetId || game.childProfile.ownerId !== input.userId) return { state: "locked" as const };
+      if (!await localPatchSourceSelectionAllowed(tx, game, storedSearchLevel(game.searchLevel), game.scenes)) return { state: "locked" as const };
       // Match ordinary checkout's Game -> FamilyChild fence order, avoiding
       // deadlocks between a refresh and an in-flight child checkout claim.
       const fenced = await tx.game.updateMany({ where: { id: game.id, updatedAt: game.updatedAt, ownerId: input.userId, status: game.status, deletedAt: null }, data: { updatedAt: new Date(Math.max(Date.now(), game.updatedAt.getTime() + 1)) } });

@@ -171,10 +171,12 @@ describe("the painter a new draft is pinned to", () => {
     expect(fetch).not.toHaveBeenCalled();
   });
 
-  it("covers every content version a new QA draft can be sold at", () => {
+  it("keeps the LOW pin on v12 while the qualified Detective family uses its own MEDIUM policy", () => {
     expect(sceneVersionForDraft("local-patch-world-v1")).toBe(12);
-    // A Detectives release on another version needs its own painter qualification first.
-    expect(DETECTIVE_RELEASES.every(release => release.sceneVersion === 12)).toBe(true);
+    expect(DETECTIVE_RELEASES.map(release => release.sceneVersion)).toEqual([13]);
+    expect(world.localPatchPainterDeps(c, 13, null)?.renderPolicySha256).toBe(MEDIUM_SHA);
+    expect(() => world.localPatchPainterDeps(c, 13, LOCAL_PATCH_LOW_PAINTER)).toThrow("content version 12 only");
+    expect(fetch).not.toHaveBeenCalled();
   });
 });
 

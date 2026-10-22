@@ -1,3 +1,5 @@
+import { detectiveAutomaticRecoveryQualified } from "./detective-automatic-recovery";
+import { hasLocalPatchCapability } from "../../domain/scene/local-patch-family";
 import type { Prisma } from "@prisma/client";
 import type { Container } from "../container";
 import { interruptedLocalPatchReviewRequest } from "../../domain/scene/local-patch-review-request";
@@ -117,11 +119,13 @@ export async function recoverPreparedLocalPatchReviews(c: Container, prepared: P
   const refuse = (reason: string) => { if (options.why) options.why.reason = reason; return false; };
   if (!questions.length || new Set(questions.map(q => q.requestKey)).size !== questions.length) return refuse("no distinct interrupted questions to continue");
   if (options.admitProviderFailed && options.releaseParkedJob !== false) return refuse("a provider-declared failure is continued only without releasing the job");
+  if (prepared.scene.sceneVersion === 13 && !await detectiveAutomaticRecoveryQualified(c.db, prepared.game.id))
+    return refuse("Detective continuation requires its original fresh-world recovery receipt and exact whole-family pin");
   const upgrade = await subjectUpgradeOf(c.db, prepared.game.id);
   const enrolled = upgrade?.reviewRecovery === SUBJECT_REVIEW_RECOVERY && upgrade.ownerId === prepared.game.ownerId;
   // local-patch-lean-review-recovery/v1: only a world that carries its pin continues past v2, under v3.
   const pinned = enrolled && !!await leanReviewRecoveryOf(c.db, prepared.game.id);
-  const capacity = pinned ? await leanCapacityRecoveryOf(c.db, prepared.game.id) : null;
+  const capacity = pinned && prepared.scene.sceneVersion !== 13 ? await leanCapacityRecoveryOf(c.db, prepared.game.id) : null;
   const counts = await prepared.budget.countContinuationApprovals(prepared.worldId);
   let freeV1 = WORLD_AUTOMATIC_REVIEW_RECOVERY_V1_LIMIT - (counts[REVIEW_APPROVAL_V1] ?? 0);
   let freeV2 = enrolled ? WORLD_AUTOMATIC_REVIEW_RECOVERY_V2_LIMIT - (counts[REVIEW_APPROVAL_V2] ?? 0) : 0;
@@ -208,14 +212,15 @@ async function checkInterruption(c: Container, prepared: Prepared, question: Int
   admitProviderFailed: boolean, roundCandidates: readonly InterruptedQuestion[]): Promise<Planned | { refused: string } | null> {
   const policyId = release === "v1" ? REVIEW_INTERRUPTION_POLICY : release === "v2" ? REVIEW_INTERRUPTION_POLICY_V2 : release === "v3" ? REVIEW_INTERRUPTION_POLICY_V3 : CAPACITY_REVIEW_POLICY;
   const { game, scene, request, worldId, budget } = prepared, { requestKey, fingerprint } = question;
-  if (scene.sceneVersion !== 12 || prepared.extraPlan || request.reviewScope !== "ready-only/v1"
+  if (!hasLocalPatchCapability(scene.sceneVersion, "integratedQuality") || prepared.extraPlan || request.reviewScope !== "ready-only/v1"
     || request.hides.length !== 1 || !interruptedLocalPatchReviewRequest(requestKey, fingerprint)) return null;
   const selected = prepared.entries.find(e => e.hide.id === request.hides[0]!.hideId);
   if (!selected || prepared.protectedRows.has(selected.row.id)) return null;
   const live = await c.db.game.findUnique({ where: { id: game.id }, include: { scenes: true, orders: true } });
   if (!live || live.ownerId !== game.ownerId || live.deletedAt || live.configJson || live.readyAt
     || live.status !== "TARGETS_GENERATING" || live.styleVersion !== "local-patch-world-v1"
-    || live.scenes.length !== 9 || live.scenes.some(s => s.sceneVersion !== 12) || !paidGame(live)) return null;
+    || live.scenes.length !== 9 || live.scenes.some(s => s.sceneVersion !== scene.sceneVersion) || !paidGame(live)
+    || scene.sceneVersion === 13 && !await detectiveAutomaticRecoveryQualified(c.db, game.id)) return null;
   const audit = await budget.audit(worldId);
   if (audit.overCapMicroUsd || audit.conflictRequestKeys.length || audit.overrunRequestKeys.length) return null;
   const held = await budget.readRequest(worldId, requestKey);
@@ -288,7 +293,8 @@ async function recordInterruptions(c: Container, prepared: Prepared, authorized:
     const currentGame = await tx.game.findUniqueOrThrow({ where: { id: game.id }, include: { scenes: true, orders: true } });
     if (currentGame.status !== "TARGETS_GENERATING" || currentGame.ownerId !== game.ownerId || currentGame.configJson
       || currentGame.deletedAt || currentGame.readyAt || !paidGame(currentGame)
-      || currentGame.scenes.length !== 9 || currentGame.scenes.some(s => s.sceneVersion !== 12))
+      || currentGame.scenes.length !== 9 || currentGame.scenes.some(s => s.sceneVersion !== prepared.scene.sceneVersion)
+      || prepared.scene.sceneVersion === 13 && !await detectiveAutomaticRecoveryQualified(tx, game.id))
       throw Error("Interrupted review game changed before recovery");
     const prior = JSON.parse(selected.row.judgeJson!), at = new Date().toISOString();
     // The interrupted round counts against this image's fixed evidence total, once: questions interrupted side by side in

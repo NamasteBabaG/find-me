@@ -8,6 +8,11 @@ const tracingExcludedDirectories = ["work", "storage", "assets", "output", "tmp"
 const refreshedCollectionArtPath = "content/adventures/wizard-refresh-art.json";
 const collectionArtPath = "content/adventures/wizard-art.json";
 const kingdomCollectionArtPath = "content/adventures/wizard-kingdom-art.json";
+const detectiveArtPath = "content/detectives/source-v1.json";
+const detectiveArt = JSON.parse(readFileSync(detectiveArtPath, "utf8")) as { boards: { path: string; sha256: string }[] };
+if (detectiveArt.boards.length !== 9 || new Set(detectiveArt.boards.map(row => row.path)).size !== 9
+  || detectiveArt.boards.some(row => !/^public\/scenes\/journey-[a-z0-9-]+-detectives-v[1-9][0-9]*\/base\.webp$/.test(row.path)
+    || !/^[a-f0-9]{64}$/.test(row.sha256))) throw new Error("Nine hash-bound child-free Detective sources required for tracing");
 const collectionArt = JSON.parse(readFileSync(collectionArtPath, "utf8")) as { path: string }[];
 if (collectionArt.length !== 9 || new Set(collectionArt.map(a => a.path)).size !== 9 || collectionArt.some(a => !/^public\/scenes\/adventure-[a-z0-9-]+\/base\.webp$/.test(a.path))) throw new Error("Nine child-free collection boards required");
 const kingdomCollectionArt = JSON.parse(readFileSync(kingdomCollectionArtPath, "utf8")) as { path: string }[];
@@ -79,7 +84,7 @@ const nextConfig: NextConfig = {
   outputFileTracingIncludes: {
     // Public Supabase CA. Prisma's generated Postgres schema resolves the
     // strict-TLS URL sslcert=../supabase-root-ca.crt from prisma/generated.
-    "/*": ["prisma/supabase-root-ca.crt", ...databaseSchemaTrace, activeBoardCatalogPath, ...activeBoardAssetPaths, localPatchArtPath, ...localPatchArtPaths, collectionArtPath, refreshedCollectionArtPath, kingdomCollectionArtPath].map(file => `./${file}`),
+    "/*": ["prisma/supabase-root-ca.crt", ...databaseSchemaTrace, activeBoardCatalogPath, ...activeBoardAssetPaths, localPatchArtPath, ...localPatchArtPaths, collectionArtPath, refreshedCollectionArtPath, kingdomCollectionArtPath, detectiveArtPath].map(file => `./${file}`),
   },
   outputFileTracingExcludes: {
     // Local-only preview routes and Prisma's dotenv fallback otherwise cause

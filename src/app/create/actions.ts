@@ -46,12 +46,13 @@ export async function saveNameAction(_prev: ActionResult | null, formData: FormD
   if (sent !== null) {
     if (!isSearchLevel(sent)) return flowError("SEARCH_LEVEL_REQUIRED", "בחרו מגלים או בלשים.");
     if (sent === "detectives" && !terms.detectives) return flowError("SEARCH_LEVEL_UNAVAILABLE", "מסלול הבלשים עוד לא פתוח.");
+    if (terms.allowedLevels && !terms.allowedLevels.includes(sent)) return flowError("SEARCH_LEVEL_UNAVAILABLE", "מסלול החיפוש אינו תואם לטיוטה הזאת.");
     searchLevel = sent;
   } else if (terms.asked) return flowError("SEARCH_LEVEL_REQUIRED", "בחרו מגלים או בלשים.");
   let token = draftToken;
   let gameId = draft?.id;
   if (!draft) {
-    const created = await createDraft(c, user?.id ?? null, locale, { askSearchLevel: terms.asked });
+    const created = await createDraft(c, user?.id ?? null, locale, { askSearchLevel: terms.asked, ...(searchLevel === undefined ? {} : { searchLevel }) });
     await setDraftCookie(created.draftToken);
     token = created.draftToken;
     gameId = created.gameId;

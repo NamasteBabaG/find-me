@@ -161,3 +161,40 @@ describe("changing the child of a saved draft", () => {
     expect(view.getAllByRole("radio")).toHaveLength(2);
   });
 });
+
+describe("immutable source family choices", () => {
+  it.each(["explorers", "detectives"] as const)("offers only the continued %s family", level => {
+    const view = render(<I18nProvider locale="en" dict={en}><NameForm initialName="Synthetic" initialAge={8}
+      levelChoice initialLevel={level} allowedLevels={[level]} /></I18nProvider>);
+    const radios = view.getAllByRole("radio") as HTMLInputElement[];
+    expect(radios).toHaveLength(1); expect(radios[0]!.value).toBe(level); expect(radios[0]!.checked).toBe(true);
+  });
+  it("does not submit an incompatible saved choice that is absent from the server's allowed family", () => {
+    const view = render(<I18nProvider locale="en" dict={en}><NameForm initialName="Synthetic" initialAge={8}
+      levelChoice initialLevel="detectives" allowedLevels={["explorers"]} /></I18nProvider>);
+    fireEvent.submit(view.container.querySelector("form")!);
+    expect(view.getByRole("alert").textContent).toBe(en.errors.SEARCH_LEVEL_REQUIRED);
+    expect(action).not.toHaveBeenCalled();
+  });
+  it("a different child's fresh adventure uses fresh choices and returning restores the original family", () => {
+    const view = render(<I18nProvider locale="en" dict={en}><NameForm initialName="Synthetic" initialAge={8}
+      children={[{ id: "synthetic-first", displayName: "Synthetic first" }, { id: "synthetic-second", displayName: "Synthetic second" }]}
+      initialChildId="synthetic-first" draftChild={{ familyChildId: "synthetic-first" }}
+      levelChoice freshLevelChoice initialLevel="explorers" allowedLevels={["explorers"]} freshAllowedLevels={["explorers", "detectives"]} /></I18nProvider>);
+    const select = view.container.querySelector('select[name="familyChildId"]')!;
+    expect(view.getAllByRole("radio")).toHaveLength(1);
+    fireEvent.change(select, { target: { value: "synthetic-second" } });
+    expect((view.getAllByRole("radio") as HTMLInputElement[]).map(r => r.checked)).toEqual([false, false]);
+    fireEvent.change(select, { target: { value: "synthetic-first" } });
+    expect(view.getAllByRole("radio")).toHaveLength(1);
+    expect((view.getByRole("radio") as HTMLInputElement).checked).toBe(true);
+  });
+  it("a withdrawn sealed family explains the unavailable path and exposes a fresh-adventure link", () => {
+    const view = render(<I18nProvider locale="en" dict={en}><NameForm initialName="Synthetic" initialAge={8}
+      levelChoice initialLevel="detectives" allowedLevels={[]} /></I18nProvider>);
+    expect(view.queryAllByRole("radio")).toHaveLength(0);
+    expect(view.getByRole("alert").textContent).toContain(en.errors.SEARCH_LEVEL_UNAVAILABLE);
+    expect(view.getByRole("link", { name: en.worldPurchase.start }).getAttribute("href")).toBe("/create?fresh=1");
+    expect((view.container.querySelector('button[type="submit"]') as HTMLButtonElement).disabled).toBe(true);
+  });
+});
