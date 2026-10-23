@@ -1,3 +1,4 @@
+import { readDetectivesCompletionBudget } from "./detectives-completion-budget";
 import { readLeanCapacityRecoveryBudget } from "./lean-capacity-recovery";
 import { readLeanCompletionBudget } from "./lean-completion-budget";
 import { localPatchFamilyForVersion } from "../../domain/scene/local-patch-family";
@@ -116,7 +117,7 @@ const assetPath = (id: string) => `private/board-wizard/${id}.png`;
 /** Exact authority precedence shared by purchases and display. Only explicitly
  * bound recovery grants raise a lean pin; ordinary defaults never do. */
 export async function readBoardWizardBudgetAuthority(c: Container, worldId: string) {
-  return await readLeanCapacityRecoveryBudget(c, worldId) ?? await readLeanCompletionBudget(c, worldId) ?? await readLeanWorldBudget(c, worldId)
+  return await readDetectivesCompletionBudget(c, worldId) ?? await readLeanCapacityRecoveryBudget(c, worldId) ?? await readLeanCompletionBudget(c, worldId) ?? await readLeanWorldBudget(c, worldId)
     ?? await readNewQaWorldBudget(c, worldId) ?? await readLocalPatchEmergencyBudget(c, worldId) ?? readBoardWizardBudgetExtension(c, worldId);
 }
 function budgetOf(c: Container, attempt = 1, options: WorldBudgetOptions = {}) { return boardWizardBudget(new CasWorldBudgetRepository(new PrismaWorldBudgetStore(c.db)), attempt, options,

@@ -1,6 +1,7 @@
 import { nextIdentitySourceRevision, tickIdentitySourceRevision } from "./identity-source-revision-queue";
 import { resumeIdentityReasonHold } from "./identity-reason-recovery";
 import { statusOf } from "../game-status";
+import { nextDetectivesCompletionWake } from "./detectives-completion-budget";
 import type { Container } from "../container";
 import { LEASE_MS as PIPELINE_LEASE_MS, RESUMABLE_STATUSES, runGenerationPipeline } from "./pipeline";
 import { FIXED_WORLD_STYLE_PREFIX, isFixedWorldStyle } from "./fixed-world-stage-record";
@@ -121,7 +122,8 @@ export async function tickGeneration(c: Container, gameId: string | null, budget
   // most three times per hold and ten minutes apart; its own slice decides, compared on the hold it observed.
   const wake = gameId ? null : await nextParkedWake(c, now);
   const reconciled = await resumeIdentityReasonHold(c, gameId);
-  const id = gameId ?? reconciled ?? (wake && await claimParkedWake(c, wake) ? wake.gameId : null) ?? (await nextPendingGame(c));
+  const capacityWake = await nextDetectivesCompletionWake(c, gameId);
+  const id = gameId ?? reconciled ?? capacityWake ?? (wake && await claimParkedWake(c, wake) ? wake.gameId : null) ?? (await nextPendingGame(c));
   if (!id) return { gameId: null, status: null, pending: false };
   const before = await c.db.game.findUnique({ where: { id }, select: { status: true, styleVersion: true, scenes: { select: { sceneVersion: true } } } });
   if (!before) return { gameId: id, status: null, pending: false };

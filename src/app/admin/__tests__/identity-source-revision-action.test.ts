@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 const f = vi.hoisted(() => ({ appEnv: "qa", admin: { id: "real-session-admin" } as { id: string } | null,
-  requestHeaders: new Headers(), qaAccess: vi.fn(), apply: vi.fn(), retry: vi.fn(), grant: vi.fn(), capacity: vi.fn(), revalidate: vi.fn() }));
+  requestHeaders: new Headers(), qaAccess: vi.fn(), apply: vi.fn(), retry: vi.fn(), grant: vi.fn(), capacity: vi.fn(), detectives: vi.fn(), revalidate: vi.fn() }));
 vi.mock("next/navigation", () => ({ redirect: (url: string) => { throw new Error(`redirect:${url}`); } }));
 vi.mock("next/headers", () => ({ headers: async () => f.requestHeaders }));
 vi.mock("next/cache", () => ({ revalidatePath: f.revalidate }));
@@ -20,15 +20,18 @@ vi.mock("@/services/generation/identity-source-revision", () => ({
 }));
 vi.mock("@/services/generation/lean-completion-budget", () => ({ authorizeLeanCompletionBudget: f.grant }));
 vi.mock("@/services/generation/lean-capacity-recovery", () => ({ authorizeLeanCapacityRecovery: f.capacity }));
+vi.mock("@/services/generation/detectives-completion-budget", () => ({ authorizeDetectivesCompletionBudget: f.detectives }));
+import { DETECTIVES_COMPLETION_CONFIRMATION } from "@/domain/generation/detectives-completion-budget";
 import { LEAN_CAPACITY_RECOVERY_CONFIRMATION } from "@/domain/generation/lean-capacity-recovery";
 import { LEAN_COMPLETION_BUDGET_CONFIRMATION } from "@/domain/generation/lean-completion-budget";
-import { beginIdentitySourceRevisionAction, retryIdentitySourceRevisionAction, authorizeLeanCompletionBudgetAction, authorizeLeanCapacityRecoveryAction } from "../actions";
+import { beginIdentitySourceRevisionAction, retryIdentitySourceRevisionAction, authorizeLeanCompletionBudgetAction, authorizeLeanCapacityRecoveryAction, authorizeDetectivesCompletionBudgetAction } from "../actions";
 const destination = "/admin/orders/game-synthetic", digest = "a".repeat(64);
 function form() {
   const data = new FormData(); data.set("gameId", "game-synthetic"); data.set("planSha256", digest);
   data.set("confirm", "repair-this-world-reference-from-full-source-v1"); return data;
 }
 beforeEach(() => {
+  f.detectives.mockReset().mockResolvedValue({ capMicroUsd: 6_000_000 });
   f.appEnv = "qa"; f.admin = { id: "real-session-admin" };
   f.requestHeaders = new Headers({ origin: "https://qa.example.invalid", host: "qa.example.invalid", "sec-fetch-site": "same-origin" });
   f.qaAccess.mockReset().mockResolvedValue(undefined); f.apply.mockReset().mockResolvedValue({ applied: true }); f.revalidate.mockReset(); f.retry.mockReset().mockResolvedValue(undefined); f.grant.mockReset().mockResolvedValue({ capMicroUsd: 6_000_000 }); f.capacity.mockReset().mockResolvedValue({ capMicroUsd: 12_000_000 });
@@ -137,4 +140,30 @@ it("returns a safe blocked notice for a stale or refused capacity plan without e
   f.capacity.mockRejectedValue(Error("synthetic private financial details"));
   await expect(authorizeLeanCapacityRecoveryAction(capacityForm())).rejects.toThrow(`redirect:${destination}?capacityRecovery=blocked`);
   expect(f.capacity).toHaveBeenCalledOnce();
+});
+
+
+function detectivesBudgetForm() { const data = form(); data.set("confirm", DETECTIVES_COMPLETION_CONFIRMATION); data.set("ownerAuthorizationSha256", "e".repeat(64)); return data; }
+it("records the explicit Detective capacity with the session administrator and exact recorded owner authorization", async () => {
+  const data = detectivesBudgetForm(); data.set("operatorId", "forged-operator");
+  await expect(authorizeDetectivesCompletionBudgetAction(data)).rejects.toThrow(`redirect:${destination}?detectivesBudget=authorized`);
+  expect(f.qaAccess).toHaveBeenCalledOnce();
+  expect(f.detectives).toHaveBeenCalledExactlyOnceWith({ synthetic: true }, { gameId: "game-synthetic", operatorId: "real-session-admin", expectedPlanSha256: digest, ownerAuthorizationSha256: "e".repeat(64) });
+  expect(f.grant).not.toHaveBeenCalled(); expect(f.capacity).not.toHaveBeenCalled(); expect(f.apply).not.toHaveBeenCalled();
+});
+it.each(["production", "no-admin", "qa-denied", "cross-origin", "missing-origin", "cross-site", "unconfirmed", "wrong-confirmation", "duplicate-id", "duplicate-plan", "duplicate-confirm", "missing-plan", "bad-plan", "invalid-id", "missing-evidence", "bad-evidence", "duplicate-evidence"])("refuses %s before authorizing Detective capacity", async mode => {
+  const data = detectivesBudgetForm();
+  if (mode === "production") f.appEnv = "production"; if (mode === "no-admin") f.admin = null;
+  if (mode === "qa-denied") f.qaAccess.mockRejectedValue(Error("synthetic denied"));
+  if (mode === "cross-origin") f.requestHeaders.set("origin", "https://attacker.invalid"); if (mode === "missing-origin") f.requestHeaders.delete("origin"); if (mode === "cross-site") f.requestHeaders.set("sec-fetch-site", "cross-site");
+  if (mode === "unconfirmed") data.delete("confirm"); if (mode === "wrong-confirmation") data.set("confirm", LEAN_COMPLETION_BUDGET_CONFIRMATION);
+  if (mode === "duplicate-id") data.append("gameId", "other-game"); if (mode === "duplicate-plan") data.append("planSha256", digest); if (mode === "duplicate-confirm") data.append("confirm", DETECTIVES_COMPLETION_CONFIRMATION);
+  if (mode === "missing-plan") data.delete("planSha256"); if (mode === "bad-plan") data.set("planSha256", "bad"); if (mode === "invalid-id") data.set("gameId", "../../other");
+  if (mode === "missing-evidence") data.delete("ownerAuthorizationSha256"); if (mode === "bad-evidence") data.set("ownerAuthorizationSha256", "bad"); if (mode === "duplicate-evidence") data.append("ownerAuthorizationSha256", "e".repeat(64));
+  await expect(authorizeDetectivesCompletionBudgetAction(data)).rejects.toThrow();
+  expect(f.detectives).not.toHaveBeenCalled(); expect(f.revalidate).not.toHaveBeenCalled();
+});
+it("reports a stale Detective plan without exposing private details", async () => {
+  f.detectives.mockRejectedValue(Error("synthetic private source and ledger"));
+  await expect(authorizeDetectivesCompletionBudgetAction(detectivesBudgetForm())).rejects.toThrow(`redirect:${destination}?detectivesBudget=blocked`);
 });

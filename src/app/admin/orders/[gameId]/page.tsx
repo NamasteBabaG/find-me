@@ -15,6 +15,7 @@ import { Notice } from "@/ui/Shell";
 import { AttemptStrip } from "./AttemptStrip";
 import { BoardWizardRecoveryForm } from "./BoardWizardRecoveryForm";
 import { LocalPatchRepairResumeForm } from "./LocalPatchRepairResumeForm";
+import { DetectivesCompletionBudgetForm } from "./DetectivesCompletionBudgetForm";
 import { LeanCapacityRecoveryForm } from "./LeanCapacityRecoveryForm";
 import { IdentitySourceRevisionForm } from "./IdentitySourceRevisionForm";
 import { LeanReviewRecoveryForm } from "./LeanReviewRecoveryForm";
@@ -41,9 +42,9 @@ function judgeLabel(judge: { verdict: string; reason: string; claimedVerdict?: s
   return "? השופט לא הכריע";
 }
 
-export default async function AdminOrderPage({ params, searchParams }: { params: Promise<{ gameId: string }>; searchParams: Promise<{ v?: string; repair?: string; paidRepair?: string; partialRelease?: string; delivery?: string; refund?: string; leanRecovery?: string; referenceRepair?: string; capacityRecovery?: string }> }) {
+export default async function AdminOrderPage({ params, searchParams }: { params: Promise<{ gameId: string }>; searchParams: Promise<{ v?: string; repair?: string; paidRepair?: string; partialRelease?: string; delivery?: string; refund?: string; leanRecovery?: string; referenceRepair?: string; capacityRecovery?: string; detectivesBudget?: string }> }) {
   await requireAdmin();
-  const [{ gameId }, { v, repair, paidRepair, partialRelease, delivery, refund, leanRecovery, referenceRepair, capacityRecovery }, { t }] = await Promise.all([params, searchParams, getI18n()]);
+  const [{ gameId }, { v, repair, paidRepair, partialRelease, delivery, refund, leanRecovery, referenceRepair, capacityRecovery, detectivesBudget }, { t }] = await Promise.all([params, searchParams, getI18n()]);
   const variant: "A" | "B" = v === "B" ? "B" : "A";
   const c = getContainer();
   const detail = await orderDetailForAdmin(c, gameId);
@@ -103,6 +104,9 @@ export default async function AdminOrderPage({ params, searchParams }: { params:
       {referenceRepair === "blocked" ? <Notice kind="danger">{t.adminIdentityRevision.blocked}</Notice> : null}
       {capacityRecovery === "authorized" ? <Notice>{t.adminIdentityRevision.capacityRecoveryAuthorized}</Notice> : null}
       {capacityRecovery === "blocked" ? <Notice kind="danger">{t.adminIdentityRevision.capacityRecoveryBlocked}</Notice> : null}
+      {detectivesBudget === "authorized" ? <Notice>{t.adminIdentityRevision.detectivesBudgetAuthorized}</Notice> : null}
+      {detectivesBudget === "blocked" ? <Notice kind="danger">{t.adminIdentityRevision.detectivesBudgetBlocked}</Notice> : null}
+      <DetectivesCompletionBudgetForm gameId={gameId} />
       <IdentitySourceRevisionForm gameId={gameId} />
       <LeanCapacityRecoveryForm gameId={gameId} />
       <LocalPatchPartialReleaseForm gameId={gameId} />

@@ -1,0 +1,219 @@
+import { Prisma } from "@prisma/client";
+import type { Container } from "../container";
+import { env } from "../../lib/env";
+import { DbStorage } from "../../infra/storage/db";
+import { PrismaWorldBudgetStore, WORLD_BUDGET_LEDGER_MAX_REVISION } from "../../infra/db/prisma-world-budget-store";
+import { CasWorldBudgetRepository } from "../../infra/db/world-budget-repository";
+import { auditWorldBudget } from "./world-budget";
+import { applyBoardWizardBudgetCap, boardWizardBudget, type BoardWizardBudgetGrant } from "./board-wizard-budget";
+import { boardConditioningHash as hash } from "./board-conditioned-source";
+import { sha256Bytes } from "./fixed-sprite";
+import { leanReleaseOf, leanReleaseReceipt } from "./lean-release";
+import { sourcePlacementReleaseOf } from "./source-placement-release";
+import { subjectUpgradeOf } from "./subject-enrollment";
+import { identityGateReceiptOf, identityReceiptReadyForPublication, requireBoardWizardIdentityApproval } from "./board-wizard-identity-gate";
+import { parkedHoldSha256 } from "./lean-review-recovery-pin";
+import { identityRevisionPending } from "./identity-source-revision-state";
+import { backgroundReviewWaiting } from "./continuity-background";
+import { isGameStatus, isPlayable } from "../../domain/order-state";
+import { detectiveBudgetBindingSchema, detectiveBudgetReceiptBodySchema, detectiveBudgetReceiptSchema,
+  detectiveBudgetIdSchema, detectiveBudgetHashSchema, detectivesCompletionId, detectivesCompletionResumeId,
+  DETECTIVES_COMPLETION_BUDGET, DETECTIVES_COMPLETION_CAP, DETECTIVES_COMPLETION_ACTION, DETECTIVES_COMPLETION_RESUMED,
+  type DetectiveBudgetReceipt } from "../../domain/generation/detectives-completion-budget";
+
+const EXHAUSTED = "local-patch:recovery-exhausted";
+const worldOf = (gameId: string) => `${gameId}:board-wizard`;
+function demand(ok: unknown, why: string): asserts ok { if (!ok) throw Error(`DETECTIVES_BUDGET: ${why}`); }
+const transactionContainer = (c: Container, tx: Prisma.TransactionClient): Container => ({ ...c, db: tx as Container["db"], storage: new DbStorage(tx) });
+
+async function current(c: Container, gameId: string) {
+  demand(env().APP_ENV === "qa" && c.storage.id === "db", "QA database storage required");
+  const family = await sourcePlacementReleaseOf(c.db, gameId);
+  demand(family?.baseSceneVersion === 13 && family.familyId === "journey-detectives/v1" && family.coverage.length === 27
+    && await leanReleaseOf(c.db, gameId), "Exact original Detective and lean pins required");
+  const game = await c.db.game.findUniqueOrThrow({ where: { id: gameId }, include: { childProfile: true, scenes: { orderBy: { orderIndex: "asc" } }, orders: true } });
+  const child = game.childProfile;
+  demand(!game.deletedAt && game.styleVersion === "local-patch-world-v1" && game.searchLevel === "detectives" && game.packageTier === "ONE_WORLD"
+    && child && !child.deletedAt && child.ownerId === game.ownerId && child.identityAssetId && child.avatarAssetId && child.ageYears !== null,
+  "Live owned Detective world and canonical profile required");
+  const boards = [...new Set(family.coverage.map(hide => hide.boardId))];
+  demand(game.scenes.length === 9 && new Set(game.scenes.map(scene => scene.sceneSlug)).size === 9 && game.scenes.every((scene, i) => scene.sceneVersion === 13 && boards.includes(scene.sceneSlug) && scene.orderIndex === i), "All nine original Detective boards required");
+  const orders = game.orders.filter(o => o.userId === game.ownerId && o.paymentStatus === "PAID" && o.paidAt && !o.refundedAt);
+  demand(orders.length > 0 && !game.orders.some(o => o.refundedAt || o.paymentStatus === "REFUNDED"), "Verified nonrefunded owner payment required");
+  const paymentSha256 = hash(orders.map(o => ({ id: o.id, userId: o.userId, amountAgorot: o.amountAgorot, paidAt: o.paidAt!.toISOString() })).sort((a, b) => a.id.localeCompare(b.id)));
+  const enrollment = await subjectUpgradeOf(c.db, gameId), review = await identityGateReceiptOf(c.db, child.identityAssetId);
+  demand(enrollment && !enrollment.identityRevision && enrollment.ownerId === game.ownerId && enrollment.identityAssetId === child.identityAssetId
+    && review && identityReceiptReadyForPublication(review, 13) && enrollment.identitySha256 === review.sheetSha256
+    && enrollment.photoAssetId === review.provenance.photoAssetId && enrollment.photoSha256 === review.provenance.photoSha256
+    && enrollment.ageYears === child.ageYears && review.provenance.ageYears === child.ageYears
+    && hash(review.provenance.crop) === hash(child.photoCropJson ? JSON.parse(child.photoCropJson) : null), "Strict original full-source identity binding required");
+  const identity = await c.db.asset.findUniqueOrThrow({ where: { id: child.identityAssetId } });
+  const avatar = await c.db.asset.findUniqueOrThrow({ where: { id: child.avatarAssetId } });
+  demand([identity, avatar].every(a => a.ownerId === game.ownerId && a.status === "READY" && !a.deletedAt)
+    && identity.type === "IDENTITY_SHEET" && identity.visibility === "PRIVATE" && avatar.type === "AVATAR" && avatar.visibility === "GAME",
+  "Live original private identity and owned game avatar required");
+  return { game, child, family, enrollment, review, identity, avatar, paymentSha256 };
+}
+
+async function sourceCurrent(c: Container, state: Awaited<ReturnType<typeof current>>, photoId: string) {
+  if (state.child.originalPhotoAssetId === photoId) {
+    const photo = await c.db.asset.findUnique({ where: { id: photoId } });
+    return photo?.ownerId === state.game.ownerId && photo.status === "READY" && photo.visibility === "PRIVATE" && !photo.deletedAt;
+  }
+  // Ordinary successful publication purges the source. It does not revoke the historical world's ceiling.
+  if (state.child.originalPhotoAssetId !== null || !isGameStatus(state.game.status) || !isPlayable(state.game.status) || !state.game.configJson) return false;
+  const rows = await c.db.auditLog.findMany({ where: { actorType: "SYSTEM", actorId: null, action: "local-patch:photo-purged-after-approval",
+    entityType: "Asset", entityId: state.identity.id }, select: { metaJson: true } });
+  return rows.some(row => JSON.parse(row.metaJson ?? "null")?.photoAssetId === photoId);
+}
+
+async function receiptOf(c: Container, gameId: string): Promise<DetectiveBudgetReceipt | null> {
+  const row = await c.db.auditLog.findUnique({ where: { id: detectivesCompletionId(gameId) } });
+  if (!row) return null;
+  const pin = detectiveBudgetReceiptSchema.parse(JSON.parse(row.metaJson ?? "null"));
+  const { authorizationSha256, ...body } = pin;
+  demand(row.actorType === "ADMIN" && row.actorId === pin.operatorId && row.action === DETECTIVES_COMPLETION_ACTION
+    && row.entityType === "Game" && row.entityId === gameId && pin.gameId === gameId && pin.worldId === worldOf(gameId)
+    && pin.operatorId === pin.ownerId && row.metaJson === JSON.stringify(pin) && authorizationSha256 === hash(body), "Invalid or foreign capacity receipt");
+  const { planSha256: _plan, operatorId: _operator, ownerAuthorizationSha256: _evidence, authorizedAt: _at, automaticRelease: _release, ...rawBinding } = body;
+  const binding = detectiveBudgetBindingSchema.parse(rawBinding);
+  demand(pin.planSha256 === hash(binding), "The authorized plan hash changed");
+  return pin;
+}
+
+async function matches(c: Container, pin: DetectiveBudgetReceipt, state: Awaited<ReturnType<typeof current>>) {
+  return state.game.ownerId === pin.ownerId && state.child.id === pin.childId && state.child.identityAssetId === pin.identityAssetId
+    && state.child.avatarAssetId === pin.avatarAssetId && state.child.ageYears === pin.ageYears && state.paymentSha256 === pin.paymentSha256
+    && hash(state.child.photoCropJson ? JSON.parse(state.child.photoCropJson) : null) === pin.cropSha256
+    && hash(state.game.scenes.map(scene => ({ id: scene.id, slug: scene.sceneSlug, version: scene.sceneVersion, order: scene.orderIndex }))) === pin.scenesSha256
+    && hash(state.family) === pin.familySha256 && hash(leanReleaseReceipt(pin.gameId)) === pin.leanPinSha256
+    && hash(state.enrollment) === pin.enrollmentSha256 && hash(state.review) === pin.reviewSha256
+    && state.review.sheetSha256 === pin.identitySha256 && state.enrollment.photoSha256 === pin.photoSha256
+    && state.enrollment.photoAssetId === pin.photoAssetId && await sourceCurrent(c, state, pin.photoAssetId);
+}
+
+/** A separate ADMIN grant, ahead of the unchanged four-dollar SYSTEM pin. No other world or default receives capacity. */
+export async function readDetectivesCompletionBudget(c: Container, worldId: string): Promise<BoardWizardBudgetGrant | null> {
+  if (env().APP_ENV !== "qa" || c.storage.id !== "db" || !/^[A-Za-z0-9_-]{1,160}:board-wizard$/.test(worldId)) return null;
+  const pin = await receiptOf(c, worldId.slice(0, -":board-wizard".length));
+  if (!pin) return null;
+  // Corrupt immutable authority throws. Live deletion/refund/source changes withdraw capacity.
+  let state;
+  try { state = await current(c, pin.gameId); } catch { return null; }
+  if (!await matches(c, pin, state)) return null;
+  return { worldId, capMicroUsd: DETECTIVES_COMPLETION_CAP, authorizationSha256: pin.authorizationSha256 };
+}
+
+async function verifyAssetsAndBill(c: Container, state: Awaited<ReturnType<typeof current>>, store: ReturnType<typeof PrismaWorldBudgetStore.forReadOnlyTransaction>) {
+  const { child, identity, avatar, review } = state;
+  demand(child.originalPhotoAssetId === state.enrollment.photoAssetId && await sourceCurrent(c, state, state.enrollment.photoAssetId), "Original live private source required");
+  demand(sha256Bytes(await c.storage.get(identity.storagePath)) === review.sheetSha256, "Canonical identity pixels changed");
+  const budget = boardWizardBudget(new CasWorldBudgetRepository(store)); // Read-only; cannot reserve or dispatch inside a transaction.
+  await requireBoardWizardIdentityApproval(c, budget, { gameId: state.game.id, identityAssetId: identity.id, sheetSha256: review.sheetSha256,
+    catalogSha256: review.provenance.style.catalogSha256, photoAssetId: child.originalPhotoAssetId, ageYears: state.enrollment.ageYears,
+    crop: child.photoCropJson ? JSON.parse(child.photoCropJson) : null, contentVersion: 13 });
+  return sha256Bytes(await c.storage.get(avatar.storagePath));
+}
+
+/** Read-only plan: all history and unknown reservations remain counted; no source, image, grant, job or charge is changed. */
+export async function planDetectivesCompletionBudget(c: Container, gameId: string) {
+  detectiveBudgetIdSchema.parse(gameId);
+  demand(!await c.db.auditLog.findUnique({ where: { id: detectivesCompletionId(gameId) } }), "The single grant already exists");
+  const state = await current(c, gameId), { game, child } = state;
+  demand(game.status === "TARGETS_GENERATING" && !game.readyAt && !game.configJson && !await identityRevisionPending(c.db, gameId), "Only unfinished original-identity work may receive capacity");
+  demand(await c.db.game.count({ where: { childProfileId: child.id, deletedAt: null, NOT: { id: gameId } } }) === 0, "Shared profile refused");
+  const job = await c.db.generationJob.findUniqueOrThrow({ where: { id: `job_${gameId}` } });
+  demand(job.gameId === gameId && job.status === "FAILED" && job.currentStep === EXHAUSTED
+    && (job.lastError ?? "").startsWith("local-patch: no automatic action remains within the authorized world budget;"), "Exact budget-exhausted hold required");
+  demand(!(await backgroundReviewWaiting(c.db, gameId, { inFlightOnly: true })).size, "Existing provider work must settle first");
+  const store = PrismaWorldBudgetStore.forReadOnlyTransaction(c.db);
+  const stored = await store.read(worldOf(gameId));
+  demand(stored && stored.revision <= WORLD_BUDGET_LEDGER_MAX_REVISION - 2, "Safe existing ledger revision required");
+  const audit = applyBoardWizardBudgetCap(auditWorldBudget(stored.snapshot));
+  demand(!audit.held && !audit.pendingRequestKeys.length && !audit.conflictRequestKeys.length && !audit.overrunRequestKeys.length
+    && audit.committedMicroUsd <= 4_000_000 && audit.remainingMicroUsd < 200_000, "A genuine four-dollar capacity stop without unresolved accounting holds is required");
+  const avatarSha256 = await verifyAssetsAndBill(c, state, store);
+  const binding = detectiveBudgetBindingSchema.parse({ version: DETECTIVES_COMPLETION_BUDGET, gameId, worldId: worldOf(gameId), ownerId: game.ownerId, childId: child.id,
+    baseCapMicroUsd: 4_000_000, capMicroUsd: DETECTIVES_COMPLETION_CAP, familySha256: hash(state.family), scenesSha256: hash(game.scenes.map(scene => ({ id: scene.id, slug: scene.sceneSlug, version: scene.sceneVersion, order: scene.orderIndex }))), leanPinSha256: hash(leanReleaseReceipt(gameId)),
+    enrollmentSha256: hash(state.enrollment), reviewSha256: hash(state.review), identityAssetId: state.identity.id, identitySha256: state.review.sheetSha256,
+    avatarAssetId: state.avatar.id, avatarSha256, photoAssetId: state.enrollment.photoAssetId, photoSha256: state.enrollment.photoSha256,
+    ageYears: child.ageYears, cropSha256: hash(child.photoCropJson ? JSON.parse(child.photoCropJson) : null), paymentSha256: state.paymentSha256,
+    jobId: job.id, holdSha256: parkedHoldSha256(job), jobAttempts: job.attempts, ledgerSha256: hash(stored.snapshot), ledgerRevision: stored.revision,
+    committedMicroUsd: audit.committedMicroUsd, reservedMicroUsd: audit.reservedMicroUsd,
+    retainedUnknowns: stored.snapshot.requests.filter(r => r.state === "unknown").map(r => ({ requestKey: r.requestKey, operationFingerprint: r.operationFingerprint, reserveMicroUsd: r.reserveMicroUsd })) });
+  return { binding, planSha256: hash(binding), state, job, stored };
+}
+
+async function administrator(c: Container, operatorId: string) {
+  const actor = await c.db.user.findUnique({ where: { id: operatorId }, select: { email: true } });
+  demand(actor && (c.adminEmails ?? []).some(email => email.trim().toLowerCase() === actor.email.trim().toLowerCase()), "Verified administrator required");
+}
+
+/** The explicitly authorized owner ADMIN records one cumulative six-dollar ceiling. Does not release or reset the job. */
+export async function authorizeDetectivesCompletionBudget(c: Container, input: { gameId: string; operatorId: string; expectedPlanSha256: string; ownerAuthorizationSha256: string }) {
+  const gameId = detectiveBudgetIdSchema.parse(input.gameId), operatorId = detectiveBudgetIdSchema.parse(input.operatorId);
+  const expected = detectiveBudgetHashSchema.parse(input.expectedPlanSha256), evidence = detectiveBudgetHashSchema.parse(input.ownerAuthorizationSha256);
+  demand(env().APP_ENV === "qa" && c.storage.id === "db", "QA database required");
+  await administrator(c, operatorId);
+  const old = await receiptOf(c, gameId);
+  if (old) {
+    demand(old.operatorId === operatorId && old.planSha256 === expected && old.ownerAuthorizationSha256 === evidence, "Existing authorization differs");
+    demand(await readDetectivesCompletionBudget(c, worldOf(gameId)), "Existing capacity is no longer current");
+    return old;
+  }
+  const plan = await planDetectivesCompletionBudget(c, gameId);
+  demand(plan.planSha256 === expected && plan.binding.ownerId === operatorId, "Owner administrator or capacity plan changed");
+  return c.db.$transaction(async tx => {
+    const scoped = transactionContainer(c, tx), fresh = await planDetectivesCompletionBudget(scoped, gameId);
+    await administrator(scoped, operatorId);
+    demand(fresh.planSha256 === expected && fresh.binding.ownerId === operatorId, "Source, authority, hold or ledger changed");
+    const locked = await tx.game.updateMany({ where: { id: gameId, updatedAt: fresh.state.game.updatedAt, status: "TARGETS_GENERATING", deletedAt: null,
+      ownerId: operatorId, childProfileId: fresh.binding.childId }, data: { updatedAt: new Date() } });
+    const ledger = await tx.worldBudgetLedger.updateMany({ where: { worldId: fresh.binding.worldId, revision: fresh.stored.revision }, data: { revision: { increment: 1 } } });
+    demand(locked.count === 1 && ledger.count === 1, "Concurrent capacity plan changed");
+    const body = detectiveBudgetReceiptBodySchema.parse({ ...fresh.binding, planSha256: expected, operatorId, ownerAuthorizationSha256: evidence,
+      authorizedAt: new Date().toISOString(), automaticRelease: false });
+    const pin = detectiveBudgetReceiptSchema.parse({ ...body, authorizationSha256: hash(body) });
+    await tx.auditLog.create({ data: { id: detectivesCompletionId(gameId), actorType: "ADMIN", actorId: operatorId, action: DETECTIVES_COMPLETION_ACTION,
+      entityType: "Game", entityId: gameId, metaJson: JSON.stringify(pin) } });
+    // Original lean pin, ledger snapshot bytes, job, bills, image verdicts and unknowns are untouched.
+    return pin;
+  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, timeout: 30_000 });
+}
+
+/** Normal scheduled/owner tick consumes exactly the authorized hold, once. No provider dispatch or image approval here. */
+export async function resumeDetectivesCompletionBudget(c: Container, gameId: string): Promise<boolean> {
+  const pin = await receiptOf(c, gameId);
+  if (!pin || await c.db.auditLog.findUnique({ where: { id: detectivesCompletionResumeId(gameId) } })) return false;
+  const job = await c.db.generationJob.findUnique({ where: { id: pin.jobId } });
+  if (!job || job.status !== "FAILED" || job.currentStep !== EXHAUSTED || job.attempts !== pin.jobAttempts || parkedHoldSha256(job) !== pin.holdSha256) return false;
+  return c.db.$transaction(async tx => {
+    const scoped = transactionContainer(c, tx), state = await current(scoped, gameId);
+    demand(await matches(scoped, pin, state) && state.game.status === "TARGETS_GENERATING" && !state.game.readyAt && !state.game.configJson
+      && !await identityRevisionPending(tx, gameId), "Current paid source world required for resumption");
+    const locked = await tx.game.updateMany({ where: { id: gameId, updatedAt: state.game.updatedAt, status: "TARGETS_GENERATING", deletedAt: null,
+      ownerId: pin.ownerId, childProfileId: pin.childId }, data: { updatedAt: new Date() } });
+    const store = PrismaWorldBudgetStore.forReadOnlyTransaction(tx), stored = await store.read(pin.worldId);
+    demand(locked.count === 1 && stored && stored.revision === pin.ledgerRevision + 1 && hash(stored.snapshot) === pin.ledgerSha256
+      && !auditWorldBudget(stored.snapshot, DETECTIVES_COMPLETION_CAP).held, "Authorized original ledger changed before wake");
+    demand(await verifyAssetsAndBill(scoped, state, store) === pin.avatarSha256, "Original avatar pixels changed");
+    const ledger = await tx.worldBudgetLedger.updateMany({ where: { worldId: pin.worldId, revision: stored.revision }, data: { revision: { increment: 1 } } });
+    const resumed = await tx.generationJob.updateMany({ where: { id: pin.jobId, gameId, status: "FAILED", currentStep: EXHAUSTED,
+      attempts: pin.jobAttempts, updatedAt: job.updatedAt, lastError: job.lastError }, data: { status: "QUEUED", currentStep: "local-patch", lastError: null } });
+    demand(ledger.count === 1 && resumed.count === 1, "Authorized hold was concurrently changed or resumed");
+    await tx.auditLog.create({ data: { id: detectivesCompletionResumeId(gameId), actorType: "SYSTEM", action: DETECTIVES_COMPLETION_RESUMED,
+      entityType: "Game", entityId: gameId, metaJson: JSON.stringify({ version: DETECTIVES_COMPLETION_BUDGET, authorizationSha256: pin.authorizationSha256,
+        holdSha256: pin.holdSha256, jobAttempts: pin.jobAttempts, requestsPreserved: true, attemptsReset: false, providerCallsAdded: 0 }) } });
+    return true;
+  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, timeout: 30_000 });
+}
+
+/** Do not let an unrelated, ungranted or stale exhausted world block another world's turn. */
+export async function nextDetectivesCompletionWake(c: Container, gameId: string | null): Promise<string | null> {
+  if (env().APP_ENV !== "qa" || c.storage.id !== "db") return null;
+  const jobs = await c.db.generationJob.findMany({ where: { ...(gameId ? { gameId } : {}), status: "FAILED", currentStep: EXHAUSTED,
+    game: { status: "TARGETS_GENERATING", deletedAt: null, searchLevel: "detectives", styleVersion: "local-patch-world-v1" } },
+    orderBy: { updatedAt: "asc" }, select: { gameId: true } });
+  for (const job of jobs) if (await resumeDetectivesCompletionBudget(c, job.gameId).catch(() => false)) return job.gameId;
+  return null;
+}

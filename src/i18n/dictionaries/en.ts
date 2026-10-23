@@ -6,6 +6,14 @@ import { worldPurchaseEn, worldSelectorEn, friendsEn } from "./world-features";
 
 export const en = {
   adminIdentityRevision: {
+    detectivesBudgetTitle: "Explicit completion budget for this Detective world",
+    detectivesBudgetDescription: "Only after explicit owner authorization: up to $6 total for this existing QA Detective world. All historical charges, rejected attempts and unknown reservations count in full. The original identity and every required automatic quality check remain.",
+    detectivesBudgetEvidence: "SHA-256 of the recorded owner authorization",
+    detectivesBudgetConfirm: "I explicitly authorized up to $6 in total for this world, including all history and uncertain charges. This does not approve an image or publish the game.",
+    detectivesBudgetGrant: "Authorize this Detective world up to $6 total",
+    detectivesBudgetAuthorized: "The one-world capacity authorization is saved. The normal queue will resume its exact retained work, with every required quality check.",
+    detectivesBudgetBlocked: "Capacity was not authorized. Refresh and verify the current hold, source, financial records and owner authorization.",
+
     capacityRecoveryTitle: "Continue after review-service overload",
     capacityRecoveryDescription: "Use the regular review service for new questions and continue the saved images within a separate cumulative ceiling. Existing bills and uncertain reserves stay counted in full. Every required hiding spot still needs strict automatic approval.",
     capacityRecoveryConfirm: "The owner authorized up to $12 in total for this world, including its entire history and uncertain charges. Continue only the verified provider-overload failures. This does not approve an image or publish the game.",
