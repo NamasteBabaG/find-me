@@ -712,6 +712,10 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
   const selfRepairOf = (row: { judgeJson: string | null } | undefined) => {
     try { return JSON.parse(row?.judgeJson ?? "{}").selfRepair as Parameters<typeof selfRepairProgress>[0]; } catch { return null; }
   };
+  // A refused sibling purchase describes the state before other repairs committed.
+  // A newly saved plan or painting gets one ordinary slice to use its next phase;
+  // every purchase still passes through the unchanged ledger and ceiling.
+  const repairCheckpoints = new Map(rows.map(row => [row.id, JSON.stringify(selfRepairOf(row) ?? null)]));
   const automaticWork = automatic && !extraPlan ? work.filter(item => {
     const row = stateOf(item.sceneId, item.hide.targetId);
     return needsSelfRepair(row) && !leanThirdPainting(row) && !(hasLocalPatchCapability(game.scenes.find(scene => scene.id === item.sceneId)?.sceneVersion, "integratedQuality")
@@ -977,6 +981,10 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
   // A parked job was already written the moment it was parked; leaving it alone
   // here is the point, not an omission.
   if (!attention) {
+    if (deferredBudgetError && automatic && after.some(row => selfRepairOf(row)
+      && repairCheckpoints.get(row.id) !== JSON.stringify(selfRepairOf(row)))) {
+      return { ...await yieldToContinue(), outcomes, blocked };
+    }
     const deferred = deferredBudgetError ? await deferBudget(deferredBudgetError) : null;
     if (deferred) return { gameId, pending: !deferred.parked, claimed: true, paused: false, attention: deferred.parked, outcomes, blocked };
     // What is left when nothing automatic remains to start for any of it: appearances whose repair cycles under

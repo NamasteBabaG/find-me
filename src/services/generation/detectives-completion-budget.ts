@@ -1,3 +1,11 @@
+import { DETECTIVE_PATCH_BOARDS } from "../../../content/detectives/runtime-release";
+import { PrismaRetainedPurchaseStore } from "../../infra/db/prisma-retained-purchase-store";
+import { savedApplyingRepairOf } from "./local-patch-self-repair";
+import { LOCAL_PATCH_RESERVE } from "./local-patch-render";
+import { LOCAL_PATCH_PROVIDER, LOCAL_PATCH_VARIANT } from "./local-patch-hide";
+import { sameChargeEvidence } from "./world-budget";
+import { selfRepairDecisionSchema } from "../../domain/scene/local-patch-self-repair";
+import { SUBJECT_V2_REPAIR_CYCLES } from "../../domain/scene/local-patch-progress";
 import { Prisma } from "@prisma/client";
 import type { Container } from "../container";
 import { env } from "../../lib/env";
@@ -214,6 +222,76 @@ export async function nextDetectivesCompletionWake(c: Container, gameId: string 
   const jobs = await c.db.generationJob.findMany({ where: { ...(gameId ? { gameId } : {}), status: "FAILED", currentStep: EXHAUSTED,
     game: { status: "TARGETS_GENERATING", deletedAt: null, searchLevel: "detectives", styleVersion: "local-patch-world-v1" } },
     orderBy: { updatedAt: "asc" }, select: { gameId: true } });
-  for (const job of jobs) if (await resumeDetectivesCompletionBudget(c, job.gameId).catch(() => false)) return job.gameId;
+  for (const job of jobs) if (await resumeDetectivesCompletionBudget(c, job.gameId).catch(() => false)
+    || await resumeDetectivesApplyingRepair(c, job.gameId).catch(() => false)) return job.gameId;
   return null;
+}
+
+// A historical stale budget refusal may have parked AFTER saving a paid plan.
+// This is not new capacity: one wake per immutable paid diagnosis, with all
+// existing source, identity, payment, unknown-charge and publication gates intact.
+export async function resumeDetectivesApplyingRepair(c: Container, gameId: string): Promise<boolean> {
+  if (env().APP_ENV !== "qa" || c.storage.id !== "db") return false;
+  const pin = await receiptOf(c, gameId);
+  if (!pin) return false;
+  return c.db.$transaction(async tx => {
+    const initial = await tx.auditLog.findUnique({where:{id:detectivesCompletionResumeId(gameId)}});
+    let initialMeta: {version?:unknown;authorizationSha256?:unknown;holdSha256?:unknown};
+    try { initialMeta=JSON.parse(initial?.metaJson ?? "null"); } catch { return false; }
+    if (!initial || initial.actorType!=="SYSTEM" || initial.action!==DETECTIVES_COMPLETION_RESUMED
+      || initial.entityType!=="Game" || initial.entityId!==gameId || initialMeta?.version!==DETECTIVES_COMPLETION_BUDGET
+      || initialMeta.authorizationSha256!==pin.authorizationSha256 || initialMeta.holdSha256!==pin.holdSha256) return false;
+    const scoped = transactionContainer(c, tx), state = await current(scoped, gameId);
+    if (!await matches(scoped, pin, state) || state.game.status !== "TARGETS_GENERATING"
+      || state.game.readyAt || state.game.configJson || await identityRevisionPending(tx, gameId)) return false;
+    const job = await tx.generationJob.findUnique({ where: { id: pin.jobId } });
+    if (!job || job.status !== "FAILED" || job.currentStep !== EXHAUSTED || job.attempts <= pin.jobAttempts
+      || !(job.lastError ?? "").startsWith("local-patch: no automatic action remains within the authorized world budget;")) return false;
+    const store = PrismaWorldBudgetStore.forReadOnlyTransaction(tx), stored = await store.read(pin.worldId);
+    if (!stored || stored.revision >= WORLD_BUDGET_LEDGER_MAX_REVISION) return false;
+    const audit = applyBoardWizardBudgetCap(auditWorldBudget(stored.snapshot, DETECTIVES_COMPLETION_CAP), DETECTIVES_COMPLETION_CAP);
+    if (audit.held || audit.pendingRequestKeys.length || audit.remainingMicroUsd < LOCAL_PATCH_RESERVE.renderMicroUsd) return false;
+    const candidates = await tx.targetVariantAsset.findMany({ where: { status:"FAILED", provider:LOCAL_PATCH_PROVIDER, variant:LOCAL_PATCH_VARIANT,
+      targetInstance: { gameScene: { gameId, sceneVersion:13 } } },
+      include: { targetInstance: { select: { gameSceneId:true,targetId:true } } }, orderBy: { id:"asc" } });
+    for (const row of candidates) {
+      const repair = savedApplyingRepairOf(row.judgeJson);
+      if (!repair || repair.decision!.action !== "redraw-with-new-placement" || !repair.authoredDiagnosis || !repair.authoredContext
+        || !repair.subjectV2Cycles || repair.subjectV2Cycles > SUBJECT_V2_REPAIR_CYCLES) continue;
+      const scene = state.game.scenes.find(s=>s.id===row.targetInstance.gameSceneId);
+      const hide = scene && DETECTIVE_PATCH_BOARDS.find(b=>b.board===scene.sceneSlug)?.hides.find(h=>h.targetId===row.targetInstance.targetId);
+      if (!hide) continue;
+      const diagnosis = repair.authoredDiagnosis, key = `self-repair:${hide.id}:diagnosis:${repair.cycle}`;
+      if (diagnosis.requestKey !== key || stored.snapshot.requests.some(r=>r.requestKey===`${hide.id}:${hide.pose}:self-repair:${repair.cycle}`)) continue;
+      const bill = stored.snapshot.requests.find(r=>r.requestKey===key);
+      if (!bill || bill.state!=="settled" || bill.scope!=="judge" || bill.conflicts.length || bill.operationFingerprint!==diagnosis.operationFingerprint) continue;
+      const retained = await new PrismaRetainedPurchaseStore(tx).get(pin.worldId,key);
+      if (!retained?.evidence || !sameChargeEvidence(retained.evidence,bill.evidence)
+        || retained.operationFingerprint!==diagnosis.operationFingerprint) continue;
+      let answer: {raw?:unknown;authoredRecoveryContext?:unknown};
+      try { answer=JSON.parse(retained.bytes.toString()); } catch { continue; }
+      if (typeof answer.raw!=="string" || sha256Bytes(Buffer.from(answer.raw))!==diagnosis.rawSha256
+        || JSON.stringify(answer.authoredRecoveryContext)!==JSON.stringify(repair.authoredContext)) continue;
+      let decision;
+      try { decision=selfRepairDecisionSchema.parse(JSON.parse(answer.raw)); } catch { continue; }
+      if (JSON.stringify(decision)!==JSON.stringify(repair.decision)) continue;
+      const auditId="aud_dar_"+hash({gameId,grant:pin.authorizationSha256,rowId:row.id,diagnosis}).slice(0,40);
+      if (await tx.auditLog.findUnique({where:{id:auditId}})) continue;
+      demand(await verifyAssetsAndBill(scoped,state,store)===pin.avatarSha256,"Original avatar pixels changed before checkpoint wake");
+      const locked=await tx.game.updateMany({where:{id:gameId,updatedAt:state.game.updatedAt,status:"TARGETS_GENERATING",deletedAt:null,
+        ownerId:pin.ownerId,childProfileId:pin.childId},data:{updatedAt:new Date()}});
+      demand(locked.count===1,"Paid source changed before checkpoint wake");
+      const ledger=await tx.worldBudgetLedger.updateMany({where:{worldId:pin.worldId,revision:stored.revision},data:{revision:{increment:1}}});
+      const queued=await tx.generationJob.updateMany({where:{id:job.id,status:"FAILED",currentStep:EXHAUSTED,attempts:job.attempts,
+        updatedAt:job.updatedAt,lastError:job.lastError},data:{status:"QUEUED",currentStep:"local-patch",lastError:null}});
+      demand(ledger.count===1&&queued.count===1,"Applying checkpoint or ledger changed concurrently");
+      await tx.auditLog.create({data:{id:auditId,actorType:"SYSTEM",action:"generation:detectives-applying-repair-resumed",
+        entityType:"Game",entityId:gameId,metaJson:JSON.stringify({version:"paid-applying-checkpoint-wake/v1",worldId:pin.worldId,
+          grantSha256:pin.authorizationSha256,rowId:row.id,diagnosis,previousHoldSha256:parkedHoldSha256(job),previousJobAttempts:job.attempts,
+          capMicroUsd:audit.capMicroUsd,remainingMicroUsd:audit.remainingMicroUsd,nextRenderReserveMicroUsd:LOCAL_PATCH_RESERVE.renderMicroUsd,
+          ledgerSnapshotSha256:hash(stored.snapshot),checkpointSha256:hash(repair),providerCallsAdded:0,attemptsReset:false,budgetChanged:false})}});
+      return true;
+    }
+    return false;
+  },{isolationLevel:Prisma.TransactionIsolationLevel.Serializable,timeout:30_000});
 }

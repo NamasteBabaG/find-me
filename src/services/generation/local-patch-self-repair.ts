@@ -65,6 +65,15 @@ const stateSchema = z.object({ version: z.literal(SELF_REPAIR_VERSION), cycle: z
     located: z.array(z.string().max(320)).max(4), intrinsic: z.boolean(), failedSource: z.string().max(240).nullable() }).strict().optional(),
 }).strict();
 type State = z.infer<typeof stateSchema>;
+/** Read-only checkpoint shape for a scheduler wake; the normal repair still
+ * revalidates context, source geometry and the paid diagnosis before dispatch. */
+export function savedApplyingRepairOf(judgeJson: string | null): State | null {
+  try {
+    const parsed=stateSchema.safeParse(JSON.parse(judgeJson ?? "null")?.selfRepair);
+    return parsed.success && parsed.data.phase==="applying" && parsed.data.decision ? parsed.data : null;
+  } catch { return null; }
+}
+
 
 /**
  * subject-diagnosis/v1: the paid RAW the row's refused composition was made from, bound to that composition;

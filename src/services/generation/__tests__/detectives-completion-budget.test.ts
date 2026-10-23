@@ -1,3 +1,6 @@
+import { PrismaRetainedPurchaseStore } from "../../../infra/db/prisma-retained-purchase-store";
+import { RETAINED_PURCHASE_VERSION, retainedPayloadDigest } from "../paid-operation";
+import { LOCAL_PATCH_PROVIDER, LOCAL_PATCH_VARIANT } from "../local-patch-hide";
 import { mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -18,7 +21,7 @@ import { buildBoardWizardIdentityStyle } from "../board-wizard-identity-style";
 import { sha256Bytes } from "../fixed-sprite";
 import { seedApprovedGame, bill } from "./local-patch-fixtures";
 import { planDetectivesCompletionBudget, authorizeDetectivesCompletionBudget, readDetectivesCompletionBudget,
-  resumeDetectivesCompletionBudget, nextDetectivesCompletionWake } from "../detectives-completion-budget";
+  resumeDetectivesCompletionBudget, nextDetectivesCompletionWake, resumeDetectivesApplyingRepair } from "../detectives-completion-budget";
 import { detectivesCompletionId, detectivesCompletionResumeId } from "../../../domain/generation/detectives-completion-budget";
 
 const settings = vi.hoisted(() => ({ APP_ENV: "qa", LOCAL_PATCH_PROMPT_RELEASE: "v19", LOCAL_PATCH_IDENTITY_SOURCE: "full-source-v1" }));
@@ -195,4 +198,105 @@ describe("explicit Detective cumulative six-dollar authorization", () => {
     expect(await nextDetectivesCompletionWake(c, f.gameId)).toBeNull();
     expect(await db.auditLog.count({ where: { id: detectivesCompletionResumeId(f.gameId) } })).toBe(0);
   }, 60_000);
+});
+
+async function applyingFixture(remaining = 210_000) {
+  const f=await fixture(); await f.authorize(); expect(await resumeDetectivesCompletionBudget(c,f.gameId)).toBe(true);
+  const budget=boardWizardBudgetOf(c), current=await budget.audit(f.worldId);
+  await budget.importSettled(f.worldId,{scope:"image",operationFingerprint:"synthetic-later-"+f.gameId,
+    evidence:bill("later-"+f.gameId,6_000_000-current.committedMicroUsd-Math.max(210_000,remaining)-50_000)});
+  const hide=DETECTIVE_PATCH_BOARDS[0]!.hides[0]!, key=`self-repair:${hide.id}:diagnosis:1`;
+  await budget.reserve(f.worldId,{requestKey:key,scope:"judge",operationFingerprint:fingerprint(31),reserveMicroUsd:250_000});
+  const evidence={...bill("diagnosis-"+f.gameId,50_000),model:"gpt-5.6-sol"};
+  await budget.settle(f.worldId,key,evidence);
+  // The diagnosis was bought while it fit. Later unrelated paid work leaves
+  // this saved plan unaffordable; the refusal test starts AFTER that history.
+  if(remaining<210_000) await budget.importSettled(f.worldId,{scope:"image",operationFingerprint:"later-debit-"+f.gameId,
+    evidence:bill("later-debit-"+f.gameId,210_000-remaining)});
+
+  const decision={cause:"composition-clipping",explanation:"Synthetic lower placement keeps the complete head inside the corrected closed return.",
+    action:"redraw-with-new-placement",sourceKey:`${hide.id}:${hide.pose}:render:1`,
+    returnWindow:{left:50,top:80,width:400,height:620},protectedCore:{left:100,top:160,width:250,height:420},
+    faceRect:{left:130,top:190,width:80,height:90}};
+  const raw=JSON.stringify(decision), authoredContext={version:"authored-recovery-context/v1",parentSha256:fingerprint(41),sourcePngSha256:fingerprint(42)};
+  const bytes=Buffer.from(JSON.stringify({raw,authoredRecoveryContext:authoredContext}));
+  await new PrismaRetainedPurchaseStore(db).put(f.worldId,key,{version:RETAINED_PURCHASE_VERSION,worldId:f.worldId,requestKey:key,scope:"judge",
+    operationFingerprint:fingerprint(31),payloadSha256:retainedPayloadDigest(bytes),bytes,evidence,unknownReason:null});
+  const targetId="applying-target-"+f.gameId,rowId="applying-row-"+f.gameId;
+  await db.targetInstance.create({data:{id:targetId,gameSceneId:`gsc-${f.gameId}-${DETECTIVE_PATCH_BOARDS[0]!.board}`,
+    targetId:hide.targetId,targetType:"child",slotAId:hide.id,slotBId:hide.id}});
+  const selfRepair={version:"local-patch-self-repair/v1",cycle:1,phase:"applying",contextSha256:fingerprint(43),decision,history:[],
+    feedback:"Synthetic failed crown clipping",sourceKeys:[decision.sourceKey],imageCostCents:0,diagnosisCostCents:5,
+    authoredContext,authoredDiagnosis:{requestKey:key,operationFingerprint:fingerprint(31),rawSha256:sha256Bytes(Buffer.from(raw))},
+    subjectV2Cycles:1,boundaryContext:true};
+  await db.targetVariantAsset.create({data:{id:rowId,targetInstanceId:targetId,variant:LOCAL_PATCH_VARIANT,slotId:hide.id,
+    provider:LOCAL_PATCH_PROVIDER,status:"FAILED",attempts:2,lastError:"quality-retry: childComplete",judgeJson:JSON.stringify({selfRepair})}});
+  await db.generationJob.update({where:{id:"job_"+f.gameId},data:{status:"FAILED",currentStep:"local-patch:recovery-exhausted",attempts:32,
+    lastError:"local-patch: no automatic action remains within the authorized world budget; synthetic stale sibling refusal"}});
+  return {...f,rowId,hide,budget,selfRepair,renderKey:`${hide.id}:${hide.pose}:self-repair:1`};
+}
+describe("existing six-dollar grant: paid applying checkpoint wake",()=>{
+  it("queues once from the exact saved paid plan without changing the cap, unknowns, source or attempt count",async()=>{
+    const f=await applyingFixture(), before=await immutable(f), audit=await f.budget.audit(f.worldId);
+    expect(audit.remainingMicroUsd).toBe(210_000); expect(audit.unknownRequestKeys).toHaveLength(3);
+    expect(await nextDetectivesCompletionWake(c,f.gameId)).toBe(f.gameId);
+    expect(await db.generationJob.findUniqueOrThrow({where:{id:"job_"+f.gameId}})).toMatchObject({status:"QUEUED",currentStep:"local-patch",attempts:32});
+    expect(await immutable(f)).toEqual(before);
+    expect(await f.budget.audit(f.worldId)).toEqual(audit);
+    const rows=await db.auditLog.findMany({where:{entityId:f.gameId,action:"generation:detectives-applying-repair-resumed"}});
+    expect(rows).toHaveLength(1); expect(JSON.parse(rows[0]!.metaJson!)).toMatchObject({providerCallsAdded:0,attemptsReset:false,budgetChanged:false,
+      capMicroUsd:6_000_000,nextRenderReserveMicroUsd:120_000,previousJobAttempts:32});
+    await db.generationJob.update({where:{id:"job_"+f.gameId},data:{status:"FAILED",currentStep:"local-patch:recovery-exhausted",attempts:33,
+      lastError:"local-patch: no automatic action remains within the authorized world budget; same paid plan stopped"}});
+    expect(await nextDetectivesCompletionWake(c,f.gameId)).toBeNull();
+    expect(await immutable(f)).toEqual(before); expect(fetch).not.toHaveBeenCalled();
+  },60_000);
+  it.each(["unaffordable","wrong-hold","no-initial-resume","source-changed","refunded","deleted","raw-mismatch","foreign-diagnosis",
+    "invalid-plan","diagnosing","spent-cycles","already-painted","pending","unapproved-unknown","missing-grant",
+    "wrong-resume-actor","wrong-resume-grant","avatar-pixels-changed"] as const)(
+    "does not wake an unauthorized, stale or unaffordable checkpoint: %s",async kind=>{
+      const f=await applyingFixture(kind==="unaffordable"?119_999:210_000);
+      if(kind==="wrong-hold") await db.generationJob.update({where:{id:"job_"+f.gameId},data:{lastError:"Unrelated financial hold"}});
+      if(kind==="no-initial-resume") await db.auditLog.delete({where:{id:detectivesCompletionResumeId(f.gameId)}});
+      if(kind==="source-changed") await db.childProfile.update({where:{id:f.childId},data:{ageYears:9}});
+      if(kind==="refunded") await db.order.update({where:{id:"order-"+f.gameId},data:{paymentStatus:"REFUNDED",refundedAt:new Date()}});
+      if(kind==="deleted") await db.game.update({where:{id:f.gameId},data:{deletedAt:new Date(),status:"DELETED"}});
+      if(kind==="missing-grant") await db.auditLog.delete({where:{id:detectivesCompletionId(f.gameId)}});
+      if(kind==="wrong-resume-actor") await db.auditLog.update({where:{id:detectivesCompletionResumeId(f.gameId)},data:{actorType:"USER"}});
+      if(kind==="wrong-resume-grant") {
+        const row=await db.auditLog.findUniqueOrThrow({where:{id:detectivesCompletionResumeId(f.gameId)}});
+        await db.auditLog.update({where:{id:row.id},data:{metaJson:JSON.stringify({...JSON.parse(row.metaJson!),authorizationSha256:fingerprint(91)})}});
+      }
+      if(kind==="avatar-pixels-changed") await c.storage.put("game/avatar-"+f.gameId,Buffer.from("changed synthetic avatar pixels"),"image/png");
+
+      if(["raw-mismatch","foreign-diagnosis","invalid-plan","diagnosing","spent-cycles"].includes(kind)) {
+        const value=structuredClone(f.selfRepair);
+        if(kind==="raw-mismatch") value.authoredDiagnosis.rawSha256=fingerprint(99);
+        if(kind==="foreign-diagnosis") value.authoredDiagnosis.requestKey="self-repair:foreign:diagnosis:1";
+        if(kind==="invalid-plan") value.decision.faceRect.width=1;
+        if(kind==="diagnosing") value.phase="diagnosing";
+        if(kind==="spent-cycles") value.subjectV2Cycles=4;
+        await db.targetVariantAsset.update({where:{id:f.rowId},data:{judgeJson:JSON.stringify({selfRepair:value})}});
+      }
+      if(["already-painted","pending","unapproved-unknown"].includes(kind)) {
+        const key=kind==="already-painted"?f.renderKey:"synthetic-new-"+kind;
+        await f.budget.reserve(f.worldId,{requestKey:key,scope:"image",operationFingerprint:fingerprint(76),reserveMicroUsd:10_000});
+        if(kind==="unapproved-unknown") await f.budget.markUnknown(f.worldId,key,"Unapproved synthetic outcome");
+        if(kind==="already-painted") await f.budget.settle(f.worldId,key,bill("already-"+f.gameId,5_000));
+      }
+      const before=await immutable(f), job=await db.generationJob.findUniqueOrThrow({where:{id:"job_"+f.gameId}});
+      expect(await nextDetectivesCompletionWake(c,f.gameId)).toBeNull();
+      expect(await db.generationJob.findUniqueOrThrow({where:{id:job.id}})).toEqual(job);
+      expect(await immutable(f)).toEqual(before);
+      expect(await db.auditLog.count({where:{entityId:f.gameId,action:"generation:detectives-applying-repair-resumed"}})).toBe(0);
+      expect(fetch).not.toHaveBeenCalled();
+    },60_000);
+  it("serializes competing wake attempts without resetting attempts or recording a second wake",async()=>{
+    const f=await applyingFixture(), before=await immutable(f);
+    const attempts=await Promise.allSettled([resumeDetectivesApplyingRepair(c,f.gameId),resumeDetectivesApplyingRepair(c,f.gameId)]);
+    expect(attempts.filter(r=>r.status==="fulfilled"&&r.value===true)).toHaveLength(1);
+    expect(await db.auditLog.count({where:{entityId:f.gameId,action:"generation:detectives-applying-repair-resumed"}})).toBe(1);
+    expect(await db.generationJob.findUniqueOrThrow({where:{id:"job_"+f.gameId}})).toMatchObject({status:"QUEUED",attempts:32});
+    expect(await immutable(f)).toEqual(before); expect(fetch).not.toHaveBeenCalled();
+  },60_000);
 });
