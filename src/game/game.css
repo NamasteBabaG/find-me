@@ -318,7 +318,7 @@
    out of the bottom, so the overlay scrolls and the card stays within it. */
 .complete { position: absolute; inset: 0; z-index: var(--z-overlay); display: grid; grid-template-columns: minmax(0, 1fr); place-items: center; padding: max(var(--space-3), env(safe-area-inset-top)) var(--space-2) max(var(--space-3), env(safe-area-inset-bottom)); overflow-y: auto; overscroll-behavior: contain; background: rgba(23, 22, 43, 0.35); backdrop-filter: blur(4px); }
 .complete__card { position: relative; width: min(100%, 520px); max-width: 100%; background: var(--white); border-radius: var(--radius-4); padding: var(--space-5) var(--space-4) var(--space-4); box-shadow: var(--shadow-3); display: flex; flex-direction: column; gap: var(--space-3); align-items: center; text-align: center; animation: fm-pop-in var(--dur-3) var(--ease-pop); }
-.complete__stamp { position: absolute; top: calc(var(--space-3) * -1); inset-inline-end: var(--space-3); background: var(--berry); color: var(--white); font-family: var(--font-display); font-weight: 600; font-size: var(--fs-300); padding: var(--space-1) var(--space-3); border-radius: var(--radius-2); transform: rotate(-8deg); box-shadow: var(--shadow-2); animation: fm-stamp var(--dur-3) var(--ease-pop); }
+.complete__stamp { position: absolute; top: calc(var(--space-3) * -1); inset-inline-end: var(--space-3); background: var(--berry); color: var(--ink); font-family: var(--font-display); font-weight: 600; font-size: var(--fs-300); padding: var(--space-1) var(--space-3); border-radius: var(--radius-2); transform: rotate(-8deg); box-shadow: var(--shadow-2); animation: fm-stamp var(--dur-3) var(--ease-pop); }
 .complete__stamp--big { position: static; display: inline-block; font-size: var(--fs-500); padding: var(--space-2) var(--space-4); }
 .complete__title { font-size: var(--fs-500); line-height: var(--lh-500); }
 /* The board's stars, one after another, and the words once the last has landed
@@ -326,7 +326,7 @@
 .complete__stars { display: flex; flex-direction: column; align-items: center; gap: var(--space-1); }
 .complete__stars .stars--lg .stars__slot:nth-child(2) { margin-top: calc(var(--space-2) * -1); }
 .complete__stars .stars__slot { --stagger-start: 200ms; }
-.complete__stars-text { margin: 0; font-family: var(--font-display); font-weight: 800; font-size: var(--fs-400); line-height: var(--lh-400); background: linear-gradient(90deg, var(--gold-deep), var(--gold-light) 50%, var(--gold-deep)); background-size: 200% 100%; -webkit-background-clip: text; background-clip: text; color: transparent; animation: fm-fade-up var(--dur-3) var(--ease-out) 1000ms both, fm-shimmer 2.4s linear 1600ms infinite; }
+.complete__stars-text { margin: 0; font-family: var(--font-display); font-weight: 800; font-size: var(--fs-400); line-height: var(--lh-400); color: var(--ink-2); animation: fm-fade-up var(--dur-3) var(--ease-out) 1000ms both; }
 .complete__loot { display: flex; flex-direction: column; align-items: center; gap: var(--space-1); font-size: var(--fs-300); line-height: var(--lh-300); }
 .complete__icon { font-size: var(--fs-700); line-height: 1; animation: fm-float 2s var(--ease-in-out) infinite; }
 .complete__actions { display: flex; flex-direction: column; gap: var(--space-1); width: 100%; }
@@ -394,13 +394,17 @@
    buttons catch them. The world's stars are not here at all — inside a
    board, only that board's stars matter. */
 .mission { position: absolute; z-index: var(--z-ui); pointer-events: none; top: max(var(--space-1), env(safe-area-inset-top)); right: max(var(--space-1), env(safe-area-inset-right)); display: flex; flex-direction: column; gap: var(--space-1); width: max-content; max-width: min(calc(var(--space-16) * 2), calc(100% - var(--space-10))); padding: var(--space-0-5) var(--space-1); border-radius: var(--radius-2); background: rgba(255, 255, 255, 0.86); backdrop-filter: blur(12px); box-shadow: var(--shadow-2); }
-.mission__top { display: flex; align-items: center; gap: var(--space-1); }
+.mission__top { position: relative; display: flex; align-items: center; gap: var(--space-1); }
+/* The folded hint has its own native control; its hit area ends before Hint. */
+.mission__expand { position: absolute; inset: 0; min-width: var(--touch-kid); min-height: var(--touch-kid); border-radius: var(--radius-1); background: transparent; pointer-events: auto; }
+.mission__top:has(.mission__hintbtn) .mission__expand { inset-inline-end: calc(var(--touch-kid) + var(--space-1)); }
+.mission__expand:hover { box-shadow: inset 0 0 0 var(--space-0-5) var(--sun-soft); }
 /* The identity cue is the whole illustrated portrait, contained — never a circular crop of it. */
 .mission__thumb--face { width: var(--space-6); height: var(--space-6); flex-shrink: 0; display: grid; place-items: center; }
 .mission__face { width: 100%; height: 100%; border-radius: var(--radius-2); object-fit: contain; background: var(--white); box-shadow: var(--sticker-outline); }
 .mission__progress { display: flex; flex: 1; flex-direction: column; align-items: flex-start; gap: var(--space-0-5); min-width: 0; }
-.mission__count { font-size: var(--fs-50); line-height: var(--lh-50); font-weight: 700; color: var(--ink-3); letter-spacing: 0.02em; white-space: nowrap; }
-.mission__hintbtn { pointer-events: auto; min-width: var(--touch-min); min-height: var(--touch-min); padding-inline: var(--space-1); flex-shrink: 0; border-radius: var(--radius-pill); background: var(--sun); box-shadow: var(--shadow-1); display: grid; place-items: center; font-family: var(--font-display); font-weight: 800; font-size: var(--fs-100); color: var(--ink); line-height: 1; transition: transform var(--dur-1) var(--ease-out); }
+.mission__count { font-size: var(--fs-50); line-height: var(--lh-50); font-weight: 700; color: var(--ink-2); letter-spacing: 0.02em; white-space: nowrap; }
+.mission__hintbtn { pointer-events: auto; min-width: var(--touch-kid); min-height: var(--touch-kid); padding-inline: var(--space-1); flex-shrink: 0; border-radius: var(--radius-pill); background: var(--sun); box-shadow: var(--shadow-1); display: grid; place-items: center; font-family: var(--font-display); font-weight: 800; font-size: var(--fs-100); color: var(--ink); line-height: 1; transition: transform var(--dur-1) var(--ease-out); }
 .mission__hintbtn:hover { transform: translateY(-1px); }
 .mission__hintbtn:disabled { opacity: 0.4; }
 .mission__hintbtn--pulse { animation: fm-pulse 1.2s var(--ease-in-out) infinite; box-shadow: 0 0 0 6px var(--sun-soft), var(--shadow-1); }
@@ -413,7 +417,7 @@
 .mission__text { font-family: var(--font-display); font-size: var(--fs-100); line-height: var(--lh-100); font-weight: 700; margin: 0; white-space: normal; overflow-wrap: anywhere; }
 .mission__hint { font-size: var(--fs-100); line-height: var(--lh-100); color: var(--sea-deep); font-weight: 500; margin: 0; white-space: normal; overflow-wrap: anywhere; }
 /* The way forward, once the next place is open. Gold, because it was earned; never folded away. */
-.mission__continue { pointer-events: auto; display: inline-flex; align-items: center; justify-content: center; gap: var(--space-1); min-height: var(--touch-min); padding-inline: var(--space-2); border-radius: var(--radius-pill); background: var(--grad-gold); color: var(--ink); font-family: var(--font-display); font-weight: 800; font-size: var(--fs-200); box-shadow: var(--shadow-1); animation: fm-pop-in var(--dur-3) var(--ease-pop); transition: transform var(--dur-1) var(--ease-out); }
+.mission__continue { pointer-events: auto; display: inline-flex; align-items: center; justify-content: center; gap: var(--space-1); min-width: var(--touch-kid); min-height: var(--touch-kid); padding-inline: var(--space-2); border-radius: var(--radius-pill); background: var(--grad-gold); color: var(--ink); font-family: var(--font-display); font-weight: 800; font-size: var(--fs-200); box-shadow: var(--shadow-1); animation: fm-pop-in var(--dur-3) var(--ease-pop); transition: transform var(--dur-1) var(--ease-out); }
 .mission__continue:hover { transform: translateY(-1px); }
 /* Beside the way forward, playing this place again is white: one gold button per moment. */
 .mission__continue--secondary { background: var(--white); box-shadow: inset 0 0 0 2px var(--line), var(--shadow-1); }
@@ -422,17 +426,17 @@
 .passport__replay-note { margin: 0; font-size: var(--fs-100); line-height: var(--lh-100); color: var(--ink-2); }
 .mission__replay-label { font-size: var(--fs-50); line-height: var(--lh-50); color: var(--sea-deep); font-weight: 700; }
 .mission > .fm-btn { pointer-events: auto; }
-.round-controls { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-1); max-width: 1100px; margin: var(--space-2) auto 0; padding: var(--space-1) var(--space-2); border-radius: var(--radius-2); background: var(--white); box-shadow: var(--shadow-1); }
-.round-controls__copy { display: flex; flex-direction: column; gap: 4px; }
-.round-controls__copy strong { font-family: var(--font-display); font-size: var(--fs-100); }
+.round-controls { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-1) var(--space-2); width: min(var(--container-narrow), calc(100% - var(--space-4))); margin: var(--space-2) auto 0; padding: var(--space-1) var(--space-2); border-radius: var(--radius-2); background: var(--white); box-shadow: var(--shadow-1); }
+.round-controls__copy { display: flex; flex: 1 1 var(--space-20); flex-direction: column; gap: var(--space-0-5); min-width: 0; }
+.round-controls__copy strong { font-family: var(--font-display); font-size: var(--fs-100); line-height: var(--lh-100); overflow-wrap: anywhere; }
 .round-controls__copy span, .round-controls__issue { font-size: var(--fs-50); line-height: var(--lh-50); color: var(--ink-2); }
-.round-controls__actions { display: flex; flex-wrap: wrap; gap: var(--space-1); }
+.round-controls__actions { display: flex; flex: 0 1 auto; flex-wrap: wrap; gap: var(--space-1); min-width: 0; max-width: 100%; }
 /* Child controls keep the 64px floor; the 40px small button was a grown-up's size. */
-.round-controls__actions .fm-btn, .scene__advance-actions .fm-btn { min-height: var(--touch-kid); padding-inline: var(--space-3); }
+.round-controls__actions .fm-btn, .scene__advance-actions .fm-btn { min-width: var(--touch-kid); min-height: var(--touch-kid); max-width: 100%; padding-inline: var(--space-3); white-space: normal; overflow-wrap: anywhere; text-align: center; }
 .round-controls__issue { flex-basis: 100%; margin: 0; }
-@media (max-width: 600px) { .round-controls { margin-inline: var(--space-1); } .round-controls__actions { width: 100%; } .round-controls__actions .fm-btn { flex: 1 1 140px; } }
-/* Folded, the card is a button — a tap on it unfolds the words — so it keeps its pointer events. */
-.mission--quiet { pointer-events: auto; cursor: pointer; }
+@media (max-width: 600px) { .round-controls { width: calc(100% - var(--space-2)); } .round-controls__actions { width: 100%; } .round-controls__actions .fm-btn { flex: 1 1 var(--space-16); } }
+/* Only the folded identity cue catches a tap; other card space still reaches the board. */
+.mission--quiet .mission__top { min-height: var(--touch-kid); }
 .scene__bar { left: max(var(--space-1), env(safe-area-inset-left)); right: auto; top: max(var(--space-1), env(safe-area-inset-top)); padding: 0; flex-direction: column; align-items: start; }
 .scene__tools { flex-direction: column; gap: 4px; }
 .scene__title { display: none; }
@@ -473,8 +477,8 @@
   .mission__thumb--face { width: var(--space-5); height: var(--space-5); }
   .scene__btn { width: var(--touch-kid); height: var(--touch-kid); }
 }
-/* Compact on every screen, not only narrow phones. Keep the hint's 48px
-   touch target and all five stars; map/completion trays retain their sizes. */
+/* Compact on every screen, not only narrow phones. Keep the hint at the
+   child touch floor and all five stars; map/completion trays retain their sizes. */
 .mission__stars.stars--sm { --star-size: var(--space-2); }
 .mission__stars .star--empty .star__body { stroke: var(--ink-3); stroke-dasharray: none; }
 @media (prefers-reduced-motion: reduce) {
@@ -510,7 +514,7 @@
 .game:has(.game__parents) .wmap { --wmap-chrome: 336px; }
 @media (max-width: 720px) { .game:has(.game__parents) .wmap { --wmap-chrome: 304px; } }
 .wmap__bar { flex-shrink: 0; display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); max-width: var(--container); width: 100%; margin-inline: auto; }
-.wmap__who { display: flex; align-items: center; gap: var(--space-2); min-width: 0; }
+.wmap__who { display: flex; flex: 1 1 auto; align-items: center; gap: var(--space-2); min-width: 0; overflow-wrap: anywhere; }
 .wmap__title { font-size: var(--fs-500); line-height: var(--lh-500); }
 .wmap__sub { color: var(--ink-2); font-size: var(--fs-200); line-height: var(--lh-200); }
 
@@ -539,7 +543,7 @@
 .wmap__node--future .wmap__place { background: rgba(23, 22, 43, 0.5); color: rgba(255, 255, 255, 0.86); box-shadow: none; }
 /* Words for a place still ahead: a small dark pill under its name. */
 .wmap__teaser { position: absolute; left: 50%; top: calc(100% + var(--space-1)); transform: translateX(-50%); z-index: 4; padding: var(--space-0-5) var(--space-2); border-radius: var(--radius-pill); background: var(--ink); color: var(--white); font-family: var(--font-display); font-weight: 600; font-size: var(--fs-100); line-height: var(--lh-100); white-space: nowrap; box-shadow: var(--shadow-2); animation: fm-pop-in var(--dur-3) var(--ease-pop); pointer-events: none; }
-.wmap__starsbtn { display: inline-flex; align-items: center; min-height: var(--touch-kid); padding-inline: var(--space-2); border-radius: var(--radius-pill); background: var(--white); box-shadow: inset 0 0 0 2px var(--gold-light), var(--shadow-1); transition: transform var(--dur-1) var(--ease-out), box-shadow var(--dur-1); }
+.wmap__starsbtn { display: inline-flex; align-items: center; justify-content: center; min-width: var(--touch-kid); min-height: var(--touch-kid); padding-inline: var(--space-2); border-radius: var(--radius-pill); background: var(--white); box-shadow: inset 0 0 0 2px var(--gold-light), var(--shadow-1); transition: transform var(--dur-1) var(--ease-out), box-shadow var(--dur-1); }
 .wmap__starsbtn:hover { transform: translateY(-1px); box-shadow: inset 0 0 0 2px var(--gold), var(--shadow-glow-gold), var(--shadow-1); }
 
 /* The child stands just above the name of the place they are at. */
@@ -589,8 +593,8 @@
 .wmap__go-thumb .place-emblem { width: 100%; height: 100%; display: block; }
 .wmap__go-text { display: flex; flex-direction: column; min-width: 0; flex: 1; }
 .wmap__go-kicker { font-size: var(--fs-100); line-height: var(--lh-100); color: var(--ink-2); }
-.wmap__go-name { font-family: var(--font-display); font-weight: 600; font-size: var(--fs-300); line-height: var(--lh-300); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.wmap__go-stars { display: inline-flex; align-items: center; gap: var(--space-1); font-size: var(--fs-50); line-height: var(--lh-50); font-weight: 700; color: var(--ink-2); }
+.wmap__go-name { font-family: var(--font-display); font-weight: 600; font-size: var(--fs-300); line-height: var(--lh-300); white-space: normal; overflow-wrap: anywhere; }
+.wmap__go-stars { display: inline-flex; flex-wrap: wrap; align-items: center; gap: var(--space-0-5) var(--space-1); font-size: var(--fs-50); line-height: var(--lh-50); font-weight: 700; color: var(--ink-2); }
 .wmap__go-arrow { font-size: var(--fs-400); }
 [dir="rtl"] .wmap__go-arrow { transform: scaleX(-1); }
 /* An English game inside the Hebrew site points forward: :dir() asks the nearest dir (ui.css has the same for buttons). */
@@ -619,36 +623,66 @@
 /* ─── The hub: which journey next ───────────────────────────────────────────
    Only a multi-world game reaches this. Each row is one world in its own map
    colours, so the choice is made by looking rather than by reading. */
-.hub { max-width: 720px; margin-inline: auto; padding: var(--space-6) var(--gutter) var(--space-10); }
-.hub__head { text-align: center; margin-block-end: var(--space-5); }
-.hub__title { font-family: var(--font-display); font-size: var(--fs-700); line-height: var(--lh-700); color: var(--ink); }
-.hub__lead { font-size: var(--fs-300); line-height: var(--lh-300); color: var(--ink-3); margin-block-start: var(--space-1); }
-.hub__list { display: flex; flex-direction: column; gap: var(--space-3); list-style: none; padding: 0; margin: 0; }
+.hub { width: min(100%, var(--container-narrow)); margin-inline: auto; padding: max(var(--space-4), env(safe-area-inset-top)) var(--gutter) max(var(--space-6), env(safe-area-inset-bottom)); }
+.hub__head { text-align: center; margin-block-end: var(--space-4); }
+.hub__title { font-family: var(--font-display); font-size: var(--fs-700); line-height: var(--lh-700); color: var(--ink); overflow-wrap: anywhere; }
+.hub__lead { font-size: var(--fs-300); line-height: var(--lh-300); color: var(--ink-2); margin-block-start: var(--space-1); }
+.hub__list { display: flex; flex-direction: column; gap: var(--space-2); list-style: none; padding: 0; margin: 0; }
 .hub__world {
-  display: flex; align-items: center; gap: var(--space-3);
-  inline-size: 100%; min-height: 96px;
-  padding: var(--space-3);
-  border: 3px solid var(--ink);
-  border-radius: var(--radius-4);
-  background: linear-gradient(135deg, var(--hub-sky, var(--paper-2)), var(--hub-ground, var(--paper-3)));
-  box-shadow: var(--shadow-2);
+  display: flex; align-items: center; gap: var(--space-2);
+  inline-size: 100%; min-height: var(--space-12);
+  padding: var(--space-2);
+  border: 0;
+  border-radius: var(--radius-3);
+  background: var(--white);
+  box-shadow: var(--shadow-1);
   color: var(--ink);
   text-align: start;
   cursor: pointer;
   transition: transform var(--dur-2) var(--ease-pop), box-shadow var(--dur-2);
 }
-.hub__world:hover, .hub__world:focus-visible { transform: translateY(-3px); box-shadow: var(--shadow-3); }
-.hub__world.is-current { outline: 4px solid var(--sun); outline-offset: 3px; }
-.hub__world.is-done { filter: saturate(0.9); }
-.hub__icon { font-size: var(--fs-600); line-height: 1; flex: 0 0 auto; }
-.hub__body { display: flex; flex-direction: column; gap: 2px; flex: 1 1 auto; min-inline-size: 0; }
+.hub__world:hover { transform: translateY(calc(var(--space-0-5) * -1)); box-shadow: var(--shadow-2); }
+.hub__world:active { transform: scale(0.98); }
+.hub__world.is-current { box-shadow: inset 0 0 0 var(--space-0-5) var(--sun), var(--shadow-2); }
+.hub__world:focus-visible { outline: var(--space-0-5) solid var(--ink); outline-offset: var(--space-0-5); }
+.hub__icon { display: grid; place-items: center; inline-size: var(--touch-kid); block-size: var(--touch-kid); border-radius: var(--radius-2); background: linear-gradient(135deg, var(--hub-sky, var(--sea-soft)), var(--hub-ground, var(--lavender-soft))); font-size: var(--fs-500); line-height: 1; flex: 0 0 auto; }
+.hub__body { display: flex; flex-direction: column; gap: var(--space-0-5); flex: 1 1 auto; min-inline-size: 0; overflow-wrap: anywhere; }
+.hub__name-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-0-5) var(--space-1); }
 .hub__name { font-family: var(--font-display); font-size: var(--fs-400); line-height: var(--lh-400); }
+.hub__current { display: inline-flex; align-items: center; padding: var(--space-0-5) var(--space-1); border-radius: var(--radius-pill); background: var(--sun-soft); font-size: var(--fs-50); line-height: var(--lh-50); font-weight: 700; }
 .hub__tagline { font-size: var(--fs-100); line-height: var(--lh-100); color: var(--ink-2); }
-.hub__count { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; font-size: var(--fs-100); line-height: var(--lh-100); font-weight: 700; }
-.hub__go { font-size: var(--fs-500); flex: 0 0 auto; }
+.hub__count { display: flex; align-items: center; gap: var(--space-1) var(--space-2); flex-wrap: wrap; font-size: var(--fs-100); line-height: var(--lh-100); font-weight: 700; }
+.hub__go { display: grid; place-items: center; inline-size: var(--space-4); block-size: var(--space-4); border-radius: var(--radius-pill); background: var(--paper); color: var(--ink); font-size: var(--fs-300); flex: 0 0 auto; }
+.hub__go--forward:dir(rtl) { transform: scaleX(-1); }
+.hub__world.is-done .hub__go { background: var(--leaf-soft); color: var(--leaf-deep); }
 .hub__stars { display: inline-flex; align-items: center; gap: var(--space-0-5); }
-.hub__bag { display: flex; justify-content: center; margin-block-start: var(--space-5); }
-.wmap__actions { display: flex; gap: var(--space-1); align-items: center; }
+.hub__bag { display: flex; justify-content: center; margin-block-start: var(--space-4); }
+.hub__bag .fm-btn { min-width: var(--touch-kid); min-height: var(--touch-kid); max-width: 100%; white-space: normal; }
+.wmap__actions { display: flex; flex-wrap: wrap; gap: var(--space-1); align-items: center; min-width: 0; max-width: 100%; }
+.wmap__actions > * { max-width: 100%; }
+.wmap__actions .fm-btn { white-space: normal; }
+@media (max-width: 600px) {
+  .hub { padding-inline: var(--space-2); }
+  .hub__world { gap: var(--space-1); }
+  .hub__name { font-size: var(--fs-300); line-height: var(--lh-300); }
+  .hub__go { inline-size: var(--space-3); block-size: var(--space-3); }
+}
+
+/* A dark outline and white separation remain visible over every painted world. */
+.scene__btn:focus-visible, .mission__hintbtn:focus-visible, .mission__continue:focus-visible,
+.mission__expand:focus-visible, .wmap__starsbtn:focus-visible, .wmap__go:focus-visible,
+.wmap__skip:focus-visible, .wmap__place:focus-visible, .wmap__node.is-here .wmap__place:focus-visible {
+  outline: var(--space-0-5) solid var(--ink);
+  outline-offset: var(--space-0-5);
+  box-shadow: 0 0 0 var(--space-0-5) var(--white), var(--shadow-2);
+}
+@media (prefers-reduced-motion: reduce) {
+  .mission__hintbtn--pulse { animation: none; }
+  .mission__body, .mission__hintbtn, .mission__continue, .hub__world,
+  .wmap__go, .wmap__starsbtn, .wmap__skip { transition: none; }
+  .hub__world:hover, .hub__world:active, .scene__btn:hover, .scene__btn:active,
+  .mission__hintbtn:hover, .mission__continue:hover, .wmap__go:hover, .wmap__starsbtn:hover { transform: none; }
+}
 
 /* ── Gold stars ──────────────────────────────────────────────────
    One vector star (GoldStar.tsx) at every size: the mission tray, the star
@@ -692,7 +726,7 @@
 .starcount__star { display: block; width: var(--space-3); height: var(--space-3); flex-shrink: 0; filter: drop-shadow(0 1px 1px rgba(23, 22, 43, 0.25)); }
 .starcount__text { display: inline-flex; align-items: baseline; direction: ltr; }
 .starcount__n { display: inline-block; font-size: var(--fs-300); }
-.starcount__of { font-size: var(--fs-100); font-weight: 700; color: var(--ink-3); margin-inline-start: 2px; }
+.starcount__of { font-size: var(--fs-100); font-weight: 700; color: var(--ink-2); margin-inline-start: 2px; }
 .starcount__n.is-bumped { animation: fm-count-bump var(--dur-3) var(--ease-pop); }
 .starcount--sm .starcount__star { width: var(--space-2); height: var(--space-2); }
 .starcount--sm .starcount__n { font-size: var(--fs-200); }

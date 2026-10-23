@@ -54,19 +54,23 @@ export function WorldHub({ config, progress, currentWorld, onEnter, onPassport, 
               className={`hub__world${world.slug === currentWorld ? " is-current" : ""}${done === total ? " is-done" : ""}`}
               style={{ ["--hub-sky" as string]: world.map.palette.sky, ["--hub-ground" as string]: world.map.palette.ground }}
               onClick={() => onEnter(world.slug)}
+              aria-current={world.slug === currentWorld ? true : undefined}
             >
               <span className="hub__icon" aria-hidden>
                 {world.collectible.icon}
               </span>
               <span className="hub__body">
-                <span className="hub__name">{world.name}</span>
+                <span className="hub__name-row">
+                  <span className="hub__name">{world.name}</span>
+                  {world.slug === currentWorld ? <span className="hub__current">{g.map.here}</span> : null}
+                </span>
                 <span className="hub__tagline">{world.tagline}</span>
                 <span className="hub__count">
                   {tf(g.map.subProgress, { done, total })}
                   {stars.total > 0 ? <StarCounter earned={stars.found} total={stars.total} size="sm" label={tf(g.stars.world, { earned: stars.found, total: stars.total })} className="hub__stars" /> : null}
                 </span>
               </span>
-              <span className="hub__go" aria-hidden>
+              <span className={done === total ? "hub__go" : "hub__go hub__go--forward"} aria-hidden>
                 {done === total ? "✓" : "➜"}
               </span>
             </button>

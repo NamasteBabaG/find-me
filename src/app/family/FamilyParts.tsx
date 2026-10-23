@@ -48,7 +48,7 @@ export function StarTally({ found, total, label }: { found: number; total: numbe
   return (
     <span className="tally" role="img" aria-label={label}>
       <span className="tally__star" aria-hidden="true" />
-      <span aria-hidden="true">{found}<span className="tally__total">/{total}</span></span>
+      <span aria-hidden="true" dir="ltr">{found}<span className="tally__total">/{total}</span></span>
     </span>
   );
 }

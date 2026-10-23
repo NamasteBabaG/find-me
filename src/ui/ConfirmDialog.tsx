@@ -23,13 +23,18 @@ interface Props {
  */
 export function ConfirmDialog({ open, title, children, confirmLabel, cancelLabel, danger = false, pending = false, onConfirm, onCancel }: Props) {
   const ref = useRef<HTMLDialogElement>(null);
+  const cancelRef = useRef<HTMLButtonElement>(null);
   const titleId = useId();
+  const descriptionId = useId();
   useEffect(() => {
     const dialog = ref.current;
     if (!dialog) return;
     if (open && !dialog.open) {
       if (typeof dialog.showModal === "function") dialog.showModal();
       else dialog.setAttribute("open", "");
+      // A confirming action may be destructive. Start from the safe way out
+      // after the native modal opens, including when it opens again.
+      cancelRef.current?.focus({ preventScroll: true });
     } else if (!open && dialog.open) {
       if (typeof dialog.close === "function") dialog.close();
       else dialog.removeAttribute("open");
@@ -40,15 +45,22 @@ export function ConfirmDialog({ open, title, children, confirmLabel, cancelLabel
       ref={ref}
       className="fm-dialog"
       aria-labelledby={titleId}
+      aria-describedby={children ? descriptionId : undefined}
       onCancel={(event) => { event.preventDefault(); onCancel(); }}
-      onClick={(event) => { if (event.target === event.currentTarget) onCancel(); }}
+      onClick={(event) => {
+        if (event.target !== event.currentTarget) return;
+        const rect = event.currentTarget.getBoundingClientRect();
+        // The native dialog also receives clicks on its own chrome. Only a
+        // click outside its box belongs to the backdrop.
+        if (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom) onCancel();
+      }}
     >
       <div className="fm-dialog__body">
         <h2 id={titleId} className="fm-dialog__title">{title}</h2>
-        {children ? <div className="fm-dialog__text">{children}</div> : null}
+        {children ? <div id={descriptionId} className="fm-dialog__text">{children}</div> : null}
         <div className="fm-row fm-dialog__actions">
-          <Button type="button" variant="ghost" onClick={onCancel}>{cancelLabel}</Button>
-          <Button type="button" variant={danger ? "danger" : "primary"} onClick={onConfirm} autoFocus loading={pending}>{confirmLabel}</Button>
+          <Button ref={cancelRef} type="button" variant="ghost" onClick={onCancel}>{cancelLabel}</Button>
+          <Button type="button" variant={danger ? "danger" : "primary"} onClick={onConfirm} loading={pending}>{confirmLabel}</Button>
         </div>
       </div>
     </dialog>

@@ -12,6 +12,7 @@ import type { ViewportApi } from "../engine/useViewport";
 import { useScrollReveal } from "../engine/useScrollReveal";
 import { SceneViewport, targetStagePoint, type Hit } from "./SceneViewport";
 import { MissionCard } from "./MissionCard";
+import { SceneDialog } from "./SceneDialog";
 import { ToolIcon } from "./ToolIcon";
 import { CelebrationOverlay } from "./CelebrationOverlay";
 import { CloudBank } from "./Clouds";
@@ -72,7 +73,7 @@ const TURN_HOLD_MS = 160;
 
 /** One world: viewport + mission card + top bar + feedback choreography. */
 export function ScenePlayer({ scene, mission, store, onBack, onSceneComplete }: Props) {
-  const { g, tf, locale } = useGameText();
+  const { g, tf } = useGameText();
   const apiRef = useRef<ViewportApi | null>(null);
   // The transform as of the latest paint. The api object above is handed over
   // at layout and on resize, so its transform is stale after a zoom; the
@@ -179,7 +180,6 @@ export function ScenePlayer({ scene, mission, store, onBack, onSceneComplete }: 
     setRetryToken((n) => n + 1);
   };
   const homeQa = useHomeQaRecovery(store.demo, loadFailed, () => { if (loadFailed) retryLoad(); });
-  const qaCopy = getDict(locale).travelPassport;
   // The clouds close over the board while the found child is swapped for the
   // next one, so nobody sees the next hiding spot pop into the picture.
   const [turn, setTurn] = useState(false);
@@ -564,23 +564,8 @@ export function ScenePlayer({ scene, mission, store, onBack, onSceneComplete }: 
           <CloudBank side="l" />
           <CloudBank side="r" />
         </div>
-        {loadFailed ? (
-          <div className="scene__retry" role="dialog" aria-modal="true" aria-labelledby="scene-retry-title">
-            <div className="scene__retry-card">
-              <span className="scene__retry-cloud" aria-hidden>
-                ☁️
-              </span>
-              <h2 id="scene-retry-title" className="scene__retry-title">
-                {homeQa?.required ? qaCopy.qaHomeExpired : g.scene.loadTitle}
-              </h2>
-              {homeQa?.required ? <a className="fm-btn fm-btn--lg" href={QA_HOME_SIGN_IN} target="_blank" rel="noopener noreferrer">{qaCopy.qaSignIn} ↗</a> : <button type="button" className="fm-btn fm-btn--lg" onClick={retryLoad} autoFocus>
-                {g.scene.loadRetry}
-              </button>}
-              {!store.demo ? <button type="button" className="fm-btn fm-btn--white" onClick={() => onBack()}>
-                {g.scene.loadBack}
-              </button> : null}
-            </div>
-          </div>
+        {loadFailed && !showComplete ? (
+          <SceneLoadError qaRequired={homeQa?.required} demo={store.demo} onRetry={retryLoad} onBack={store.demo ? undefined : onBack} />
         ) : null}
       </div>
 
@@ -656,6 +641,22 @@ export function ScenePlayer({ scene, mission, store, onBack, onSceneComplete }: 
   );
 }
 
+/** Presentation-only error card, also used by the synthetic UI preview. */
+export function SceneLoadError({ qaRequired = false, demo = false, onRetry, onBack }: { qaRequired?: boolean; demo?: boolean; onRetry: () => void; onBack?: () => void }) {
+  const { g, locale } = useGameText();
+  const qaCopy = getDict(locale).travelPassport;
+  return <SceneDialog className="scene__retry" labelledBy="scene-retry-title" modal={!demo} onEscape={onBack}>
+    <div className="scene__retry-card">
+      <span className="scene__retry-cloud" aria-hidden>☁️</span>
+      <h2 id="scene-retry-title" className="scene__retry-title">{qaRequired ? qaCopy.qaHomeExpired : g.scene.loadTitle}</h2>
+      {qaRequired
+        ? <a className="fm-btn fm-btn--lg" href={QA_HOME_SIGN_IN} target="_blank" rel="noopener noreferrer">{qaCopy.qaSignIn} ↗</a>
+        : <button type="button" className="fm-btn fm-btn--lg" onClick={onRetry}>{g.scene.loadRetry}</button>}
+      {onBack ? <button type="button" className="fm-btn fm-btn--white" onClick={onBack}>{g.scene.loadBack}</button> : null}
+    </div>
+  </SceneDialog>;
+}
+
 function SpeechBubble({ text, x, y }: { text: string; x: number; y: number }) {
   return (
     <div className="bubble" style={{ left: x, top: y }} aria-hidden>
@@ -675,7 +676,7 @@ const STAR_CLIMB_SEMITONES = [0, 2, 4, 5, 7];
  * something left to find here; replay and the map are quiet icons. The scene's toolbar is behind this
  * overlay, so its map exit must stay reachable even when there are no discoveries left to Stay for.
  */
-function SceneCompleteCard({ scene, bonusFound, hintsUsed, store, remaining, onStay }: { scene: SceneConfig; bonusFound: boolean; hintsUsed: number; store: PlayStore; remaining: number; onStay?: () => void }) {
+export function SceneCompleteCard({ scene, bonusFound, hintsUsed, store, remaining, onStay }: { scene: SceneConfig; bonusFound: boolean; hintsUsed: number; store: PlayStore; remaining: number; onStay?: () => void }) {
   const { g, tf } = useGameText();
   const next = store.nextScene();
   const allDone = next === null;
@@ -690,7 +691,8 @@ function SceneCompleteCard({ scene, bonusFound, hintsUsed, store, remaining, onS
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   return (
-    <div className="complete" role="dialog" aria-modal="true" aria-label={g.complete.dialogAria} aria-labelledby="complete-title">
+    <SceneDialog className="complete" ariaLabel={g.complete.dialogAria} labelledBy="complete-title" modal={!store.demo}
+      onEscape={hasStay ? onStay : store.demo ? undefined : () => store.goToMap(scene.slug)}>
       <div className="complete__card">
         <div className="complete__stamp" aria-hidden>
           {g.complete.stamp}
@@ -718,22 +720,22 @@ function SceneCompleteCard({ scene, bonusFound, hintsUsed, store, remaining, onS
         )}
         <div className={`complete__actions${hasStay ? " complete__actions--stay" : ""}${primaryReturnsToMap ? " complete__actions--map-primary" : ""}`}>
           {store.demo ? null : allDone && store.round?.active ? (
-            <button type="button" className="fm-btn fm-btn--lg" onClick={() => store.goToMap(scene.slug)} autoFocus>{g.replay.roundFinished}</button>
+            <button type="button" className="fm-btn fm-btn--lg" onClick={() => store.goToMap(scene.slug)}>{g.replay.roundFinished}</button>
           ) : allDone && !store.gameDone() ? (
             // This journey is finished but the game is not: the next choice is
             // which world to go to, not which board.
-            <button type="button" className="fm-btn fm-btn--lg" onClick={store.goToWorlds} autoFocus>
+            <button type="button" className="fm-btn fm-btn--lg" onClick={store.goToWorlds}>
               {g.hub.back}
               <span className="fm-btn__arrow" aria-hidden>
                 ➜
               </span>
             </button>
           ) : allDone ? (
-            <button type="button" className="fm-btn fm-btn--lg" onClick={store.openPassport} autoFocus>
+            <button type="button" className="fm-btn fm-btn--lg" onClick={store.openPassport}>
               {g.complete.bag}
             </button>
           ) : (
-            <button type="button" className="fm-btn fm-btn--lg" onClick={() => next && store.openScene(next)} autoFocus>
+            <button type="button" className="fm-btn fm-btn--lg" onClick={() => next && store.openScene(next)}>
               {g.complete.next}
               <span className="fm-btn__arrow" aria-hidden>
                 ➜
@@ -741,7 +743,7 @@ function SceneCompleteCard({ scene, bonusFound, hintsUsed, store, remaining, onS
             </button>
           )}
           {store.demo ? (
-            <button type="button" className="fm-btn fm-btn--lg" onClick={() => store.replayScene()} autoFocus>
+            <button type="button" className="fm-btn fm-btn--lg" onClick={() => store.replayScene()}>
               {g.complete.again}
             </button>
           ) : null}
@@ -762,6 +764,6 @@ function SceneCompleteCard({ scene, bonusFound, hintsUsed, store, remaining, onS
           )}
         </div>
       </div>
-    </div>
+    </SceneDialog>
   );
 }

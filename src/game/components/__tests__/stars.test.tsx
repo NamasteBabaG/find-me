@@ -148,16 +148,19 @@ describe("MissionCard", () => {
     expect(rule(".mission__stars.stars--sm")).toContain("--star-size: var(--space-2)");
     expect(rule(".mission__stars .star--empty .star__body")).toContain("stroke: var(--ink-3); stroke-dasharray: none");
     expect(rule(".stars--sm")).toContain("--star-size: var(--space-3)");
-    expect(rule(".mission__hintbtn")).toContain("min-width: var(--touch-min)");
+    expect(rule(".mission__hintbtn")).toContain("min-width: var(--touch-kid)");
+    expect(rule(".mission__hintbtn")).toContain("min-height: var(--touch-kid)");
+    expect(rule(".mission__expand")).toContain("min-width: var(--touch-kid)");
+    expect(rule(".mission__expand")).toContain("min-height: var(--touch-kid)");
     expect(rule(".mission__text")).toContain("white-space: normal");
     expect(rule(".mission__face")).toContain("object-fit: contain");
     expect(css).toContain(".mission__thumb--face { width: var(--space-5); height: var(--space-5); }");
     const px = (name: string) => Number(tokens.match(new RegExp(`--${name}:\\s*(\\d+)px`))?.[1]);
     const face = px("space-5");
     const row = 320 - px("space-8") - 2 * px("space-1");
-    const available = row - face - px("touch-min") - 2 * px("space-1");
+    const available = row - face - px("touch-kid") - 2 * px("space-1");
     const tray = 5 * px("space-2") + 4 * px("space-0-5");
-    expect(face).toBe(40); expect(available).toBe(136); expect(tray).toBe(96);
+    expect(face).toBe(40); expect(available).toBe(120); expect(tray).toBe(96);
     expect(tray).toBeLessThanOrEqual(available);
     const view = he(<MissionCard index={3} total={5} target={target("c")} found={["a", "b"]}
       order={["a", "b", "c", "d", "e"]} hintLevel={0} hintPulse={false} hintText={null}
@@ -172,7 +175,7 @@ describe("MissionCard", () => {
     expect(view.container.querySelector(".mission__body")).toBeNull();
   });
 
-  it.each(["Enter", " "])("keeps nested hint/continue keyboard activation native when the HUD is quiet (%s)", key => {
+  it.each(["Enter", " "])("keeps hint/continue and the folded identity disclosure independent and native (%s)", key => {
     const onHint = vi.fn(), onAdvance = vi.fn(), onExpand = vi.fn();
     const view = he(<MissionCard index={4} total={5} target={target("d")} found={["a", "b", "c"]}
       order={["a", "b", "c", "d", "e"]} hintLevel={1} hintPulse={false} hintText="Behind the tree" onHint={onHint}
@@ -186,10 +189,19 @@ describe("MissionCard", () => {
       expect(onExpand).not.toHaveBeenCalled();
       // Browser activation is a native click after the uncancelled key event.
       fireEvent.click(button);
-      onExpand.mockClear();
+      expect(onExpand).not.toHaveBeenCalled();
     }
     expect(onHint).toHaveBeenCalledTimes(1); expect(onAdvance).toHaveBeenCalledTimes(1);
-    fireEvent.keyDown(view.container.querySelector(".mission")!, { key });
+    expect(view.container.querySelector("button button")).toBeNull();
+    const expand = view.container.querySelector<HTMLButtonElement>(".mission__expand")!;
+    expect(expand.tagName).toBe("BUTTON");
+    expect(expand.getAttribute("aria-controls")).toBe(view.container.querySelector(".mission__body")?.id);
+    const event = new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true });
+    act(() => expand.dispatchEvent(event));
+    expect(event.defaultPrevented).toBe(false);
+    expect(onExpand).not.toHaveBeenCalled();
+    // Native buttons turn an uncancelled Enter/Space into a click.
+    fireEvent.click(expand);
     expect(onExpand).toHaveBeenCalledTimes(1);
   });
 

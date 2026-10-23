@@ -108,7 +108,7 @@ export const en = {
     gameShape: "{worlds} · {places} places · {spots} hiding spots",
     searchesCount: "{n} hiding spots",
   },
-  nav: { demo: "Try the game", how: "How it works", gift: "Give a game", pricing: "Packages & prices" },
+  nav: { main: "Main navigation", demo: "Try the game", how: "How it works", gift: "Give a game", pricing: "Packages & prices" },
   footer: {
     blurb: "A personal seek-and-find game inside illustrated adventures.",
     product: "Product",
@@ -413,8 +413,9 @@ export const en = {
     choose: "Who is it for?", newChild: "Another child",
     existingHint: "We’ll use a new photo for this adventure. Earlier adventures stay as they are.",
     open: "Adventures for {name}", add: "Create for another child", more: "Another adventure for {name}",
+    moreLead: "Choose the next adventure and see what’s included.", exploreMore: "Explore adventures",
     passport: "{name}’s passport", back: "Family area", empty: "The first adventure starts here", emptyLead: "Create an adventure for a child. Their place in the family area appears after purchase.",
-    tests: "QA: unassigned test adventures", count: "{n} adventures", preparing: "This adventure is being prepared", noAdventures: "No adventures here yet.",
+    tests: "QA: unassigned test adventures", count: "{n} adventures", countOne: "1 adventure", preparing: "This adventure is being prepared", noAdventures: "No adventures here yet.",
     getHelp: "Get help",
     generationState: {
       preparing: { title: "This adventure is being prepared", hint: "You can leave this page. Preparation continues on the server." },

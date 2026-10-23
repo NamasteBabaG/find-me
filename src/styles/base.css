@@ -1,4 +1,4 @@
-/* Reset + page ground. RTL by default (see <html dir="rtl">). */
+/* Reset + page ground. Direction follows the localized <html>. */
 *,
 *::before,
 *::after {
@@ -101,8 +101,14 @@ video {
   *,
   *::before,
   *::after {
+    animation-delay: 0ms !important;
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
+    transition-delay: 0ms !important;
     transition-duration: 0.01ms !important;
   }
+}
+
+@media (forced-colors: active) {
+  :focus-visible { outline-color: Highlight; }
 }

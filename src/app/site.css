@@ -568,7 +568,7 @@
 .summary__identity > div { min-width: 0; display: grid; gap: var(--space-0-5); }
 .summary__edit { justify-self: start; display: inline-flex; align-items: center; min-height: var(--touch-min); font-size: var(--fs-100); }
 .summary__passport { padding: var(--space-2); background: var(--sun-soft); border-radius: var(--radius-2); }
-.summary__pay[aria-busy="true"] .fm-btn__label { visibility: visible; }
+.summary__pay[aria-busy="true"] .fm-btn__label { visibility: visible; opacity: 1; }
 .summary__pay[aria-busy="true"] .fm-spinner { position: static; margin: 0; }
 @media (max-width: 720px) {
   .summary > .fm-card { padding: var(--space-3); gap: var(--space-2); }

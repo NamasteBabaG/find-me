@@ -13,6 +13,7 @@ const CODES: Record<Locale, string> = { en: "EN", he: "HE" };
  * letters), so the header draws its own tiny, simplified flags.
  */
 function Flag({ locale }: { locale: Locale }) {
+  const clipId = useId();
   if (locale === "he") {
     return (
       <svg className="fm-flag" viewBox="0 0 24 18" aria-hidden focusable="false">
@@ -27,11 +28,11 @@ function Flag({ locale }: { locale: Locale }) {
   return (
     <svg className="fm-flag" viewBox="0 0 24 18" aria-hidden focusable="false">
       <defs>
-        <clipPath id="fm-flag-en">
+        <clipPath id={clipId}>
           <rect width="24" height="18" rx="2.5" />
         </clipPath>
       </defs>
-      <g clipPath="url(#fm-flag-en)">
+      <g clipPath={`url(#${clipId})`}>
         <rect width="24" height="18" fill="#ffffff" />
         {[0, 2, 4, 6, 8, 10, 12].map((i) => (
           <rect key={i} y={i * stripe} width="24" height={stripe} fill="#b22234" />
@@ -52,6 +53,9 @@ export function LanguageSwitcher() {
   const [open, setOpen] = useState(false);
   const [pending, start] = useTransition();
   const ref = useRef<HTMLDivElement>(null);
+  const trigger = useRef<HTMLButtonElement>(null);
+  const items = useRef<Array<HTMLButtonElement | null>>([]);
+  const [activeIndex, setActiveIndex] = useState<number>(LOCALES.indexOf(locale));
   const menuId = useId();
 
   useEffect(() => {
@@ -60,7 +64,11 @@ export function LanguageSwitcher() {
       if (!ref.current?.contains(e.target as Node)) setOpen(false);
     };
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setOpen(false);
+      if (e.key === "Escape") {
+        e.preventDefault();
+        setOpen(false);
+        trigger.current?.focus();
+      }
     };
     document.addEventListener("pointerdown", onPointer);
     document.addEventListener("keydown", onKey);
@@ -70,8 +78,14 @@ export function LanguageSwitcher() {
     };
   }, [open]);
 
+  useEffect(() => {
+    if (open) items.current[activeIndex]?.focus();
+  }, [open, activeIndex]);
+
   const choose = (next: Locale) => {
+    if (pending) return;
     setOpen(false);
+    trigger.current?.focus();
     if (next === locale) return;
     start(async () => {
       await setLocaleAction(next);
@@ -80,17 +94,31 @@ export function LanguageSwitcher() {
   };
 
   return (
-    <div className="fm-lang" ref={ref}>
+    <div className="fm-lang" ref={ref} onBlur={(event) => {
+      if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setOpen(false);
+    }}>
       <button
+        ref={trigger}
         type="button"
         className="fm-lang__btn"
         aria-haspopup="menu"
         aria-expanded={open}
-        aria-controls={menuId}
+        aria-controls={open ? menuId : undefined}
         aria-label={t.common.language}
         title={t.common.language}
-        disabled={pending}
-        onClick={() => setOpen((o) => !o)}
+        aria-disabled={pending || undefined}
+        aria-busy={pending || undefined}
+        onClick={() => {
+          if (pending) return;
+          setActiveIndex(LOCALES.indexOf(locale));
+          setOpen((o) => !o);
+        }}
+        onKeyDown={(event) => {
+          if (pending || (event.key !== "ArrowDown" && event.key !== "ArrowUp")) return;
+          event.preventDefault();
+          setActiveIndex(event.key === "ArrowUp" ? LOCALES.length - 1 : 0);
+          setOpen(true);
+        }}
       >
         <Flag locale={locale} />
         <span className="fm-lang__code">{CODES[locale]}</span>
@@ -99,11 +127,29 @@ export function LanguageSwitcher() {
         </span>
       </button>
       {open ? (
-        <div className="fm-lang__menu" role="menu" id={menuId}>
-          {LOCALES.map((l) => (
+        <div className="fm-lang__menu" role="menu" id={menuId} aria-label={t.common.language} onKeyDown={(event) => {
+          if (event.key === "Tab" && event.shiftKey) {
+            event.preventDefault();
+            setOpen(false);
+            trigger.current?.focus();
+            return;
+          }
+          let next = activeIndex;
+          if (event.key === "ArrowDown") next = (activeIndex + 1) % LOCALES.length;
+          else if (event.key === "ArrowUp") next = (activeIndex - 1 + LOCALES.length) % LOCALES.length;
+          else if (event.key === "Home") next = 0;
+          else if (event.key === "End") next = LOCALES.length - 1;
+          else return;
+          event.preventDefault();
+          setActiveIndex(next);
+        }}>
+          {LOCALES.map((l, index) => (
             <button
               key={l}
+              ref={(element) => { items.current[index] = element; }}
               type="button"
+              tabIndex={index === activeIndex ? 0 : -1}
+              onFocus={() => setActiveIndex(index)}
               role="menuitemradio"
               aria-checked={l === locale}
               className={`fm-lang__item${l === locale ? " is-active" : ""}`}
