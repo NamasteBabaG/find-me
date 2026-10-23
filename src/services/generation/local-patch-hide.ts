@@ -206,7 +206,7 @@ export async function runLocalPatchHide(c: Container, deps: LocalPatchHideDeps, 
   readonly deadlineAt?: number;
   /** Only the world scheduler can open this after its normal pass is complete. */
   readonly finalRepair?: boolean;
-  /** One final original-geometry painting, only after conclusive LOW failure and exhausted repairs. */
+  /** One final original-geometry painting after two paintings and a conclusive LOW boundary failure. */
   readonly guidedFrame?: boolean;
   /** Trusted, durably audited recovery plan only; never raw operator/model prose. */
   readonly repairChecks?: readonly LocalPatchRepairCheck[];
@@ -283,7 +283,7 @@ export async function runLocalPatchHide(c: Container, deps: LocalPatchHideDeps, 
   if (input.guidedFrame) {
     const grant = await detectivesSingleReviewAuthorization(c.db, gameId), authority = await readDetectivesCompletionBudget(c, worldId);
     demand(input.finalRepair && !input.extraAttemptAuthorizationId && scene.sceneVersion === 13 && guidedFrameCandidate(row)
-      && grant && authority?.capMicroUsd === 8_000_000 && authority.authorizationSha256 === grant.authorizationSha256, "exact LOW grant and exhausted original-geometry recovery required");
+      && grant && authority?.capMicroUsd === 8_000_000 && authority.authorizationSha256 === grant.authorizationSha256, "exact LOW grant and original-geometry recovery required");
     guidedFrame = guidedFrameMarker(row) ?? newGuidedFrameMarker(row, grant.authorizationSha256);
     demand(guidedFrame.authorizationSha256 === grant.authorizationSha256, "guided recovery authority changed");
     const priorPicture = await c.db.asset.findUniqueOrThrow({ where: { id: guidedFrame.sourceAssetId } });

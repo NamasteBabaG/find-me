@@ -117,7 +117,7 @@ function cleanQuality(prompt: string): string {
     neighbors: contract.neighbors.map((neighbor, i) => ({ sourceId: neighbor.sourceId, outcome: "preserved", status: "pass", after: [{ ref: "controlled-neighbor-" + i, rect: neighbor.head }],
       remnants: "none", occluder: null, observation: "One coherent synthetic source correspondence without shifted or remaining representation." })) } });
 }
-function controlledSol(interrupted = false) {
+function controlledSol(interrupted = false, guided = false) {
   let failedResponse: string | null = null;
   const creates: { hideId: string; quality: boolean; prompt: string; tier: unknown }[] = [], responses = new Map<string, { prompt: string; quality: boolean; tier: unknown; reads: number }>();
   const fake: BackgroundReviewTransport = { namespace: "openai:find-me-existing", create: async body => {
@@ -131,30 +131,40 @@ function controlledSol(interrupted = false) {
     const state = responses.get(responseId); if (!state) return { status: "missing" };
     if (++state.reads === 1) return { status: "in_progress" };
     if (responseId === failedResponse) return { status: "failed", reading: { responseId, raw: null, usage: null, model: "gpt-6.1-sol", finishReason: "failed", serviceTier: "flex", providerError: { code: "server_error", message: "Synthetic failed response without text or usage" } } };
-    return { status: "completed", reading: { responseId, raw: JSON.stringify({ version: SINGLE_VISUAL_REVIEW_VERSION, assessment: JSON.parse(cleanQuality(state.prompt)),
+    const assessment = JSON.parse(cleanQuality(state.prompt));
+    const hide = boundHide(state.prompt).hideId;
+    if (guided && hide === DETECTIVE_PATCH_BOARDS[0]!.hides[0]!.id && creates.filter(one => one.hideId === hide).length < 3) {
+      const verdict = assessment.assessment.quality.hides[0].verdict;
+      Object.assign(verdict, { verdict: "fail", childComplete: "fail", pictureWhole: "fail", severeSeam: "fail", reason: "Synthetic crown crosses the immutable top return", faults: [{ check: "childComplete", where: "Synthetic complete crown terminates at the top return boundary" }] });
+      verdict.boundaryIntegrity = Object.fromEntries(["left","top","right","bottom"].map(edge => [edge, { status: edge === "top" ? "fail" : "pass", observation: edge === "top" ? "Synthetic crown is cut at the top boundary" : "Synthetic continuous edge" }]));
+    }
+    return { status: "completed", reading: { responseId, raw: JSON.stringify({ version: SINGLE_VISUAL_REVIEW_VERSION, assessment,
         continuity: JSON.parse(longAnswer(boundHide(state.prompt).hideId, 400, 400, 160)), doubt: false, doubtReason: null }),
       usage: { input_tokens: 2000, output_tokens: 500 }, model: "gpt-6.1-sol", finishReason: "stop", serviceTier: String(state.tier) } };
   }, cancel: async () => {} };
   return { fake, creates };
 }
 
-it.each([false, true])("completes27 hides with one LOW answer each; retains one unanswered provider failure when interrupted=%s", async interrupted => {
+it.each([{mode:"clean",interrupted:false,guided:false},{mode:"transport",interrupted:true,guided:false},{mode:"guided",interrupted:false,guided:true}])("completes27 hides with bounded LOW review and no extra planner; mode=$mode", async ({mode,interrupted,guided}) => {
   vi.useFakeTimers({ toFake: ["Date"] });
-  const gameId = "detective-single-world-synthetic-" + interrupted; await newDetectiveWorld(gameId);
+  const gameId = "detective-single-world-synthetic-" + mode; await newDetectiveWorld(gameId);
   const context = await resolveLocalPatchBoardsForGame(db, gameId, 13), hides = context.boards.flatMap(board => board.hides);
   expect(context.boards).toHaveLength(9); expect(hides).toHaveLength(27);
   expect(hides.every(hide => sourcePlacementForHide(context, hide.id)!.sourceNeighbors)).toBe(true);
-  const prompts = new Map<string, string>(), provider = controlledSol(interrupted);
+  const prompts = new Map<string, string>(), provider = controlledSol(interrupted, guided);
   const synchronous = vi.fn<NonNullable<Container["visualReview"]>["request"]>(async () => { throw Error("Historical single review forbidden"); });
   const container = { ...c, visualReview: { request: synchronous }, backgroundReview: provider.fake } as Container;
   const deps: LocalPatchHideDeps = { readBoardArt: readArt, renderPolicySha256: localPatchRenderPolicySha256(LOCAL_PATCH_IMAGE_POLICY),
     judge: async () => { throw Error("Historical per-hide judge forbidden"); },
-    render: async ({ requestKey, stylePng, prompt, subjectQuality }) => {
+    render: async ({ requestKey, stylePng, prompt, subjectQuality, placementGuidePng }) => {
       expect(subjectQuality).toBe("medium");
       const hide = hides.find(hide => requestKey.startsWith(hide.id + ":")); if (!hide) throw Error("Unregistered Detective painter request");
-      expect(requestKey.endsWith(":render:1")).toBe(true);
+      if (guided && hide.id === hides[0]!.id) {
+        expect([1,2,3]).toContain(Number(requestKey.split(":").at(-1)));
+        if (requestKey.endsWith(":render:3")) expect(placementGuidePng).toBeDefined();
+      } else expect(requestKey.endsWith(":render:1")).toBe(true);
       expect(prompt).toContain("local-patch-authored-paint/v1"); prompts.set(requestKey, prompt);
-      const mask = maskForHide(hide), figure = await sharp({ create: { width: Math.round(mask.width * 0.6), height: Math.round(mask.height * 0.8), channels: 4, background: "#1e3ca0" } }).png().toBuffer();
+      const mask = placementGuidePng ? guidedFrameGeometry(maskForHide(hide), hide.returnRect!).target : maskForHide(hide), figure = await sharp({ create: { width: Math.round(mask.width * 0.6), height: Math.round(mask.height * 0.8), channels: 4, background: requestKey.endsWith(":render:2") ? "#304f91" : "#1e3ca0" } }).png().toBuffer();
       const png = await sharp(stylePng).composite([{ input: figure, left: mask.left + Math.round(mask.width * 0.2), top: mask.top + Math.round(mask.height * 0.2) }]).png().toBuffer();
       return paintedOk(png, bill("paint-" + gameId + "-" + requestKey));
     } };
@@ -180,8 +190,8 @@ it.each([false, true])("completes27 hides with one LOW answer each; retains one 
   expect(config.scenes.every(scene => scene.art.base.includes("-detectives-"))).toBe(true);
   expect(await subjectUpgradeOf(db, gameId)).toMatchObject({ actorType: "SYSTEM", operatorId: SYSTEM_ENROLLMENT_OPERATOR, ageYears: 8 });
   const rows = await db.targetVariantAsset.findMany({ where: { variant: "A", targetInstance: { gameScene: { gameId } } } });
-  expect(rows).toHaveLength(27); expect(rows.every(row => row.status === "GENERATED" && row.attempts === 1)).toBe(true);
-  expect(prompts.size).toBe(27); expect(provider.creates).toHaveLength(interrupted ? 28 : 27); expect(provider.creates.filter(create => create.quality)).toHaveLength(interrupted ? 28 : 27);
+  expect(rows).toHaveLength(27); expect(rows.every(row => row.status === "GENERATED" && row.attempts === (guided && JSON.parse(row.judgeJson!).hide === hides[0]!.id ? 3 : 1))).toBe(true);
+  expect(prompts.size).toBe(guided ? 29 : 27); expect(provider.creates).toHaveLength(guided ? 29 : interrupted ? 28 : 27); expect(provider.creates.filter(create => create.quality)).toHaveLength(guided ? 29 : interrupted ? 28 : 27);
   expect(provider.creates.filter(create => create.tier === "default")).toHaveLength(interrupted ? 1 : 0);
   const store = new PrismaRetainedPurchaseStore(db), worldId = boardWizardWorldId(gameId);
   for (const row of rows) {

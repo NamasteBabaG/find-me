@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { SINGLE_VISUAL_REVIEW_VERSION, readSingleVisualReview } from './single-visual-review';
 
-/** One prospective, bounded painting after exhausted repairs; never another image approval. */
+/** One prospective, bounded third painting after a conclusive framing failure; never another image approval. */
 export const GUIDED_FRAME_RECOVERY_VERSION = 'single-low-guided-frame-recovery/v1' as const;
 export const GUIDED_FRAME_MIN_CAPACITY_MICRO_USD = 370_000;
 export type GuideRect = { left: number; top: number; width: number; height: number };
@@ -13,15 +13,16 @@ const hash = (v: unknown): v is string => typeof v === 'string' && /^[a-f0-9]{64
 const boundedId = z.string().min(1).max(240).regex(/^[A-Za-z0-9_:.-]+$/);
 const markerSchema = z.object({ version:z.literal(GUIDED_FRAME_RECOVERY_VERSION),authorizationSha256:z.string().regex(/^[a-f0-9]{64}$/),
   sourceImageSha256:z.string().regex(/^[a-f0-9]{64}$/),sourceAssetId:boundedId,sourceReviewRequestKey:boundedId,
-  originalAttempts:z.literal(2),repairCyclesPreserved:z.literal(3) }).strict();
+  originalAttempts:z.literal(2),repairCyclesPreserved:z.number().int().min(0).max(3) }).strict();
 function receipt(row: GuidedFrameRow) { try { return object(JSON.parse(row.judgeJson ?? 'null')); } catch { return null; } }
 export function parseGuidedFrameMarker(value: unknown): GuidedFrameMarker | null { const parsed=markerSchema.safeParse(value); return parsed.success ? parsed.data : null; }
 export function guidedFrameMarker(row: GuidedFrameRow): GuidedFrameMarker | null { return parseGuidedFrameMarker(receipt(row)?.guidedFrameRecovery); }
 /** Scheduling only: the service verifies the actual one-world authority and the renderer enforces the unchanged source/window. */
 export function guidedFrameCandidate(row: GuidedFrameRow): boolean {
   const r=receipt(row), repair=object(r?.selfRepair);
-  if (!r || repair?.version !== 'local-patch-self-repair/v1' || repair.subjectV2Cycles !== 3) return false;
-  if (row.status === 'PENDING' && row.attempts === 3) return !!guidedFrameMarker(row);
+  const cycles = repair?.subjectV2Cycles ?? 0;
+  if (!r || repair && repair.version !== 'local-patch-self-repair/v1' || !Number.isSafeInteger(cycles) || Number(cycles) < 0 || Number(cycles) > 3) return false;
+  if (row.status === 'PENDING' && row.attempts === 3) return guidedFrameMarker(row)?.repairCyclesPreserved === cycles;
   if (row.status !== 'FAILED' || row.attempts !== 2 || !row.assetId || guidedFrameMarker(row)
     || r.reviewState !== 'board-review-complete' || r.wireFault !== null || !hash(r.judgedSha256)) return false;
   const dual=object(object(r.boardReview)?.dual), q=object(dual?.quality), policy=object(q?.policy), verdict=object(r.verdict);
@@ -31,11 +32,12 @@ export function guidedFrameCandidate(row: GuidedFrameRow): boolean {
     && ['childComplete','pictureWhole','severeSeam','neighborsIntact'].some(k=>verdict[k] === 'fail')
     && ['left','top','right','bottom'].some(k=>object(boundaries?.[k])?.status === 'fail');
 }
+export function guidedFrameExhausted(row: GuidedFrameRow): boolean { return row.status === 'FAILED' && row.attempts === 3 && !!guidedFrameMarker(row); }
 export function newGuidedFrameMarker(row: GuidedFrameRow, authorizationSha256: string): GuidedFrameMarker {
-  if (!hash(authorizationSha256) || row.status !== 'FAILED' || !guidedFrameCandidate(row)) throw Error('GUIDED_FRAME: conclusive current LOW failure and exhausted repair history required');
+  if (!hash(authorizationSha256) || row.status !== 'FAILED' || !guidedFrameCandidate(row)) throw Error('GUIDED_FRAME: conclusive current LOW boundary failure after two paintings required');
   const r=receipt(row)!, q=object(object(object(r.boardReview)?.dual)?.quality)!;
   return markerSchema.parse({version:GUIDED_FRAME_RECOVERY_VERSION,authorizationSha256,sourceImageSha256:r.judgedSha256,
-    sourceAssetId:row.assetId,sourceReviewRequestKey:q.requestKey,originalAttempts:2,repairCyclesPreserved:3});
+    sourceAssetId:row.assetId,sourceReviewRequestKey:q.requestKey,originalAttempts:2,repairCyclesPreserved:object(r.selfRepair)?.subjectV2Cycles ?? 0});
 }
 function valid(r: GuideRect) { return [r.left,r.top,r.width,r.height].every(Number.isSafeInteger) && r.left >= 0 && r.top >= 0 && r.width > 0 && r.height > 0 && r.left+r.width <= 512 && r.top+r.height <= 768; }
 export function guidedFrameGeometry(child: GuideRect, returned: GuideRect) {

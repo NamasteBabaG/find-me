@@ -1,4 +1,4 @@
-import { guidedFrameCandidate } from "../../domain/generation/guided-frame-recovery";
+import { guidedFrameCandidate, guidedFrameExhausted } from "../../domain/generation/guided-frame-recovery";
 import { detectivesSingleReviewAuthorization, readDetectivesCompletionBudget } from "./detectives-completion-budget";
 import { hasLocalPatchCapability } from "../../domain/scene/local-patch-family";
 import { Prisma } from "@prisma/client";
@@ -724,7 +724,7 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
   const repairCheckpoints = new Map(rows.map(row => [row.id, JSON.stringify(selfRepairOf(row) ?? null)]));
   const automaticWork = automatic && !extraPlan ? work.filter(item => {
     const row = stateOf(item.sceneId, item.hide.targetId);
-    return needsSelfRepair(row) && !leanThirdPainting(row) && !guidedThirdPainting(row) && !(hasLocalPatchCapability(game.scenes.find(scene => scene.id === item.sceneId)?.sceneVersion, "integratedQuality")
+    return needsSelfRepair(row) && !(row && guidedFrameExhausted(row)) && !leanThirdPainting(row) && !guidedThirdPainting(row) && !(hasLocalPatchCapability(game.scenes.find(scene => scene.id === item.sceneId)?.sceneVersion, "integratedQuality")
       && (localPatchEvidenceRecovery(row!) || playerReviewEnabled() && needsPlayerReview(row!)))
       // Re-asked under v2 about the same pixels before any repair (subject-rejudge/v1).
       && !rejudgePending(row!);
@@ -1007,7 +1007,7 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
         evidence: recovery ? { retry: recovery.retry, waiting: recovery.waiting, exhausted: recovery.exhausted,
           ...(diagnosis ? { kind: `${diagnosis.role} ${diagnosis.kind}` } : {}) } : null,
         reviewOwed: !!row && (rejudgePending(row) || playerReviewEnabled() && needsPlayerReview(row)),
-        repairSpent: progress && !!row && needsSelfRepair(row) && selfRepairProgress(selfRepairOf(row), row.attempts).exhausted });
+        repairSpent: progress && !!row && (guidedFrameExhausted(row) || needsSelfRepair(row) && selfRepairProgress(selfRepairOf(row), row.attempts).exhausted) });
     });
     const rest = pendingReviews ? null : localPatchRestDecision(rests);
     if (rest?.action === "wait") {

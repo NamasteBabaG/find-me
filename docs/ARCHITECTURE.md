@@ -215,7 +215,7 @@ answer, visible quality failure, account error or content refusal never uses thi
 The one continuation uses LOW at the default tier and a distinct fingerprint; polling and
 replay of either request never submit it twice. Old v1-v4 receipts retain their original terms.
 
-For a conclusive LOW boundary failure after the three subject repair cycles, one still-unused
+For a conclusive LOW boundary failure after two paintings, one still-unused
 normal third painting may use single-low-guided-frame-recovery/v1. Its final reference is a
 marked copy of the same public source crop. The API mask exposes the existing authored
 return window, and the visual whole-child frame is a strict subset of the original child
@@ -223,7 +223,8 @@ envelope. The compositor, source-neighbor contract, hit geometry and all publica
 keep their original permission. No source/window expansion or quality approval is granted.
 The next image needs370000microUSD of available capacity before dispatch (120000image plus
 the qualified250000 maximum LOW assessment bound); every actual reservation remains exact.
-The third painting preserves all previous repair counters and cannot open another three cycles.
+The third painting reuses the existing LOW diagnosis rather than buying another repair planner.
+It preserves all previous repair counters (zero to three) and cannot open any further repair cycle.
 
 A once-per-mode normal SYSTEM wake can revisit the exact earlier request-reconstruction
 hold or a truly exhausted eligible frame failure after this software correction. It verifies
