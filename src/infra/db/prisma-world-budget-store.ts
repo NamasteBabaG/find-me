@@ -184,6 +184,17 @@ export class PrismaWorldBudgetStore extends WorldBudgetStorageAccess {
   // Normal reservation/dispatch permission requires a primary autocommit client.
   constructor(db: PrismaClient) { super(db); }
 
+  /** Read bills using the caller's existing transaction connection. This
+   * capability cannot create a ledger, reserve, settle or change a charge. */
+  static forReadOnlyTransaction(tx: Prisma.TransactionClient): AtomicWorldBudgetStore {
+    const access = new WorldBudgetStorageAccess(tx);
+    return {
+      read: id => access.read(id),
+      insertIfAbsent: async () => fail("invalid_ledger", "Read-only transaction cannot create a ledger"),
+      compareAndSwap: async () => fail("invalid_ledger", "Read-only transaction cannot change a ledger"),
+    };
+  }
+
   /** Narrow admin recovery capability: ONLY append continuation approvals to an
    * existing ledger, atomically with Game/Job resume. Cannot create, reserve,
    * settle or change any request. Caller must await the OUTER commit before

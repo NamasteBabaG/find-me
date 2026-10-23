@@ -1,4 +1,7 @@
 import { Prisma } from "@prisma/client";
+import { PrismaWorldBudgetStore } from "../../infra/db/prisma-world-budget-store";
+import { CasWorldBudgetRepository } from "../../infra/db/world-budget-repository";
+import { boardWizardBudget } from "./board-wizard-budget";
 import type { Container } from "../container";
 import { env } from "../../lib/env";
 import { DETECTIVES_SCENE_VERSION } from "../../domain/scene/local-patch-versions";
@@ -81,7 +84,9 @@ export async function resumeIdentityReasonHold(c: Container, requestedGameId: st
         }
         const pin = await sourcePlacementReleaseOf(tx, game.id);
         demand(pin && hash(pin) === hash(sourcePin));
-        const resolved = await retainIdentityReasonReconciliation(tx, row, game.id, budget);
+        // Bill reads must use this transaction connection, including in a one-connection runtime.
+        const transactionBudget = boardWizardBudget(new CasWorldBudgetRepository(PrismaWorldBudgetStore.forReadOnlyTransaction(tx)));
+        const resolved = await retainIdentityReasonReconciliation(tx, row, game.id, transactionBudget);
         demand(identityReceiptReadyForPublication(resolved, DETECTIVES_SCENE_VERSION));
         await tx.auditLog.create({ data: { id: `aud_identity_reason_resume_${game.id}`, actorType: "SYSTEM",
           action: "generation:identity-reason-resumed", entityType: "Game", entityId: game.id,

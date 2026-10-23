@@ -6,6 +6,7 @@ import sharp from "sharp";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { applyTestSchema } from "../../../lib/test-schema";
 import { DbStorage } from "../../../infra/storage/db";
+import { PrismaWorldBudgetStore } from "../../../infra/db/prisma-world-budget-store";
 import type { Container } from "../../container";
 import { DETECTIVE_IDENTITY_STYLE_CATALOG_SHA256 } from "../../../../content/detectives/identity-style-release";
 import { boardWizardBudgetOf, boardWizardWorldId } from "../board-conditioned-wizard";
@@ -41,7 +42,7 @@ const longReason = "Synthetic visible evidence. ".repeat(80);
 const hold = "board-wizard: unresolved-identity; retained evidence requires reconciliation; no automatic repurchase";
 beforeAll(async () => {
   scratch = mkdtempSync(path.join(realpathSync(tmpdir()), "findme-reason-recovery-"));
-  db = new PrismaClient({ datasources: { db: { url: `file:${path.join(scratch, "test.db").replace(/\\/g, "/")}` } } });
+  db = new PrismaClient({ datasources: { db: { url: `file:${path.join(scratch, "test.db").replace(/\\/g, "/")}?connection_limit=1` } } });
   await applyTestSchema(db);
   png = await sharp({ create: { width: 32, height: 32, channels: 4, background: "#587e94" } }).png().toBuffer();
 });
@@ -99,7 +100,7 @@ async function fixture(reason = longReason, patch: Record<string, string> = {}) 
     sheetId, avatarId, photoId, childId, jobId: "job_" + id };
 }
 describe("identity explanation length and retained-response recovery", () => {
-  it("lets the normal cron resume with its normal GAME avatar and call the pipeline without repainting", async () => {
+  it("lets the normal cron resume with one DB connection and its GAME avatar without repainting", async () => {
     const f = await fixture();
     expect((await db.asset.findUniqueOrThrow({ where: { id: f.avatarId } })).visibility).toBe("GAME");
     const dispatch = vi.mocked(runGenerationPipeline); dispatch.mockClear();
@@ -109,6 +110,18 @@ describe("identity explanation length and retained-response recovery", () => {
     expect(dispatch.mock.calls[0]?.[0]).toBe(f.c);
     expect(dispatch.mock.calls[0]?.[1]).toBe(f.id);
     expect(dispatch.mock.calls[0]?.[2]).toMatchObject({ hardDeadlineAt: expect.any(Number) });
+    expect(f.call).toHaveBeenCalledTimes(1);
+  });
+  it("keeps the transaction ledger reader unable to create or change charges", async () => {
+    const f = await fixture(), world = boardWizardWorldId(f.id);
+    const before = await db.worldBudgetLedger.findUniqueOrThrow({ where: { worldId: world } });
+    await db.$transaction(async tx => {
+      const store = PrismaWorldBudgetStore.forReadOnlyTransaction(tx), retained = await store.read(world);
+      expect(retained).not.toBeNull();
+      await expect(store.insertIfAbsent(world, retained!.snapshot)).rejects.toThrow("Read-only transaction");
+      await expect(store.compareAndSwap(world, retained!.revision, retained!.snapshot)).rejects.toThrow("Read-only transaction");
+    });
+    expect(await db.worldBudgetLedger.findUniqueOrThrow({ where: { worldId: world } })).toEqual(before);
     expect(f.call).toHaveBeenCalledTimes(1);
   });
   it("also retains compatibility with an owned PRIVATE avatar", async () => {
