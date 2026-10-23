@@ -17,14 +17,14 @@ import { deliverGameMail } from "../publish.service";
 import { SYSTEM } from "../audit.service";
 import { prepareLocalPatchBoardReview, reviewLocalPatchBoard, localPatchBoardReviewKeys, type LocalPatchBoardReviewDeps } from "./local-patch-board-review";
 import { transitionGame } from "../game-status";
-import { LOCAL_PATCH_MIN_PROVIDER_MS, LOCAL_PATCH_PHASE_MARGIN_MS } from "./local-patch-render";
+import { LOCAL_PATCH_MIN_PROVIDER_MS, LOCAL_PATCH_PHASE_MARGIN_MS, LOCAL_PATCH_RESERVE } from "./local-patch-render";
 import { localPatchAttemptPlan, localPatchSettled, localPatchFinalRepairAllowed, LOCAL_PATCH_NORMAL_ATTEMPTS } from "../../domain/scene/local-patch-attempts";
 import { localPatchNeedsRecomposition, recomposeLocalPatchHide } from "./local-patch-recompose";
 import { runLocalPatchPaidRepair, LOCAL_PATCH_PAID_REPAIR_ACTION, LocalPatchPaidRepairError } from "./local-patch-paid-repair";
 import { readLocalPatchExtraAttemptPlan } from "./local-patch-extra-attempt";
 import { needsSelfRepair, selfRepairEnabled } from "../../domain/scene/local-patch-self-repair";
 import { needsPlayerReview, playerReviewEnabled } from "./local-patch-player-review";
-import { runLocalPatchSelfRepair, SELF_REPAIR_REQUEST_ACTION, type SelfRepairDeps } from "./local-patch-self-repair";
+import { runLocalPatchSelfRepair, savedApplyingRepairOf, SELF_REPAIR_REQUEST_ACTION, type SelfRepairDeps } from "./local-patch-self-repair";
 import { WorldBudgetError } from "./world-budget";
 import { recoverLocalPatchImageInterruptions } from "./local-patch-interruption-recovery";
 import { recoverPreparedLocalPatchReview } from "./local-patch-review-interruption-recovery";
@@ -713,7 +713,7 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
     try { return JSON.parse(row?.judgeJson ?? "{}").selfRepair as Parameters<typeof selfRepairProgress>[0]; } catch { return null; }
   };
   // A refused sibling purchase describes the state before other repairs committed.
-  // A newly saved plan or painting gets one ordinary slice to use its next phase;
+  // A newly saved applying plan gets one ordinary slice only when its next phase fits;
   // every purchase still passes through the unchanged ledger and ceiling.
   const repairCheckpoints = new Map(rows.map(row => [row.id, JSON.stringify(selfRepairOf(row) ?? null)]));
   const automaticWork = automatic && !extraPlan ? work.filter(item => {
@@ -933,7 +933,8 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
   // would read the same rows, buy nothing and ask again forever. Held is a
   // state for a person, not a state to poll.
   if (automatic) await recoverLocalPatchImageInterruptions(c, gameId, fence);
-  const held = (await boardWizardBudgetOf(c).audit(boardWizardWorldId(gameId))).held;
+  const currentBudget = await boardWizardBudgetOf(c).audit(boardWizardWorldId(gameId));
+  const held = currentBudget.held;
   // Held only by interruptions the automatic continuation admits: queued for the next slice, never parked.
   if (held && !attention && await continuable()) return { ...await yieldToContinue(), outcomes, blocked };
   if (held && !attention) {
@@ -981,10 +982,11 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
   // A parked job was already written the moment it was parked; leaving it alone
   // here is the point, not an omission.
   if (!attention) {
-    if (deferredBudgetError && automatic && after.some(row => selfRepairOf(row)
-      && repairCheckpoints.get(row.id) !== JSON.stringify(selfRepairOf(row)))) {
-      return { ...await yieldToContinue(), outcomes, blocked };
-    }
+    if (deferredBudgetError && automatic && after.some(row => {
+      const repair = savedApplyingRepairOf(row.judgeJson);
+      return repair && repairCheckpoints.get(row.id) !== JSON.stringify(selfRepairOf(row))
+        && (repair.decision!.action === "recompose-retained" || currentBudget.remainingMicroUsd >= LOCAL_PATCH_RESERVE.renderMicroUsd);
+    })) return { ...await yieldToContinue(), outcomes, blocked };
     const deferred = deferredBudgetError ? await deferBudget(deferredBudgetError) : null;
     if (deferred) return { gameId, pending: !deferred.parked, claimed: true, paused: false, attention: deferred.parked, outcomes, blocked };
     // What is left when nothing automatic remains to start for any of it: appearances whose repair cycles under

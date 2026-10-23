@@ -46,7 +46,7 @@ afterAll(async () => {
   vi.unstubAllGlobals(); await db.$disconnect();
   if (path.dirname(directory) === realpathSync(tmpdir()) && path.basename(directory).startsWith("findme-budget-checkpoint-")) rmSync(directory, { recursive:true });
 });
-async function fixture(id: string, advance: boolean) {
+async function fixture(id: string, advance: boolean, remainingAfterApplying = 210_000) {
   const seeded = await seedApprovedGame(c,db,{gameId:id,approved:false,status:"TARGETS_GENERATING",styleVersion:LOCAL_PATCH_STYLE,
     withJob:true,scenes:boards.map(b=>({slug:b.board,version:12}))});
   await db.game.update({where:{id},data:{paidAt:new Date()}});
@@ -59,7 +59,7 @@ async function fixture(id: string, advance: boolean) {
       variant:LOCAL_PATCH_VARIANT,provider:LOCAL_PATCH_PROVIDER,status:"FAILED",attempts:2,
       lastError:"quality-retry: synthetic composition clipping",
       judgeJson:JSON.stringify({reviewState:"board-review-complete",qualityDisposition:{state:"retry",faults:["childComplete"]},
-        selfRepair:{version:"local-patch-self-repair/v1",cycle:1,phase:"diagnosing"}})}});
+        selfRepair:{version:"local-patch-self-repair/v1",cycle:1,phase:"diagnosing",contextSha256:"a".repeat(64),decision:null,history:[],feedback:"synthetic clipping",sourceKeys:[],imageCostCents:0,diagnosisCostCents:0}})}});
   }
   const budget=boardWizardBudgetOf(c), worldId=boardWizardWorldId(id), cap=(await budget.audit(worldId)).capMicroUsd;
   await budget.importSettled(worldId,{scope:"image",operationFingerprint:"synthetic-past-"+id,evidence:bill("past-"+id,cap-260_000)});
@@ -71,7 +71,12 @@ async function fixture(id: string, advance: boolean) {
       await budget.reserve(worldId,{requestKey:"diagnosis",scope:"judge",operationFingerprint:"diagnosis-"+id,reserveMicroUsd:250_000});
       await budget.settle(worldId,"diagnosis",bill("diagnosis-"+id,50_000));
       const row=await db.targetVariantAsset.findUniqueOrThrow({where:{id:selectedId}}), receipt=JSON.parse(row.judgeJson!);
-      await db.targetVariantAsset.update({where:{id:selectedId},data:{judgeJson:JSON.stringify({...receipt,selfRepair:{...receipt.selfRepair,phase:"applying"}})}});
+      const decision={cause:"composition-clipping",explanation:"The corrected compact placement keeps the complete head inside the original return.",
+        action:"redraw-with-new-placement",sourceKey:"synthetic-paid-raw",returnWindow:{left:50,top:80,width:400,height:620},
+        protectedCore:{left:100,top:160,width:250,height:420},faceRect:{left:130,top:190,width:80,height:90}};
+      await db.targetVariantAsset.update({where:{id:selectedId},data:{judgeJson:JSON.stringify({...receipt,selfRepair:{...receipt.selfRepair,phase:"applying",decision}})}});
+      if(remainingAfterApplying<210_000) await budget.importSettled(worldId,{scope:"image",operationFingerprint:"other-"+id,
+        evidence:bill("other-"+id,210_000-remainingAfterApplying)});
       moved=true; return;
     }
     if(input.hide.id===selected.id && moved && !painted && advance) {
@@ -100,9 +105,17 @@ describe("deferred budget refusal after committed repair progress",()=>{
     // A fresh ordinary slice can buy the cheaper next phase. No cap change or
     // second diagnosis is needed, and the pixels still await independent review.
     const next=await runLocalPatchWorldSlice(c,deps,f.id,{maxHides:2,hardDeadlineAt:Date.now()+270_000});
-    expect(next.pending).toBe(true); expect(next.attention).toBeNull();
+    expect(next.pending).toBe(false); expect(next.attention).toContain("authorized world budget");
     expect(await f.budget.readRequest(f.worldId,"saved-plan-paint")).toMatchObject({scope:"image",state:"settled",reserveMicroUsd:120_000});
     expect(await f.budget.audit(f.worldId)).toMatchObject({capMicroUsd:f.cap,remainingMicroUsd:170_000,overCapMicroUsd:0});
+    expect(fetch).not.toHaveBeenCalled();
+  },60_000);
+  it("parks a newly saved applying plan when even its next image reservation cannot fit",async()=>{
+    const f=await fixture("checkpoint-too-small-synthetic",true,119_999);
+    const result=await runLocalPatchWorldSlice(c,deps,f.id,{maxHides:2,hardDeadlineAt:Date.now()+270_000});
+    expect(result.pending).toBe(false); expect(result.attention).toContain("authorized world budget");
+    expect(await f.budget.readRequest(f.worldId,"saved-plan-paint")).toBeNull();
+    expect(await f.budget.audit(f.worldId)).toMatchObject({remainingMicroUsd:119_999,overCapMicroUsd:0});
     expect(fetch).not.toHaveBeenCalled();
   },60_000);
   it("parks a genuinely unchanged refusal without an extra waiting loop",async()=>{
