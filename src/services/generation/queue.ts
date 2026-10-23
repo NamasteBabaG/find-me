@@ -5,7 +5,7 @@ import type { Container } from "../container";
 import { LEASE_MS as PIPELINE_LEASE_MS, RESUMABLE_STATUSES, runGenerationPipeline } from "./pipeline";
 import { FIXED_WORLD_STYLE_PREFIX, isFixedWorldStyle } from "./fixed-world-stage-record";
 import { BOARD_WIZARD_STYLE, boardWizardEnabled, runBoardConditionedWizardSlice } from "./board-conditioned-wizard";
-import { LOCAL_PATCH_LEASE_MS, LOCAL_PATCH_NEEDS_RELEASE, LOCAL_PATCH_QUALITY_FAILED, LOCAL_PATCH_RECOVERY_EXHAUSTED, LOCAL_PATCH_RECOVERY_BUDGET_WAIT, LOCAL_PATCH_RECOVERY_BACKOFF_MS, LOCAL_PATCH_EVIDENCE_RETRY_WAIT, LOCAL_PATCH_STYLE, localPatchPainterForGame, runLocalPatchWorldSlice } from "./local-patch-world";
+import { LOCAL_PATCH_LEASE_MS, LOCAL_PATCH_NEEDS_RELEASE, LOCAL_PATCH_QUALITY_FAILED, LOCAL_PATCH_RECOVERY_EXHAUSTED, LOCAL_PATCH_RECOVERY_BUDGET_WAIT, LOCAL_PATCH_RECOVERY_BACKOFF_MS, LEAN_RECOVERY_BACKOFF_MS, LOCAL_PATCH_EVIDENCE_RETRY_WAIT, LOCAL_PATCH_STYLE, localPatchPainterForGame, runLocalPatchWorldSlice } from "./local-patch-world";
 import { LOCAL_PATCH_EVIDENCE_RETRY_BACKOFF_MS } from "./local-patch-review-recovery";
 import { LOCAL_PATCH_SPEND_PAUSED, LOCAL_PATCH_SPEND_PAUSE_RECHECK_MS, pauseLocalPatchForSpendGuard } from "./local-patch-spend-pause";
 import { claimParkedWake, nextParkedWake } from "./local-patch-parked-wake";
@@ -13,6 +13,7 @@ import { selfRepairEnabled } from "../../domain/scene/local-patch-self-repair";
 import { transitionGame } from "../game-status";
 import { SYSTEM } from "../audit.service";
 import { GENERATION_RETRY_BACKOFF_MS } from "../../domain/generation-health";
+import { isLeanWorld } from "./lean-release";
 
 /**
  * Moving generation forward a slice at a time.
@@ -36,6 +37,25 @@ export interface TickResult {
 
 /** The oldest game that still has work to do. */
 export async function nextPendingGame(c: Container): Promise<string | null> {
+  const now = Date.now();
+  // The slice already uses three minutes for verified lean worlds. Cron must
+  // admit those same worlds after that pause, including when their page is closed.
+  // This selects a turn only; the slice still owns its claim and all spend gates.
+  const earlyBudgetJobs = await c.db.generationJob.findMany({
+    where: { status: "QUEUED", currentStep: LOCAL_PATCH_RECOVERY_BUDGET_WAIT,
+      updatedAt: { gt: new Date(now - LOCAL_PATCH_RECOVERY_BACKOFF_MS), lte: new Date(now - LEAN_RECOVERY_BACKOFF_MS) },
+      game: { status: "TARGETS_GENERATING", styleVersion: LOCAL_PATCH_STYLE, deletedAt: null, paidAt: { not: null }, orders: {
+        some: { paymentStatus: "PAID", paidAt: { not: null }, refundedAt: null },
+        none: { OR: [{ paymentStatus: "REFUNDED" }, { refundedAt: { not: null } }] },
+      } } },
+    select: { gameId: true },
+  });
+  const earlyLeanIds: string[] = [];
+  for (const gameId of new Set(earlyBudgetJobs.map(job => job.gameId))) {
+    // A malformed pin is that world's own refusal, never authority for an early
+    // turn or a reason to stop cron from selecting another runnable world.
+    try { if (await isLeanWorld(c.db, gameId)) earlyLeanIds.push(gameId); } catch { /* fail closed for this candidate */ }
+  }
   const game = await c.db.game.findFirst({
     // Fixed-from-birth games await their qualified import/manual QA, not this
     // painter. Selecting the oldest fixed PAID game would starve legacy work.
@@ -61,7 +81,10 @@ export async function nextPendingGame(c: Container): Promise<string | null> {
           some: { paymentStatus: "PAID", paidAt: { not: null }, refundedAt: null },
           none: { OR: [{ paymentStatus: "REFUNDED" }, { refundedAt: { not: null } }] },
         } }] },
-        { NOT: { jobs: { some: { currentStep: LOCAL_PATCH_RECOVERY_BUDGET_WAIT, updatedAt: { gt: new Date(Date.now() - LOCAL_PATCH_RECOVERY_BACKOFF_MS) } } } } },
+        { OR: [{ id: { in: earlyLeanIds }, jobs: { some: { status: "QUEUED", currentStep: LOCAL_PATCH_RECOVERY_BUDGET_WAIT,
+          updatedAt: { lte: new Date(now - LEAN_RECOVERY_BACKOFF_MS) } } } }, { NOT: { jobs: { some: {
+          currentStep: LOCAL_PATCH_RECOVERY_BUDGET_WAIT, updatedAt: { gt: new Date(now - LOCAL_PATCH_RECOVERY_BACKOFF_MS) },
+        } } } }] },
         { NOT: { jobs: { some: { currentStep: LOCAL_PATCH_EVIDENCE_RETRY_WAIT, updatedAt: { gt: new Date(Date.now() - LOCAL_PATCH_EVIDENCE_RETRY_BACKOFF_MS) } } } } },
         // Paused by this deployment's spend guard: looked at again every ten minutes, never claimed meanwhile.
         { NOT: { jobs: { some: { currentStep: LOCAL_PATCH_SPEND_PAUSED, updatedAt: { gt: new Date(Date.now() - LOCAL_PATCH_SPEND_PAUSE_RECHECK_MS) } } } } },
