@@ -15,17 +15,12 @@ import { FIXED_WORLD_STYLE_VERSION, isFixedWorldStyle, readFixedWorldStage, fixe
 import { findScene } from "../../../../../../content/scenes";
 import { currentUser, draftTokenFromCookie, isAdminEmail } from "@/lib/server/session";
 import { pick } from "@/i18n";
-import { BOARD_WIZARD_STYLE, readBoardWizard } from "@/services/generation/board-conditioned-wizard";
+import { BOARD_WIZARD_STYLE, readBoardWizard, readBoardWizardBudgetAuthority } from "@/services/generation/board-conditioned-wizard";
 import { characterNeedsApproval, identityApprovedForDisplay } from "@/services/generation/board-wizard-identity-gate";
 import { env } from "@/lib/env";
 import { auditWorldBudget } from "@/services/generation/world-budget";
 import { applyBoardWizardBudgetCap } from "@/services/generation/board-wizard-budget";
-import { readLocalPatchEmergencyBudget } from "@/services/generation/local-patch-budget-recovery";
-import { readNewQaWorldBudget } from "@/services/generation/local-patch-qa-budget";
 import { identityRevisionPending, identityRevisionHeldOf } from "@/services/generation/identity-source-revision-state";
-import { readLeanWorldBudget } from "@/services/generation/lean-release";
-import { readLeanCapacityRecoveryBudget } from "@/services/generation/lean-capacity-recovery";
-import { readLeanCompletionBudget } from "@/services/generation/lean-completion-budget";
 import { openAdmittedInterruptions } from "@/services/generation/subject-upgrade";
 import { readLocalPatchExtraAttemptPlan } from "@/services/generation/local-patch-extra-attempt";
 
@@ -118,9 +113,9 @@ export async function GET(req: Request, ctx: { params: Promise<{ gameId: string 
       if (snapshot.worldId !== worldId) throw new Error("Wrong local-patch budget world");
       // This ledger already includes identity, painting and judging. Adding
       // asset costs here would count the same image purchase a second time.
-      // The ceiling the ledger itself enforces, in the engine's own order: a new
-      // explicit source-completion grant, preserved lean pin, new-QA policy, then emergency grant.
-      const extension = await readLeanCapacityRecoveryBudget(c, worldId) ?? await readLeanCompletionBudget(c, worldId) ?? await readLeanWorldBudget(c, worldId) ?? await readNewQaWorldBudget(c, worldId) ?? await readLocalPatchEmergencyBudget(c, worldId);
+      // Use the engine's shared authority reader, including a recorded Detective
+      // completion grant. A copied policy chain can falsely hold active work.
+      const extension = await readBoardWizardBudgetAuthority(c, worldId);
       const ledgerCap = extension?.capMicroUsd === 6_000_000 || extension?.capMicroUsd === 12_000_000 ? extension.capMicroUsd : undefined;
       const audit = applyBoardWizardBudgetCap(auditWorldBudget(snapshot, ledgerCap), extension?.capMicroUsd);
       qaCost = { spentCents: audit.settledMicroUsd / 10_000, reservedCents: audit.reservedMicroUsd / 10_000,

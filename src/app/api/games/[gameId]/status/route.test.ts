@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   game: vi.fn(), asset: vi.fn(), job: vi.fn(), user: vi.fn(), denied: vi.fn(), link: vi.fn(), proof: vi.fn(), hash: vi.fn(), wizard: vi.fn(), ledger: vi.fn(),
-  revisionPending: vi.fn(), revisionHeld: vi.fn(), approved: vi.fn(), emergencyBudget: vi.fn(), newQaBudget: vi.fn(), leanBudget: vi.fn(), completionBudget: vi.fn(), capacityBudget: vi.fn(), admittedInterruptions: vi.fn(), extraPlan: vi.fn(),
+  revisionPending: vi.fn(), revisionHeld: vi.fn(), approved: vi.fn(), emergencyBudget: vi.fn(), newQaBudget: vi.fn(), leanBudget: vi.fn(), completionBudget: vi.fn(), capacityBudget: vi.fn(), detectivesBudget: vi.fn(), admittedInterruptions: vi.fn(), extraPlan: vi.fn(),
   token: null as string | null, admin: false,
 }));
 vi.mock("@/services/generation/identity-source-revision-state", () => ({ identityRevisionPending: mocks.revisionPending, identityRevisionHeldOf: mocks.revisionHeld }));
@@ -10,6 +10,7 @@ vi.mock("@/services/generation/local-patch-extra-attempt", async importOriginal 
   ...(await importOriginal<typeof import("@/services/generation/local-patch-extra-attempt")>()),
   readLocalPatchExtraAttemptPlan: mocks.extraPlan,
 }));
+vi.mock("@/services/generation/detectives-completion-budget", () => ({ readDetectivesCompletionBudget: mocks.detectivesBudget }));
 vi.mock("@/services/generation/lean-capacity-recovery", () => ({ readLeanCapacityRecoveryBudget: mocks.capacityBudget }));
 vi.mock("@/services/generation/lean-completion-budget", () => ({ readLeanCompletionBudget: mocks.completionBudget }));
 vi.mock("@/services/generation/subject-upgrade", async importOriginal => ({
@@ -20,7 +21,13 @@ vi.mock("@/services/generation/lean-release", () => ({ readLeanWorldBudget: mock
 vi.mock("@/lib/server/qa-access", () => ({ qaAccessDenied: mocks.denied }));
 vi.mock("@/lib/server/session", () => ({ currentUser: mocks.user, draftTokenFromCookie: async () => mocks.token, isAdminEmail: () => mocks.admin }));
 vi.mock("@/services/container", () => ({ getContainer: () => ({ db: { game: { findUnique: mocks.game }, asset: { findUnique: mocks.asset }, generationJob: { findUnique: mocks.job }, worldBudgetLedger: { findUnique: mocks.ledger } }, email: { id: "console" } }) }));
-vi.mock("@/services/generation/board-conditioned-wizard", () => ({ BOARD_WIZARD_STYLE: "fixed-sprite-board-wizard-v1", readBoardWizard: mocks.wizard }));
+// This route's local-patch fixtures have no different-engine board-wizard grant.
+vi.mock("@/services/generation/board-wizard-budget-extension", async importOriginal => ({
+  ...(await importOriginal<typeof import("@/services/generation/board-wizard-budget-extension")>()), readBoardWizardBudgetExtension: async () => null,
+}));
+vi.mock("@/services/generation/board-conditioned-wizard", async importOriginal => ({
+  ...(await importOriginal<typeof import("@/services/generation/board-conditioned-wizard")>()), readBoardWizard: mocks.wizard,
+}));
 vi.mock("@/services/generation/local-patch-budget-recovery", () => ({ readLocalPatchEmergencyBudget: mocks.emergencyBudget }));
 vi.mock("@/services/generation/local-patch-qa-budget", () => ({ readNewQaWorldBudget: mocks.newQaBudget }));
 // Only the expensive lookup is stubbed. `characterNeedsApproval` is the real
@@ -57,7 +64,7 @@ beforeEach(() => {
   mocks.proof.mockReturnValue(null); mocks.hash.mockReturnValue("synthetic-hash"); mocks.link.mockResolvedValue({ url: "/synthetic-play" });
   mocks.ledger.mockResolvedValue(null); mocks.approved.mockResolvedValue(true); mocks.emergencyBudget.mockResolvedValue(null);
   mocks.newQaBudget.mockResolvedValue(null); mocks.leanBudget.mockResolvedValue(null);
-  mocks.completionBudget.mockResolvedValue(null); mocks.capacityBudget.mockResolvedValue(null); mocks.admittedInterruptions.mockResolvedValue("blocked"); mocks.extraPlan.mockResolvedValue(null);
+  mocks.detectivesBudget.mockResolvedValue(null); mocks.completionBudget.mockResolvedValue(null); mocks.capacityBudget.mockResolvedValue(null); mocks.admittedInterruptions.mockResolvedValue("blocked"); mocks.extraPlan.mockResolvedValue(null);
 });
 async function response() { return GET(new Request("https://example.invalid/api/games/synthetic/status"), { params: Promise.resolve({ gameId: "synthetic" }) }); }
 function assembled(status = "MANUAL_REVIEW") {
@@ -477,5 +484,26 @@ describe("explicit capacity recovery ceiling on parent progress", () => {
     mocks.capacityBudget.mockRejectedValue(Error("Synthetic invalid capacity receipt"));
     expect(await (await response()).json()).toMatchObject({ pending: false, state: "held", qaCost: null });
     expect(mocks.completionBudget).not.toHaveBeenCalled(); expect(mocks.link).not.toHaveBeenCalled();
+  });
+});
+
+
+describe("explicit Detective cap stays identical in the engine and parent progress", () => {
+  it.each([3_900_000, 4_914_304, 5_900_000, 6_000_000, 6_100_000])("uses the recorded one-world six-dollar authority at %i microUSD", async spent => {
+    mocks.game.mockResolvedValue({ ...game, status: "TARGETS_GENERATING", styleVersion: "local-patch-world-v1" });
+    mocks.job.mockResolvedValue({ gameId: game.id, status: "RUNNING", currentStep: "local-patch", stepsJson: "{}" });
+    mocks.ledger.mockResolvedValue({ snapshotJson: JSON.stringify(spentTo(spent)) });
+    mocks.detectivesBudget.mockResolvedValue({ worldId: "synthetic:board-wizard", capMicroUsd: 6_000_000, authorizationSha256: "f".repeat(64) });
+    mocks.leanBudget.mockResolvedValue({ worldId: "synthetic:board-wizard", capMicroUsd: 4_000_000, authorizationSha256: "d".repeat(64) });
+    expect(await (await response()).json()).toMatchObject({ pending: spent <= 6_000_000, state: spent <= 6_000_000 ? "working" : "held",
+      qaCost: { spentCents: spent / 10_000, capCents: 600, held: spent > 6_000_000 } });
+    expect(mocks.leanBudget).not.toHaveBeenCalled(); expect(mocks.link).not.toHaveBeenCalled();
+  });
+  it("holds unreadable Detective authority instead of falling back or inventing permission", async () => {
+    mocks.game.mockResolvedValue({ ...game, status: "TARGETS_GENERATING", styleVersion: "local-patch-world-v1" });
+    mocks.ledger.mockResolvedValue({ snapshotJson: JSON.stringify(spentTo(4_914_304)) });
+    mocks.detectivesBudget.mockRejectedValue(Error("Synthetic malformed explicit grant"));
+    expect(await (await response()).json()).toMatchObject({ pending: false, state: "held", qaCost: null });
+    expect(mocks.leanBudget).not.toHaveBeenCalled(); expect(mocks.link).not.toHaveBeenCalled();
   });
 });
