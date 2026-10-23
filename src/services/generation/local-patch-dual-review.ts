@@ -133,10 +133,10 @@ function withAnatomy(verdicts: LocalPatchBoardJudgeResult["verdicts"], hideId: s
   const wireVerdict = Object.fromEntries(Object.entries(verdicts[hideId]!).filter(([key]) =>
     !["claimedVerdict", "verdictOverridden", "downgraded", "contradicted", "unclassified"].includes(key)));
   return { ...verdicts, [hideId]: result === "repair"
-    ? parseLocalPatchVerdict({ ...wireVerdict, pictureWhole: "fail", verdict: "fail", reason: "Independent final-image anatomy review found a visible defect",
+    ? parseLocalPatchVerdict({ ...wireVerdict, pictureWhole: "fail", verdict: "fail", reason: "Final-image anatomy checks found a visible defect",
       faults: [...verdicts[hideId]!.faults, ...readFaults(read)].slice(0, 16) }, sceneVersion, reader)
     : parseLocalPatchVerdict({ ...wireVerdict, pictureWhole: "unsure", verdict: "unsure",
-      reason: "Independent final-image anatomy review stayed uncertain about these pixels after a decisive question",
+      reason: "Final-image anatomy checks stayed uncertain about these pixels",
       faults: verdicts[hideId]!.faults.filter(f => f.check !== "pictureWhole") }, sceneVersion, reader) };
 }
 

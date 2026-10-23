@@ -507,3 +507,26 @@ describe("explicit Detective cap stays identical in the engine and parent progre
     expect(mocks.leanBudget).not.toHaveBeenCalled(); expect(mocks.link).not.toHaveBeenCalled();
   });
 });
+
+
+describe("eight-dollar Detective progress regression", () => {
+  it.each([5_820_811, 6_500_000, 7_900_000, 8_000_000, 8_100_000])("matches the verified eight-dollar engine cap at %i microUSD", async spent => {
+    mocks.game.mockResolvedValue({ ...game, status: "TARGETS_GENERATING", styleVersion: "local-patch-world-v1" });
+    mocks.job.mockResolvedValue({ gameId: game.id, status: "RUNNING", currentStep: "local-patch", stepsJson: "{}" });
+    mocks.ledger.mockResolvedValue({ snapshotJson: JSON.stringify(spentTo(spent)) });
+    mocks.detectivesBudget.mockResolvedValue({ worldId: "synthetic:board-wizard", capMicroUsd: 8_000_000, authorizationSha256: "8".repeat(64) });
+    expect(await (await response()).json()).toMatchObject({ state: spent <= 8_000_000 ? "working" : "held",
+      pending: spent <= 8_000_000, awaitingQa: spent > 8_000_000, done: false, playUrl: null,
+      qaCost: { spentCents: spent / 10_000, capCents: 800, held: spent > 8_000_000 } });
+    expect(mocks.leanBudget).not.toHaveBeenCalled(); expect(mocks.link).not.toHaveBeenCalled();
+  });
+  it("keeps unapproved unknown reservations held under an eight-dollar authority", async () => {
+    mocks.game.mockResolvedValue({ ...game, status: "TARGETS_GENERATING", styleVersion: "local-patch-world-v1" });
+    mocks.job.mockResolvedValue({ gameId: game.id, status: "RUNNING", currentStep: "local-patch", stepsJson: "{}" });
+    mocks.ledger.mockResolvedValue({ snapshotJson: JSON.stringify(localBudget("unknown")) });
+    mocks.detectivesBudget.mockResolvedValue({ worldId: "synthetic:board-wizard", capMicroUsd: 8_000_000, authorizationSha256: "8".repeat(64) });
+    expect(await (await response()).json()).toMatchObject({ state: "held", pending: false, awaitingQa: true, done: false, playUrl: null,
+      qaCost: { spentCents: 15.08, reservedCents: 40, capCents: 800, held: true } });
+    expect(mocks.link).not.toHaveBeenCalled();
+  });
+});

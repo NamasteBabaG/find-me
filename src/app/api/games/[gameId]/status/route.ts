@@ -116,7 +116,7 @@ export async function GET(req: Request, ctx: { params: Promise<{ gameId: string 
       // Use the engine's shared authority reader, including a recorded Detective
       // completion grant. A copied policy chain can falsely hold active work.
       const extension = await readBoardWizardBudgetAuthority(c, worldId);
-      const ledgerCap = extension?.capMicroUsd === 6_000_000 || extension?.capMicroUsd === 12_000_000 ? extension.capMicroUsd : undefined;
+      const ledgerCap = extension?.capMicroUsd === 6_000_000 || extension?.capMicroUsd === 8_000_000 || extension?.capMicroUsd === 12_000_000 ? extension.capMicroUsd : undefined;
       const audit = applyBoardWizardBudgetCap(auditWorldBudget(snapshot, ledgerCap), extension?.capMicroUsd);
       qaCost = { spentCents: audit.settledMicroUsd / 10_000, reservedCents: audit.reservedMicroUsd / 10_000,
         capCents: audit.capMicroUsd / 10_000, held: audit.held };
