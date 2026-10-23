@@ -1,3 +1,6 @@
+import { guidedFrameGeometry, guidedFrameCandidate, GUIDED_FRAME_RECOVERY_VERSION } from "../../../domain/generation/guided-frame-recovery";
+import { cropOf } from "../../../domain/scene/local-patch-hides";
+import { runLocalPatchHide } from "../local-patch-hide";
 import { SINGLE_VISUAL_REVIEW_VERSION } from "../../../domain/generation/single-visual-review";
 import { enrollLeanWorld } from "../lean-enrollment";
 import { planDetectivesCompletionBudget, authorizeDetectivesCompletionBudget, resumeDetectivesCompletionBudget, planDetectivesCompletionExtension, authorizeDetectivesCompletionExtension, resumeDetectivesCompletionExtension } from "../detectives-completion-budget";
@@ -114,18 +117,20 @@ function cleanQuality(prompt: string): string {
     neighbors: contract.neighbors.map((neighbor, i) => ({ sourceId: neighbor.sourceId, outcome: "preserved", status: "pass", after: [{ ref: "controlled-neighbor-" + i, rect: neighbor.head }],
       remnants: "none", occluder: null, observation: "One coherent synthetic source correspondence without shifted or remaining representation." })) } });
 }
-function controlledSol() {
+function controlledSol(interrupted = false) {
+  let failedResponse: string | null = null;
   const creates: { hideId: string; quality: boolean; prompt: string; tier: unknown }[] = [], responses = new Map<string, { prompt: string; quality: boolean; tier: unknown; reads: number }>();
   const fake: BackgroundReviewTransport = { namespace: "openai:find-me-existing", create: async body => {
-    expect(body.model).toBe("gpt-6.1-sol"); expect(body.service_tier).toBe("flex");
+    expect(body.model).toBe("gpt-6.1-sol"); expect(["flex", "default"]).toContain(body.service_tier);
     expect(body.reasoning).toMatchObject({ effort: "low" });
     const prompt = (body.input as { content: { text?: string }[] }[])[0]!.content[0]!.text!, quality = prompt.includes(SUBJECT_QUALITY_BUNDLE_VERSION);
     const hideId = boundHide(prompt).hideId; expect(subjectPlanOfHide(hideId, 13)).not.toBeNull();
     creates.push({ hideId, quality, prompt, tier: body.service_tier });
-    const responseId = "resp_detective_" + creates.length; responses.set(responseId, { prompt, quality, tier: body.service_tier, reads: 0 }); return { responseId };
+    const responseId = "resp_detective_" + creates.length; if (interrupted && creates.length === 1) failedResponse = responseId; responses.set(responseId, { prompt, quality, tier: body.service_tier, reads: 0 }); return { responseId };
   }, retrieve: async (responseId): Promise<BackgroundReviewState> => {
     const state = responses.get(responseId); if (!state) return { status: "missing" };
     if (++state.reads === 1) return { status: "in_progress" };
+    if (responseId === failedResponse) return { status: "failed", reading: { responseId, raw: null, usage: null, model: "gpt-6.1-sol", finishReason: "failed", serviceTier: "flex", providerError: { code: "server_error", message: "Synthetic failed response without text or usage" } } };
     return { status: "completed", reading: { responseId, raw: JSON.stringify({ version: SINGLE_VISUAL_REVIEW_VERSION, assessment: JSON.parse(cleanQuality(state.prompt)),
         continuity: JSON.parse(longAnswer(boundHide(state.prompt).hideId, 400, 400, 160)), doubt: false, doubtReason: null }),
       usage: { input_tokens: 2000, output_tokens: 500 }, model: "gpt-6.1-sol", finishReason: "stop", serviceTier: String(state.tier) } };
@@ -133,13 +138,13 @@ function controlledSol() {
   return { fake, creates };
 }
 
-it("uses exactly27 LOW review purchases for27 hides through strict publication, source purge and player config", async () => {
+it.each([false, true])("completes27 hides with one LOW answer each; retains one unanswered provider failure when interrupted=%s", async interrupted => {
   vi.useFakeTimers({ toFake: ["Date"] });
-  const gameId = "detective-single-world-synthetic"; await newDetectiveWorld(gameId);
+  const gameId = "detective-single-world-synthetic-" + interrupted; await newDetectiveWorld(gameId);
   const context = await resolveLocalPatchBoardsForGame(db, gameId, 13), hides = context.boards.flatMap(board => board.hides);
   expect(context.boards).toHaveLength(9); expect(hides).toHaveLength(27);
   expect(hides.every(hide => sourcePlacementForHide(context, hide.id)!.sourceNeighbors)).toBe(true);
-  const prompts = new Map<string, string>(), provider = controlledSol();
+  const prompts = new Map<string, string>(), provider = controlledSol(interrupted);
   const synchronous = vi.fn<NonNullable<Container["visualReview"]>["request"]>(async () => { throw Error("Historical single review forbidden"); });
   const container = { ...c, visualReview: { request: synchronous }, backgroundReview: provider.fake } as Container;
   const deps: LocalPatchHideDeps = { readBoardArt: readArt, renderPolicySha256: localPatchRenderPolicySha256(LOCAL_PATCH_IMAGE_POLICY),
@@ -176,7 +181,8 @@ it("uses exactly27 LOW review purchases for27 hides through strict publication, 
   expect(await subjectUpgradeOf(db, gameId)).toMatchObject({ actorType: "SYSTEM", operatorId: SYSTEM_ENROLLMENT_OPERATOR, ageYears: 8 });
   const rows = await db.targetVariantAsset.findMany({ where: { variant: "A", targetInstance: { gameScene: { gameId } } } });
   expect(rows).toHaveLength(27); expect(rows.every(row => row.status === "GENERATED" && row.attempts === 1)).toBe(true);
-  expect(prompts.size).toBe(27); expect(provider.creates).toHaveLength(27); expect(provider.creates.filter(create => create.quality)).toHaveLength(27);
+  expect(prompts.size).toBe(27); expect(provider.creates).toHaveLength(interrupted ? 28 : 27); expect(provider.creates.filter(create => create.quality)).toHaveLength(interrupted ? 28 : 27);
+  expect(provider.creates.filter(create => create.tier === "default")).toHaveLength(interrupted ? 1 : 0);
   const store = new PrismaRetainedPurchaseStore(db), worldId = boardWizardWorldId(gameId);
   for (const row of rows) {
     const receipt = JSON.parse(row.judgeJson!), proof = receipt.boardReview.dual as DualReviewProof;
@@ -219,7 +225,14 @@ it("uses exactly27 LOW review purchases for27 hides through strict publication, 
   expect(oversized.kind).toBe("image");
   if (oversized.kind === "image") { expect(oversized.rect!.h * 2160).toBe(768); expect(oversized.hitRect!.h * 2160).toBeGreaterThan(540 * 0.8); }
   const audit = await boardWizardBudgetOf(c).audit(worldId);
-  expect(audit).toMatchObject({ capMicroUsd: 8_000_000, held: false, reservedMicroUsd: 0, pendingRequestKeys: [], unknownRequestKeys: [] });
+  expect(audit).toMatchObject({ capMicroUsd: 8_000_000, held: false, pendingRequestKeys: [] });
+  expect(audit.unknownRequestKeys).toHaveLength(interrupted ? 1 : 0);
+  if (interrupted) {
+    const unknown = await boardWizardBudgetOf(c).readRequest(worldId, audit.unknownRequestKeys[0]!);
+    expect(unknown).toMatchObject({ state: "unknown", scope: "judge" });
+    expect(audit.reservedMicroUsd).toBe(unknown!.reserveMicroUsd);
+    expect(await boardWizardBudgetOf(c).readContinuationApproval(worldId, audit.unknownRequestKeys[0]!)).toMatchObject({ version: "world-automatic-review-recovery/v5", imageSha256: expect.any(String) });
+  } else expect(audit.reservedMicroUsd).toBe(0);
   expect(audit.committedMicroUsd).toBeLessThanOrEqual(audit.capMicroUsd);
   const child = await db.childProfile.findUniqueOrThrow({ where: { id: "chl-" + gameId } });
   const photo = await db.asset.findUniqueOrThrow({ where: { id: "ast-photo-" + gameId } });
@@ -249,3 +262,41 @@ async function prepareSingleAuthorization(gameId: string, ownerId: string) {
   await authorizeDetectivesCompletionExtension(c, { gameId, operatorId: ownerId, expectedPlanSha256: second.planSha256, ownerAuthorizationSha256: 'f'.repeat(64) });
   expect(await resumeDetectivesCompletionExtension(c, gameId)).toBe(true);
 }
+
+
+it("uses the unchanged authored return as the editor mask and one smaller visual target for a finite third painting", async()=>{
+ const gameId="detective-guided-frame-synthetic";await newDetectiveWorld(gameId);
+ const context=await resolveLocalPatchBoardsForGame(db,gameId,13),board=context.boards.find(b=>b.board==="amazon")!,hide=board.hides[2]!;
+ let calls=0, guideSeen=false;
+ const deps:LocalPatchHideDeps={readBoardArt:readArt,renderPolicySha256:localPatchRenderPolicySha256(LOCAL_PATCH_IMAGE_POLICY),judge:async()=>{throw Error("No synchronous judgement");},render:async input=>{
+  calls++;const child=maskForHide(hide);let target=child;
+  if(input.placementGuidePng){guideSeen=true;expect(input.placementGuideVersion).toBe(GUIDED_FRAME_RECOVERY_VERSION);expect(input.requestKey).toBe(hide.id+":"+hide.pose+":render:3");expect(input.prompt).toContain("WHOLE");expect(input.prompt).toContain("No guide colour");
+   const local={left:hide.returnRect!.left,top:hide.returnRect!.top,width:hide.returnRect!.width,height:hide.returnRect!.height};
+   const g=guidedFrameGeometry(child,local);target=g.target;expect(g.returned).toEqual(local);
+   const meta=await sharp(input.placementGuidePng).metadata();expect([meta.width,meta.height]).toEqual([512,768]);expect(input.placementGuidePng.equals(input.stylePng)).toBe(false);
+   const mask=await sharp(input.maskPng).ensureAlpha().raw().toBuffer();let clear=0;for(let i=3;i<mask.length;i+=4)if(mask[i]===0)clear++;
+   expect(clear).toBe(local.width*local.height);
+  }else expect(input.requestKey.endsWith(":render:1")).toBe(true);
+  const figure=await sharp({create:{width:Math.round(target.width*0.6),height:Math.round(target.height*0.7),channels:4,background:"#385ca0"}}).png().toBuffer();
+  const png=await sharp(input.stylePng).composite([{input:figure,left:target.left+Math.round(target.width*0.2),top:target.top+Math.round(target.height*0.2)}]).png().toBuffer();
+  return paintedOk(png,bill("guided-synthetic-"+calls));
+ }};
+ expect((await runLocalPatchHide(c,deps,{gameId,board,hide})).state).toBe("generated");
+ const row=await db.targetVariantAsset.findFirstOrThrow({where:{targetInstance:{gameScene:{gameId},targetId:hide.targetId}}}),j=JSON.parse(row.judgeJson!);
+ // Seed an explicitly exhausted synthetic history; these are not real provider decisions.
+ j.selfRepair={version:"local-patch-self-repair/v1",subjectV2Cycles:3,cycle:3,phase:"awaiting-review"};j.reviewState="board-review-complete";j.wireFault=null;
+ j.verdict={...GOOD_V12_VERDICT,verdict:"fail",childComplete:"fail",boundaryIntegrity:{top:{status:"fail",observation:"Synthetic clipped crown"}}};
+ j.boardReview={dual:{single:SINGLE_VISUAL_REVIEW_VERSION,quality:{requestKey:"synthetic-previous-low",policy:{effort:"low",model:"gpt-6.1-sol"},raw:JSON.stringify({version:SINGLE_VISUAL_REVIEW_VERSION,assessment:{},continuity:{},doubt:false,doubtReason:null})}}};
+ const failed=await db.targetVariantAsset.update({where:{id:row.id},data:{status:"FAILED",attempts:2,judgeJson:JSON.stringify(j),lastError:"quality-retry: childComplete"}});
+ expect(guidedFrameCandidate(failed)).toBe(true);
+ const grant=await db.auditLog.findUniqueOrThrow({where:{id:detectivesExtensionId(gameId)}});await db.auditLog.delete({where:{id:grant.id}});
+ await expect(runLocalPatchHide(c,deps,{gameId,board,hide,finalRepair:true,guidedFrame:true})).rejects.toThrow("exact LOW grant");expect(calls).toBe(1);
+ await db.auditLog.create({data:grant});
+ const result=await runLocalPatchHide(c,deps,{gameId,board,hide,finalRepair:true,guidedFrame:true});expect(result.state).toBe("generated");expect(guideSeen).toBe(true);expect(calls).toBe(2);
+ const after=await db.targetVariantAsset.findUniqueOrThrow({where:{id:row.id}}),receipt=JSON.parse(after.judgeJson!);expect(after.attempts).toBe(3);expect(receipt.selfRepair).toEqual(j.selfRepair);expect(receipt.guidedFrameRecovery.version).toBe(GUIDED_FRAME_RECOVERY_VERSION);expect(receipt.reviewState).toBe("pending-board-review");expect(receipt.verdict?.verdict).not.toBe("pass");
+ expect((await runLocalPatchHide(c,deps,{gameId,board,hide})).state).toBe("already-generated");expect(calls).toBe(2);
+ const source=await readArt(board.art,receipt.authoredReturn.source.sha256),old=await sharp(source).extract(cropOf(hide)).removeAlpha().raw().toBuffer(),shipping=await c.storage.get((await db.asset.findUniqueOrThrow({where:{id:after.assetId!}})).storagePath),actual=await sharp(shipping).removeAlpha().raw().toBuffer();
+ const r=receipt.authoredReturn.local;let outsideChanged=0;for(let y=0;y<768;y++)for(let x=0;x<512;x++){if(x>=r.left&&x<r.left+r.width&&y>=r.top&&y<r.top+r.height)continue;const i=(y*512+x)*3;if(actual[i]!==old[i]||actual[i+1]!==old[i+1]||actual[i+2]!==old[i+2])outsideChanged++;}expect(outsideChanged).toBe(0);
+ await db.targetVariantAsset.update({where:{id:row.id},data:{status:"FAILED",judgeJson:JSON.stringify({...receipt,reviewState:"board-review-complete",verdict:j.verdict})}});
+ expect((await runLocalPatchHide(c,deps,{gameId,board,hide,finalRepair:true})).state).toBe("gave-up");expect(calls).toBe(2);
+},300_000);

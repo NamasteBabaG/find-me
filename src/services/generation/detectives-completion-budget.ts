@@ -1,3 +1,8 @@
+import { guidedFrameCandidate, GUIDED_FRAME_MIN_CAPACITY_MICRO_USD } from "../../domain/generation/guided-frame-recovery";
+import { isSingleLowReviewPolicy } from "../../domain/generation/visual-review-policy";
+import { backgroundRoundOfKey, providerEndedFailed } from "./continuity-background";
+import { admittedInterruption, providerFailureRefusal } from "./local-patch-review-interruption-recovery";
+import type { WorldAutomaticReviewRecoveryV5 } from "./world-budget";
 import { SINGLE_VISUAL_REVIEW_VERSION } from "../../domain/generation/single-visual-review";
 import { DETECTIVE_PATCH_BOARDS } from "../../../content/detectives/runtime-release";
 import { PrismaRetainedPurchaseStore } from "../../infra/db/prisma-retained-purchase-store";
@@ -226,12 +231,13 @@ export async function resumeDetectivesCompletionBudget(c: Container, gameId: str
 /** Do not let an unrelated, ungranted or stale exhausted world block another world's turn. */
 export async function nextDetectivesCompletionWake(c: Container, gameId: string | null): Promise<string | null> {
   if (env().APP_ENV !== "qa" || c.storage.id !== "db") return null;
-  const jobs = await c.db.generationJob.findMany({ where: { ...(gameId ? { gameId } : {}), status: "FAILED", currentStep: EXHAUSTED,
+  const jobs = await c.db.generationJob.findMany({ where: { ...(gameId ? { gameId } : {}), status: "FAILED", currentStep: { in: [EXHAUSTED, "local-patch:needs-release"] },
     game: { status: "TARGETS_GENERATING", deletedAt: null, searchLevel: "detectives", styleVersion: "local-patch-world-v1" } },
     orderBy: { updatedAt: "asc" }, select: { gameId: true } });
   for (const job of jobs) if (await resumeDetectivesCompletionExtension(c, job.gameId).catch(() => false)
     || await resumeDetectivesCompletionBudget(c, job.gameId).catch(() => false)
-    || await resumeDetectivesApplyingRepair(c, job.gameId).catch(() => false)) return job.gameId;
+    || await resumeDetectivesApplyingRepair(c, job.gameId).catch(() => false)
+    || await resumeDetectivesLowEngineRecovery(c, job.gameId).catch(() => false)) return job.gameId;
   return null;
 }
 
@@ -426,4 +432,73 @@ export async function detectivesSingleReviewAuthorization(db: Pick<Prisma.Transa
   const c = { db }, extension = await extensionReceiptOf(c, gameId), prior = await receiptOf(c, gameId);
   if (!extension || !prior || extension.previousAuthorizationSha256 !== prior.authorizationSha256 || !await originalCompletionResumed(c, prior)) return null;
   return extension;
+}
+
+/** One software-repair wake per exact release mode, without capacity or attempt changes. */
+export async function resumeDetectivesLowEngineRecovery(c: Container, gameId: string): Promise<boolean> {
+  if (env().APP_ENV !== "qa" || c.storage.id !== "db") return false;
+  return c.db.$transaction(async tx => {
+    const scoped = transactionContainer(c, tx), pin = await extensionReceiptOf(scoped, gameId), prior = await receiptOf(scoped, gameId);
+    if (!pin || !prior || !await originalCompletionResumed(scoped, prior)) return false;
+    const state = await current(scoped, gameId);
+    if (!await matches(scoped, pin, state) || state.game.status !== "TARGETS_GENERATING" || state.game.readyAt || state.game.configJson
+      || await identityRevisionPending(tx, gameId)) return false;
+    const job = await tx.generationJob.findUnique({ where: { id: pin.jobId } });
+    if (!job || job.status !== "FAILED" || job.attempts <= pin.jobAttempts) return false;
+    const guide = job.currentStep === EXHAUSTED && (job.lastError ?? "").startsWith("local-patch: no automatic action remains within the authorized world budget;");
+    const interrupted = job.currentStep === "local-patch:needs-release" && (job.lastError ?? "").startsWith("local-patch-continue-in-slice/v1:")
+      && (job.lastError ?? "").endsWith("the interrupted questions cannot be rebuilt on the same pixels");
+    if (!guide && !interrupted) return false;
+    const mode = guide ? "guided-frame/v1" : "single-low-transport/v1", id = "aud_low_engine_" + hash({ gameId, grant: pin.authorizationSha256, mode }).slice(0,40);
+    if (await tx.auditLog.findUnique({ where: { id } })) return false;
+    const store = PrismaWorldBudgetStore.forReadOnlyTransaction(tx), stored = await store.read(pin.worldId);
+    if (!stored || stored.revision >= WORLD_BUDGET_LEDGER_MAX_REVISION) return false;
+    const audit = auditWorldBudget(stored.snapshot, DETECTIVES_EXTENSION_CAP);
+    if (audit.pendingRequestKeys.length || audit.conflictRequestKeys.length || audit.overrunRequestKeys.length || audit.overCapMicroUsd
+      || (await backgroundReviewWaiting(tx, gameId, { inFlightOnly: true })).size) return false;
+    const rows = await tx.targetVariantAsset.findMany({ where: { provider: LOCAL_PATCH_PROVIDER, variant: LOCAL_PATCH_VARIANT,
+      targetInstance: { gameScene: { gameId, sceneVersion:13 } } } });
+    let proof: object;
+    if (guide) {
+      const candidate = rows.find(guidedFrameCandidate);
+      if (!candidate || audit.held || audit.remainingMicroUsd < GUIDED_FRAME_MIN_CAPACITY_MICRO_USD) return false;
+      proof = { variantId: candidate.id, candidateSha256: hash(candidate.judgeJson) };
+    } else {
+      const newlyUnknown = stored.snapshot.requests.filter(r => r.state === "unknown" && !pin.retainedUnknowns.some(old => old.requestKey === r.requestKey));
+      if (newlyUnknown.length !== 1) return false;
+      const request = newlyUnknown[0]!, round = await backgroundRoundOfKey(tx, gameId, pin.worldId, request.requestKey);
+      const retained = await new PrismaRetainedPurchaseStore(tx).get(pin.worldId, request.requestKey);
+      if (!round || !providerEndedFailed(round) || !isSingleLowReviewPolicy({ version: round.intent.policyVersion ?? "" })
+        || round.intent.reserveMicroUsd !== request.reserveMicroUsd || round.intent.fingerprint !== request.operationFingerprint
+        || !retained || retained.evidence || !await admittedInterruption(scoped, gameId, pin.worldId, request.requestKey, retained)
+        || await providerFailureRefusal(scoped, gameId, pin.worldId, request.requestKey)) return false;
+      const row = rows.find(r => r.id === round.intent.binding.variantId), receipt = row && JSON.parse(row.judgeJson ?? "null");
+      if (!row || receipt?.judgedSha256 !== round.intent.binding.imageSha256 || row.status !== "GENERATED"
+        || receipt.reviewState !== "pending-board-review") return false;
+      proof = { requestKey: request.requestKey, fingerprint: request.operationFingerprint, imageSha256: round.intent.binding.imageSha256 };
+    }
+    demand(await verifyAssetsAndBill(scoped, state, store) === pin.avatarSha256, "Original pixels changed before LOW engine wake");
+    const locked = await tx.game.updateMany({ where: { id:gameId, updatedAt:state.game.updatedAt, status:"TARGETS_GENERATING", deletedAt:null,
+      ownerId:pin.ownerId,childProfileId:pin.childId }, data:{updatedAt:new Date()} });
+    const ledger = await tx.worldBudgetLedger.updateMany({where:{worldId:pin.worldId,revision:stored.revision},data:{revision:{increment:1}}});
+    const queued = await tx.generationJob.updateMany({where:{id:job.id,status:"FAILED",currentStep:job.currentStep,attempts:job.attempts,
+      updatedAt:job.updatedAt,lastError:job.lastError},data:{status:"QUEUED",currentStep:"local-patch",lastError:null}});
+    demand(locked.count===1 && ledger.count===1 && queued.count===1,"LOW recovery hold changed concurrently");
+    await tx.auditLog.create({data:{id,actorType:"SYSTEM",action:"generation:detectives-low-engine-resumed",entityType:"Game",entityId:gameId,
+      metaJson:JSON.stringify({version:"detectives-low-engine-wake/v1",mode,grantSha256:pin.authorizationSha256,holdSha256:parkedHoldSha256(job),
+        proof,ledgerSha256:hash(stored.snapshot),attemptsReset:false,providerCallsAdded:0,budgetChanged:false})}});
+    return true;
+  },{isolationLevel:Prisma.TransactionIsolationLevel.Serializable,timeout:30_000});
+}
+
+export async function singleLowContinuationPublishable(db: Pick<Prisma.TransactionClient,"auditLog">, gameId: string, approval: WorldAutomaticReviewRecoveryV5): Promise<boolean> {
+  const grant = await detectivesSingleReviewAuthorization(db, gameId);
+  if (!grant || approval.worldId !== worldOf(gameId) || approval.grantSha256 !== grant.authorizationSha256) return false;
+  const row = await db.auditLog.findUnique({where:{id:approval.approvalId}});
+  let proof: Record<string,unknown>; try { proof=JSON.parse(row?.metaJson ?? "null"); } catch { return false; }
+  return !!row && row.actorType === "SYSTEM" && row.actorId === null && row.action === "single-sol-low-transport-recovery/v1"
+    && row.entityType === "Game" && row.entityId === gameId && proof?.single === SINGLE_VISUAL_REVIEW_VERSION
+    && proof.grantSha256 === grant.authorizationSha256 && proof.variantId === approval.variantId && proof.imageSha256 === approval.imageSha256
+    && proof.requestKey === approval.requestKey && proof.operationFingerprint === approval.operationFingerprint
+    && typeof proof.retainedPayloadSha256 === "string" && /^[a-f0-9]{64}$/.test(proof.retainedPayloadSha256) && sha256Bytes(Buffer.from(JSON.stringify(proof))) === approval.authorizationSha256;
 }

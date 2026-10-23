@@ -1,3 +1,4 @@
+import { singleLowContinuationPublishable } from "./detectives-completion-budget";
 import { detectiveAutomaticRecoveryQualified } from "./detective-automatic-recovery";
 import { DETECTIVE_ADVENTURE_CATALOG } from "../../../content/detectives/runtime-release";
 import { INTEGRATED_WIZARD_CATALOG } from "../../../content/adventures/wizard-integrated-release";
@@ -157,6 +158,7 @@ export async function finishLocalPatchGame(c: Container, gameId: string, fence: 
     demand(await localPatchBudgetReadyForPublication(budget, worldId, contentVersion,
       { reviewRecoveryV2: enrolled, reviewRecoveryV3: enrolled && (contentVersion === 13 ? await detectiveAutomaticRecoveryQualified(tx, gameId) : !!await leanReviewRecoveryOf(tx, gameId)),
         capacityContinuation: approval => capacityContinuationPublishable(tx, gameId, approval),
+        singleLowContinuation: approval => singleLowContinuationPublishable(tx, gameId, approval),
         sourceReferenceContinuation: approval => identityRevisionContinuationPublishable(tx, budget, gameId, approval) }),
       "unresolved spending must be reconciled before publication");
     const audit = await budget.audit(worldId);

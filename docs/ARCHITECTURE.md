@@ -202,3 +202,32 @@ that shared request once. Existing HIGH approvals and their original pins remain
 An unusable reply cannot authorize a routine second automatic review of the same pixels.
 Explicit doubt remains non-acceptance; this experiment does not create a human art-approval flow.
 Synthetic all-27 completion proves wiring and accounting, not live LOW quality, latency or unit economics.
+
+
+## Detective LOW transport and guided-frame recovery (24 October 2026)
+
+The explicitly authorized single LOW world reconstructs one immutable request from the same
+quality, subject, source-neighbor and magnified anatomy evidence in dispatch and recovery.
+A provider-ended recoverable failure with no text and no usage may continue once per image
+and at most five times in that world under world-automatic-review-recovery/v5. The exact
+request-specific reservation stays UNKNOWN and fully counted. A successful or malformed
+answer, visible quality failure, account error or content refusal never uses this path.
+The one continuation uses LOW at the default tier and a distinct fingerprint; polling and
+replay of either request never submit it twice. Old v1-v4 receipts retain their original terms.
+
+For a conclusive LOW boundary failure after the three subject repair cycles, one still-unused
+normal third painting may use single-low-guided-frame-recovery/v1. Its final reference is a
+marked copy of the same public source crop. The API mask exposes the existing authored
+return window, and the visual whole-child frame is a strict subset of the original child
+envelope. The compositor, source-neighbor contract, hit geometry and all publication checks
+keep their original permission. No source/window expansion or quality approval is granted.
+The next image needs370000microUSD of available capacity before dispatch (120000image plus
+the qualified250000 maximum LOW assessment bound); every actual reservation remains exact.
+The third painting preserves all previous repair counters and cannot open another three cycles.
+
+A once-per-mode normal SYSTEM wake can revisit the exact earlier request-reconstruction
+hold or a truly exhausted eligible frame failure after this software correction. It verifies
+the same paid source, identity, avatar, age, all-nine family and eight-dollar grant, fences
+the original job and ledger revision, preserves every request and attempt, and buys nothing.
+The current world's ceiling and commercial defaults are unchanged. These checks prove wiring
+and permissions; only real returned images and their strict reviews prove product quality.

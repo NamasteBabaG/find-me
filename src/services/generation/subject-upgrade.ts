@@ -345,7 +345,7 @@ export async function continueAdmittedReviewInterruptions(c: Container, gameId: 
     const questions = requestKeys.map(requestKey => candidates.find(item => item.requestKey === requestKey));
     if (questions.some(q => !q)) { why.transient = true; return blocked(`${requestKeys.join(", ")}: the interrupted questions cannot be rebuilt on the same pixels`); }
     if (!await recoverPreparedLocalPatchReviews(c, prepared,
-      questions.map(q => ({ requestKey: q!.requestKey, fingerprint: q!.fingerprint, role: q!.role, strategy: q!.strategy })),
+      questions.map(q => ({ ...q! })),
       fence, { releaseParkedJob: false, admitProviderFailed: true, roundCandidates: candidates, why })) return blocked(why.reason ?? `${requestKeys.join(", ")}: not continued`);
   }
   return deferred ? "partial" : "done";
@@ -397,7 +397,7 @@ export async function recoverEnrolledReviewInterruptions(c: Container, gameId: s
     for (const candidate of await dualReviewQuestionCandidates(c, prepared, version)) {
       if (!unknown.has(candidate.requestKey)) continue;
       if (await recoverPreparedLocalPatchReview(c, { ...prepared, requestKey: candidate.requestKey, fingerprint: candidate.fingerprint },
-        undefined, { role: candidate.role, strategy: candidate.strategy })) { recovered++; unknown.delete(candidate.requestKey); }
+        undefined, { ...candidate })) { recovered++; unknown.delete(candidate.requestKey); }
       break;
     }
     }

@@ -1,3 +1,4 @@
+import { GUIDED_FRAME_RECOVERY_VERSION } from '../../domain/generation/guided-frame-recovery';
 import { hasLocalPatchCapability } from "../../domain/scene/local-patch-family";
 import { createHash } from "node:crypto";
 import sharp from "sharp";
@@ -102,6 +103,8 @@ export type LocalPatchRenderInput = {
   readonly canonicalIdentityPng?: Buffer;
   readonly boardPeoplePng?: Buffer;
   readonly maskPng: Buffer;
+  readonly placementGuidePng?: Buffer;
+  readonly placementGuideVersion?: typeof GUIDED_FRAME_RECOVERY_VERSION;
   /**
    * What is left of the caller's request, when it has a deadline.
    *
@@ -198,6 +201,9 @@ export async function buyLocalPatch(apiKey: string, input: LocalPatchRenderInput
   if (photoReference && (!input.subjectPhotoPng || !input.subjectQuality || chosen.quality !== input.subjectQuality || chosen.size !== "768x1152"
     || chosen.model && chosen.model !== "gpt-image-2")) throw new Error("LOCAL_PATCH_PAINTER: subject redraw requires its photograph and declared quality policy");
   if (!photoReference && (input.subjectPhotoPng || input.subjectQuality)) throw new Error("LOCAL_PATCH_PAINTER: photograph requires its explicit reference mode");
+  if ((input.placementGuidePng !== undefined || input.placementGuideVersion !== undefined)
+    && (!photoReference || input.placementGuideVersion !== GUIDED_FRAME_RECOVERY_VERSION || !Buffer.isBuffer(input.placementGuidePng)))
+    throw new Error('LOCAL_PATCH_PAINTER: layout guide requires its explicit version and photograph mode');
   const portraitOnly = input.referenceMode === LOCAL_PATCH_PORTRAIT_ONLY_REFERENCE_MODE || photoReference;
   if (portraitOnly && (input.boardPeoplePng || input.canonicalIdentityPng)) {
     throw new Error("LOCAL_PATCH_PAINTER: portrait-only mode forbids additional face or body references");
@@ -213,7 +219,7 @@ export async function buyLocalPatch(apiKey: string, input: LocalPatchRenderInput
   const request = {
     sourceGroupKey: `local-patch:${input.requestKey}`,
     prompt: input.prompt, stylePng: input.stylePng, identityPng, maskPng: input.maskPng,
-    ...(photoReference ? { referencePngs: [input.subjectPhotoPng!] }
+    ...(photoReference ? { referencePngs: [input.subjectPhotoPng!, ...(input.placementGuidePng ? [input.placementGuidePng] : [])] }
       : input.boardPeoplePng ? { referencePngs: [input.boardPeoplePng, ...(canonical ? [canonical] : [])] } : {}),
   };
   const prepared = await prepareFixedSource(request, policy);

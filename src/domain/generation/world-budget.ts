@@ -123,8 +123,17 @@ export interface WorldAutomaticReviewRecoveryV4 extends WorldReservationInput {
   grantSha256: string; authorizationSha256: string; authorizedAt: string;
 }
 export const WORLD_AUTOMATIC_REVIEW_RECOVERY_V4_LIMIT = 32;
+/** Only one unanswered LOW retry per image, under the original world grant. */
+export interface WorldAutomaticReviewRecoveryV5 extends WorldReservationInput {
+  version: "world-automatic-review-recovery/v5";
+  worldId: string; approvalId: string; unknownReasons: readonly string[];
+  policyId: "single-sol-low-transport-recovery/v1";
+  grantSha256: string; variantId: string; imageSha256: string; authorizationSha256: string; authorizedAt: string;
+}
+export const WORLD_AUTOMATIC_REVIEW_RECOVERY_V5_LIMIT = 5;
+export type WorldAutomaticReviewRecoveryV5Input = Omit<WorldAutomaticReviewRecoveryV5, "version" | "worldId">;
 export type WorldContinuationRecord = WorldUnknownContinuationApproval | WorldAutomaticImageRecovery | WorldAutomaticReviewRecovery
-  | WorldAutomaticReviewRecoveryV2 | WorldAutomaticReviewRecoveryV3 | WorldAutomaticReviewRecoveryV4;
+  | WorldAutomaticReviewRecoveryV2 | WorldAutomaticReviewRecoveryV3 | WorldAutomaticReviewRecoveryV4 | WorldAutomaticReviewRecoveryV5;
 export type WorldAutomaticImageRecoveryInput = Omit<WorldAutomaticImageRecovery, "version" | "worldId">;
 export type WorldAutomaticReviewRecoveryInput = Omit<WorldAutomaticReviewRecovery, "version" | "worldId">;
 export type WorldAutomaticReviewRecoveryV2Input = Omit<WorldAutomaticReviewRecoveryV2, "version" | "worldId">;
@@ -145,6 +154,7 @@ export interface WorldBudgetOptions {
   authorizeAutomaticReviewRecoveryV3?: (recovery: Readonly<WorldAutomaticReviewRecoveryV3>) => Promise<boolean>;
   /** Only the exact explicitly granted capacity policy may supply this verifier. */
   authorizeAutomaticReviewRecoveryV4?: (recovery: Readonly<WorldAutomaticReviewRecoveryV4>) => Promise<boolean>;
+  authorizeAutomaticReviewRecoveryV5?: (recovery: Readonly<WorldAutomaticReviewRecoveryV5>) => Promise<boolean>;
 }
 
 export interface WorldBudgetSnapshot {
@@ -306,9 +316,9 @@ export function validateUnknownContinuationApproval(value: WorldContinuationReco
   if (!value || typeof value !== "object" || Object.getPrototypeOf(value) !== Object.prototype) fail("invalid_input", "A plain continuation approval is required");
   const automatic = value.version === "world-automatic-image-recovery/v1" || value.version === "world-automatic-review-recovery/v1"
     || value.version === "world-automatic-review-recovery/v2" || value.version === "world-automatic-review-recovery/v3"
-    || value.version === "world-automatic-review-recovery/v4";
+    || value.version === "world-automatic-review-recovery/v4" || value.version === "world-automatic-review-recovery/v5";
   const expected = ["version", "worldId", "approvalId", "requestKey", "scope", "operationFingerprint", "reserveMicroUsd", "unknownReasons", automatic ? "policyId" : "operatorId", "authorizationSha256", "authorizedAt",
-    ...(value.version === "world-automatic-review-recovery/v4" ? ["grantSha256"] : [])].sort();
+    ...(value.version === "world-automatic-review-recovery/v4" ? ["grantSha256"] : value.version === "world-automatic-review-recovery/v5" ? ["grantSha256", "variantId", "imageSha256"] : [])].sort();
   if (JSON.stringify(Object.keys(value).sort()) !== JSON.stringify(expected) || Object.values(Object.getOwnPropertyDescriptors(value)).some(p => !Object.hasOwn(p, "value"))) fail("invalid_input", "Continuation approval has unexpected fields");
   if (!automatic && value.version !== "world-unknown-continuation/v1") fail("invalid_input", "Unknown continuation approval version");
   if (value.version === "world-automatic-image-recovery/v1" && (value.policyId !== "local-patch-image-interruption/v1" || value.scope !== "image"
@@ -332,6 +342,12 @@ export function validateUnknownContinuationApproval(value: WorldContinuationReco
     || !interruptedLocalPatchReviewRequest(value.requestKey, value.operationFingerprint)
     || typeof value.grantSha256 !== "string" || !/^[a-f0-9]{64}$/.test(value.grantSha256)))
     fail("invalid_input", "Capacity recovery requires a bounded exact grant and independent review interruption");
+  if (value.version === "world-automatic-review-recovery/v5" && (value.policyId !== "single-sol-low-transport-recovery/v1"
+    || value.scope !== "judge" || !Number.isSafeInteger(value.reserveMicroUsd) || value.reserveMicroUsd < 1 || value.reserveMicroUsd > 250_000
+    || !interruptedLocalPatchReviewRequest(value.requestKey, value.operationFingerprint)
+    || !/^[a-f0-9]{64}$/.test(value.grantSha256) || !/^[a-f0-9]{64}$/.test(value.imageSha256)
+    || !/^[A-Za-z0-9_:-]{1,240}$/.test(value.variantId)))
+    fail("invalid_input", "Single LOW recovery requires its exact bounded reservation, image and grant");
   if (!automatic && (typeof value.operatorId !== "string" || !/^[A-Za-z0-9_:.@/-]{1,500}$/.test(value.operatorId) || value.operatorId.includes("://") || /^sk-/i.test(value.operatorId)))
     fail("invalid_input", "Continuation approval requires a bounded operator identifier");
   for (const key of ["worldId", "approvalId", "requestKey", "operationFingerprint"] as const) {
@@ -357,6 +373,7 @@ export function validateWorldUnknownContinuationApprovals(snapshot: WorldBudgetS
   const enrolledReviews = new Set<string>();
   const leanReviews = new Set<string>();
   const capacityReviews = new Set<string>();
+  const singleImages = new Set<string>();
   for (const approval of snapshot.unknownContinuationApprovals) {
     if (approval.version === "world-automatic-review-recovery/v2") {
       if (enrolledReviews.has(approval.requestKey) || enrolledReviews.size >= WORLD_AUTOMATIC_REVIEW_RECOVERY_V2_LIMIT)
@@ -372,6 +389,12 @@ export function validateWorldUnknownContinuationApprovals(snapshot: WorldBudgetS
       if (capacityReviews.has(approval.requestKey) || capacityReviews.size >= WORLD_AUTOMATIC_REVIEW_RECOVERY_V4_LIMIT)
         fail("invalid_snapshot", "At most 32 capacity review continuations may recover in an explicitly granted world");
       capacityReviews.add(approval.requestKey);
+    }
+    if (approval.version === "world-automatic-review-recovery/v5") {
+      const image = approval.variantId + ":" + approval.imageSha256;
+      if (singleImages.has(image) || singleImages.size >= WORLD_AUTOMATIC_REVIEW_RECOVERY_V5_LIMIT)
+        fail("invalid_snapshot", "Only one unanswered LOW retry per image and five per authorized world");
+      singleImages.add(image);
     }
     validateUnknownContinuationApproval(approval);
     if (approval.version === "world-automatic-image-recovery/v1") {
@@ -531,7 +554,7 @@ export class WorldBudget {
   }
 
   private async authorizeAutomaticRecovery(worldId: string, captured: WorldAutomaticImageRecovery | WorldAutomaticReviewRecovery
-    | WorldAutomaticReviewRecoveryV2 | WorldAutomaticReviewRecoveryV3 | WorldAutomaticReviewRecoveryV4) {
+    | WorldAutomaticReviewRecoveryV2 | WorldAutomaticReviewRecoveryV3 | WorldAutomaticReviewRecoveryV4 | WorldAutomaticReviewRecoveryV5) {
     return this.transact(worldId, async (tx, capMicroUsd) => {
       const prior = tx.snapshot.unknownContinuationApprovals?.find(a => a.approvalId === captured.approvalId);
       if (prior) {
@@ -551,6 +574,15 @@ export class WorldBudget {
       return { acquired: true, audit };
     });
   }
+
+  async authorizeAutomaticReviewRecoveryV5(worldId: string, input: WorldAutomaticReviewRecoveryV5Input) {
+    const captured: WorldAutomaticReviewRecoveryV5 = structuredClone({ ...input, version: "world-automatic-review-recovery/v5", worldId });
+    validateUnknownContinuationApproval(captured);
+    if (!this.options.authorizeAutomaticReviewRecoveryV5 || await this.options.authorizeAutomaticReviewRecoveryV5(structuredClone(captured)) !== true)
+      fail("invalid_input", "Verified explicit capacity recovery policy is required");
+    return this.authorizeAutomaticRecovery(worldId, captured);
+  }
+
 
   async authorizeUnknownContinuation(worldId: string, input: WorldUnknownContinuationInput): Promise<{ acquired: boolean; approval: WorldUnknownContinuationApproval; audit: WorldBudgetAudit }> {
     const approval: WorldUnknownContinuationApproval = { ...input, version: "world-unknown-continuation/v1", worldId };

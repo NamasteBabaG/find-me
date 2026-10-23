@@ -1,3 +1,6 @@
+import { guidedFrameCandidate, guidedFrameMarker, newGuidedFrameMarker, GUIDED_FRAME_MIN_CAPACITY_MICRO_USD, type GuidedFrameMarker } from "../../domain/generation/guided-frame-recovery";
+import { detectivesSingleReviewAuthorization, readDetectivesCompletionBudget } from "./detectives-completion-budget";
+import { WorldBudgetError } from "./world-budget";
 import { hasLocalPatchCapability } from "../../domain/scene/local-patch-family";
 import { createHash } from "node:crypto";
 import { Prisma } from "@prisma/client";
@@ -203,6 +206,8 @@ export async function runLocalPatchHide(c: Container, deps: LocalPatchHideDeps, 
   readonly deadlineAt?: number;
   /** Only the world scheduler can open this after its normal pass is complete. */
   readonly finalRepair?: boolean;
+  /** One final original-geometry painting, only after conclusive LOW failure and exhausted repairs. */
+  readonly guidedFrame?: boolean;
   /** Trusted, durably audited recovery plan only; never raw operator/model prose. */
   readonly repairChecks?: readonly LocalPatchRepairCheck[];
   /** An immutable server-verified grant; never an arbitrary attempt limit. */
@@ -274,6 +279,25 @@ export async function runLocalPatchHide(c: Container, deps: LocalPatchHideDeps, 
       ...(isLocalPatchStrictVersion(scene.sceneVersion) ? { judgeJson: JSON.stringify({ adaptiveRecovery: initialAdaptiveRecovery() }) } : {}),
     } });
 
+  let guidedFrame: GuidedFrameMarker | null = null;
+  if (input.guidedFrame) {
+    const grant = await detectivesSingleReviewAuthorization(c.db, gameId), authority = await readDetectivesCompletionBudget(c, worldId);
+    demand(input.finalRepair && !input.extraAttemptAuthorizationId && scene.sceneVersion === 13 && guidedFrameCandidate(row)
+      && grant && authority?.capMicroUsd === 8_000_000 && authority.authorizationSha256 === grant.authorizationSha256, "exact LOW grant and exhausted original-geometry recovery required");
+    guidedFrame = guidedFrameMarker(row) ?? newGuidedFrameMarker(row, grant.authorizationSha256);
+    demand(guidedFrame.authorizationSha256 === grant.authorizationSha256, "guided recovery authority changed");
+    const priorPicture = await c.db.asset.findUniqueOrThrow({ where: { id: guidedFrame.sourceAssetId } });
+    demand(row.assetId === priorPicture.id && priorPicture.ownerId === game.ownerId && priorPicture.status === "READY" && !priorPicture.deletedAt
+      && sha256Bytes(await c.storage.get(priorPicture.storagePath)) === guidedFrame.sourceImageSha256, "guided failure pixels changed");
+    const key = `${hide.id}:${hide.pose}:render:3`, paid = await budget.readRequest(worldId, key);
+    demand(!paid || row.status === "PENDING" && !!guidedFrameMarker(row), "a third painting already started outside this guided checkpoint");
+    if (!paid) {
+      const room = await budget.audit(worldId);
+      if (room.held || room.remainingMicroUsd < GUIDED_FRAME_MIN_CAPACITY_MICRO_USD)
+        throw new WorldBudgetError("cap_exceeded", "Guided painting requires capacity for its image and one bounded LOW assessment");
+    }
+  }
+  const guidedHistory = guidedFrame ? { guidedFrameRecovery: guidedFrame, selfRepair: JSON.parse(row.judgeJson!).selfRepair } : {};
   if (input.finalRepair) demand(localPatchFinalRepairAllowed(env().APP_ENV, isLocalPatchStrictVersion(scene.sceneVersion))
     && game.styleVersion === "local-patch-world-v1",
     "the final repair pass requires a strict local-patch world or the legacy QA engine");
@@ -329,7 +353,7 @@ export async function runLocalPatchHide(c: Container, deps: LocalPatchHideDeps, 
   demand(art.width === definition.art.width && art.height === definition.art.height,
     `${board.board} art does not match the size the scene declares; the geometry would be written in the wrong space`);
 
-  const adaptiveRecovery = prepareAdaptiveRecovery(row.judgeJson, row, attempt, {
+  const adaptiveRecovery = guidedFrame ? null : prepareAdaptiveRecovery(row.judgeJson, row, attempt, {
     gameId, rowId: row.id, contentVersion: scene.sceneVersion, promptVersion, hide,
     boardSha256: sha256Bytes(artwork), identitySha256: sha256Bytes(sheet), ageYears: child.ageYears,
     renderPolicySha256: deps.renderPolicySha256,
@@ -358,7 +382,7 @@ export async function runLocalPatchHide(c: Container, deps: LocalPatchHideDeps, 
     await tx.targetVariantAsset.update({ where: { id: row.id }, data: {
       attempts: attempt, status: "PENDING", lastError: null,
       provider: LOCAL_PATCH_PROVIDER, promptVersion, slotId: target.slots[0].id,
-      ...(adaptiveRecovery ? { judgeJson: JSON.stringify({ ...JSON.parse(row.judgeJson ?? "{}"), adaptiveRecovery }) } : {}),
+      ...((adaptiveRecovery || guidedFrame) ? { judgeJson: JSON.stringify({ ...JSON.parse(row.judgeJson ?? "{}"), ...guidedHistory, ...(adaptiveRecovery ? { adaptiveRecovery } : {}) }) } : {}),
     } });
   });
   const started = { ...base, attempts: attempt };
@@ -380,6 +404,7 @@ export async function runLocalPatchHide(c: Container, deps: LocalPatchHideDeps, 
     ageYears: child.ageYears, attempt, apiKey: deps.apiKey ?? "",
     ...(repairChecks === undefined ? {} : { repairChecks }),
     ...(extra ? { recoveryDirective: extra.directive } : {}),
+    ...(guidedFrame ? { guidedFrameRecovery: guidedFrame } : {}),
     ...(attempt === 3 && adaptiveRecovery?.plan ? { adaptiveRecovery: adaptiveRecovery.plan } : {}),
     ...(input.deadlineAt === undefined ? {} : { deadlineAt: input.deadlineAt }),
     ...(subjectDirection ? { subjectDirection } : {}),
@@ -425,7 +450,7 @@ export async function runLocalPatchHide(c: Container, deps: LocalPatchHideDeps, 
       status: "FAILED", lastError: reason.slice(0, 500),
       costCents: Math.round(row.costCents + attemptResult.renderCents + attemptResult.judgeCents),
       rejectedAssetIdsJson: rejectedIds.length ? JSON.stringify(rejectedIds) : null,
-      judgeJson: JSON.stringify({ ...(adaptiveRecovery ? { adaptiveRecovery, judgedSha256: attemptResult.judgedSha256 } : {}), verdict: attemptResult.verdict, wireFault: attemptResult.wireFault, seam: attemptResult.seam, promptVersion: attemptResult.promptVersion,
+      judgeJson: JSON.stringify({ ...guidedHistory, ...(adaptiveRecovery ? { adaptiveRecovery, judgedSha256: attemptResult.judgedSha256 } : {}), verdict: attemptResult.verdict, wireFault: attemptResult.wireFault, seam: attemptResult.seam, promptVersion: attemptResult.promptVersion,
         ...(isLocalPatchStrictVersion(scene.sceneVersion) ? { renderFault: attemptResult.renderFault, compositionPermission: attemptResult.compositionPermission,
           compositionVersion: attemptResult.compositionVersion, hide: hide.id, pose: hide.pose } : {}),
         ...(attemptResult.authoredReturn ? { authoredReturn: attemptResult.authoredReturn } : {}),
@@ -465,7 +490,7 @@ export async function runLocalPatchHide(c: Container, deps: LocalPatchHideDeps, 
       hitRectJson: JSON.stringify(measured.geometry.hitRect),
       headAnchorJson: JSON.stringify(measured.geometry.anchor),
     };
-    const judgeJson = JSON.stringify({ ...(adaptiveRecovery ? { adaptiveRecovery } : {}), verdict: attemptResult.verdict, seam: attemptResult.seam, judgedSha256: attemptResult.judgedSha256,
+    const judgeJson = JSON.stringify({ ...guidedHistory, ...(adaptiveRecovery ? { adaptiveRecovery } : {}), verdict: attemptResult.verdict, seam: attemptResult.seam, judgedSha256: attemptResult.judgedSha256,
       ...(isLocalPatchStrictVersion(scene.sceneVersion) ? { compositionPermission: attemptResult.compositionPermission, compositionVersion: attemptResult.compositionVersion } : {}),
       ...(isLocalPatchAdvisoryVersion(scene.sceneVersion) ? { wireFault: attemptResult.wireFault, reviewState: "pending-board-review", geometrySha256: localPatchPublicationGeometryHash(geometry) } : {}),
       ...(attemptResult.foreground ? { foreground: attemptResult.foreground } : {}),

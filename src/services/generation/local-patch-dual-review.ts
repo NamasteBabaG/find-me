@@ -462,7 +462,7 @@ export async function dualReviewQuestionCandidates(c: Pick<Container, "db" | "st
   const questions = await dualQuestions(asked, version);
   const key = (question: PreparedVisualReview) => `self-repair:board:${prepared.board.board}:${question.fingerprint}`;
   /** `form` and `subjectPolicy` say which question a key belongs to; they decide nothing. */
-  type Form = "quality" | "continuity" | "bundle" | "subject";
+  type Form = "quality" | "continuity" | "bundle" | "subject" | "single";
   const of = (question: PreparedVisualReview, role: EvidenceRole, strategy: EvidenceStrategy, form: Form = role,
     subjectPolicy?: typeof SUBJECT_POLICY_VERSION | typeof SUBJECT_POLICY_V2) => ({ requestKey: key(question), fingerprint: question.fingerprint, role, strategy, form,
     ...(subjectPolicy ? { subjectPolicy } : {}) });
@@ -491,6 +491,12 @@ export async function dualReviewQuestionCandidates(c: Pick<Container, "db" | "st
         if (!found.some(f => f.fingerprint === anatomy.fingerprint)) found.push(of(anatomy, "continuity", leanQuestions.continuityStrategy));
       }
     } catch (error) { if (!(error instanceof SubjectEvidenceUnavailable)) throw error; }
+  }
+  if (upgrade && plan && prepared.scene.sceneVersion === 13 && await detectivesSingleReviewAuthorization(c.db, prepared.game.id)) {
+    const photoPng = await loadSubjectPhoto(c, prepared, upgrade);
+    const one = await prepareSingleLowQuestion(asked, version, { upgrade, plan, photoPng });
+    return [...found, { requestKey: one.requestKey, fingerprint: one.question.fingerprint, role: "quality" as const, strategy: STANDARD, form: "single" as const,
+      single: SINGLE_VISUAL_REVIEW_VERSION, reserveMicroUsd: one.bound.microUsd, continued: one.continued }];
   }
   return found;
 }
@@ -1055,27 +1061,36 @@ async function dualReview(c: Container, prepared: Prepared, deps: LocalPatchBoar
 }
 
 
-/** One LOW question per immutable image. Later slices poll or replay this exact key.
- * No automatic second opinion or independent second role is purchased. */
-async function singleLowReview(c: Container, prepared: Prepared, deps: LocalPatchBoardReviewDeps, version: DualVisualReviewVersion,
-  subject: SubjectQuestionContext, deadlineAt?: number): Promise<Waiting | Reviewed> {
+async function prepareSingleLowQuestion(prepared: Prepared, version: DualVisualReviewVersion, subject: SubjectQuestionContext) {
   const binding = dualBinding(prepared, version), hideId = binding.hideId;
   const entry = prepared.entries.find(e => e.hide.id === hideId)!, receipt = JSON.parse(entry.row.judgeJson!);
+  const continued = (Array.isArray(receipt.evidenceAttempts) ? receipt.evidenceAttempts : []).filter((v: {single?:unknown;imageSha256?:unknown}) => v.single === SINGLE_VISUAL_REVIEW_VERSION && v.imageSha256 === binding.imageSha256).length;
+  const attempt = continued + 1, tier = continued ? 'default' as const : 'flex' as const;
   const sourceNeighbors = sourceNeighborQualityEvidence(prepared.placementContext, hideId, binding.imageSha256, receipt);
-  const quality = dualQualityQuestion(prepared.request, binding, 1, STANDARD, { tier: 'flex' });
+  const quality = dualQualityQuestion(prepared.request, binding, 1, STANDARD, { tier });
   const combined = combinedQualitySubjectQuestion(quality, subject.plan, subject.photoPng, subject.upgrade, SUBJECT_POLICY_V2);
   if (!combined) throw Error('SINGLE_REVIEW: complete quality and identity evidence does not fit');
   const assessment = withSourceNeighborQualityQuestion(combined.question, sourceNeighbors, entry.reviewContextRect);
-  const anatomy = await runtimeContinuityQuestion(prepared, binding, 1, version, STANDARD, 'responses-background', 'flex');
+  const anatomy = await runtimeContinuityQuestion(prepared, binding, 1, version, STANDARD, 'responses-background', tier);
   const question = prepareVisualReview({ ...assessment, combined: SINGLE_VISUAL_REVIEW_VERSION, effort: 'low',
-    judge: 'gpt-6.1-sol', transport: 'responses-background', tier: 'flex', images: [...assessment.images, ...anatomy.images], labels: [...assessment.labels, ...anatomy.labels],
+    judge: 'gpt-6.1-sol', transport: 'responses-background', tier, images: [...assessment.images, ...anatomy.images], labels: [...assessment.labels, ...anatomy.labels],
     prompt: assessment.prompt + '\nONE REQUEST, ALL CHECKS: the assessment above and the final-image anatomy below are mandatory sections of ONE answer. Complete all inspections; never infer a pass from another check.\n'
       + anatomy.prompt + '\nFINAL OUTERMOST OUTPUT CONTRACT overrides the separate output envelopes above: {"version":"' + SINGLE_VISUAL_REVIEW_VERSION
       + '","assessment":<complete final assessment envelope above including quality, subject and sourceNeighbors>,"continuity":<complete anatomy object with cases>,"doubt":false,"doubtReason":null}. '
+      + (continued ? '\nUNANSWERED TRANSPORT CONTINUATION '+attempt+': the earlier provider request ended without text or usage. This is the first usable assessment of these unchanged pixels, not a second opinion.' : '')
       + 'Use doubt=true only for a genuinely unresolved visible question and give a specific doubtReason (12-400 characters). Do not request a second opinion routinely. A clearly located defect is a repair decision, not uncertainty. Keep passing observations concise; retain every required field, fault, location and evidence ID.' });
   const requestKey = 'self-repair:board:' + prepared.board.board + ':' + question.fingerprint;
   const bound = visualReviewMaxCharge(question);
   if (!bound.ok) throw Error('SINGLE_REVIEW: unbounded prepared evidence: ' + bound.reason);
+  if (bound.microUsd > 250_000) throw Error('SINGLE_REVIEW: exact request exceeds its qualified maximum');
+  return { binding, hideId, entry, receipt, sourceNeighbors, combined, question, requestKey, bound, attempt, continued };
+}
+
+/** One LOW question per immutable image. Later slices poll or replay this exact key.
+ * No automatic second opinion or independent second role is purchased. */
+async function singleLowReview(c: Container, prepared: Prepared, deps: LocalPatchBoardReviewDeps, version: DualVisualReviewVersion,
+  subject: SubjectQuestionContext, deadlineAt?: number): Promise<Waiting | Reviewed> {
+  const { binding, hideId, entry, sourceNeighbors, combined, question, requestKey, bound, attempt } = await prepareSingleLowQuestion(prepared, version, subject);
   await inventorySelfRepairRequest(c, prepared.game.id, requestKey, deps.fence);
   const gate = await askContinuityInBackground(c, { gameId: prepared.game.id, worldId: prepared.worldId, requestKey, question,
     reserveMicroUsd: bound.microUsd, fence: deps.fence, ...(deadlineAt === undefined ? {} : { deadlineAt }),
@@ -1089,7 +1104,7 @@ async function singleLowReview(c: Container, prepared: Prepared, deps: LocalPatc
   const wire = JSON.parse(bought.bytes.toString()) as LocalPatchJudgeResult;
   if (binding.authoredReturn && JSON.parse(bought.bytes.toString()).authoredReviewBinding !== authoredLocalPatchReviewBinding(binding))
     throw Error('SINGLE_REVIEW: retained answer differs from dispatched authored candidate');
-  const base: DualStageBase = { requestKey, fingerprint: question.fingerprint, attempt: 1, policy: question.policy, raw: wire.raw,
+  const base: DualStageBase = { requestKey, fingerprint: question.fingerprint, attempt, policy: question.policy, raw: wire.raw,
     model: wire.model, finishReason: wire.finishReason, wireFault: wire.wireFault, costMicroUsd: bought.evidence.amountMicroUsd };
   const qualityStage: QualityStage = { ...base, reader: CURRENT_QUALITY_READER, subjectBundle: combined.binding, ...(sourceNeighbors ? { sourceNeighbors } : {}) };
   const continuity: ContinuityStage = { ...base, reader: CURRENT_CONTINUITY_READER[version] };
