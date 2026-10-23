@@ -1,3 +1,5 @@
+import { SINGLE_VISUAL_REVIEW_VERSION, readSingleVisualReview } from "../../domain/generation/single-visual-review";
+import { detectivesSingleReviewAuthorization } from "./detectives-completion-budget";
 import { hasLocalPatchCapability } from "../../domain/scene/local-patch-family";
 import sharp from "sharp";
 import type { Prisma } from "@prisma/client";
@@ -654,6 +656,8 @@ async function dualReview(c: Container, prepared: Prepared, deps: LocalPatchBoar
       return { kind: "waiting", outcome: { state: "held", reason: error.message, replayed: false, costCents: 0 } };
     }
   }
+  if (subjectContext && prepared.scene.sceneVersion === 13 && await detectivesSingleReviewAuthorization(c.db, game.id))
+    return singleLowReview(c, prepared, deps, version, subjectContext, deadlineAt);
   const makeKey = (question: PreparedVisualReview) => `self-repair:board:${prepared.board.board}:${question.fingerprint}`;
   // local-patch-lean/v1: Sol HIGH answers both questions in the background, on Flex; a Flex question whose create
   // the provider refused (documented: nothing created, nothing billed) is asked once more at the default tier.
@@ -1048,4 +1052,69 @@ async function dualReview(c: Container, prepared: Prepared, deps: LocalPatchBoar
   const { kind, code, path } = readKind(read, verdict.reason);
   return classify(result, entry.row, priorReceipt, { attempt: evidenceReviewAttempt, role: "continuity", kind, code, path,
     strategy: continuityStrategy, at, imageSha256: binding.imageSha256 }, read, hideId, false);
+}
+
+
+/** One LOW question per immutable image. Later slices poll or replay this exact key.
+ * No automatic second opinion or independent second role is purchased. */
+async function singleLowReview(c: Container, prepared: Prepared, deps: LocalPatchBoardReviewDeps, version: DualVisualReviewVersion,
+  subject: SubjectQuestionContext, deadlineAt?: number): Promise<Waiting | Reviewed> {
+  const binding = dualBinding(prepared, version), hideId = binding.hideId;
+  const entry = prepared.entries.find(e => e.hide.id === hideId)!, receipt = JSON.parse(entry.row.judgeJson!);
+  const sourceNeighbors = sourceNeighborQualityEvidence(prepared.placementContext, hideId, binding.imageSha256, receipt);
+  const quality = dualQualityQuestion(prepared.request, binding, 1, STANDARD, { tier: 'flex' });
+  const combined = combinedQualitySubjectQuestion(quality, subject.plan, subject.photoPng, subject.upgrade, SUBJECT_POLICY_V2);
+  if (!combined) throw Error('SINGLE_REVIEW: complete quality and identity evidence does not fit');
+  const assessment = withSourceNeighborQualityQuestion(combined.question, sourceNeighbors, entry.reviewContextRect);
+  const anatomy = await runtimeContinuityQuestion(prepared, binding, 1, version, STANDARD, 'responses-background', 'flex');
+  const question = prepareVisualReview({ ...assessment, combined: SINGLE_VISUAL_REVIEW_VERSION, effort: 'low',
+    judge: 'gpt-6.1-sol', transport: 'responses-background', tier: 'flex', images: [...assessment.images, ...anatomy.images], labels: [...assessment.labels, ...anatomy.labels],
+    prompt: assessment.prompt + '\nONE REQUEST, ALL CHECKS: the assessment above and the final-image anatomy below are mandatory sections of ONE answer. Complete all inspections; never infer a pass from another check.\n'
+      + anatomy.prompt + '\nFINAL OUTERMOST OUTPUT CONTRACT overrides the separate output envelopes above: {"version":"' + SINGLE_VISUAL_REVIEW_VERSION
+      + '","assessment":<complete final assessment envelope above including quality, subject and sourceNeighbors>,"continuity":<complete anatomy object with cases>,"doubt":false,"doubtReason":null}. '
+      + 'Use doubt=true only for a genuinely unresolved visible question and give a specific doubtReason (12-400 characters). Do not request a second opinion routinely. A clearly located defect is a repair decision, not uncertainty. Keep passing observations concise; retain every required field, fault, location and evidence ID.' });
+  const requestKey = 'self-repair:board:' + prepared.board.board + ':' + question.fingerprint;
+  const bound = visualReviewMaxCharge(question);
+  if (!bound.ok) throw Error('SINGLE_REVIEW: unbounded prepared evidence: ' + bound.reason);
+  await inventorySelfRepairRequest(c, prepared.game.id, requestKey, deps.fence);
+  const gate = await askContinuityInBackground(c, { gameId: prepared.game.id, worldId: prepared.worldId, requestKey, question,
+    reserveMicroUsd: bound.microUsd, fence: deps.fence, ...(deadlineAt === undefined ? {} : { deadlineAt }),
+    binding: { hideId, variantId: entry.row.id, imageSha256: binding.imageSha256, geometrySha256: binding.geometrySha256,
+      identitySha256: binding.identitySha256, ...(binding.authoredReturn ? { authoredReviewBinding: authoredLocalPatchReviewBinding(binding)! } : {}) } });
+  if (gate.kind !== 'proceed') return { kind: 'waiting', outcome: { state: gate.kind === 'held' ? 'held' : 'pending', reason: gate.reason, replayed: false, costCents: 0 } };
+  const bought = await purchaseOnce({ ledger: prepared.budget, store: new LocalPatchRetainedPurchaseStore(c, prepared.game.id, prepared.budget) }, {
+    worldId: prepared.worldId, requestKey, operationFingerprint: question.fingerprint, scope: 'judge', reserveMicroUsd: bound.microUsd,
+    buy: async () => { throw Error('SINGLE_REVIEW: background answer must only replay its retained purchase'); } });
+  if (bought.kind !== 'bought') return { kind: 'waiting', outcome: { state: bought.kind === 'unresolved' ? 'held' : 'pending', reason: bought.reason, replayed: false, costCents: 0 } };
+  const wire = JSON.parse(bought.bytes.toString()) as LocalPatchJudgeResult;
+  if (binding.authoredReturn && JSON.parse(bought.bytes.toString()).authoredReviewBinding !== authoredLocalPatchReviewBinding(binding))
+    throw Error('SINGLE_REVIEW: retained answer differs from dispatched authored candidate');
+  const base: DualStageBase = { requestKey, fingerprint: question.fingerprint, attempt: 1, policy: question.policy, raw: wire.raw,
+    model: wire.model, finishReason: wire.finishReason, wireFault: wire.wireFault, costMicroUsd: bought.evidence.amountMicroUsd };
+  const qualityStage: QualityStage = { ...base, reader: CURRENT_QUALITY_READER, subjectBundle: combined.binding, ...(sourceNeighbors ? { sourceNeighbors } : {}) };
+  const continuity: ContinuityStage = { ...base, reader: CURRENT_CONTINUITY_READER[version] };
+  const subjectStage: SubjectStage = { ...base, subjectPolicy: SUBJECT_POLICY_V2, reader: SUBJECT_READER_V2,
+    photoSha256: subject.upgrade.photoSha256, planSha256: subjectPlanSha256(subject.plan), combined: SUBJECT_QUALITY_BUNDLE_VERSION,
+    ...(sourceNeighbors ? { sourceNeighbors } : {}) };
+  const proof: DualReviewProof = { version, single: SINGLE_VISUAL_REVIEW_VERSION, hideId, sceneVersion: 13,
+    imageSha256: binding.imageSha256, geometrySha256: binding.geometrySha256, identitySha256: binding.identitySha256,
+    ...(binding.authoredReturn ? { authoredReturn: binding.authoredReturn } : {}), ...(binding.authoredRecovery ? { authoredRecovery: binding.authoredRecovery } : {}),
+    quality: qualityStage, continuity, subject: subjectStage };
+  const verdict = readQualityStage(qualityStage, hideId, 13);
+  let verdicts: LocalPatchBoardJudgeResult['verdicts'] = verdict ? { [hideId]: verdict } : {};
+  const readSubject = readSubjectAnswerV2(subjectStageRaw(subjectStage), { hideId, ageYears: subject.upgrade.ageYears, plan: subject.plan });
+  const readAnatomy = readContinuityStage(continuity, hideId, version), outer = readSingleVisualReview(wire.raw);
+  // Missing evidence cannot grant acceptance. This stable paid key never purchases a second automatic reading.
+  if (!outer || !verdict || !readSubject.ok || !readAnatomy?.ok)
+    return { kind: 'reviewed', bought, wire, verdicts: {}, proof, newCostCents: 0, evidence: null, diagnosis: null, salvaged: false };
+  const world = readSubject.disposition === 'pass' ? await acceptedWorldAppearances(c.db, prepared.game.id, hideId, subject.upgrade.ageYears) : null;
+  const refusal = world ? subjectCollectionRefusal({ hideId, appearance: readSubject.appearance }, world.accepted, world.worldSize) : null;
+  if (readSubject.disposition !== 'pass' || refusal) {
+    subjectStage.failedChecks = subjectV2RefusalCodes(readSubject, refusal); if (refusal) subjectStage.collectionRefusal = refusal;
+    verdicts = withSubjectV2(verdicts, hideId, readSubject, refusal, CURRENT_QUALITY_READER, 13);
+  }
+  const anatomyVerdict = localPatchRuntimeContinuityVerdict(readAnatomy);
+  if (anatomyVerdict.disposition === 'repair') verdicts = withAnatomy(verdicts, hideId, 'repair', readAnatomy, CURRENT_QUALITY_READER, 13);
+  else if (anatomyVerdict.disposition !== 'pass' || outer.doubt) verdicts = withAnatomy(verdicts, hideId, 'uncertain', readAnatomy, CURRENT_QUALITY_READER, 13);
+  return { kind: 'reviewed', bought, wire, verdicts, proof, newCostCents: 0, evidence: null, diagnosis: null, salvaged: false };
 }

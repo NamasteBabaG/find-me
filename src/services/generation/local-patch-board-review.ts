@@ -512,8 +512,8 @@ export async function reviewLocalPatchBoard(c: Container, input: { gameId: strin
           ...(strict ? { compositionVersion, wireHashes: localPatchBoardJudgeImages(evaluated?.asked ?? request).map(sha256Bytes) } : {}),
           ...(isLocalPatchAgeVersion(scene.sceneVersion) ? { evidenceIds: localPatchBoardEvidenceIds(evaluated?.asked ?? request),
             imageLabels: localPatchBoardJudgeImageLabels(evaluated?.asked ?? request) } : {}),
-          model: keep.model, effort: evaluated ? "high" : settings.effort, raw: keep.raw, costMicroUsd: evaluated
-            ? evaluated.proof.quality.costMicroUsd + (evaluated.proof.continuity?.costMicroUsd ?? 0)
+          model: keep.model, effort: evaluated ? evaluated.proof.quality.policy.effort : settings.effort, raw: keep.raw, costMicroUsd: evaluated
+            ? evaluated.proof.quality.costMicroUsd + (evaluated.proof.single ? 0 : evaluated.proof.continuity?.costMicroUsd ?? 0)
               + (evaluated.proof.subject?.requestKey !== evaluated.proof.quality.requestKey ? evaluated.proof.subject?.costMicroUsd ?? 0 : 0)
             : bought.evidence.amountMicroUsd },
       });

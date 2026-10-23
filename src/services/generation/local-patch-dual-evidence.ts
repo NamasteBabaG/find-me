@@ -1,3 +1,5 @@
+import { readSingleVisualReview } from "../../domain/generation/single-visual-review";
+import { SINGLE_LOW_REVIEW_POLICIES, isSingleLowReviewPolicy } from "../../domain/generation/visual-review-policy";
 import type { Prisma } from "@prisma/client";
 import type { AuthoredLocalPatchReturnContract, AuthoredLocalPatchRecoveryContract } from "../../domain/scene/local-patch-return-region";
 import type { VisualReviewPolicy } from "../../domain/generation/visual-review-policy";
@@ -40,11 +42,12 @@ export function sourceNeighborQualityEvidence(context: TrustedSourcePlacementCon
 }
 /** One immutable raw document is retained. Unwrap the new envelope explicitly,
  * then let the original quality and subject readers decide their own documents. */
-export function readSourceNeighborQualityStage(stage: { raw: string | null; sourceNeighbors?: SourceNeighborQualityEvidence }) {
-  return stage.sourceNeighbors ? readSourceNeighborQualityBundle(stage.raw, { contract: stage.sourceNeighbors.contract, binding: stage.sourceNeighbors.binding }) : null;
+export function readSourceNeighborQualityStage(stage: { raw: string | null; sourceNeighbors?: SourceNeighborQualityEvidence; policy?: VisualReviewPolicy }) {
+  const raw = stage.policy && isSingleLowReviewPolicy(stage.policy) ? readSingleVisualReview(stage.raw)?.assessment ?? null : stage.raw;
+  return stage.sourceNeighbors ? readSourceNeighborQualityBundle(raw, { contract: stage.sourceNeighbors.contract, binding: stage.sourceNeighbors.binding }) : null;
 }
-function sourceNeighborAssessmentRaw(stage: { raw: string | null; sourceNeighbors?: SourceNeighborQualityEvidence }): string | null {
-  if (!stage.sourceNeighbors) return stage.raw;
+function sourceNeighborAssessmentRaw(stage: { raw: string | null; sourceNeighbors?: SourceNeighborQualityEvidence; policy?: VisualReviewPolicy }): string | null {
+  if (!stage.sourceNeighbors) return stage.policy && isSingleLowReviewPolicy(stage.policy) ? readSingleVisualReview(stage.raw)?.assessment ?? null : stage.raw;
   const reading = readSourceNeighborQualityStage(stage);
   return reading?.ok && reading.sourceNeighbors.disposition !== "unresolved" ? reading.assessment.raw : null;
 }
@@ -103,6 +106,8 @@ export type DualReviewStage = ContinuityStage | QualityStage | SubjectStage;
 export type DualReviewProof = { version: DualVisualReviewVersion; hideId: string;
   /** New Detective proof only; absent on every historical proof. */
   sceneVersion?: 13;
+  /** These fields project one retained paid document; they are not independent calls. */
+  single?: "single-sol-low/v1";
   imageSha256: string; geometrySha256: string; identitySha256: string;
   /** Only v4 authored windows; also part of both immutable paid questions. */
   authoredReturn?: AuthoredLocalPatchReturnContract;
@@ -158,12 +163,12 @@ export function readQualityStage(stage: QualityStage, hideId: string, sceneVersi
   return verdict;
 }
 
-export function qualityStageRaw(stage: Pick<QualityStage, "raw" | "subjectBundle" | "sourceNeighbors">): string | null {
+export function qualityStageRaw(stage: Pick<QualityStage, "raw" | "subjectBundle" | "sourceNeighbors"> & { policy?: VisualReviewPolicy }): string | null {
   const raw = sourceNeighborAssessmentRaw(stage);
   if (!stage.subjectBundle) return raw;
   return stage.subjectBundle.version === SUBJECT_QUALITY_BUNDLE_VERSION ? readSubjectQualityBundle(raw)?.quality ?? null : null;
 }
-export function subjectStageRaw(stage: Pick<SubjectStage, "raw" | "combined" | "sourceNeighbors">): string | null {
+export function subjectStageRaw(stage: Pick<SubjectStage, "raw" | "combined" | "sourceNeighbors"> & { policy?: VisualReviewPolicy }): string | null {
   const raw = sourceNeighborAssessmentRaw(stage);
   return stage.combined === undefined ? raw : stage.combined === SUBJECT_QUALITY_BUNDLE_VERSION
     ? readSubjectQualityBundle(raw)?.subject ?? null : null;
@@ -200,7 +205,8 @@ export function continuityStageReader(stage: Pick<ContinuityStage, "reader" | "r
 export function readContinuityStage(stage: ContinuityStage, hideId: string, version: DualVisualReviewVersion): ContinuityReading | null {
   const reader = continuityStageReader(stage, version);
   if (!reader || !visualStageReadable(stage)) return null;
-  const read = readLocalPatchBodyContinuity(stage.raw, [`${hideId}:people`], reader);
+  const raw = isSingleLowReviewPolicy(stage.policy) ? readSingleVisualReview(stage.raw)?.continuity ?? null : stage.raw;
+  const read = readLocalPatchBodyContinuity(raw, [`${hideId}:people`], reader);
   const reading = stage.reading;
   if (reading) {
     const verdict = localPatchRuntimeContinuityVerdict(read);
@@ -265,11 +271,12 @@ export async function verifiedDualStage(db: Prisma.TransactionClient, worldId: s
   role: "scene-quality" | "head-continuity",
   /** An enrolled world's continuity may also be the background question's answer; a lean world's
    * (local-patch-lean/v1) answers are its own Sol policies of this role, at either tier. */
-  options: { allowBackground?: boolean; allowLean?: boolean; authoredReviewBinding?: string } = {}): Promise<{ bytes: Buffer; evidence: WorldChargeEvidence } | null> {
+  options: { allowBackground?: boolean; allowLean?: boolean; allowSingle?: boolean; authoredReviewBinding?: string } = {}): Promise<{ bytes: Buffer; evidence: WorldChargeEvidence } | null> {
   const equal = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
   const allowed = [visualReviewPolicy(role, "high"), ...(options.allowBackground && role === "head-continuity"
     ? [visualReviewPolicy(role, "high", undefined, "responses-background")] : []),
-    ...(options.allowLean ? LEAN_REVIEW_POLICIES.filter(policy => policy.role === role) : [])];
+    ...(options.allowLean ? LEAN_REVIEW_POLICIES.filter(policy => policy.role === role) : []),
+    ...(options.allowSingle ? SINGLE_LOW_REVIEW_POLICIES : [])];
   if (!allowed.some(policy => equal(stage.policy, policy)) || !visualStageReadable(stage)
     || !Number.isSafeInteger(stage.attempt) || stage.attempt < 1
     || !/^self-repair:board:[a-z]+:[a-f0-9]{64}$/.test(stage.requestKey)

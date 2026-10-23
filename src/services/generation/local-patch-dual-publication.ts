@@ -1,3 +1,6 @@
+import { SINGLE_VISUAL_REVIEW_VERSION, readSingleVisualReview } from "../../domain/generation/single-visual-review";
+import { isSingleLowReviewPolicy } from "../../domain/generation/visual-review-policy";
+import { detectivesSingleReviewAuthorization } from "./detectives-completion-budget";
 import { hasLocalPatchCapability } from "../../domain/scene/local-patch-family";
 import type { Prisma } from "@prisma/client";
 import { localPatchRuntimeContinuityVerdict } from "../../domain/scene/local-patch-body-continuity";
@@ -29,7 +32,15 @@ export async function allowedDualPublication(db: Prisma.TransactionClient, input
     const version = await dualVisualReviewVersion(db, input.gameId);
     const receipt = JSON.parse(input.judgeJson ?? "null"), review = receipt?.boardReview;
     const proof = review?.dual as DualReviewProof | undefined;
-    if (!version || proof?.sceneVersion !== (input.sceneVersion === 13 ? 13 : undefined) || !hasLocalPatchCapability(input.sceneVersion, "integratedQuality") || review?.version !== version || review.effort !== "high"
+    const single = proof?.single === SINGLE_VISUAL_REVIEW_VERSION;
+    const authority = single ? await detectivesSingleReviewAuthorization(db, input.gameId) : null;
+    if (single && (!authority || authority.identitySha256 !== input.identitySha256 || input.sceneVersion !== 13
+      || !proof?.continuity || !proof.subject || !isSingleLowReviewPolicy(proof.quality.policy)
+      || ![proof.continuity, proof.subject].every(stage => stage.requestKey === proof.quality.requestKey && stage.fingerprint === proof.quality.fingerprint
+        && stage.raw === proof.quality.raw && equal(stage.policy, proof.quality.policy) && stage.costMicroUsd === proof.quality.costMicroUsd)
+      || readSingleVisualReview(proof.quality.raw)?.doubt !== false)) return false;
+    if (!single && proof && isSingleLowReviewPolicy(proof.quality.policy)) return false;
+    if (!version || proof?.sceneVersion !== (input.sceneVersion === 13 ? 13 : undefined) || !hasLocalPatchCapability(input.sceneVersion, "integratedQuality") || review?.version !== version || review.effort !== (single ? "low" : "high")
       || review.assessmentMode !== PLAYER_REVIEW_MODE || review.reviewScope !== "ready-only/v1"
       || !equal(review.reviewedHideIds, [input.hideId]) || receipt.reviewState !== "board-review-complete"
       || receipt.wireFault !== null || receipt.renderFault != null || receipt.judgedSha256 !== input.imageSha256
@@ -53,9 +64,9 @@ export async function allowedDualPublication(db: Prisma.TransactionClient, input
     // A lean world (local-patch-lean/v1) is judged by Sol alone, under its own policies, and is always enrolled.
     const lean = await isLeanWorld(db, input.gameId);
     if (lean && !upgrade) return false;
-    if (!await verifiedDualStage(db, worldId, proof.quality, "scene-quality", { allowLean: lean, authoredReviewBinding })
-      || !await verifiedDualStage(db, worldId, proof.continuity, "head-continuity", { allowBackground: !!upgrade, allowLean: lean, authoredReviewBinding })) return false;
-    if (upgrade && !await allowedSubject(db, worldId, upgrade, proof, input, lean)) return false;
+    if (!await verifiedDualStage(db, worldId, proof.quality, "scene-quality", { allowLean: lean, allowSingle: single, authoredReviewBinding })
+      || !await verifiedDualStage(db, worldId, proof.continuity, "head-continuity", { allowBackground: !!upgrade, allowLean: lean, allowSingle: single, authoredReviewBinding })) return false;
+    if (upgrade && !await allowedSubject(db, worldId, upgrade, proof, input, lean, single)) return false;
     // Each answer is read by the reader its decision names, never a newer one.
     const quality = readQualityStage(proof.quality, input.hideId, input.sceneVersion);
     const continuity = readContinuityStage(proof.continuity, input.hideId, version);
@@ -71,7 +82,7 @@ export async function allowedDualPublication(db: Prisma.TransactionClient, input
  * policy decides by: all eight under v1; under v2 the five of who the child is, with no
  * collection refusal. Each stage is read only by its own policy's reader. */
 async function allowedSubject(db: Prisma.TransactionClient, worldId: string, upgrade: SubjectUpgradeReceipt, proof: DualReviewProof,
-  input: LocalPatchPublicationBinding, lean = false): Promise<boolean> {
+  input: LocalPatchPublicationBinding, lean = false, single = false): Promise<boolean> {
   const subject = proof.subject, plan = subjectPlanOfHide(input.hideId, input.sceneVersion);
   const v2 = subject?.subjectPolicy === SUBJECT_POLICY_V2 && subject.reader === SUBJECT_READER_V2;
   if (!subject || !plan || !(v2 || subject.subjectPolicy === SUBJECT_POLICY_VERSION && subject.reader === SUBJECT_READER)
@@ -80,7 +91,7 @@ async function allowedSubject(db: Prisma.TransactionClient, worldId: string, upg
   const game = await db.game.findUnique({ where: { id: input.gameId }, include: { childProfile: true } });
   if (!game || game.ownerId !== upgrade.ownerId || game.childProfile?.ageYears !== upgrade.ageYears
     || game.childProfile.identityAssetId !== upgrade.identityAssetId) return false;
-  if (!await verifiedDualStage(db, worldId, subject, "scene-quality", { allowLean: lean,
+  if (!await verifiedDualStage(db, worldId, subject, "scene-quality", { allowLean: lean, allowSingle: single,
     authoredReviewBinding: authoredLocalPatchReviewBinding({ ...input, authoredReturn: proof.authoredReturn, ...(proof.authoredRecovery ? { authoredRecovery: proof.authoredRecovery } : {}) }) })) return false;
   // A lean world's subject reading always came with its quality answer (one Sol request).
   if (lean && subject.combined !== SUBJECT_QUALITY_BUNDLE_VERSION) return false;

@@ -1,4 +1,4 @@
-export type VisualReviewEffort = "medium" | "high";
+export type VisualReviewEffort = "low" | "medium" | "high";
 export type VisualReviewRole = "scene-quality" | "head-continuity";
 /** Which model answers a role. Each role has its standing judge: Opus for quality,
  * Sol for continuity. Sol answering the quality role is an explicit, separately
@@ -94,6 +94,18 @@ export const LEAN_REVIEW_POLICIES: readonly VisualReviewPolicy[] = Object.freeze
   .flatMap(role => (["flex", "default"] as const).map(tier => leanReviewPolicy(role, tier))));
 export const isLeanReviewPolicy = (policy: Pick<VisualReviewPolicy, "pricingVersion">) => policy.pricingVersion === VISUAL_REVIEW_SOL_TIERS_PRICING_VERSION;
 /** The lean policy recorded under this exact version, or null. */
-export const leanReviewPolicyOf = (version: string) => LEAN_REVIEW_POLICIES.find(policy => policy.version === version) ?? null;
+export const leanReviewPolicyOf = (version: string) => [...LEAN_REVIEW_POLICIES, ...SINGLE_LOW_REVIEW_POLICIES].find(policy => policy.version === version) ?? null;
 /** Whether a policy is asked in the background and polled, never sent synchronously. */
 export const isBackgroundReviewPolicy = (policy: Pick<VisualReviewPolicy, "endpoint">) => policy.endpoint === OPENAI_RESPONSES_ENDPOINT;
+
+
+/** Explicit one-answer experiment. Historical HIGH policy bytes stay unchanged. */
+export function singleLowReviewPolicy(tier: VisualReviewTier = 'flex'): VisualReviewPolicy {
+  if (tier !== 'flex' && tier !== 'default') throw Error('Unsupported single review tier');
+  return Object.freeze({ version: 'visual-review-quality-subject-continuity-sol-low-background-' + tier + '/single-v1',
+    role: 'scene-quality' as const, effort: 'low' as const, provider: 'openai' as const, model: 'gpt-6.1-sol' as const,
+    endpoint: OPENAI_RESPONSES_ENDPOINT, maxOutputTokens: 10_000, timeoutMs: 240_000,
+    pricingVersion: VISUAL_REVIEW_SOL_TIERS_PRICING_VERSION, serviceTier: tier });
+}
+export const SINGLE_LOW_REVIEW_POLICIES = Object.freeze(([ 'flex', 'default' ] as const).map(singleLowReviewPolicy));
+export const isSingleLowReviewPolicy = (policy: Pick<VisualReviewPolicy, 'version'>) => SINGLE_LOW_REVIEW_POLICIES.some(known => known.version === policy.version);

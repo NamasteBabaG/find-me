@@ -1,3 +1,5 @@
+import { SINGLE_VISUAL_REVIEW_VERSION } from "../../domain/generation/single-visual-review";
+import { singleLowReviewPolicy } from "../../domain/generation/visual-review-policy";
 import { createHash } from "node:crypto";
 import { isBackgroundReviewPolicy, visualReviewPolicy, VISUAL_REVIEW_DEFAULT_EFFORT, type VisualReviewEffort, type VisualReviewJudge, type VisualReviewPolicy, type VisualReviewRole, type VisualReviewTier, type VisualReviewTransport } from "../../domain/generation/visual-review-policy";
 import { visualReviewInputBound } from "../../domain/generation/visual-review-input-bound";
@@ -9,6 +11,7 @@ import { requestJudgeWire, localPatchBoardJudgePrompt, localPatchBoardJudgeImage
   diagnoseLocalPatchBoardAnswer, parseLocalPatchBoardVerdicts, JUDGE_IMAGE_DETAIL, type LocalPatchBoardJudgeRequest, type LocalPatchJudgeResult } from "./local-patch-judge";
 
 export type VisualReviewQuestion = {
+  readonly combined?: typeof SINGLE_VISUAL_REVIEW_VERSION;
   readonly role: VisualReviewRole;
   readonly effort: VisualReviewEffort;
   /** Absent: the role's standing judge, as every historical question. */
@@ -27,7 +30,9 @@ const sha = (value: string | Buffer) => createHash("sha256").update(value).diges
 /** Policy, labels and every image participate in the paid identity. A new
  * model/effort must never replay a historical judgement under its new name. */
 export function prepareVisualReview(question: VisualReviewQuestion): PreparedVisualReview {
-  const policy = visualReviewPolicy(question.role, question.effort, question.judge, question.transport, question.tier);
+  if (question.combined !== undefined && (question.combined !== SINGLE_VISUAL_REVIEW_VERSION || question.role !== "scene-quality" || question.effort !== "low"
+    || question.judge !== "gpt-6.1-sol" || question.transport !== "responses-background" || !question.tier)) throw Error("Invalid single review policy");
+  const policy = question.combined ? singleLowReviewPolicy(question.tier) : visualReviewPolicy(question.role, question.effort, question.judge, question.transport, question.tier);
   if (!question.prompt.trim() || question.images.length < 1 || question.images.length > 30
     || question.labels.length !== question.images.length || question.labels.some(l => !l.trim())
     || question.images.some(b => !b.length || b.length > 5 * 1024 * 1024)) throw Error("Invalid visual review evidence");

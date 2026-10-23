@@ -6,6 +6,11 @@ import { worldPurchaseEn, worldSelectorEn, friendsEn } from "./world-features";
 
 export const en = {
   adminIdentityRevision: {
+    detectivesExtensionTitle: "Separate completion extension for this Detective world",
+    detectivesExtensionDescription: "Only after a new explicit owner authorization: extend this existing QA world from $6 to $8 total. The original authorization, every historical charge, unknown reservation and source remain intact. New image assessments use one Sol 6.1 LOW answer containing every required check.",
+    detectivesExtensionConfirm: "The owner authorized up to $8 in total for this same world, including all history and uncertain charges. This does not approve art or publish the game.",
+    detectivesExtensionGrant: "Authorize this Detective world up to $8 total",
+    reviewScope: "Geometry checks measure placement. Automatic visual checks assess the image, identity and continuity under this world's recorded review policy. Each hiding spot retains its attempts, exact reviewed composition and verdict; a saved image alone is not a passing verdict.",
     detectivesBudgetTitle: "Explicit completion budget for this Detective world",
     detectivesBudgetDescription: "Only after explicit owner authorization: up to $6 total for this existing QA Detective world. All historical charges, rejected attempts and unknown reservations count in full. The original identity and every required automatic quality check remain.",
     detectivesBudgetEvidence: "SHA-256 of the recorded owner authorization",
@@ -375,7 +380,7 @@ export const en = {
       heldTitle: "Creation is paused",
       heldLead: "{done} of {total} hiding spots have been placed. The game is not complete yet.",
       heldPercent: "Paused at {percent}% of preparation",
-      heldAction: "The results are saved. A review or repair is needed before creation can continue; no automatic retry is running.",
+      heldAction: "The results are saved. The service needs to recover before creation can continue. You do not need to approve pictures.",
       progressAria: "How far along the game is",
       automaticCheck: "Automatic review and publication",
       milestones: { photo: "Receiving the photo", character: "Drawing {name}’s character", hiding: "Hiding {name} in the places", assemble: "Assembling the game", check: "Checking the game" },

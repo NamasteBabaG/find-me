@@ -182,3 +182,23 @@ Sol נשאר שופט עצמאי. הצייר מקבל גם תמונת מקור �
 `ready` דורש קבצים, hash, מידות וגאומטריה לפני חיבור לגרסת יצירה.
 `ADVENTURE_FOUNDATION_2026-09-14.md` מתעד את הבסיס ההיסטורי; הוא אינו תיאור
 של גבולות החיבור הפעיל כיום.
+
+
+## Explicit Detective single LOW experiment (23 October 2026)
+
+The existing six-dollar owner receipt is immutable. A separate authenticated owner-admin
+extension can bind the same unfinished Detective world, exact source/identity/age/payment,
+failed hold and ledger revision to an eight-dollar cumulative cap and single-sol-low/v1.
+It keeps every historical charge and unknown reservation, leaves the commercial four-dollar
+default unchanged, and lets the normal queue consume the exact new hold once without resetting attempts.
+
+Only that explicitly authorized world uses the experimental single LOW review for new
+assessments. One gpt-6.1-sol Responses background request carries the complete quality,
+source likeness/age/wardrobe, source-neighbor correspondence, and AFTER-only anatomy contracts.
+The retained document exposes three mandatory logical readings sharing one billed request;
+these are not claimed to be independent judges. Publication re-reads every strict contract,
+the exact experimental authority and the one retained settled receipt. The cost record counts
+that shared request once. Existing HIGH approvals and their original pins remain unchanged.
+An unusable reply cannot authorize a routine second automatic review of the same pixels.
+Explicit doubt remains non-acceptance; this experiment does not create a human art-approval flow.
+Synthetic all-27 completion proves wiring and accounting, not live LOW quality, latency or unit economics.

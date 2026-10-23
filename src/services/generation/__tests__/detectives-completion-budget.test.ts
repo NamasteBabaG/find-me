@@ -21,8 +21,9 @@ import { buildBoardWizardIdentityStyle } from "../board-wizard-identity-style";
 import { sha256Bytes } from "../fixed-sprite";
 import { seedApprovedGame, bill } from "./local-patch-fixtures";
 import { planDetectivesCompletionBudget, authorizeDetectivesCompletionBudget, readDetectivesCompletionBudget,
+  planDetectivesCompletionExtension, authorizeDetectivesCompletionExtension, resumeDetectivesCompletionExtension,
   resumeDetectivesCompletionBudget, nextDetectivesCompletionWake, resumeDetectivesApplyingRepair } from "../detectives-completion-budget";
-import { detectivesCompletionId, detectivesCompletionResumeId } from "../../../domain/generation/detectives-completion-budget";
+import { detectivesExtensionId, detectivesExtensionResumeId, detectivesCompletionId, detectivesCompletionResumeId } from "../../../domain/generation/detectives-completion-budget";
 
 const settings = vi.hoisted(() => ({ APP_ENV: "qa", LOCAL_PATCH_PROMPT_RELEASE: "v19", LOCAL_PATCH_IDENTITY_SOURCE: "full-source-v1" }));
 vi.mock("../../../lib/env", () => ({ env: () => settings, flag: () => false }));
@@ -299,4 +300,79 @@ describe("existing six-dollar grant: paid applying checkpoint wake",()=>{
     expect(await db.generationJob.findUniqueOrThrow({where:{id:"job_"+f.gameId}})).toMatchObject({status:"QUEUED",attempts:32});
     expect(await immutable(f)).toEqual(before); expect(fetch).not.toHaveBeenCalled();
   },60_000);
+});
+
+
+async function extensionFixture() {
+  const f = await fixture();
+  await f.authorize();
+  expect(await resumeDetectivesCompletionBudget(c, f.gameId)).toBe(true);
+  const budget = boardWizardBudgetOf(c);
+  await budget.reserve(f.worldId, { requestKey: 'synthetic-six-dollar-work', scope: 'image', operationFingerprint: fingerprint(81), reserveMicroUsd: 2_000_000 });
+  await budget.settle(f.worldId, 'synthetic-six-dollar-work', bill('req-extension-' + f.gameId, 2_000_000));
+  await db.generationJob.update({ where: { id: 'job_' + f.gameId }, data: { status: 'FAILED', currentStep: 'local-patch:recovery-exhausted', attempts: 21,
+    lastError: 'local-patch: no automatic action remains within the authorized world budget; synthetic second capacity stop' } });
+  const plan = await planDetectivesCompletionExtension(c, f.gameId);
+  const authorize = (container = c, observed = plan) => authorizeDetectivesCompletionExtension(container, {
+    gameId: f.gameId, operatorId: f.ownerId, expectedPlanSha256: observed.planSha256, ownerAuthorizationSha256: authorization });
+  return { ...f, plan, extend: authorize };
+}
+describe('a separate explicit Detective eight-dollar continuation', () => {
+  it('preserves the six-dollar receipt and ledger, grants once, and wakes the exact second hold without resetting attempts', async () => {
+    const f = await extensionFixture(), before = await immutable(f);
+    const previous = await db.auditLog.findUniqueOrThrow({ where: { id: detectivesCompletionId(f.gameId) } });
+    expect(f.plan.binding).toMatchObject({ baseCapMicroUsd: 6_000_000, capMicroUsd: 8_000_000, committedMicroUsd: 5_900_000, reservedMicroUsd: 520_000 });
+    expect(f.plan.binding.retainedUnknowns).toHaveLength(3);
+    expect(await readBoardWizardBudgetAuthority(c, f.worldId)).toMatchObject({ capMicroUsd: 6_000_000 });
+    const grant = await f.extend(); expect(await f.extend()).toEqual(grant);
+    expect(await immutable(f)).toEqual(before);
+    expect(await db.auditLog.findUniqueOrThrow({ where: { id: detectivesCompletionId(f.gameId) } })).toEqual(previous);
+    expect(await db.generationJob.findUniqueOrThrow({ where: { id: 'job_' + f.gameId } })).toMatchObject({ status: 'FAILED', attempts: 21 });
+    expect(await readBoardWizardBudgetAuthority(c, f.worldId)).toMatchObject({ capMicroUsd: 8_000_000, authorizationSha256: grant.authorizationSha256 });
+    expect(await nextDetectivesCompletionWake(c, f.gameId)).toBe(f.gameId);
+    expect(await resumeDetectivesCompletionExtension(c, f.gameId)).toBe(false);
+    expect(await db.generationJob.findUniqueOrThrow({ where: { id: 'job_' + f.gameId } })).toMatchObject({ status: 'QUEUED', attempts: 21 });
+    expect(await immutable(f)).toEqual(before);
+    expect(await db.auditLog.count({ where: { id: detectivesExtensionResumeId(f.gameId) } })).toBe(1);
+    const budget = boardWizardBudgetOf(c);
+    await expect(budget.reserve(f.worldId, { requestKey: 'synthetic-over-eight', scope: 'judge', operationFingerprint: fingerprint(83), reserveMicroUsd: 2_100_001 })).rejects.toThrow();
+    await expect(budget.reserve(f.worldId, { requestKey: 'synthetic-inside-eight', scope: 'judge', operationFingerprint: fingerprint(84), reserveMicroUsd: 200_000 })).resolves.toBeTruthy();
+  }, 60_000);
+  it.each(['no-admin', 'age', 'avatar', 'hold', 'ledger', 'pending', 'refund', 'production', 'foreign-plan'])('refuses stale or unauthorized extension: %s', async fault => {
+    const f = await extensionFixture();
+    if (fault === 'age') await db.childProfile.update({ where: { id: f.childId }, data: { ageYears: 7 } });
+    if (fault === 'avatar') await c.storage.put('game/avatar-' + f.gameId, Buffer.from('changed synthetic avatar'), 'image/png');
+    if (fault === 'hold') await db.generationJob.update({ where: { id: 'job_' + f.gameId }, data: { lastError: 'Different service hold' } });
+    if (fault === 'ledger') await db.worldBudgetLedger.update({ where: { worldId: f.worldId }, data: { revision: { increment: 1 } } });
+    if (fault === 'pending') await boardWizardBudgetOf(c).reserve(f.worldId, { requestKey: 'synthetic-pending-extension', scope: 'judge', operationFingerprint: fingerprint(86), reserveMicroUsd: 1 });
+    if (fault === 'refund') await db.order.update({ where: { id: 'order-' + f.gameId }, data: { paymentStatus: 'REFUNDED', refundedAt: new Date() } });
+    if (fault === 'production') settings.APP_ENV = 'production';
+    const other = fault === 'foreign-plan' ? await extensionFixture() : null;
+    await expect(f.extend(fault === 'no-admin' ? { ...c, adminEmails: [] } : c, other?.plan ?? f.plan)).rejects.toThrow();
+    expect(await db.auditLog.findUnique({ where: { id: detectivesExtensionId(f.gameId) } })).toBeNull();
+  }, 60_000);
+  it('does not turn any six-dollar or new-world stop into an automatic extension', async () => {
+    const f = await fixture();
+    await expect(planDetectivesCompletionExtension(c, f.gameId)).rejects.toThrow('consumed six-dollar');
+    expect(await resumeDetectivesCompletionExtension(c, f.gameId)).toBe(false);
+    await f.authorize();
+    await expect(planDetectivesCompletionExtension(c, f.gameId)).rejects.toThrow('consumed six-dollar');
+    expect(await readBoardWizardBudgetAuthority(c, f.worldId)).toMatchObject({ capMicroUsd: 6_000_000 });
+  }, 60_000);
+  it('refuses a changed ledger at grant time and at wake time', async () => {
+    const f = await extensionFixture();
+    const raced = { ...c, db: new Proxy(db, { get(target, key) {
+      if (key !== '$transaction') return Reflect.get(target, key);
+      return async (work: (tx: Prisma.TransactionClient) => Promise<unknown>, options: object) => {
+        await db.worldBudgetLedger.update({ where: { worldId: f.worldId }, data: { revision: { increment: 1 } } });
+        return db.$transaction(work, options);
+      };
+    } }) } as Container;
+    await expect(f.extend(raced)).rejects.toThrow('changed');
+    expect(await db.auditLog.findUnique({ where: { id: detectivesExtensionId(f.gameId) } })).toBeNull();
+    const fresh = await planDetectivesCompletionExtension(c, f.gameId); await f.extend(c, fresh);
+    await db.worldBudgetLedger.update({ where: { worldId: f.worldId }, data: { revision: { increment: 1 } } });
+    await expect(resumeDetectivesCompletionExtension(c, f.gameId)).rejects.toThrow('ledger changed');
+    expect(await db.generationJob.findUniqueOrThrow({ where: { id: 'job_' + f.gameId } })).toMatchObject({ status: 'FAILED', attempts: 21 });
+  }, 60_000);
 });

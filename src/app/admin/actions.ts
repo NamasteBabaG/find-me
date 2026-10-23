@@ -1,8 +1,8 @@
 "use server";
 
 import { LEAN_CAPACITY_RECOVERY_CONFIRMATION } from "@/domain/generation/lean-capacity-recovery";
-import { authorizeDetectivesCompletionBudget } from "@/services/generation/detectives-completion-budget";
-import { DETECTIVES_COMPLETION_CONFIRMATION } from "@/domain/generation/detectives-completion-budget";
+import { authorizeDetectivesCompletionBudget, authorizeDetectivesCompletionExtension } from "@/services/generation/detectives-completion-budget";
+import { DETECTIVES_COMPLETION_CONFIRMATION, DETECTIVES_EXTENSION_CONFIRMATION } from "@/domain/generation/detectives-completion-budget";
 import { authorizeLeanCapacityRecovery } from "@/services/generation/lean-capacity-recovery";
 import { LEAN_COMPLETION_BUDGET_CONFIRMATION } from "@/domain/generation/lean-completion-budget";
 import { authorizeLeanCompletionBudget } from "@/services/generation/lean-completion-budget";
@@ -240,4 +240,21 @@ export async function authorizeLeanCapacityRecoveryAction(fd: FormData): Promise
   try { await authorizeLeanCapacityRecovery(getContainer(), { gameId, operatorId: actor.id, expectedPlanSha256: planSha256 }); granted = true; } catch { /* safe bounded notice */ }
   revalidatePath(destination);
   redirect(`${destination}?capacityRecovery=${granted ? "authorized" : "blocked"}`);
+}
+
+
+/** A separate owner-authorized cumulative eight-dollar extension; never image approval. */
+export async function authorizeDetectivesCompletionExtensionAction(fd: FormData): Promise<void> {
+  const actor = await admin(), gameId = str(fd, "gameId"), planSha256 = str(fd, "planSha256"), ownerAuthorizationSha256 = str(fd, "ownerAuthorizationSha256");
+  if (!/^[A-Za-z0-9_-]{1,160}$/.test(gameId)) redirect("/admin/orders");
+  const destination = `/admin/orders/${encodeURIComponent(gameId)}`, h = await headers();
+  let sameOrigin = false;
+  try { sameOrigin = new URL(h.get("origin") ?? "").host === (h.get("x-forwarded-host") ?? h.get("host")) && h.get("sec-fetch-site") !== "cross-site"; } catch { /* refuse */ }
+  if (env().APP_ENV !== "qa" || !sameOrigin || fd.getAll("gameId").length !== 1 || fd.getAll("planSha256").length !== 1 || !/^[a-f0-9]{64}$/.test(planSha256)
+    || fd.getAll("ownerAuthorizationSha256").length !== 1 || !/^[a-f0-9]{64}$/.test(ownerAuthorizationSha256)
+    || fd.getAll("confirm").length !== 1 || str(fd, "confirm") !== DETECTIVES_EXTENSION_CONFIRMATION) redirect(`${destination}?detectivesExtension=blocked`);
+  let granted = false;
+  try { await authorizeDetectivesCompletionExtension(getContainer(), { gameId, operatorId: actor.id, expectedPlanSha256: planSha256, ownerAuthorizationSha256 }); granted = true; } catch { /* bounded notice */ }
+  revalidatePath(destination);
+  redirect(`${destination}?detectivesExtension=${granted ? "authorized" : "blocked"}`);
 }

@@ -15,6 +15,7 @@ import { Notice } from "@/ui/Shell";
 import { AttemptStrip } from "./AttemptStrip";
 import { BoardWizardRecoveryForm } from "./BoardWizardRecoveryForm";
 import { LocalPatchRepairResumeForm } from "./LocalPatchRepairResumeForm";
+import { DetectivesCompletionExtensionForm } from "./DetectivesCompletionExtensionForm";
 import { DetectivesCompletionBudgetForm } from "./DetectivesCompletionBudgetForm";
 import { LeanCapacityRecoveryForm } from "./LeanCapacityRecoveryForm";
 import { IdentitySourceRevisionForm } from "./IdentitySourceRevisionForm";
@@ -42,9 +43,9 @@ function judgeLabel(judge: { verdict: string; reason: string; claimedVerdict?: s
   return "? השופט לא הכריע";
 }
 
-export default async function AdminOrderPage({ params, searchParams }: { params: Promise<{ gameId: string }>; searchParams: Promise<{ v?: string; repair?: string; paidRepair?: string; partialRelease?: string; delivery?: string; refund?: string; leanRecovery?: string; referenceRepair?: string; capacityRecovery?: string; detectivesBudget?: string }> }) {
+export default async function AdminOrderPage({ params, searchParams }: { params: Promise<{ gameId: string }>; searchParams: Promise<{ v?: string; repair?: string; paidRepair?: string; partialRelease?: string; delivery?: string; refund?: string; leanRecovery?: string; referenceRepair?: string; capacityRecovery?: string; detectivesBudget?: string; detectivesExtension?: string }> }) {
   await requireAdmin();
-  const [{ gameId }, { v, repair, paidRepair, partialRelease, delivery, refund, leanRecovery, referenceRepair, capacityRecovery, detectivesBudget }, { t }] = await Promise.all([params, searchParams, getI18n()]);
+  const [{ gameId }, { v, repair, paidRepair, partialRelease, delivery, refund, leanRecovery, referenceRepair, capacityRecovery, detectivesBudget, detectivesExtension }, { t }] = await Promise.all([params, searchParams, getI18n()]);
   const variant: "A" | "B" = v === "B" ? "B" : "A";
   const c = getContainer();
   const detail = await orderDetailForAdmin(c, gameId);
@@ -106,6 +107,9 @@ export default async function AdminOrderPage({ params, searchParams }: { params:
       {capacityRecovery === "blocked" ? <Notice kind="danger">{t.adminIdentityRevision.capacityRecoveryBlocked}</Notice> : null}
       {detectivesBudget === "authorized" ? <Notice>{t.adminIdentityRevision.detectivesBudgetAuthorized}</Notice> : null}
       {detectivesBudget === "blocked" ? <Notice kind="danger">{t.adminIdentityRevision.detectivesBudgetBlocked}</Notice> : null}
+      {detectivesExtension === "authorized" ? <Notice>{t.adminIdentityRevision.detectivesBudgetAuthorized}</Notice> : null}
+      {detectivesExtension === "blocked" ? <Notice kind="danger">{t.adminIdentityRevision.detectivesBudgetBlocked}</Notice> : null}
+      <DetectivesCompletionExtensionForm gameId={gameId} />
       <DetectivesCompletionBudgetForm gameId={gameId} />
       <IdentitySourceRevisionForm gameId={gameId} />
       <LeanCapacityRecoveryForm gameId={gameId} />
@@ -201,8 +205,7 @@ export default async function AdminOrderPage({ params, searchParams }: { params:
             <section className="fm-card fm-stack fm-stack--2">
               <h3>המחבואים שיצאו ({paintedSpots.length})</h3>
               <p className="fm-small">
-                הבדיקות מאשרות צורה, לא זהות — ילד בגודל ובמקום הנכונים עובר גם אם הוא בכלל לא הילד/ה. בתוך הסצנה קשה לראות את זה; בשורה כזאת ראש
-                של סוס קופץ לעין תוך שנייה. מתחת לכל מחבוא: כל ניסיון, שלב אחרי שלב, עם ההרכבה שהשופט ראה ופסק הדין שלו.
+                {t.adminIdentityRevision.reviewScope}
               </p>
               <div className="fm-stack fm-stack--2">
                 {paintedSpots.map((spot) => (

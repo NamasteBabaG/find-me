@@ -9,7 +9,7 @@ export const LEAN_BOARD_WIZARD_CAP_MICRO_USD = 4_000_000;
  * not the generic ledger's wider5USD maximum. This never grants an extension. */
 export function applyBoardWizardBudgetCap(audit: WorldBudgetAudit, capMicroUsd = BOARD_WIZARD_CAP_MICRO_USD): WorldBudgetAudit {
   if (capMicroUsd !== BOARD_WIZARD_CAP_MICRO_USD && capMicroUsd !== LEAN_BOARD_WIZARD_CAP_MICRO_USD && capMicroUsd !== 5_000_000
-    && capMicroUsd !== 6_000_000 && capMicroUsd !== QA_PILOT_COMPLETION_CAP_MICRO_USD)
+    && capMicroUsd !== 6_000_000 && capMicroUsd !== 8_000_000 && capMicroUsd !== QA_PILOT_COMPLETION_CAP_MICRO_USD)
     throw new Error("Unsupported verified QA budget cap");
   const overCapMicroUsd = Math.max(0, audit.committedMicroUsd - capMicroUsd), remainingMicroUsd = Math.max(0, capMicroUsd - audit.committedMicroUsd);
   const held = audit.held || overCapMicroUsd > 0;
@@ -17,7 +17,7 @@ export function applyBoardWizardBudgetCap(audit: WorldBudgetAudit, capMicroUsd =
     state: held ? "held" : remainingMicroUsd === 0 ? "exhausted" : "open" };
 }
 /** A verified grant above the default ceiling. */
-export interface BoardWizardBudgetGrant { worldId: string; capMicroUsd: 5_000_000 | 6_000_000 | typeof QA_PILOT_COMPLETION_CAP_MICRO_USD; authorizationSha256: string }
+export interface BoardWizardBudgetGrant { worldId: string; capMicroUsd: 5_000_000 | 6_000_000 | 8_000_000 | typeof QA_PILOT_COMPLETION_CAP_MICRO_USD; authorizationSha256: string }
 /** A lean world's lower ceiling (local-patch-lean/v1): never a grant. */
 export interface BoardWizardBudgetCeiling { worldId: string; capMicroUsd: typeof LEAN_BOARD_WIZARD_CAP_MICRO_USD; authorizationSha256: string }
 export type BoardWizardBudgetExtension = BoardWizardBudgetGrant | BoardWizardBudgetCeiling;
@@ -30,7 +30,7 @@ export function boardWizardBudget(repository: WorldBudgetRepository, attempt = 1
     const extension = await resolveExtension?.(worldId);
     if (!extension) return BOARD_WIZARD_CAP_MICRO_USD;
     if (extension.worldId !== worldId || (extension.capMicroUsd !== LEAN_BOARD_WIZARD_CAP_MICRO_USD && extension.capMicroUsd !== 5_000_000
-      && extension.capMicroUsd !== 6_000_000 && extension.capMicroUsd !== QA_PILOT_COMPLETION_CAP_MICRO_USD) || !/^[a-f0-9]{64}$/.test(extension.authorizationSha256)) {
+      && extension.capMicroUsd !== 6_000_000 && extension.capMicroUsd !== 8_000_000 && extension.capMicroUsd !== QA_PILOT_COMPLETION_CAP_MICRO_USD) || !/^[a-f0-9]{64}$/.test(extension.authorizationSha256)) {
       throw new WorldBudgetError("invalid_input", "Verified budget extension does not bind this exact world");
     }
     return extension.capMicroUsd;
@@ -73,6 +73,6 @@ export function boardWizardBudget(repository: WorldBudgetRepository, attempt = 1
     // Only this verified resolver can raise the generic maximum for this world.
     resolveCapMicroUsd: async worldId => {
       const cap = await capFor(worldId);
-      return cap === 6_000_000 || cap === QA_PILOT_COMPLETION_CAP_MICRO_USD ? cap : 5_000_000;
+      return cap === 6_000_000 || cap === 8_000_000 || cap === QA_PILOT_COMPLETION_CAP_MICRO_USD ? cap : 5_000_000;
     } });
 }

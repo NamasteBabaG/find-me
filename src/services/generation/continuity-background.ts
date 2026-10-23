@@ -415,7 +415,7 @@ async function poll(ctx: Ctx, transport: BackgroundReviewTransport, responseId: 
     // A response that did not complete keeps its scrubbed error beside it (background-provider-error/v1): the field is
     // new, so every earlier retained reply, its digest and its admission read exactly as before.
     const providerError = state.status === "completed" ? null : sanitizeProviderError(state.reading.providerError);
-    await keep(ctx, replyBytes(ctx, reply, { responseId, providerStatus: state.status, ...(providerError ? { providerError } : {}) }),
+    await keep(ctx, replyBytes(ctx, reply, { responseId, providerStatus: state.status, servedServiceTier: state.reading.serviceTier, ...(providerError ? { providerError } : {}) }),
       evidence ? { evidence, unknownReason: null } : { evidence: null, unknownReason: "Background review charge could not be verified" });
   } else throw Error("BACKGROUND_REVIEW: unexpected nonterminal response state");
   const kept = await new LocalPatchRetainedPurchaseStore(ctx.c, ctx.gameId, boardWizardBudgetOf(ctx.c)).get(ctx.worldId, ctx.requestKey);

@@ -80,3 +80,12 @@ describe("rows in the database", () => {
     expect(localPatchEvidenceRecovery(row, now)).toMatchObject({ retry: true, nextAttempt: 3, strategy: "standard/v1" });
   });
 });
+
+
+it('single LOW mode preserves an unusable answer without buying a routine second reading', () => {
+  const row=failed(1), receipt=JSON.parse(row.judgeJson);
+  expect(localPatchEvidenceRecovery(row,now)).toMatchObject({retry:true});
+  receipt.boardReview.dual={single:'single-sol-low/v1'};
+  expect(localPatchEvidenceRecovery({...row,judgeJson:JSON.stringify(receipt)},now)).toMatchObject({attempt:1,retry:false,waiting:false,exhausted:true});
+  expect(localPatchEvidenceRecovery({...row,judgeJson:JSON.stringify(receipt)},now+100*LOCAL_PATCH_EVIDENCE_RETRY_BACKOFF_MS)).toMatchObject({retry:false,exhausted:true});
+});

@@ -1,3 +1,4 @@
+import { SINGLE_VISUAL_REVIEW_VERSION } from "./single-visual-review";
 import { z } from "zod";
 
 /** Explicit one-world capacity only. Neither a visual verdict nor authority to change an old lean pin. */
@@ -27,3 +28,22 @@ export const detectiveBudgetReceiptBodySchema = detectiveBudgetBindingSchema.ext
   operatorId: id, ownerAuthorizationSha256: digest, authorizedAt: z.string().datetime(), automaticRelease: z.literal(false) }).strict();
 export const detectiveBudgetReceiptSchema = detectiveBudgetReceiptBodySchema.extend({ authorizationSha256: digest }).strict();
 export type DetectiveBudgetReceipt = z.infer<typeof detectiveBudgetReceiptSchema>;
+
+
+/** A new explicit owner decision extends one already authorized six-dollar world.
+ * The earlier receipt remains immutable; this is not a commercial default. */
+export const DETECTIVES_EXTENSION_BUDGET = "explicit-detectives-completion-eight-dollar/v1" as const;
+export const DETECTIVES_EXTENSION_CAP = 8_000_000 as const;
+export const DETECTIVES_EXTENSION_ACTION = "generation:detectives-completion-extension";
+export const DETECTIVES_EXTENSION_RESUMED = "generation:detectives-extension-resumed";
+export const DETECTIVES_EXTENSION_CONFIRMATION = "owner-authorized-eight-dollars-total-for-this-detective-world-v1";
+export const detectivesExtensionId = (gameId: string) => `aud_detectives_extension_${gameId}`;
+export const detectivesExtensionResumeId = (gameId: string) => `aud_detectives_extension_resume_${gameId}`;
+export const detectiveExtensionBindingSchema = detectiveBudgetBindingSchema.extend({
+  version: z.literal(DETECTIVES_EXTENSION_BUDGET), baseCapMicroUsd: z.literal(DETECTIVES_COMPLETION_CAP),
+  capMicroUsd: z.literal(DETECTIVES_EXTENSION_CAP), previousAuthorizationSha256: digest, reviewMode: z.literal(SINGLE_VISUAL_REVIEW_VERSION),
+}).strict();
+export const detectiveExtensionReceiptBodySchema = detectiveExtensionBindingSchema.extend({ planSha256: digest,
+  operatorId: id, ownerAuthorizationSha256: digest, authorizedAt: z.string().datetime(), automaticRelease: z.literal(false) }).strict();
+export const detectiveExtensionReceiptSchema = detectiveExtensionReceiptBodySchema.extend({ authorizationSha256: digest }).strict();
+export type DetectiveExtensionReceipt = z.infer<typeof detectiveExtensionReceiptSchema>;

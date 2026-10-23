@@ -1,3 +1,4 @@
+import { SINGLE_VISUAL_REVIEW_VERSION } from "../../domain/generation/single-visual-review";
 import { DETECTIVE_PATCH_BOARDS } from "../../../content/detectives/runtime-release";
 import { PrismaRetainedPurchaseStore } from "../../infra/db/prisma-retained-purchase-store";
 import { savedApplyingRepairOf } from "./local-patch-self-repair";
@@ -27,7 +28,9 @@ import { isGameStatus, isPlayable } from "../../domain/order-state";
 import { detectiveBudgetBindingSchema, detectiveBudgetReceiptBodySchema, detectiveBudgetReceiptSchema,
   detectiveBudgetIdSchema, detectiveBudgetHashSchema, detectivesCompletionId, detectivesCompletionResumeId,
   DETECTIVES_COMPLETION_BUDGET, DETECTIVES_COMPLETION_CAP, DETECTIVES_COMPLETION_ACTION, DETECTIVES_COMPLETION_RESUMED,
-  type DetectiveBudgetReceipt } from "../../domain/generation/detectives-completion-budget";
+  detectiveExtensionBindingSchema, detectiveExtensionReceiptBodySchema, detectiveExtensionReceiptSchema,
+  detectivesExtensionId, detectivesExtensionResumeId, DETECTIVES_EXTENSION_BUDGET, DETECTIVES_EXTENSION_CAP,
+  DETECTIVES_EXTENSION_ACTION, DETECTIVES_EXTENSION_RESUMED, type DetectiveExtensionReceipt, type DetectiveBudgetReceipt } from "../../domain/generation/detectives-completion-budget";
 
 const EXHAUSTED = "local-patch:recovery-exhausted";
 const worldOf = (gameId: string) => `${gameId}:board-wizard`;
@@ -75,7 +78,7 @@ async function sourceCurrent(c: Container, state: Awaited<ReturnType<typeof curr
   return rows.some(row => JSON.parse(row.metaJson ?? "null")?.photoAssetId === photoId);
 }
 
-async function receiptOf(c: Container, gameId: string): Promise<DetectiveBudgetReceipt | null> {
+async function receiptOf(c: { db: Pick<Prisma.TransactionClient, "auditLog"> }, gameId: string): Promise<DetectiveBudgetReceipt | null> {
   const row = await c.db.auditLog.findUnique({ where: { id: detectivesCompletionId(gameId) } });
   if (!row) return null;
   const pin = detectiveBudgetReceiptSchema.parse(JSON.parse(row.metaJson ?? "null"));
@@ -89,7 +92,7 @@ async function receiptOf(c: Container, gameId: string): Promise<DetectiveBudgetR
   return pin;
 }
 
-async function matches(c: Container, pin: DetectiveBudgetReceipt, state: Awaited<ReturnType<typeof current>>) {
+async function matches(c: Container, pin: DetectiveBudgetReceipt | DetectiveExtensionReceipt, state: Awaited<ReturnType<typeof current>>) {
   return state.game.ownerId === pin.ownerId && state.child.id === pin.childId && state.child.identityAssetId === pin.identityAssetId
     && state.child.avatarAssetId === pin.avatarAssetId && state.child.ageYears === pin.ageYears && state.paymentSha256 === pin.paymentSha256
     && hash(state.child.photoCropJson ? JSON.parse(state.child.photoCropJson) : null) === pin.cropSha256
@@ -109,6 +112,10 @@ export async function readDetectivesCompletionBudget(c: Container, worldId: stri
   let state;
   try { state = await current(c, pin.gameId); } catch { return null; }
   if (!await matches(c, pin, state)) return null;
+  const extension = await extensionReceiptOf(c, pin.gameId);
+  if (extension && extension.previousAuthorizationSha256 === pin.authorizationSha256
+    && await originalCompletionResumed(c, pin) && await matches(c, extension, state))
+    return { worldId, capMicroUsd: DETECTIVES_EXTENSION_CAP, authorizationSha256: extension.authorizationSha256 };
   return { worldId, capMicroUsd: DETECTIVES_COMPLETION_CAP, authorizationSha256: pin.authorizationSha256 };
 }
 
@@ -222,7 +229,8 @@ export async function nextDetectivesCompletionWake(c: Container, gameId: string 
   const jobs = await c.db.generationJob.findMany({ where: { ...(gameId ? { gameId } : {}), status: "FAILED", currentStep: EXHAUSTED,
     game: { status: "TARGETS_GENERATING", deletedAt: null, searchLevel: "detectives", styleVersion: "local-patch-world-v1" } },
     orderBy: { updatedAt: "asc" }, select: { gameId: true } });
-  for (const job of jobs) if (await resumeDetectivesCompletionBudget(c, job.gameId).catch(() => false)
+  for (const job of jobs) if (await resumeDetectivesCompletionExtension(c, job.gameId).catch(() => false)
+    || await resumeDetectivesCompletionBudget(c, job.gameId).catch(() => false)
     || await resumeDetectivesApplyingRepair(c, job.gameId).catch(() => false)) return job.gameId;
   return null;
 }
@@ -294,4 +302,128 @@ export async function resumeDetectivesApplyingRepair(c: Container, gameId: strin
     }
     return false;
   },{isolationLevel:Prisma.TransactionIsolationLevel.Serializable,timeout:30_000});
+}
+
+
+async function originalCompletionResumed(c: { db: Pick<Prisma.TransactionClient, "auditLog"> }, pin: DetectiveBudgetReceipt) {
+  const row = await c.db.auditLog.findUnique({ where: { id: detectivesCompletionResumeId(pin.gameId) } });
+  let body: { version?: unknown; authorizationSha256?: unknown; holdSha256?: unknown } | null;
+  try { body = JSON.parse(row?.metaJson ?? "null"); } catch { return false; }
+  return !!row && row.actorType === "SYSTEM" && row.actorId === null && row.action === DETECTIVES_COMPLETION_RESUMED
+    && row.entityType === "Game" && row.entityId === pin.gameId && body?.version === DETECTIVES_COMPLETION_BUDGET
+    && body.authorizationSha256 === pin.authorizationSha256 && body.holdSha256 === pin.holdSha256;
+}
+
+async function extensionReceiptOf(c: { db: Pick<Prisma.TransactionClient, "auditLog"> }, gameId: string): Promise<DetectiveExtensionReceipt | null> {
+  const row = await c.db.auditLog.findUnique({ where: { id: detectivesExtensionId(gameId) } });
+  if (!row) return null;
+  const pin = detectiveExtensionReceiptSchema.parse(JSON.parse(row.metaJson ?? "null"));
+  const { authorizationSha256, ...body } = pin;
+  demand(row.actorType === "ADMIN" && row.actorId === pin.operatorId && row.action === DETECTIVES_EXTENSION_ACTION
+    && row.entityType === "Game" && row.entityId === gameId && pin.gameId === gameId && pin.worldId === worldOf(gameId)
+    && pin.operatorId === pin.ownerId && row.metaJson === JSON.stringify(pin) && authorizationSha256 === hash(body), "Invalid or foreign extension receipt");
+  const { planSha256: _plan, operatorId: _operator, ownerAuthorizationSha256: _evidence, authorizedAt: _at, automaticRelease: _release, ...binding } = body;
+  demand(pin.planSha256 === hash(detectiveExtensionBindingSchema.parse(binding)), "The extension plan changed");
+  return pin;
+}
+
+/** A fresh owner decision for a genuine second capacity stop. No default or past receipt changes. */
+export async function planDetectivesCompletionExtension(c: Container, gameId: string) {
+  detectiveBudgetIdSchema.parse(gameId);
+  demand(env().APP_ENV === "qa" && c.storage.id === "db", "QA database required");
+  demand(!await c.db.auditLog.findUnique({ where: { id: detectivesExtensionId(gameId) } }), "The single extension already exists");
+  const prior = await receiptOf(c, gameId), state = await current(c, gameId), { game, child } = state;
+  demand(prior && await matches(c, prior, state) && await originalCompletionResumed(c, prior), "Original consumed six-dollar authorization required");
+  demand(game.status === "TARGETS_GENERATING" && !game.readyAt && !game.configJson && !await identityRevisionPending(c.db, gameId), "Only unfinished original-identity work may receive an extension");
+  demand(await c.db.game.count({ where: { childProfileId: child.id, deletedAt: null, NOT: { id: gameId } } }) === 0, "Shared profile refused");
+  const job = await c.db.generationJob.findUniqueOrThrow({ where: { id: prior.jobId } });
+  demand(job.gameId === gameId && job.status === "FAILED" && job.currentStep === EXHAUSTED && job.attempts > prior.jobAttempts
+    && (job.lastError ?? "").startsWith("local-patch: no automatic action remains within the authorized world budget;"), "Exact second budget-exhausted hold required");
+  demand(!(await backgroundReviewWaiting(c.db, gameId, { inFlightOnly: true })).size, "Existing provider work must settle first");
+  const store = PrismaWorldBudgetStore.forReadOnlyTransaction(c.db), stored = await store.read(prior.worldId);
+  demand(stored && stored.revision <= WORLD_BUDGET_LEDGER_MAX_REVISION - 2, "Safe existing ledger revision required");
+  const audit = applyBoardWizardBudgetCap(auditWorldBudget(stored.snapshot, DETECTIVES_COMPLETION_CAP), DETECTIVES_COMPLETION_CAP);
+  demand(!audit.held && !audit.pendingRequestKeys.length && !audit.conflictRequestKeys.length && !audit.overrunRequestKeys.length
+    && audit.committedMicroUsd > 4_000_000 && audit.committedMicroUsd <= DETECTIVES_COMPLETION_CAP && audit.remainingMicroUsd < 200_000,
+  "A genuine six-dollar capacity stop without unresolved accounting holds is required");
+  const avatarSha256 = await verifyAssetsAndBill(c, state, store);
+  demand(avatarSha256 === prior.avatarSha256, "Original avatar pixels changed");
+  const { authorizationSha256: _authorization, planSha256: _plan, operatorId: _operator, ownerAuthorizationSha256: _evidence,
+    authorizedAt: _at, automaticRelease: _release, ...originalBinding } = prior;
+  const binding = detectiveExtensionBindingSchema.parse({ ...originalBinding, version: DETECTIVES_EXTENSION_BUDGET,
+    baseCapMicroUsd: DETECTIVES_COMPLETION_CAP, capMicroUsd: DETECTIVES_EXTENSION_CAP, reviewMode: SINGLE_VISUAL_REVIEW_VERSION, previousAuthorizationSha256: prior.authorizationSha256,
+    jobAttempts: job.attempts, holdSha256: parkedHoldSha256(job), ledgerRevision: stored.revision, ledgerSha256: hash(stored.snapshot),
+    committedMicroUsd: audit.committedMicroUsd, reservedMicroUsd: audit.reservedMicroUsd,
+    retainedUnknowns: stored.snapshot.requests.filter(r => r.state === "unknown").map(r => ({ requestKey: r.requestKey, operationFingerprint: r.operationFingerprint, reserveMicroUsd: r.reserveMicroUsd })) });
+  return { binding, planSha256: hash(binding), state, job, stored };
+}
+
+export async function authorizeDetectivesCompletionExtension(c: Container, input: { gameId: string; operatorId: string; expectedPlanSha256: string; ownerAuthorizationSha256: string }) {
+  const gameId = detectiveBudgetIdSchema.parse(input.gameId), operatorId = detectiveBudgetIdSchema.parse(input.operatorId);
+  const expected = detectiveBudgetHashSchema.parse(input.expectedPlanSha256), evidence = detectiveBudgetHashSchema.parse(input.ownerAuthorizationSha256);
+  demand(env().APP_ENV === "qa" && c.storage.id === "db", "QA database required");
+  await administrator(c, operatorId);
+  const old = await extensionReceiptOf(c, gameId);
+  if (old) {
+    demand(old.operatorId === operatorId && old.planSha256 === expected && old.ownerAuthorizationSha256 === evidence, "Existing extension differs");
+    const authority = await readDetectivesCompletionBudget(c, worldOf(gameId));
+    demand(authority?.capMicroUsd === DETECTIVES_EXTENSION_CAP && authority.authorizationSha256 === old.authorizationSha256, "Existing extension is no longer current");
+    return old;
+  }
+  const plan = await planDetectivesCompletionExtension(c, gameId);
+  demand(plan.planSha256 === expected && plan.binding.ownerId === operatorId, "Owner administrator or extension plan changed");
+  return c.db.$transaction(async tx => {
+    const scoped = transactionContainer(c, tx), fresh = await planDetectivesCompletionExtension(scoped, gameId);
+    await administrator(scoped, operatorId);
+    demand(fresh.planSha256 === expected && fresh.binding.ownerId === operatorId, "Source, authority, hold or ledger changed");
+    const locked = await tx.game.updateMany({ where: { id: gameId, updatedAt: fresh.state.game.updatedAt, status: "TARGETS_GENERATING", deletedAt: null,
+      ownerId: operatorId, childProfileId: fresh.binding.childId }, data: { updatedAt: new Date() } });
+    const ledger = await tx.worldBudgetLedger.updateMany({ where: { worldId: fresh.binding.worldId, revision: fresh.stored.revision }, data: { revision: { increment: 1 } } });
+    demand(locked.count === 1 && ledger.count === 1, "Concurrent extension plan changed");
+    const body = detectiveExtensionReceiptBodySchema.parse({ ...fresh.binding, planSha256: expected, operatorId, ownerAuthorizationSha256: evidence,
+      authorizedAt: new Date().toISOString(), automaticRelease: false });
+    const pin = detectiveExtensionReceiptSchema.parse({ ...body, authorizationSha256: hash(body) });
+    await tx.auditLog.create({ data: { id: detectivesExtensionId(gameId), actorType: "ADMIN", actorId: operatorId, action: DETECTIVES_EXTENSION_ACTION,
+      entityType: "Game", entityId: gameId, metaJson: JSON.stringify(pin) } });
+    return pin;
+  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, timeout: 30_000 });
+}
+
+/** The normal queue consumes only the new authorization's exact retained hold, once. */
+export async function resumeDetectivesCompletionExtension(c: Container, gameId: string): Promise<boolean> {
+  if (env().APP_ENV !== "qa" || c.storage.id !== "db") return false;
+  const pin = await extensionReceiptOf(c, gameId);
+  if (!pin || await c.db.auditLog.findUnique({ where: { id: detectivesExtensionResumeId(gameId) } })) return false;
+  const job = await c.db.generationJob.findUnique({ where: { id: pin.jobId } });
+  if (!job || job.status !== "FAILED" || job.currentStep !== EXHAUSTED || job.attempts !== pin.jobAttempts || parkedHoldSha256(job) !== pin.holdSha256) return false;
+  return c.db.$transaction(async tx => {
+    const scoped = transactionContainer(c, tx), state = await current(scoped, gameId), prior = await receiptOf(scoped, gameId);
+    demand(prior && prior.authorizationSha256 === pin.previousAuthorizationSha256 && await originalCompletionResumed(scoped, prior)
+      && await matches(scoped, prior, state) && await matches(scoped, pin, state) && state.game.status === "TARGETS_GENERATING"
+      && !state.game.readyAt && !state.game.configJson && !await identityRevisionPending(tx, gameId), "Current paid source world and previous authority required for extension wake");
+    const locked = await tx.game.updateMany({ where: { id: gameId, updatedAt: state.game.updatedAt, status: "TARGETS_GENERATING", deletedAt: null,
+      ownerId: pin.ownerId, childProfileId: pin.childId }, data: { updatedAt: new Date() } });
+    const store = PrismaWorldBudgetStore.forReadOnlyTransaction(tx), stored = await store.read(pin.worldId);
+    demand(locked.count === 1 && stored && stored.revision === pin.ledgerRevision + 1 && hash(stored.snapshot) === pin.ledgerSha256
+      && !auditWorldBudget(stored.snapshot, DETECTIVES_EXTENSION_CAP).held, "Authorized extension ledger changed before wake");
+    demand(await verifyAssetsAndBill(scoped, state, store) === pin.avatarSha256, "Original avatar pixels changed");
+    const ledger = await tx.worldBudgetLedger.updateMany({ where: { worldId: pin.worldId, revision: stored.revision }, data: { revision: { increment: 1 } } });
+    const resumed = await tx.generationJob.updateMany({ where: { id: pin.jobId, gameId, status: "FAILED", currentStep: EXHAUSTED,
+      attempts: pin.jobAttempts, updatedAt: job.updatedAt, lastError: job.lastError }, data: { status: "QUEUED", currentStep: "local-patch", lastError: null } });
+    demand(ledger.count === 1 && resumed.count === 1, "Extension hold was concurrently changed or resumed");
+    await tx.auditLog.create({ data: { id: detectivesExtensionResumeId(gameId), actorType: "SYSTEM", action: DETECTIVES_EXTENSION_RESUMED,
+      entityType: "Game", entityId: gameId, metaJson: JSON.stringify({ version: DETECTIVES_EXTENSION_BUDGET, authorizationSha256: pin.authorizationSha256,
+        previousAuthorizationSha256: pin.previousAuthorizationSha256, holdSha256: pin.holdSha256, jobAttempts: pin.jobAttempts,
+        requestsPreserved: true, attemptsReset: false, providerCallsAdded: 0 }) } });
+    return true;
+  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, timeout: 30_000 });
+}
+
+
+/** Exact experimental authority, read without purchases. Publication separately verifies all source and verdict bindings. */
+export async function detectivesSingleReviewAuthorization(db: Pick<Prisma.TransactionClient, "auditLog">, gameId: string) {
+  if (env().APP_ENV !== 'qa') return null;
+  const c = { db }, extension = await extensionReceiptOf(c, gameId), prior = await receiptOf(c, gameId);
+  if (!extension || !prior || extension.previousAuthorizationSha256 !== prior.authorizationSha256 || !await originalCompletionResumed(c, prior)) return null;
+  return extension;
 }
