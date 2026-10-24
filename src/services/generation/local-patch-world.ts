@@ -711,9 +711,9 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
   }
   // The extra allowance belongs to named rows, never to this engine or to a
   // restarted invocation. All other delivered pixels are protected by the grant.
-  const settledHide = (row: { id: string; status: string; attempts: number } | undefined) => extraPlan
+  const settledHide = (row: typeof rows[number] | undefined) => extraPlan
     ? !row || !extraRows.has(row.id) || localPatchSettled(row, 4)
-    : localPatchSettled(row, attemptLimit);
+    : localPatchSettled(row, nativeFourthPainting(row) ? 4 : attemptLimit);
   const plan = localPatchAttemptPlan(work.map(item => stateOf(item.sceneId, item.hide.targetId)), allowRepair);
   const normalReviewsPending = strict && game.scenes.some(scene => scene.generationStatus !== "GENERATED"
     && boardFor(scene.sceneSlug, scene.sceneVersion)?.hides.every(hide => stateOf(scene.id, hide.targetId)?.status === "GENERATED"));

@@ -158,10 +158,16 @@ it.each([{mode:"clean",interrupted:false,guided:false},{mode:"transport",interru
   expect(hides.every(hide => sourcePlacementForHide(context, hide.id)!.sourceNeighbors)).toBe(true);
   const tail = mode === "tail", guidedHideId = tail ? context.boards.find(b=>b.board==="paris")!.hides[0]!.id : hides[0]!.id;
   const prompts = new Map<string, string>(), provider = controlledSol(interrupted, guided, guidedHideId);
-  let tailExtended = false, protectedRows: unknown[] = [];
+  let tailExtended = false, protectedRows: unknown[] = [], nativeDeferred = false, nativePendingChecked = false;
   const synchronous = vi.fn<NonNullable<Container["visualReview"]>["request"]>(async () => { throw Error("Historical single review forbidden"); });
   const container = { ...c, visualReview: { request: synchronous }, backgroundReview: provider.fake } as Container;
-  const deps: LocalPatchHideDeps = { readBoardArt: readArt, renderPolicySha256: localPatchRenderPolicySha256(LOCAL_PATCH_IMAGE_POLICY),
+  const deps: LocalPatchHideDeps = { readBoardArt: async (art, sha) => {
+    const bytes = await readArt(art, sha);
+    if (tail && tailExtended && !nativeDeferred && art === context.boards.find(b=>b.board==="paris")!.art) {
+      nativeDeferred = true; await vi.advanceTimersByTimeAsync(120_001);
+    }
+    return bytes;
+  }, renderPolicySha256: localPatchRenderPolicySha256(LOCAL_PATCH_IMAGE_POLICY),
     judge: async () => { throw Error("Historical per-hide judge forbidden"); },
     render: async ({ requestKey, stylePng, prompt, subjectQuality, placementGuidePng, maskPng }) => {
       expect(subjectQuality).toBe("medium");
@@ -208,6 +214,13 @@ it.each([{mode:"clean",interrupted:false,guided:false},{mode:"transport",interru
     }
     expect(result.attention).toBeNull();
     const checkpoint = await db.generationJob.findUniqueOrThrow({ where: { id: "job_" + gameId } });
+    if (tail && nativeDeferred && !nativePendingChecked) {
+      const pendingNative = await db.targetVariantAsset.findFirstOrThrow({where:{targetInstance:{gameScene:{gameId,sceneSlug:"paris"},targetId:"hide-1"},variant:"A"}});
+      expect(pendingNative).toMatchObject({status:"PENDING",attempts:4});
+      expect(prompts.has(guidedHideId+":crouching:render:4")).toBe(false);
+      expect(await boardWizardBudgetOf(container).readRequest(boardWizardWorldId(gameId),guidedHideId+":crouching:render:4")).toBeNull();
+      expect(checkpoint.status).toBe("QUEUED"); expect(result.pending).toBe(true); nativePendingChecked=true;
+    }
     if (checkpoint.currentStep === "local-patch:recovery-budget-wait") {
       expect((await boardWizardBudgetOf(container).audit(boardWizardWorldId(gameId))).capMicroUsd).toBe(8_000_000);
       // Model the same three-minute normal queue wait; no live pause or direct job mutation.
@@ -228,7 +241,7 @@ it.each([{mode:"clean",interrupted:false,guided:false},{mode:"transport",interru
   expect(prompts.size).toBe(tail ? 30 : guided ? 29 : 27); expect(provider.creates).toHaveLength(guided ? 29 : interrupted ? 28 : 27); expect(provider.creates.filter(create => create.quality)).toHaveLength(guided ? 29 : interrupted ? 28 : 27);
   expect(provider.creates.filter(create => create.tier === "default")).toHaveLength(interrupted ? 1 : 0);
   if (tail) {
-    expect(tailExtended).toBe(true);expect(await db.targetVariantAsset.findMany({where:{id:{in:(protectedRows as {id:string}[]).map(r=>r.id)}},orderBy:{id:"asc"}})).toEqual(protectedRows);
+    expect(tailExtended).toBe(true);expect(nativeDeferred).toBe(true);expect(nativePendingChecked).toBe(true);expect(await db.targetVariantAsset.findMany({where:{id:{in:(protectedRows as {id:string}[]).map(r=>r.id)}},orderBy:{id:"asc"}})).toEqual(protectedRows);
     const native=rows.find(r=>r.attempts===4)!;expect(nativeMaskTailMarker(native)).not.toBeNull();
     const nativeBinding={...publicationBinding(gameId,native),sceneVersion:13};
     for(const id of [detectivesTailId(gameId),detectivesTailResumeId(gameId)]) {const proof=await db.auditLog.findUniqueOrThrow({where:{id}});await db.auditLog.delete({where:{id}});expect(await allowedDualPublication(db,nativeBinding)).toBe(false);await db.auditLog.create({data:proof});}

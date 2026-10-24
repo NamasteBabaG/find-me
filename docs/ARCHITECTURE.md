@@ -265,3 +265,10 @@ A failed fourth painting is finite exhaustion, never a blind retry, waiver or hu
 art approval. Publication re-verifies its separate tail receipt and consumed wake
 in addition to the ordinary mandatory combined LOW readings. Synthetic completion
 qualifies wiring, not actual visual quality or the commercial cost target.
+
+For a row carrying the exact native-mask tail authority, completion uses that
+row's four-attempt bound. An authorized PENDING4 deferred before dispatch stays
+unsettled and QUEUED, and the next normal slice resumes its unchanged request
+key. All other rows keep their historical bound. A deferred slice adds no
+provider purchase, does not reset the attempt and cannot become a quality hold
+merely because the original generic bound was three.
