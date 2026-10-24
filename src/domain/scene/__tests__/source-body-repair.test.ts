@@ -25,4 +25,6 @@ describe('whole public source body, with explicit protected neighbors', () => {
         g.editableRects = g.editableRects.slice(0, 1); if (fault === 'escape')
         g.editableRects.push({ left: 0, top: 0, width: 1, height: 1 }); if (fault === 'target-cut')
         g.protectedRects.push({ left: 200, top: 300, width: 5, height: 5 }); expect(() => validateSourceBodyGeometry(g, parent, heads)).toThrow('SOURCE_BODY'); });
+
+    it('preserves the complete neighboring orange runner fingertips above the old protected boundary',()=>{const g=SOURCE_BODY_REPAIR_MANIFEST.entries.find(e=>e.boardId==='giza')!;for(const [x,y] of [[290,576],[300,580],[308,582]])expect(sourceBodyEditable(g,x!,y!),`Orange runner fingertip at ${x},${y} must remain original`).toBe(false);});
 });

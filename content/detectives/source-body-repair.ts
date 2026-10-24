@@ -164,9 +164,9 @@ export const SOURCE_BODY_REPAIR_MANIFEST = sourceBodyManifestSchema.parse({
         },
         {
           "left": 275,
-          "top": 583,
+          "top": 570,
           "width": 67,
-          "height": 50
+          "height": 63
         }
       ],
       "sourceBodyChecks": [
@@ -180,7 +180,7 @@ export const SOURCE_BODY_REPAIR_MANIFEST = sourceBodyManifestSchema.parse({
           "left": 300,
           "top": 550,
           "width": 20,
-          "height": 25
+          "height": 20
         },
         {
           "left": 196,
@@ -200,5 +200,5 @@ export const SOURCE_BODY_REPAIR_MANIFEST = sourceBodyManifestSchema.parse({
     }
   ]
 });
-export const SOURCE_BODY_REPAIR_MANIFEST_SHA256 = 'adeb6ebaef3a296aa143c6830572047c823819d6d54eeb5a560bd7ca516d2f99';
+export const SOURCE_BODY_REPAIR_MANIFEST_SHA256 = 'f8150e3a22e1ab83a96283c259a49af3585e916080299bfdf6dbcc8f86e415bf';
 export function assertSourceBodyManifest(){if(sourcePlacementSha256(SOURCE_BODY_REPAIR_MANIFEST)!==SOURCE_BODY_REPAIR_MANIFEST_SHA256)throw Error('SOURCE_BODY: public geometry manifest changed');}
