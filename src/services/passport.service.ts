@@ -1,11 +1,12 @@
 import { Prisma, type PrismaClient } from "@prisma/client";
 import { z } from "zod";
+import { boundedArray } from "@/domain/bounded-array";
 import { parseGameConfig } from "@/domain/game/config";
 import { emptyAdventureProgress, readAdventureProgress } from "@/domain/adventure/progress";
 import { distinguishPassportWorlds, isPassportBoard, PASSPORT_DISCOVERIES, PASSPORT_TARGETS, passportCeremony, projectPassport, type PassportPreference, type PassportView } from "@/domain/passport/passport";
 
 type Db = Pick<PrismaClient, "familyChild" | "game" | "passportPagePreference">;
-const Seen = z.array(z.string().min(1).max(160)).max(PASSPORT_DISCOVERIES);
+const Seen = boundedArray(z.string().min(1).max(160), PASSPORT_DISCOVERIES);
 export class PassportAccessError extends Error {}
 
 export async function passportSources(db: Db, ownerId: string, childId: string) {
