@@ -246,7 +246,8 @@ export async function nextDetectivesCompletionWake(c: Container, gameId: string 
     || await resumeDetectivesCompletionExtension(c, job.gameId).catch(() => false)
     || await resumeDetectivesCompletionBudget(c, job.gameId).catch(() => false)
     || await resumeDetectivesApplyingRepair(c, job.gameId).catch(() => false)
-    || await resumeDetectivesLowEngineRecovery(c, job.gameId).catch(() => false)) return job.gameId;
+    || await resumeDetectivesLowEngineRecovery(c, job.gameId).catch(() => false)
+    || await (await import('./source-body-repair')).resumeSourceBodyGeometryRepair(c,job.gameId).catch(()=>false)) return job.gameId;
   return null;
 }
 
@@ -706,6 +707,7 @@ export async function requireDetectivesNativeMaskTail(c:Container,gameId:string,
 export async function nativeMaskTailPublicationAuthorized(db:Pick<Prisma.TransactionClient,"auditLog">,input:{gameId:string;variantId:string;hideId:string;attempts:number;sceneVersion:number;judgeJson:string|null}) {
   try {
     const value=JSON.parse(input.judgeJson??"null"),marker=nativeMaskTailMarker({judgeJson:input.judgeJson});
+    if(value?.sourceBodyRepair!==undefined)return (await import('./source-body-repair-pin')).sourceBodyPublicationAuthorized(db,input);
     if(input.sceneVersion!==13)return value?.nativeMaskTail===undefined;
     if(input.attempts<=3 && value?.nativeMaskTail===undefined)return true;
     if(input.sceneVersion!==13 || input.attempts!==4 || !marker)return false;
@@ -720,3 +722,10 @@ export async function nativeMaskTailPublicationAuthorized(db:Pick<Prisma.Transac
       && proof.previousAuthorizationSha256===base.authorizationSha256 && proof.holdSha256===pin.holdSha256;
   }catch{return false;}
 }
+
+/** Existing ten-dollar authority for a qualified SOURCE repair. It adds no capacity, receipt or question. */
+export async function detectivesSourceBodyRepairState(c:Container,gameId:string){const pin=await tailReceiptOf(c,gameId);demand(pin,"Only an existing consumed ten-dollar owner authorization can enter source repair");const state=await current(c,gameId);
+ demand(pin&&await matches(c,pin,state)&&await hasDetectivesLowCapacity(c,gameId),'Original ten-dollar source authority required');
+ const wake=await c.db.auditLog.findUnique({where:{id:detectivesTailResumeId(gameId)}});demand(wake&&wake.actorType==='SYSTEM'&&wake.actorId===null&&JSON.parse(wake.metaJson??'null')?.authorizationSha256===pin.authorizationSha256,'Original finite tail must have been consumed');
+ const store=PrismaWorldBudgetStore.forReadOnlyTransaction(c.db),stored=await store.read(pin.worldId);demand(stored&&await verifyAssetsAndBill(c,state,store)===pin.avatarSha256,'Existing identity/avatar/source/accounting changed');
+ return {pin,state,stored,rows:await tailRowsOf(c,gameId),job:await c.db.generationJob.findUniqueOrThrow({where:{id:pin.jobId}})};}

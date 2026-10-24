@@ -12,7 +12,7 @@ import { SELF_REPAIR_VERSION, selfRepairDecisionSchema } from "../../domain/scen
 import { sourcePlacementRecoveryGeometryAllowed, type SourcePlacementHideContract } from "../../domain/scene/source-placement-release";
 import { prepareSourceNeighborContract } from "../../domain/scene/local-patch-source-neighbors";
 import { assertTrustedSourcePlacementContext, resolveLocalPatchBoardsForGame, sourcePlacementForHide,
-  type TrustedSourcePlacementContext } from "./source-placement-release";
+  type TrustedSourcePlacementContext, sourceBodyForHide, sourcePlacementManifestForHide } from "./source-placement-release";
 import { sceneBySlug } from "../scene-catalog.service";
 import { PrismaWorldBudgetStore } from "../../infra/db/prisma-world-budget-store";
 import { PrismaRetainedPurchaseStore } from "../../infra/db/prisma-retained-purchase-store";
@@ -43,7 +43,7 @@ export function expectedAuthoredLocalPatchReturn(board: LocalPatchBoard, hide: L
   return authoredLocalPatchReturnContract({ contentVersion, boardId: board.board, hideId: hide.id,
     source: { art: board.art, sha256: definition.art.sha256 ?? "", width: definition.art.width, height: definition.art.height },
     crop: cropOf(hide), child: maskForHide(hide), authored: hide.returnRect,
-    ...(entry ? { sourcePlacement: { manifestSha256: placementContext!.manifestSha256!, basePlacementSha256: entry.basePlacementSha256 } } : {}) });
+    ...(entry ? { sourcePlacement: { manifestSha256: sourcePlacementManifestForHide(placementContext!,hide.id)!, basePlacementSha256: entry.basePlacementSha256 } } : {}) });
 }
 
 /** A caller cannot buy an alternate envelope under a pinned hide id. */
@@ -131,6 +131,10 @@ export async function authoredLocalPatchRecoveryEvidenceMatches(db: Prisma.Trans
   board: LocalPatchBoard; hide: LocalPatchHide; sceneVersion: number; receipt: AuthoredLocalPatchReceipt;
   placementContext: TrustedSourcePlacementContext; promptVersion: string | null; beforePng?: Buffer }): Promise<boolean> {
   const { receipt, placementContext, board, hide } = input;
+  const body=sourceBodyForHide(placementContext,hide.id);
+  if(body){const before=input.beforePng??await (await import('./local-patch-hide')).readShippedBoardArt(board.art,body.sourceSha256);
+    return (await import('./source-body-repair-compose')).sourceBodyCompositionEvidenceMatches(db,{gameId:input.gameId,hideId:hide.id,receipt:receipt as unknown as Record<string,unknown>,geometry:body,beforePng:before});}
+  if ((receipt as Record<string,unknown>).sourceBodyRepair!==undefined) return false;
   if (receipt.authoredRecovery === undefined) return receipt.compositionVersion !== AUTHORED_RECOVERY_COMPOSITION_VERSION;
   try {
     if (!authoredLocalPatchReturnMatches(receipt, board, hide, input.sceneVersion, false, placementContext)) return false;
@@ -190,10 +194,10 @@ export async function authoredLocalPatchPublicationMatches(db: Prisma.Transactio
       || receipt?.authoredReturn !== undefined || receipt?.authoredRecovery !== undefined;
     if (!claims && !hide?.returnRect) return true;
     if (!board || !hide || !authoredLocalPatchReturnMatches(receipt, board, hide, input.sceneVersion, true, placementContext)) return false;
-    if (receipt?.authoredRecovery === undefined) return true;
+    if (receipt?.authoredRecovery === undefined && !sourceBodyForHide(placementContext,input.hideId)) return true;
     const row = input.variantId ? await db.targetVariantAsset.findUnique({ where: { id: input.variantId }, select: { promptVersion: true } }) : null;
     return !!row && await authoredLocalPatchRecoveryEvidenceMatches(db, { gameId: input.gameId, board, hide, sceneVersion: input.sceneVersion,
-      receipt, placementContext, promptVersion: row.promptVersion });
+      receipt:receipt!, placementContext, promptVersion: row.promptVersion });
   } catch { return false; }
 }
 

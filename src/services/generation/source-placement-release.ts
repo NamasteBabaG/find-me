@@ -1,4 +1,9 @@
 import { createHash } from "node:crypto";
+import { readSourceBodyRepairPin } from './source-body-repair-pin';
+import { SOURCE_BODY_REPAIR_MANIFEST, SOURCE_BODY_REPAIR_MANIFEST_SHA256 } from '../../../content/detectives/source-body-repair';
+import { validateSourceBodyGeometry, type SourceBodyGeometry } from '../../domain/scene/source-body-repair';
+import { authoredLocalPatchReturnContract } from '../../domain/scene/local-patch-return-region';
+import { prepareSourceNeighborContract } from '../../domain/scene/local-patch-source-neighbors';
 import type { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { SOURCE_PLACEMENT_BASE, SOURCE_PLACEMENT_RELEASE, SOURCE_PLACEMENT_RELEASE_ID,
@@ -189,7 +194,7 @@ export type TrustedSourcePlacementContext = {
   readonly release: SourcePlacementReleasePin | null;
   readonly manifestSha256: string | null;
 };
-type ContextProof = { digest: string; contracts: Map<string, SourcePlacementHideContract> };
+type ContextProof = { digest: string; contracts: Map<string, SourcePlacementHideContract>; bodies: Map<string, SourceBodyGeometry> };
 const trustedContexts = new WeakMap<object, ContextProof>();
 function freeze<T>(value: T): T {
   if (value !== null && typeof value === "object") {
@@ -238,9 +243,23 @@ export async function resolveLocalPatchBoardsForGame(db: Reader, gameId: string,
         : { ...hide, mask: entry!.effective.child, returnRect: entry!.effective.returnRect };
     }) })));
   }
+  const bodies=new Map<string,SourceBodyGeometry>();
+  const bodyPin=sceneVersion===13 ? await readSourceBodyRepairPin(db,gameId) : null;
+  if(bodyPin){
+    demand(release?.manifestSha256===SOURCE_BODY_REPAIR_MANIFEST.parentManifestSha256,'Body repair parent family changed');
+    for(const selected of bodyPin.selected){const geometry=SOURCE_BODY_REPAIR_MANIFEST.entries.find(e=>e.hideId===selected.hideId),entry=contracts.get(selected.hideId);
+      demand(geometry&&entry?.sourceNeighbors,'Body repair requires original annotated public geometry');
+      const parent=authoredLocalPatchReturnContract({contentVersion:13,boardId:entry!.boardId,hideId:entry!.hideId,source:entry!.source,crop:entry!.effective.crop,child:entry!.effective.child,authored:entry!.effective.returnRect,sourcePlacement:{manifestSha256:release!.manifestSha256,basePlacementSha256:entry!.basePlacementSha256}});
+      const g=freeze(validateSourceBodyGeometry(geometry,parent,entry!.sourceNeighbors!.contract.neighbors));bodies.set(g.hideId,g);
+      const effective={...entry!.effective,returnRect:g.returnRect},neighborContext={boardId:entry!.boardId,hideId:entry!.hideId,source:entry!.source,crop:g.crop,returnRect:g.returnRect};
+      const prepared=prepareSourceNeighborContract({...entry!.sourceNeighbors!.contract,...neighborContext},neighborContext);demand(prepared.ok,'Body repair boundary crosses an original head');
+      contracts.set(g.hideId,freeze({...entry!,effective,sourceNeighbors:prepared.ok?{contract:prepared.contract,contractSha256:prepared.contractSha256}:null}));
+    }
+    boards=freeze(boards.map(b=>LocalPatchBoardSchema.parse({...b,hides:b.hides.map(h=>bodies.has(h.id)?{...h,returnRect:bodies.get(h.id)!.returnRect}:h)})));
+  }
   const context: TrustedSourcePlacementContext = Object.freeze({ [contextBrand]: true as const, gameId, sceneVersion,
     boards, release: release ? freeze(release) : null, manifestSha256: release?.manifestSha256 ?? null });
-  trustedContexts.set(context, { digest: contextDigest(context), contracts });
+  trustedContexts.set(context, { digest: contextDigest(context), contracts, bodies });
   return context;
 }
 
@@ -258,3 +277,6 @@ export async function resolveLocalPatchBoardForGame(db: Reader, gameId: string, 
   const context = await resolveLocalPatchBoardsForGame(db, gameId, sceneVersion);
   return { context, board: context.boards.find(board => board.board === boardId) ?? null };
 }
+
+export function sourceBodyForHide(context:TrustedSourcePlacementContext,hideId:string){assertTrustedSourcePlacementContext(context);return trustedContexts.get(context)!.bodies.get(hideId)??null;}
+export function sourcePlacementManifestForHide(context:TrustedSourcePlacementContext,hideId:string){return sourceBodyForHide(context,hideId)?SOURCE_BODY_REPAIR_MANIFEST_SHA256:context.manifestSha256;}

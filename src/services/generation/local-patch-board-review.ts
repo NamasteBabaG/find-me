@@ -1,3 +1,4 @@
+import { sourceBodyMarker } from '../../domain/scene/source-body-repair';
 import { nativeMaskTailPublicationAuthorized } from "./detectives-completion-budget";
 import { nativeMaskTailMarker } from "../../domain/generation/native-mask-tail";
 import { sourceNeighborReviewContext } from "../../domain/scene/local-patch-review-context";
@@ -199,7 +200,7 @@ export async function prepareLocalPatchBoardReview(c: Container, input: { gameId
   if (!entries.length) return { ready: false as const, reason: "No ready appearance awaits review" };
   const nativeFourth = !extraPlan && entries.some(entry => entry.row.attempts > LOCAL_PATCH_MAX_ATTEMPTS);
   if (nativeFourth) for (const entry of entries.filter(e => e.row.attempts > LOCAL_PATCH_MAX_ATTEMPTS)) {
-    demand(scene.sceneVersion === 13 && entry.row.attempts === 4 && await nativeMaskTailPublicationAuthorized(c.db, {
+    demand(scene.sceneVersion === 13 && (entry.row.attempts === 4 || !!sourceBodyMarker(entry.row)) && await nativeMaskTailPublicationAuthorized(c.db, {
       gameId: game.id, variantId: entry.row.id, hideId: entry.hide.id, attempts: entry.row.attempts, sceneVersion: scene.sceneVersion, judgeJson: entry.row.judgeJson,
     }), "A fourth-attempt review requires its original scoped authority or exact finite native-mask grant");
   }
@@ -329,6 +330,7 @@ export async function prepareLocalPatchBoardReview(c: Container, input: { gameId
     ...(authoredReturns.length ? { authoredReturns } : {}),
     ...(authoredRecoveries.length ? { authoredRecoveries } : {}),
     ...(extraPlan ? { extraAttemptAuthorizationId: extraPlan.authorizationId, protectedRows: [...protectedRows].sort() } : {}),
+    ...(supplied.some(e=>sourceBodyMarker(e.row))?{sourceBodyRepair:supplied.map(e=>sourceBodyMarker(e.row)).filter(Boolean)}:{}),
     ...(nativeFourth ? { nativeMaskTail: supplied.filter(e => e.row.attempts === 4).map(e => nativeMaskTailMarker(e.row)) } : {}),
     ...(repairingSupplied ? { selfRepair: supplied.map(e => JSON.parse(e.row.judgeJson!).selfRepair ?? null),
       ...(!independent ? { protectedRows: [...protectedRows].sort() } : {}) } : {}),

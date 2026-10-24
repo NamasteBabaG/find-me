@@ -1,3 +1,5 @@
+import { requireSourceBodyPurchase } from './source-body-repair';
+import { fenceSourceBodyPurchase } from './source-body-repair-pin';
 import { nativeMaskTailCandidate, type NativeMaskTailMarker } from "../../domain/generation/native-mask-tail";
 import { guidedFrameCandidate, guidedFrameMarker, newGuidedFrameMarker, GUIDED_FRAME_MIN_CAPACITY_MICRO_USD, type GuidedFrameMarker } from "../../domain/generation/guided-frame-recovery";
 import { detectivesSingleReviewAuthorization, hasDetectivesLowCapacity, requireDetectivesNativeMaskTail } from "./detectives-completion-budget";
@@ -214,6 +216,7 @@ export async function runLocalPatchHide(c: Container, deps: LocalPatchHideDeps, 
   /** An immutable server-verified grant; never an arbitrary attempt limit. */
   readonly extraAttemptAuthorizationId?: string;
   readonly nativeMaskTail?: boolean;
+  readonly sourceBodyRepair?: boolean;
 }): Promise<LocalPatchHideOutcome> {
   const { gameId, board, hide } = input;
   const { identityRevisionPending } = await import("./identity-source-revision-state");
@@ -310,7 +313,10 @@ export async function runLocalPatchHide(c: Container, deps: LocalPatchHideDeps, 
     if (!paid) { const room = await budget.audit(worldId); if (room.held || room.remainingMicroUsd < GUIDED_FRAME_MIN_CAPACITY_MICRO_USD)
       throw new WorldBudgetError("cap_exceeded", "Native-mask painting requires capacity for its image and one bounded LOW assessment"); }
   }
-  const guidedHistory = guidedFrame ? { guidedFrameRecovery: guidedFrame, selfRepair: JSON.parse(row.judgeJson!).selfRepair,
+  const bodyRepair=input.sourceBodyRepair?await requireSourceBodyPurchase(c,gameId,row.id):null;
+  if(bodyRepair){demand(input.finalRepair&&!input.guidedFrame&&!input.nativeMaskTail&&!input.extraAttemptAuthorizationId&&scene.sceneVersion===13,'Only the finite corrected source-body purchase may use new geometry');const paid=await budget.readRequest(worldId,bodyRepair.selected.requestKey);demand(!paid||row.status==='PENDING','Corrected source-body purchase already started');if(!paid){const room=await budget.audit(worldId);if(room.remainingMicroUsd<GUIDED_FRAME_MIN_CAPACITY_MICRO_USD)throw new WorldBudgetError('cap_exceeded','Corrected source-body image and one LOW must fit existing capacity');}}
+  const original=bodyRepair?JSON.parse(row.judgeJson??'{}'):{};
+  const guidedHistory = bodyRepair?{sourceBodyRepair:bodyRepair.marker,...(original.selfRepair?{selfRepair:original.selfRepair}:{}),...(original.guidedFrameRecovery?{guidedFrameRecovery:original.guidedFrameRecovery}:{}),...(original.nativeMaskTail?{nativeMaskTail:original.nativeMaskTail}:{})}:guidedFrame ? { guidedFrameRecovery: guidedFrame, selfRepair: JSON.parse(row.judgeJson!).selfRepair,
     ...(nativeMaskTail ? { nativeMaskTail } : {}) } : {};
   if (input.finalRepair) demand(localPatchFinalRepairAllowed(env().APP_ENV, isLocalPatchStrictVersion(scene.sceneVersion))
     && game.styleVersion === "local-patch-world-v1",
@@ -319,7 +325,7 @@ export async function runLocalPatchHide(c: Container, deps: LocalPatchHideDeps, 
     gameId, hideId: hide.id, rowId: row.id, authorizationId: input.extraAttemptAuthorizationId,
   }) : null;
   const attemptLimit = nativeMaskTail ? 4 : extra?.authorizedAttempt ?? (input.finalRepair ? LOCAL_PATCH_MAX_ATTEMPTS : LOCAL_PATCH_NORMAL_ATTEMPTS);
-  const { attempt, exhausted } = nextLocalPatchAttempt(row, attemptLimit);
+  const { attempt, exhausted } = bodyRepair ? {attempt:bodyRepair.selected.authorizedAttempt,exhausted:false} : nextLocalPatchAttempt(row, attemptLimit);
   // judgeJson is intentionally kept while PENDING: clearing lastError must not
   // change the prompt/fingerprint when attempt 2/3 resumes after an interruption.
   // v8 corrects its own located defect on the very next attempt. The old paid
@@ -367,7 +373,7 @@ export async function runLocalPatchHide(c: Container, deps: LocalPatchHideDeps, 
   demand(art.width === definition.art.width && art.height === definition.art.height,
     `${board.board} art does not match the size the scene declares; the geometry would be written in the wrong space`);
 
-  const adaptiveRecovery = guidedFrame ? null : prepareAdaptiveRecovery(row.judgeJson, row, attempt, {
+  const adaptiveRecovery = guidedFrame || bodyRepair ? null : prepareAdaptiveRecovery(row.judgeJson, row, attempt, {
     gameId, rowId: row.id, contentVersion: scene.sceneVersion, promptVersion, hide,
     boardSha256: sha256Bytes(artwork), identitySha256: sha256Bytes(sheet), ageYears: child.ageYears,
     renderPolicySha256: deps.renderPolicySha256,
@@ -390,13 +396,14 @@ export async function runLocalPatchHide(c: Container, deps: LocalPatchHideDeps, 
   await c.db.$transaction(async tx => {
     await fenceLocalPatchImages(tx, gameId);
     await deps.fence?.(tx);
+    if(bodyRepair)await fenceSourceBodyPurchase(tx,gameId,row.id,bodyRepair.marker);
     if (extra) await fenceLocalPatchExtraAttempt(tx, {
       gameId, hideId: hide.id, rowId: row.id, authorizationId: input.extraAttemptAuthorizationId!,
     });
     await tx.targetVariantAsset.update({ where: { id: row.id }, data: {
       attempts: attempt, status: "PENDING", lastError: null,
       provider: LOCAL_PATCH_PROVIDER, promptVersion, slotId: target.slots[0].id,
-      ...((adaptiveRecovery || guidedFrame) ? { judgeJson: JSON.stringify({ ...JSON.parse(row.judgeJson ?? "{}"), ...guidedHistory, ...(adaptiveRecovery ? { adaptiveRecovery } : {}) }) } : {}),
+      ...((adaptiveRecovery || guidedFrame || bodyRepair) ? { judgeJson: JSON.stringify({ ...JSON.parse(row.judgeJson ?? "{}"), ...guidedHistory, ...(adaptiveRecovery ? { adaptiveRecovery } : {}) }) } : {}),
     } });
   });
   const started = { ...base, attempts: attempt };
@@ -420,6 +427,7 @@ export async function runLocalPatchHide(c: Container, deps: LocalPatchHideDeps, 
     ...(extra ? { recoveryDirective: extra.directive } : {}),
     ...(guidedFrame ? { guidedFrameRecovery: guidedFrame } : {}),
     ...(nativeMaskTail ? { nativeMaskTail } : {}),
+    ...(bodyRepair?{sourceBodyRepair:bodyRepair.marker}:{}),
     ...(attempt === 3 && adaptiveRecovery?.plan ? { adaptiveRecovery: adaptiveRecovery.plan } : {}),
     ...(input.deadlineAt === undefined ? {} : { deadlineAt: input.deadlineAt }),
     ...(subjectDirection ? { subjectDirection } : {}),
@@ -458,7 +466,8 @@ export async function runLocalPatchHide(c: Container, deps: LocalPatchHideDeps, 
     await c.db.$transaction(async tx => {
       await fenceLocalPatchImages(tx, gameId);
       await deps.fence?.(tx);
-      if (extra) await fenceLocalPatchExtraAttempt(tx, {
+      if(bodyRepair)await fenceSourceBodyPurchase(tx,gameId,row.id,bodyRepair.marker);
+    if (extra) await fenceLocalPatchExtraAttempt(tx, {
         gameId, hideId: hide.id, rowId: row.id, authorizationId: input.extraAttemptAuthorizationId!,
       });
       await tx.targetVariantAsset.update({ where: { id: row.id }, data: {
@@ -469,10 +478,11 @@ export async function runLocalPatchHide(c: Container, deps: LocalPatchHideDeps, 
         ...(isLocalPatchStrictVersion(scene.sceneVersion) ? { renderFault: attemptResult.renderFault, compositionPermission: attemptResult.compositionPermission,
           compositionVersion: attemptResult.compositionVersion, hide: hide.id, pose: hide.pose } : {}),
         ...(attemptResult.authoredReturn ? { authoredReturn: attemptResult.authoredReturn } : {}),
+        ...(attemptResult.sourceBodyComposition?{sourceBodyComposition:attemptResult.sourceBodyComposition}:{}),
         ...(attemptResult.foreground ? { foreground: attemptResult.foreground } : {}) }),
       } });
     });
-    const exhaustedNow = attempt >= attemptLimit;
+    const exhaustedNow = attempt >= (bodyRepair?.selected.authorizedAttempt??attemptLimit);
     return { ...started, ...money, state: exhaustedNow ? "gave-up" : "refused", reason };
   }
 
@@ -497,6 +507,7 @@ export async function runLocalPatchHide(c: Container, deps: LocalPatchHideDeps, 
     // Still ours? Everything below this line puts a child into a playable game.
     await fenceLocalPatchImages(tx, gameId);
     await deps.fence?.(tx);
+    if(bodyRepair)await fenceSourceBodyPurchase(tx,gameId,row.id,bodyRepair.marker);
     if (extra) await fenceLocalPatchExtraAttempt(tx, {
       gameId, hideId: hide.id, rowId: row.id, authorizationId: input.extraAttemptAuthorizationId!,
     });
@@ -510,6 +521,7 @@ export async function runLocalPatchHide(c: Container, deps: LocalPatchHideDeps, 
       ...(isLocalPatchAdvisoryVersion(scene.sceneVersion) ? { wireFault: attemptResult.wireFault, reviewState: "pending-board-review", geometrySha256: localPatchPublicationGeometryHash(geometry) } : {}),
       ...(attemptResult.foreground ? { foreground: attemptResult.foreground } : {}),
       ...(attemptResult.authoredReturn ? { authoredReturn: attemptResult.authoredReturn } : {}),
+        ...(attemptResult.sourceBodyComposition?{sourceBodyComposition:attemptResult.sourceBodyComposition}:{}),
       geometryBasis: measured.basis, measuredFraction: Number(measured.measuredFraction.toFixed(4)), hide: hide.id, pose: hide.pose });
     await tx.targetVariantAsset.update({ where: { id: row.id }, data: {
       assetId,

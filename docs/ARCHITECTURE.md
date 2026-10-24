@@ -272,3 +272,14 @@ unsettled and QUEUED, and the next normal slice resumes its unchanged request
 key. All other rows keep their historical bound. A deferred slice adds no
 provider purchase, does not reset the attempt and cannot become a quality hold
 merely because the original generic bound was three.
+
+
+## Prospective whole-source-body geometry correction (24 October 2026)
+
+The public source blue jacket in Paris1 extends beyond its old child/return box; Giza2 also needs its complete shoes and preserved hoop-stick contact. Head containment alone cannot establish whole-person removal. source-body-geometry/v1 is an additive, hash-bound correction of these two public footprints. The original scene13 family, catalog, source pin and other25 placements remain exact. A trusted context applies the new manifest only to the two corrected hides; it never reinterprets an old v4 or authored-recovery/v1 receipt.
+
+One normal SYSTEM adoption is available only after the owner-authorized ten-dollar finite tail concludes with25 strict publication-qualified results and the two measured failures. It preserves source, identity, avatar, payment, attempts, every ledger request, full UNKNOWN reservations, original grants and25 complete variant rows. Existing cumulative capacity must cover both selected images and one combined LOW assessment each. The new receipt binds exact original rows/hold/ledger, the public correction and each single next image key (Giza4 and Paris5 for the observed case). It adds no grant, reset, paid planner or engine-wide attempt allowance. Cron resumes through the existing queue; repeated adoption or a completed failure cannot buy another body repair.
+
+The painter receives separate whole-original-person edit and whole-new-child placement footprints. Native alpha and a marked public-source reference protect neighboring feet, bags and props. Composition restores every pixel outside the predeclared footprint; publication rereads the exact settled RAW and reproduces the join rather than trusting claimed audit zeros. This pixel guarantee is not art approval. The unchanged single Sol6.1 LOW answer must still pass complete scene, continuity, identity, age, source neighbors and magnified anatomy. Whole27/config/privacy purge/real PLAYER and visual play verification remain release requirements. This QA exception does not qualify a new-game commercial price.
+
+A finite native/body painting selected by the immutable receipt remains runnable when a slice ends before dispatch. Historical subject-cycle exhaustion cannot classify that still-authorized purchase as spent; the ordinary next slice resumes it with the same counters and budget gate. The age-seven27-world regression uses one image per slice to cover this scheduling boundary.

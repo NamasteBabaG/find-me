@@ -23,7 +23,7 @@ import { SUBJECT_QUALITY_BUNDLE_VERSION, readSubjectQualityBundle, type SubjectQ
 
 import { readSourceNeighborQualityBundle, type SourceNeighborQualityBundleBinding } from "../../domain/generation/source-neighbor-quality-bundle";
 import { SOURCE_NEIGHBOR_BUNDLE_VERSION, SOURCE_NEIGHBOR_POLICY, SOURCE_NEIGHBOR_READER, type SourceNeighborContract } from "../../domain/scene/local-patch-source-neighbors";
-import { resolveLocalPatchBoardsForGame, sourcePlacementForHide, type TrustedSourcePlacementContext } from "./source-placement-release";
+import { resolveLocalPatchBoardsForGame, sourcePlacementForHide, sourcePlacementManifestForHide, type TrustedSourcePlacementContext } from "./source-placement-release";
 import { authoredLocalPatchSourceNeighborContract, type AuthoredLocalPatchReceipt } from "./local-patch-authored-return";
 
 /** Only the prospectively pinned, annotated appearance carries this envelope.
@@ -36,7 +36,7 @@ export function sourceNeighborQualityEvidence(context: TrustedSourcePlacementCon
   if (!entry?.sourceNeighbors) return undefined;
   const prepared = authoredLocalPatchSourceNeighborContract(entry, receipt);
   if (!prepared || !context.manifestSha256) throw Error("SOURCE_NEIGHBOR: annotated placement has no authoritative contract");
-  return { manifestSha256: context.manifestSha256, contract: prepared.contract,
+  return { manifestSha256: sourcePlacementManifestForHide(context,hideId)!, contract: prepared.contract,
     binding: { version: SOURCE_NEIGHBOR_BUNDLE_VERSION, policy: SOURCE_NEIGHBOR_POLICY, reader: SOURCE_NEIGHBOR_READER,
       contractSha256: prepared.contractSha256, candidateSha256 } };
 }

@@ -1,3 +1,4 @@
+import { SOURCE_BODY_REPAIR_VERSION } from '../../../domain/scene/source-body-repair';
 import { GUIDED_FRAME_RECOVERY_VERSION } from "../../../domain/generation/guided-frame-recovery";
 import sharp from "sharp";
 import { beforeAll, describe, expect, it, vi } from "vitest";
@@ -57,9 +58,9 @@ describe("buying one local patch", () => {
       { policy: LOCAL_PATCH_LOW_IMAGE_POLICY, fetchOnce })).rejects.toThrow(/declared quality/);
     expect(fetchOnce).not.toHaveBeenCalled();
   });
-  it("sends the same source, native identity, approved photo and final marked source guide in order",async()=>{
+  it.each([GUIDED_FRAME_RECOVERY_VERSION,SOURCE_BODY_REPAIR_VERSION])("sends source, identity, photo and final marked source guide for %s",async version=>{
     const fetchOnce=vi.fn<typeof fetch>(async()=>answer()),photo=await sharp(identity).resize(200,260).png().toBuffer(),guide=await sharp(crop).tint("#00b8ff").png().toBuffer();
-    await buyLocalPatch("synthetic-never-live",{...request(),referenceMode:LOCAL_PATCH_PHOTO_REFERENCE_MODE,subjectPhotoPng:photo,subjectQuality:"medium",placementGuidePng:guide,placementGuideVersion:GUIDED_FRAME_RECOVERY_VERSION},{policy:LOCAL_PATCH_IMAGE_POLICY,fetchOnce});
+    await buyLocalPatch("synthetic-never-live",{...request(),referenceMode:LOCAL_PATCH_PHOTO_REFERENCE_MODE,subjectPhotoPng:photo,subjectQuality:"medium",placementGuidePng:guide,placementGuideVersion:version},{policy:LOCAL_PATCH_IMAGE_POLICY,fetchOnce});
     expect(fetchOnce).toHaveBeenCalledTimes(1);const form=fetchOnce.mock.calls[0]![1]!.body as FormData,images=form.getAll("image[]") as Blob[];expect(images).toHaveLength(4);for(const [i,expected] of [crop,identity,photo,guide].entries())expect(Buffer.from(await images[i]!.arrayBuffer())).toEqual(expected);expect(Buffer.from(await (form.get("mask") as Blob).arrayBuffer())).toEqual(mask);expect(form.get("n")).toBe("1");expect(form.get("quality")).toBe("medium");
   });
   it.each(["no-version","no-guide","wrong-reference"])("refuses unbound guide %s before dispatch",async kind=>{

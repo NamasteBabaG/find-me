@@ -1,3 +1,5 @@
+import { readSourceBodyRepairPin, sourceBodyPurchaseCandidate } from './source-body-repair-pin';
+import { sourceBodyMarker } from '../../domain/scene/source-body-repair';
 import { nativeMaskTailCandidate, nativeMaskTailExhausted } from "../../domain/generation/native-mask-tail";
 import { guidedFrameCandidate, guidedFrameExhausted } from "../../domain/generation/guided-frame-recovery";
 import { detectivesSingleReviewAuthorization, hasDetectivesLowCapacity, detectivesNativeMaskTail } from "./detectives-completion-budget";
@@ -545,6 +547,9 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
     && row.status === "FAILED" && row.attempts === LOCAL_PATCH_NORMAL_ATTEMPTS && leanSubjectOnlyRefusal(row.judgeJson, subjectUpgrade!.ageYears, game.scenes[0]!.sceneVersion);
   const guideGrant = automatic && !extraPlan ? await detectivesSingleReviewAuthorization(c.db, gameId) : null;
   const guideCapacity = !!guideGrant && await hasDetectivesLowCapacity(c, gameId);
+  const bodyPin=guideCapacity?await readSourceBodyRepairPin(c.db,gameId):null;
+  const bodyPainting=(row:typeof rows[number]|undefined)=>!!row&&!!bodyPin&&sourceBodyPurchaseCandidate(bodyPin,row);
+  const bodyExhausted=(row:typeof rows[number]|undefined)=>!!row&&row.status==='FAILED'&&!!sourceBodyMarker(row)&&row.attempts===sourceBodyMarker(row)!.authorizedAttempt;
   const nativeTailRows = new Set<string>();
   if (guideCapacity) for (const row of rows) if (nativeMaskTailCandidate(row) && await detectivesNativeMaskTail(c, gameId, row.id)) nativeTailRows.add(row.id);
   const nativeFourthPainting = (row: typeof rows[number] | undefined) => !!row && nativeTailRows.has(row.id) && nativeMaskTailCandidate(row);
@@ -713,7 +718,7 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
   // restarted invocation. All other delivered pixels are protected by the grant.
   const settledHide = (row: typeof rows[number] | undefined) => extraPlan
     ? !row || !extraRows.has(row.id) || localPatchSettled(row, 4)
-    : localPatchSettled(row, nativeFourthPainting(row) ? 4 : attemptLimit);
+    : bodyPainting(row)?false:localPatchSettled(row, nativeFourthPainting(row) ? 4 : attemptLimit);
   const plan = localPatchAttemptPlan(work.map(item => stateOf(item.sceneId, item.hide.targetId)), allowRepair);
   const normalReviewsPending = strict && game.scenes.some(scene => scene.generationStatus !== "GENERATED"
     && boardFor(scene.sceneSlug, scene.sceneVersion)?.hides.every(hide => stateOf(scene.id, hide.targetId)?.status === "GENERATED"));
@@ -731,7 +736,7 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
   const repairCheckpoints = new Map(rows.map(row => [row.id, JSON.stringify(selfRepairOf(row) ?? null)]));
   const automaticWork = automatic && !extraPlan ? work.filter(item => {
     const row = stateOf(item.sceneId, item.hide.targetId);
-    return needsSelfRepair(row) && !(row && (guidedFrameExhausted(row) || nativeMaskTailExhausted(row))) && !leanThirdPainting(row) && !guidedThirdPainting(row) && !(hasLocalPatchCapability(game.scenes.find(scene => scene.id === item.sceneId)?.sceneVersion, "integratedQuality")
+    return needsSelfRepair(row) && !bodyPainting(row) && !bodyExhausted(row) && !(row && (guidedFrameExhausted(row) || nativeMaskTailExhausted(row))) && !leanThirdPainting(row) && !guidedThirdPainting(row) && !(hasLocalPatchCapability(game.scenes.find(scene => scene.id === item.sceneId)?.sceneVersion, "integratedQuality")
       && (localPatchEvidenceRecovery(row!) || playerReviewEnabled() && needsPlayerReview(row!)))
       // Re-asked under v2 about the same pixels before any repair (subject-rejudge/v1).
       && !rejudgePending(row!);
@@ -752,7 +757,7 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
       || (row.status === "PENDING" && row.attempts === 4));
   }) : (progress
     // Every unsettled appearance is a candidate; the progress order, not the tier, decides who goes first.
-    ? work.filter(item => nativeFourthPainting(stateOf(item.sceneId, item.hide.targetId)) || guidedThirdPainting(stateOf(item.sceneId, item.hide.targetId)) || !settledHide(stateOf(item.sceneId, item.hide.targetId)))
+    ? work.filter(item => bodyPainting(stateOf(item.sceneId,item.hide.targetId)) || nativeFourthPainting(stateOf(item.sceneId, item.hide.targetId)) || guidedThirdPainting(stateOf(item.sceneId, item.hide.targetId)) || !settledHide(stateOf(item.sceneId, item.hide.targetId)))
     : plan.indices.map(index => work[index]!)).filter(item => {
     if (automaticWork.includes(item)) return false;
     const candidate = stateOf(item.sceneId, item.hide.targetId);
@@ -764,7 +769,7 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
     if (!plan.finalRepair || !normalReviewsPending) return true;
     const row = stateOf(item.sceneId, item.hide.targetId);
     // Reviews gate a NEW final purchase, never recovery of one already started.
-    return row?.status === "PENDING" && row.attempts === LOCAL_PATCH_MAX_ATTEMPTS;
+    return row?.status === "PENDING" && (bodyPainting(row) || nativeFourthPainting(row) || row.attempts === LOCAL_PATCH_MAX_ATTEMPTS);
   });
   const outcomes: LocalPatchHideOutcome[] = [];
   const limit = Math.max(1, options.maxHides ?? (advisory ? 5 : LOCAL_PATCH_HIDES_PER_SLICE));
@@ -815,9 +820,10 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
       if (options.hardDeadlineAt !== undefined && options.hardDeadlineAt - Date.now() < minHideMs) break;
       let outcome: LocalPatchHideOutcome;
       try { outcome = await runLocalPatchHide(c, { ...deps, fence }, { gameId, board: item.board, hide: item.hide,
-        finalRepair: !!extraPlan || plan.finalRepair || leanThirdPainting(stateOf(item.sceneId, item.hide.targetId)) || guidedThirdPainting(stateOf(item.sceneId, item.hide.targetId)) || nativeFourthPainting(stateOf(item.sceneId, item.hide.targetId)),
+        finalRepair: bodyPainting(stateOf(item.sceneId,item.hide.targetId)) || !!extraPlan || plan.finalRepair || leanThirdPainting(stateOf(item.sceneId, item.hide.targetId)) || guidedThirdPainting(stateOf(item.sceneId, item.hide.targetId)) || nativeFourthPainting(stateOf(item.sceneId, item.hide.targetId)),
         ...(guidedThirdPainting(stateOf(item.sceneId, item.hide.targetId)) ? { guidedFrame: true } : {}),
         ...(nativeFourthPainting(stateOf(item.sceneId, item.hide.targetId)) ? { nativeMaskTail: true } : {}),
+        ...(bodyPainting(stateOf(item.sceneId,item.hide.targetId))?{sourceBodyRepair:true}:{}),
         ...(extraPlan ? { extraAttemptAuthorizationId: extraPlan.authorizationId } : {}),
         ...(options.hardDeadlineAt === undefined ? {} : { deadlineAt: options.hardDeadlineAt }) }); }
       catch (error) {
@@ -1015,7 +1021,7 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
         evidence: recovery ? { retry: recovery.retry, waiting: recovery.waiting, exhausted: recovery.exhausted,
           ...(diagnosis ? { kind: `${diagnosis.role} ${diagnosis.kind}` } : {}) } : null,
         reviewOwed: !!row && (rejudgePending(row) || playerReviewEnabled() && needsPlayerReview(row)),
-        repairSpent: progress && !!row && (guidedFrameExhausted(row) || nativeMaskTailExhausted(row) || needsSelfRepair(row) && selfRepairProgress(selfRepairOf(row), row.attempts).exhausted) });
+        repairSpent: progress && !!row && !bodyPainting(row) && !nativeFourthPainting(row) && (bodyExhausted(row) || guidedFrameExhausted(row) || nativeMaskTailExhausted(row) || needsSelfRepair(row) && selfRepairProgress(selfRepairOf(row), row.attempts).exhausted) });
     });
     const rest = pendingReviews ? null : localPatchRestDecision(rests);
     if (rest?.action === "wait") {

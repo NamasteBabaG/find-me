@@ -1,3 +1,4 @@
+import { SOURCE_BODY_REPAIR_VERSION } from '../../domain/scene/source-body-repair';
 import { GUIDED_FRAME_RECOVERY_VERSION } from '../../domain/generation/guided-frame-recovery';
 import { hasLocalPatchCapability } from "../../domain/scene/local-patch-family";
 import { createHash } from "node:crypto";
@@ -104,7 +105,7 @@ export type LocalPatchRenderInput = {
   readonly boardPeoplePng?: Buffer;
   readonly maskPng: Buffer;
   readonly placementGuidePng?: Buffer;
-  readonly placementGuideVersion?: typeof GUIDED_FRAME_RECOVERY_VERSION;
+  readonly placementGuideVersion?: typeof GUIDED_FRAME_RECOVERY_VERSION | typeof SOURCE_BODY_REPAIR_VERSION;
   /**
    * What is left of the caller's request, when it has a deadline.
    *
@@ -202,7 +203,7 @@ export async function buyLocalPatch(apiKey: string, input: LocalPatchRenderInput
     || chosen.model && chosen.model !== "gpt-image-2")) throw new Error("LOCAL_PATCH_PAINTER: subject redraw requires its photograph and declared quality policy");
   if (!photoReference && (input.subjectPhotoPng || input.subjectQuality)) throw new Error("LOCAL_PATCH_PAINTER: photograph requires its explicit reference mode");
   if ((input.placementGuidePng !== undefined || input.placementGuideVersion !== undefined)
-    && (!photoReference || input.placementGuideVersion !== GUIDED_FRAME_RECOVERY_VERSION || !Buffer.isBuffer(input.placementGuidePng)))
+    && (!photoReference || ![GUIDED_FRAME_RECOVERY_VERSION,SOURCE_BODY_REPAIR_VERSION].includes(input.placementGuideVersion as typeof GUIDED_FRAME_RECOVERY_VERSION) || !Buffer.isBuffer(input.placementGuidePng)))
     throw new Error('LOCAL_PATCH_PAINTER: layout guide requires its explicit version and photograph mode');
   const portraitOnly = input.referenceMode === LOCAL_PATCH_PORTRAIT_ONLY_REFERENCE_MODE || photoReference;
   if (portraitOnly && (input.boardPeoplePng || input.canonicalIdentityPng)) {
