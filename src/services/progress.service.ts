@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { ProgressBatchInput } from "../domain/game/progress-input";
 import { newId } from "@/lib/ids";
 import type { Container } from "./container";
 
@@ -7,19 +8,7 @@ import type { Container } from "./container";
  * the server only sees coarse events for product research (no coordinates,
  * no names).
  */
-export const ProgressEventInput = z.object({
-  eventType: z.enum(["scene_started", "target_found", "hint_used", "scene_completed", "game_completed", "game_replayed", "scene_unlocked", "journey_finished"]),
-  sceneSlug: z.string().min(1).max(160).optional(),
-  targetId: z.string().min(1).max(160).optional(),
-  hintsUsed: z.number().int().min(0).max(99).default(0),
-});
-
-export const ProgressBatchInput = z.object({
-  gameId: z.string().min(1).max(160),
-  anonymousSessionId: z.string().min(8).max(64),
-  deviceType: z.enum(["phone", "tablet", "desktop"]).optional(),
-  events: z.array(ProgressEventInput).max(50),
-});
+export { ProgressBatchInput, ProgressEventInput } from "../domain/game/progress-input";
 
 export async function recordProgress(c: Container, input: z.infer<typeof ProgressBatchInput>): Promise<void> {
   let session = await c.db.playSession.findFirst({ where: { gameId: input.gameId, anonymousSessionId: input.anonymousSessionId } });

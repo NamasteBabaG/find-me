@@ -244,6 +244,22 @@ describe("advisory notification outbox", () => {
     expect(localPatchConcerns([{ assetId: "asset", board: "paris", targetId: "t", judgeJson: JSON.stringify({ verdict: parsed }) }])).toHaveLength(1);
   });
 
+  it("records the acknowledged owner delivery timestamp once", async () => {
+    const item = await seed("mail-delivered-timestamp");
+    const startedAt = Date.now();
+    const send = vi.fn(async () => ({ id: "synthetic-delivery-timestamp" }));
+    const ready = { ...c, email: { id: "resend" as const, send } };
+    expect(await deliverLocalPatchNotifications(ready, item.gameId)).toEqual({ sent: 2, failed: 0 });
+    const delivered = await db.game.findUniqueOrThrow({ where: { id: item.gameId } });
+    expect(delivered.status).toBe("DELIVERED");
+    expect(delivered.deliveredAt).toBeInstanceOf(Date);
+    expect(delivered.deliveredAt!.getTime()).toBeGreaterThanOrEqual(startedAt);
+    expect(delivered.deliveredAt!.getTime()).toBeLessThanOrEqual(Date.now());
+    expect(await deliverLocalPatchNotifications(ready, item.gameId)).toEqual({ sent: 0, failed: 0 });
+    expect((await db.game.findUniqueOrThrow({ where: { id: item.gameId } })).deliveredAt).toEqual(delivered.deliveredAt);
+    expect(send).toHaveBeenCalledTimes(2);
+  });
+
   it("sends independent ready/report messages once and keeps the raw visual failures", async () => {
     const item = await seed("mail-success"), sent: EmailMessage[] = [];
     const send = vi.fn(async (message: EmailMessage) => { sent.push(message); return { id: `mail-${sent.length}` }; });

@@ -186,7 +186,7 @@ export async function deliverLocalPatchNotifications(c: Container, gameId?: stri
           const recorded = await tx.auditLog.updateMany({ where: { id: event.id, action: ACTION, metaJson: JSON.stringify(sending) }, data: {
             action: "local-patch:notification-sent", metaJson: JSON.stringify({ ...notice, state: "sent", providerId: receipt.id, leaseUntil: 0 }),
           } });
-          if (recorded.count === 1 && notice.kind === "ready" && !notice.viaFallback) await tx.game.updateMany({ where: { id: game.id, status: "READY", deletedAt: null, configJson: game.configJson }, data: { status: "DELIVERED" } });
+          if (recorded.count === 1 && notice.kind === "ready" && !notice.viaFallback) await tx.game.updateMany({ where: { id: game.id, status: "READY", deletedAt: null, configJson: game.configJson }, data: { status: "DELIVERED", deliveredAt: new Date() } });
         });
         outcome.sent++;
       } catch (err) {
