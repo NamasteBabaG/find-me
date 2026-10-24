@@ -1,4 +1,4 @@
-import { nativeMaskTailCandidate, nativeMaskTailMarker, nativeMaskTailMarkerSchema } from "../../domain/generation/native-mask-tail";
+import { nativeMaskTailCandidate, nativeMaskTailMarker, nativeMaskTailMarkerSchema, nativeMaskTailEditRegion } from "../../domain/generation/native-mask-tail";
 import { detectiveTailBindingSchema, detectiveTailReceiptBodySchema, detectiveTailReceiptSchema, detectivesTailId, detectivesTailResumeId, DETECTIVES_TAIL_BUDGET, DETECTIVES_TAIL_CAP, DETECTIVES_TAIL_ACTION, DETECTIVES_TAIL_RESUMED, type DetectiveTailReceipt } from "../../domain/generation/detectives-completion-budget";
 import { guidedFrameCandidate, GUIDED_FRAME_MIN_CAPACITY_MICRO_USD } from "../../domain/generation/guided-frame-recovery";
 import { isSingleLowReviewPolicy } from "../../domain/generation/visual-review-policy";
@@ -27,7 +27,7 @@ import { applyBoardWizardBudgetCap, boardWizardBudget, type BoardWizardBudgetGra
 import { boardConditioningHash as hash } from "./board-conditioned-source";
 import { sha256Bytes } from "./fixed-sprite";
 import { leanReleaseOf, leanReleaseReceipt } from "./lean-release";
-import { sourcePlacementReleaseOf } from "./source-placement-release";
+import { sourcePlacementReleaseOf, resolveLocalPatchBoardsForGame, sourcePlacementForHide } from "./source-placement-release";
 import { subjectUpgradeOf } from "./subject-enrollment";
 import { identityGateReceiptOf, identityReceiptReadyForPublication, requireBoardWizardIdentityApproval } from "./board-wizard-identity-gate";
 import { parkedHoldSha256 } from "./lean-review-recovery-pin";
@@ -616,7 +616,7 @@ export async function planDetectivesCompletionTail(c:Container,gameId:string) {
   demand(rows.length===27 && pending.length>=1 && pending.length<=4 && rows.filter(r=>r.status==="GENERATED").every(r=>{
     try {const j=JSON.parse(r.judgeJson??"null");return j?.reviewState==="board-review-complete" && j.verdict?.verdict==="pass" && j.wireFault===null;}catch{return false;}
   }),"All27 appearances and at most four diagnosed remaining failures required");
-  const tailRows=[];
+  const tailRows=[], placement=await resolveLocalPatchBoardsForGame(c.db,gameId,13);
   for(const row of pending) {
     const scene=game.scenes.find(s=>s.id===row.targetInstance.gameSceneId),hide=scene && DETECTIVE_PATCH_BOARDS.find(b=>b.board===scene.sceneSlug)?.hides.find(h=>h.targetId===row.targetInstance.targetId);
     demand(hide,"Exact authored tail hide required");
@@ -624,6 +624,10 @@ export async function planDetectivesCompletionTail(c:Container,gameId:string) {
     const j=JSON.parse(row.judgeJson??"null");
     demand(nativeMaskTailCandidate(row),
       "A native-mask alternative needs the actual exhausted, stationary return-boundary failure");
+    const source=sourcePlacementForHide(placement,hide.id);
+    demand(source?.sourceNeighbors && j.authoredReturn?.sourcePlacement?.manifestSha256===placement.manifestSha256, "Exact source-head placement required before finite native-mask grant");
+    nativeMaskTailEditRegion(j.authoredReturn.child,j.authoredReturn.local,source.sourceNeighbors.contract.neighbors.map(n=>({
+      ...n.head,left:n.head.left-j.authoredReturn.crop.left,top:n.head.top-j.authoredReturn.crop.top })));
     const key=hide.id+":"+hide.pose+":render:3",bill=stored.snapshot.requests.find(r=>r.requestKey===key),retained=await new PrismaRetainedPurchaseStore(c.db).get(prior.worldId,key);
     demand(bill?.state==="settled" && bill.scope==="image" && !bill.conflicts.length && retained?.evidence && retained.scope==="image" && retained.operationFingerprint===bill.operationFingerprint
       && retained.unknownReason===null && sameChargeEvidence(retained.evidence,bill.evidence),"Exact settled third painting required for native-mask diagnosis");

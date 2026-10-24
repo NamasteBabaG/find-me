@@ -178,9 +178,13 @@ it.each([{mode:"clean",interrupted:false,guided:false},{mode:"transport",interru
         png=await sharp({create:{width:512,height:768,channels:4,background:"#808080"}}).png().toBuffer();
       }
       if (tail && hide.id === guidedHideId && requestKey.endsWith(":render:4")) {
-        expect(prompt).toContain("NATIVE EDIT MASK");const alpha=await sharp(maskPng).ensureAlpha().raw().toBuffer();let clear=0;
-        let mismatches=0;for(let y=0;y<768;y++)for(let x=0;x<512;x++){const editable=alpha[(y*512+x)*4+3]===0;if(editable)clear++;if(editable!==(x>=mask.left&&x<mask.left+mask.width&&y>=mask.top&&y<mask.top+mask.height))mismatches++;}
-        expect(mismatches).toBe(0);expect(clear).toBe(mask.width*mask.height);
+        expect(prompt).toContain("NATIVE EDIT MASK");expect(prompt).toContain("original TARGET person WHOLE");
+        const edit=maskForHide(hide),sourceHead=sourcePlacementForHide(context,hide.id)!.sourceNeighbors!.contract.neighbors.find(n=>n.sourceId==="source-petanque-child")!.head;
+        expect(sourceHead.top-cropOf(hide).top).toBeLessThan(mask.top);expect(sourceHead.top-cropOf(hide).top).toBeGreaterThanOrEqual(edit.top);
+        expect(prompt).toContain('"nativeEditEnvelope":'+JSON.stringify(edit));
+        const alpha=await sharp(maskPng).ensureAlpha().raw().toBuffer();let clear=0;
+        let mismatches=0;for(let y=0;y<768;y++)for(let x=0;x<512;x++){const editable=alpha[(y*512+x)*4+3]===0;if(editable)clear++;if(editable!==(x>=edit.left&&x<edit.left+edit.width&&y>=edit.top&&y<edit.top+edit.height))mismatches++;}
+        expect(mismatches).toBe(0);expect(clear).toBe(edit.width*edit.height);
       }
       return paintedOk(png, bill("paint-" + gameId + "-" + requestKey));
     } };

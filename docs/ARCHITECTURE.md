@@ -255,7 +255,10 @@ The normal SYSTEM queue consumes the exact new hold once, without resetting atte
 
 A stationary background rewrite at the actual return boundary after guided attempt3
 may receive one separately authorized native-mask attempt4. Its alpha mask exposes
-only the smaller whole-child guide target; the original source, child envelope, return
+only the ORIGINAL authored child envelope, including the complete original target head.
+The smaller cyan frame positions the NEW child; it is not an erasure mask. Before
+purchase, every source head intersecting the edit mask must fit wholly inside it.
+The original source, child envelope, return
 window, compositor, seam thresholds, neighbor, identity, age and anatomy checks remain
 unchanged. A distinct request/fingerprint preserves the paid attempt3 verbatim.
 A failed fourth painting is finite exhaustion, never a blind retry, waiver or human

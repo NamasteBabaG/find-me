@@ -1,4 +1,4 @@
-import { nativeMaskTailMarkerSchema, nativeMaskTailDirections, type NativeMaskTailMarker } from "../../domain/generation/native-mask-tail";
+import { nativeMaskTailMarkerSchema, nativeMaskTailDirections, nativeMaskTailEditRegion, type NativeMaskTailMarker } from "../../domain/generation/native-mask-tail";
 import { GUIDED_FRAME_RECOVERY_VERSION, guidedFrameGeometry, guidedFrameOverlay, guidedFrameDirections, parseGuidedFrameMarker, type GuidedFrameMarker } from '../../domain/generation/guided-frame-recovery';
 import { hasLocalPatchCapability } from "../../domain/scene/local-patch-family";
 import { isCollectionVersion } from "../../domain/scene/local-patch-versions";
@@ -459,10 +459,12 @@ async function renderLocalPatchHideInner(deps: LocalPatchRenderDeps, input: Loca
   const painterNeighbors = companion?.sourceNeighbors && neighborContext
     ? prepareSourceNeighborContract({ ...companion.sourceNeighbors.contract, ...neighborContext }, neighborContext) : null;
   if (painterNeighbors && !painterNeighbors.ok) throw Error("LOCAL_PATCH: painter return crosses an authoritative source head");
+  const nativeEdit = input.nativeMaskTail ? nativeMaskTailEditRegion(authoredMask, authoredReturn!.local,
+    painterNeighbors?.ok ? painterNeighbors.contract.neighbors.map(n => ({ ...n.head, left:n.head.left-crop.left, top:n.head.top-crop.top })) : []) : null;
   const authoredPaint = companion ? [
     "SOURCE-BOUND PAINTER local-patch-authored-paint/v1. This is a crop of the SAME continuous original scene, not a standalone picture to reframe or complete.",
     `AUTHORITATIVE PLACEMENT DATA: ${JSON.stringify({ source: companion.source, crop, childEnvelope: paintTarget,
-      returnWindow: paintReturn, sourcePlacement: authoredReturn!.sourcePlacement,
+      returnWindow: paintReturn, ...(nativeEdit ? { nativeEditEnvelope: nativeEdit.editable } : {}), sourcePlacement: authoredReturn!.sourcePlacement,
       sourceNeighbors: painterNeighbors?.ok ? { contractSha256: painterNeighbors.contractSha256,
         heads: painterNeighbors.contract.neighbors.map(n => ({ sourceId: n.sourceId,
           head: { ...n.head, left: n.head.left - crop.left, top: n.head.top - crop.top } })) } : null })}.`,
@@ -475,7 +477,11 @@ async function renderLocalPatchHideInner(deps: LocalPatchRenderDeps, input: Loca
   const promptWith = (plan: SubjectRenderDirection | undefined) => {
     const base = plan ? `${recipeFor(plan.wardrobe ?? authoredWardrobe, plan.painterVersion)}\n\n${plan.text}` : recipeFor(authoredWardrobe);
     const directed = authoredPaint ? `${base}\n\n${authoredPaint}` : base;
-    return guideGeometry ? directed + '\n\n' + guidedFrameDirections(authoredMask, authoredReturn!.local) + (input.nativeMaskTail ? '\n\n'+nativeMaskTailDirections : '') : directed;
+    if (!guideGeometry) return directed;
+    const guide = guidedFrameDirections(authoredMask, authoredReturn!.local);
+    const permission = input.nativeMaskTail ? guide.replace("The editor mask covers the orange context so surrounding scenery can be reconstructed coherently, but the child must stay inside cyan.",
+      "The native editor mask covers only the ORIGINAL child envelope. Remove the original target person WHOLE inside that envelope, including hair above cyan, then draw the whole new child inside cyan. The orange return-boundary band is protected.") : guide;
+    return directed + '\n\n' + permission + (input.nativeMaskTail ? '\n\n'+nativeMaskTailDirections : '');
   };
 
   const meta = await sharp(input.composedPng, { limitInputPixels: 8_294_400 }).metadata();
@@ -489,7 +495,7 @@ async function renderLocalPatchHideInner(deps: LocalPatchRenderDeps, input: Loca
   const renderIdentityPng = restyling ? await sharp(stylePng).extract(mask).png().toBuffer() : input.identityPng;
   // Editing context and target placement differ: repaint only the existing returned context,
   // and keep the whole target within its unchanged authored envelope via the cyan guide.
-  const maskPng = await poseMask(guideGeometry ? { ...hide, mask: input.nativeMaskTail ? guideGeometry.target : authoredReturn!.local } : recovery ? { ...hide, mask } : hide);
+  const maskPng = await poseMask(guideGeometry ? { ...hide, mask: nativeEdit ? nativeEdit.editable : authoredReturn!.local } : recovery ? { ...hide, mask } : hide);
   const placementGuidePng = guideGeometry ? await sharp(stylePng).composite([{ input:Buffer.from(guidedFrameOverlay(authoredMask,authoredReturn!.local)) }]).png().toBuffer() : undefined;
 
   const renderKey = input.selfRepair ? `${hide.id}:${hide.pose}:self-repair:${input.selfRepair.cycle}` : `${hide.id}:${hide.pose}:render:${attempt}`;
