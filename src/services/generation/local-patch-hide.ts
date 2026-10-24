@@ -1,5 +1,6 @@
+import { nativeMaskTailCandidate, type NativeMaskTailMarker } from "../../domain/generation/native-mask-tail";
 import { guidedFrameCandidate, guidedFrameMarker, newGuidedFrameMarker, GUIDED_FRAME_MIN_CAPACITY_MICRO_USD, type GuidedFrameMarker } from "../../domain/generation/guided-frame-recovery";
-import { detectivesSingleReviewAuthorization, readDetectivesCompletionBudget } from "./detectives-completion-budget";
+import { detectivesSingleReviewAuthorization, hasDetectivesLowCapacity, requireDetectivesNativeMaskTail } from "./detectives-completion-budget";
 import { WorldBudgetError } from "./world-budget";
 import { hasLocalPatchCapability } from "../../domain/scene/local-patch-family";
 import { createHash } from "node:crypto";
@@ -212,6 +213,7 @@ export async function runLocalPatchHide(c: Container, deps: LocalPatchHideDeps, 
   readonly repairChecks?: readonly LocalPatchRepairCheck[];
   /** An immutable server-verified grant; never an arbitrary attempt limit. */
   readonly extraAttemptAuthorizationId?: string;
+  readonly nativeMaskTail?: boolean;
 }): Promise<LocalPatchHideOutcome> {
   const { gameId, board, hide } = input;
   const { identityRevisionPending } = await import("./identity-source-revision-state");
@@ -281,9 +283,9 @@ export async function runLocalPatchHide(c: Container, deps: LocalPatchHideDeps, 
 
   let guidedFrame: GuidedFrameMarker | null = null;
   if (input.guidedFrame) {
-    const grant = await detectivesSingleReviewAuthorization(c.db, gameId), authority = await readDetectivesCompletionBudget(c, worldId);
+    const grant = await detectivesSingleReviewAuthorization(c.db, gameId);
     demand(input.finalRepair && !input.extraAttemptAuthorizationId && scene.sceneVersion === 13 && guidedFrameCandidate(row)
-      && grant && authority?.capMicroUsd === 8_000_000 && authority.authorizationSha256 === grant.authorizationSha256, "exact LOW grant and original-geometry recovery required");
+      && grant && await hasDetectivesLowCapacity(c, gameId), "exact LOW grant and original-geometry recovery required");
     guidedFrame = guidedFrameMarker(row) ?? newGuidedFrameMarker(row, grant.authorizationSha256);
     demand(guidedFrame.authorizationSha256 === grant.authorizationSha256, "guided recovery authority changed");
     const priorPicture = await c.db.asset.findUniqueOrThrow({ where: { id: guidedFrame.sourceAssetId } });
@@ -297,14 +299,26 @@ export async function runLocalPatchHide(c: Container, deps: LocalPatchHideDeps, 
         throw new WorldBudgetError("cap_exceeded", "Guided painting requires capacity for its image and one bounded LOW assessment");
     }
   }
-  const guidedHistory = guidedFrame ? { guidedFrameRecovery: guidedFrame, selfRepair: JSON.parse(row.judgeJson!).selfRepair } : {};
+  let nativeMaskTail: NativeMaskTailMarker | null = null;
+  if (input.nativeMaskTail) {
+    demand(input.finalRepair && !input.guidedFrame && !input.extraAttemptAuthorizationId && scene.sceneVersion === 13 && nativeMaskTailCandidate(row), "Finite native-mask alternative requires its exhausted original-geometry row");
+    nativeMaskTail = await requireDetectivesNativeMaskTail(c, gameId, row.id);
+    guidedFrame = guidedFrameMarker(row);
+    demand(guidedFrame && guidedFrame.authorizationSha256 === nativeMaskTail.previousAuthorizationSha256, "Original guide authority changed");
+    const paid = await budget.readRequest(worldId, hide.id + ":" + hide.pose + ":render:4");
+    demand(!paid || row.status === "PENDING", "Native-mask fourth painting already started outside this checkpoint");
+    if (!paid) { const room = await budget.audit(worldId); if (room.held || room.remainingMicroUsd < GUIDED_FRAME_MIN_CAPACITY_MICRO_USD)
+      throw new WorldBudgetError("cap_exceeded", "Native-mask painting requires capacity for its image and one bounded LOW assessment"); }
+  }
+  const guidedHistory = guidedFrame ? { guidedFrameRecovery: guidedFrame, selfRepair: JSON.parse(row.judgeJson!).selfRepair,
+    ...(nativeMaskTail ? { nativeMaskTail } : {}) } : {};
   if (input.finalRepair) demand(localPatchFinalRepairAllowed(env().APP_ENV, isLocalPatchStrictVersion(scene.sceneVersion))
     && game.styleVersion === "local-patch-world-v1",
     "the final repair pass requires a strict local-patch world or the legacy QA engine");
   const extra = input.extraAttemptAuthorizationId ? await requireLocalPatchExtraAttempt(c, {
     gameId, hideId: hide.id, rowId: row.id, authorizationId: input.extraAttemptAuthorizationId,
   }) : null;
-  const attemptLimit = extra?.authorizedAttempt ?? (input.finalRepair ? LOCAL_PATCH_MAX_ATTEMPTS : LOCAL_PATCH_NORMAL_ATTEMPTS);
+  const attemptLimit = nativeMaskTail ? 4 : extra?.authorizedAttempt ?? (input.finalRepair ? LOCAL_PATCH_MAX_ATTEMPTS : LOCAL_PATCH_NORMAL_ATTEMPTS);
   const { attempt, exhausted } = nextLocalPatchAttempt(row, attemptLimit);
   // judgeJson is intentionally kept while PENDING: clearing lastError must not
   // change the prompt/fingerprint when attempt 2/3 resumes after an interruption.
@@ -405,6 +419,7 @@ export async function runLocalPatchHide(c: Container, deps: LocalPatchHideDeps, 
     ...(repairChecks === undefined ? {} : { repairChecks }),
     ...(extra ? { recoveryDirective: extra.directive } : {}),
     ...(guidedFrame ? { guidedFrameRecovery: guidedFrame } : {}),
+    ...(nativeMaskTail ? { nativeMaskTail } : {}),
     ...(attempt === 3 && adaptiveRecovery?.plan ? { adaptiveRecovery: adaptiveRecovery.plan } : {}),
     ...(input.deadlineAt === undefined ? {} : { deadlineAt: input.deadlineAt }),
     ...(subjectDirection ? { subjectDirection } : {}),

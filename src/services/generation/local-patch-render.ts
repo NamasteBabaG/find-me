@@ -1,3 +1,4 @@
+import { nativeMaskTailMarkerSchema, nativeMaskTailDirections, type NativeMaskTailMarker } from "../../domain/generation/native-mask-tail";
 import { GUIDED_FRAME_RECOVERY_VERSION, guidedFrameGeometry, guidedFrameOverlay, guidedFrameDirections, parseGuidedFrameMarker, type GuidedFrameMarker } from '../../domain/generation/guided-frame-recovery';
 import { hasLocalPatchCapability } from "../../domain/scene/local-patch-family";
 import { isCollectionVersion } from "../../domain/scene/local-patch-versions";
@@ -110,6 +111,7 @@ export type LocalPatchAttemptInput = {
   readonly authoredDiagnosis?: AuthoredRecoveryDiagnosis;
   /** Bounded one-world LOW recovery; never changes the authored source or window. */
   readonly guidedFrameRecovery?: GuidedFrameMarker;
+  readonly nativeMaskTail?: NativeMaskTailMarker;
   readonly identityPng: Buffer;
   readonly referenceMode?: LocalPatchReferenceMode;
   readonly canonicalIdentityPng?: Buffer;
@@ -363,9 +365,11 @@ export async function renderLocalPatchHide(deps: LocalPatchRenderDeps, input: Lo
     assertAuthoredLocalPatchRecoveryGeometry(authoredReturn, input.placementContext, input.selfRepair.decision);
     authoredRecoveryDiagnosisSchema.parse(input.authoredDiagnosis);
   } else if (input.authoredDiagnosis !== undefined) throw Error("LOCAL_PATCH: authored diagnosis requires an authored recovery");
-  if (input.guidedFrameRecovery && (!parseGuidedFrameMarker(input.guidedFrameRecovery) || input.contentVersion !== 13 || input.attempt !== 3
+  if (input.guidedFrameRecovery && (!parseGuidedFrameMarker(input.guidedFrameRecovery) || input.contentVersion !== 13 || (input.nativeMaskTail ? input.attempt !== 4 : input.attempt !== 3)
     || !authoredReturn?.sourcePlacement || input.selfRepair || input.adaptiveRecovery || input.recoveryDirective))
     throw Error('GUIDED_FRAME: only a trusted original-geometry third painting may use this guide');
+  if (input.nativeMaskTail && (!nativeMaskTailMarkerSchema.safeParse(input.nativeMaskTail).success || !input.guidedFrameRecovery
+    || input.nativeMaskTail.previousAuthorizationSha256 !== input.guidedFrameRecovery.authorizationSha256)) throw Error("NATIVE_MASK_TAIL: exact finite allowance and original guide required");
   const result = await renderLocalPatchHideInner(deps, input, authoredReturn);
   return { ...result, promptVersion: promptVersionOf(input), ...(authoredReturn ? { authoredReturn } : {}),
     ...(isLocalPatchStrictVersion(input.contentVersion) ? { compositionVersion: input.hide.returnRect ? AUTHORED_PATCH_COMPOSITION_VERSION : LOCAL_PATCH_COMPOSITION_VERSION } : {}) };
@@ -471,7 +475,7 @@ async function renderLocalPatchHideInner(deps: LocalPatchRenderDeps, input: Loca
   const promptWith = (plan: SubjectRenderDirection | undefined) => {
     const base = plan ? `${recipeFor(plan.wardrobe ?? authoredWardrobe, plan.painterVersion)}\n\n${plan.text}` : recipeFor(authoredWardrobe);
     const directed = authoredPaint ? `${base}\n\n${authoredPaint}` : base;
-    return guideGeometry ? directed + '\n\n' + guidedFrameDirections(authoredMask, authoredReturn!.local) : directed;
+    return guideGeometry ? directed + '\n\n' + guidedFrameDirections(authoredMask, authoredReturn!.local) + (input.nativeMaskTail ? '\n\n'+nativeMaskTailDirections : '') : directed;
   };
 
   const meta = await sharp(input.composedPng, { limitInputPixels: 8_294_400 }).metadata();
@@ -485,7 +489,7 @@ async function renderLocalPatchHideInner(deps: LocalPatchRenderDeps, input: Loca
   const renderIdentityPng = restyling ? await sharp(stylePng).extract(mask).png().toBuffer() : input.identityPng;
   // Editing context and target placement differ: repaint only the existing returned context,
   // and keep the whole target within its unchanged authored envelope via the cyan guide.
-  const maskPng = await poseMask(guideGeometry ? { ...hide, mask: authoredReturn!.local } : recovery ? { ...hide, mask } : hide);
+  const maskPng = await poseMask(guideGeometry ? { ...hide, mask: input.nativeMaskTail ? guideGeometry.target : authoredReturn!.local } : recovery ? { ...hide, mask } : hide);
   const placementGuidePng = guideGeometry ? await sharp(stylePng).composite([{ input:Buffer.from(guidedFrameOverlay(authoredMask,authoredReturn!.local)) }]).png().toBuffer() : undefined;
 
   const renderKey = input.selfRepair ? `${hide.id}:${hide.pose}:self-repair:${input.selfRepair.cycle}` : `${hide.id}:${hide.pose}:render:${attempt}`;
@@ -511,6 +515,7 @@ async function renderLocalPatchHideInner(deps: LocalPatchRenderDeps, input: Loca
     ...(input.adaptiveRecovery ? { adaptiveRecovery: input.adaptiveRecovery.sha256 } : {}),
     ...(input.selfRepair ? { selfRepair: input.selfRepair } : {}),
     ...(input.authoredDiagnosis ? { authoredDiagnosis: input.authoredDiagnosis } : {}),
+    ...(input.nativeMaskTail ? { nativeMaskTail: input.nativeMaskTail } : {}),
     ...(placementGuidePng ? { guidedFrameRecovery: input.guidedFrameRecovery, placementGuideSha256:sha(placementGuidePng) } : {}),
     ...(plan ? { subject: plan.sha256 } : {}),
   });

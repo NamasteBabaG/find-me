@@ -242,3 +242,23 @@ authority, plus the same settled charge and immutable complete LOW reply. Its v2
 binds both request keys and the retained payload hash. It preserves the ledger snapshot,
 UNKNOWN reservations and attempts; the normal reviewers still decide every mandatory
 quality, identity, source-neighbor and anatomy check. This path buys no new opinion.
+
+## Explicit finite Detective tail (24 October 2026)
+
+A new owner-admin ten-dollar cumulative receipt chains the consumed six/eight-dollar
+receipts without modifying them. It freezes all27 appearance rows, the actual failed
+hold, ledger revision, source, identity, age, payment and all unknown reservations.
+At most four remaining diagnosed appearances receive one prospective painting each.
+The original eight-dollar receipt continues to identify the single LOW experiment,
+so a capacity extension cannot invalidate or rebind previously purchased answers.
+The normal SYSTEM queue consumes the exact new hold once, without resetting attempts.
+
+A stationary background rewrite at the actual return boundary after guided attempt3
+may receive one separately authorized native-mask attempt4. Its alpha mask exposes
+only the smaller whole-child guide target; the original source, child envelope, return
+window, compositor, seam thresholds, neighbor, identity, age and anatomy checks remain
+unchanged. A distinct request/fingerprint preserves the paid attempt3 verbatim.
+A failed fourth painting is finite exhaustion, never a blind retry, waiver or human
+art approval. Publication re-verifies its separate tail receipt and consumed wake
+in addition to the ordinary mandatory combined LOW readings. Synthetic completion
+qualifies wiring, not actual visual quality or the commercial cost target.

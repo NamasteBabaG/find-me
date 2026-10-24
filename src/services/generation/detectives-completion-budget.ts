@@ -1,3 +1,5 @@
+import { nativeMaskTailCandidate, nativeMaskTailMarker, nativeMaskTailMarkerSchema } from "../../domain/generation/native-mask-tail";
+import { detectiveTailBindingSchema, detectiveTailReceiptBodySchema, detectiveTailReceiptSchema, detectivesTailId, detectivesTailResumeId, DETECTIVES_TAIL_BUDGET, DETECTIVES_TAIL_CAP, DETECTIVES_TAIL_ACTION, DETECTIVES_TAIL_RESUMED, type DetectiveTailReceipt } from "../../domain/generation/detectives-completion-budget";
 import { guidedFrameCandidate, GUIDED_FRAME_MIN_CAPACITY_MICRO_USD } from "../../domain/generation/guided-frame-recovery";
 import { isSingleLowReviewPolicy } from "../../domain/generation/visual-review-policy";
 import { backgroundRoundOfKey, providerEndedFailed, backgroundRoundsOnImage, roundAnswered, backgroundPolicyOfIntent } from "./continuity-background";
@@ -99,7 +101,7 @@ async function receiptOf(c: { db: Pick<Prisma.TransactionClient, "auditLog"> }, 
   return pin;
 }
 
-async function matches(c: Container, pin: DetectiveBudgetReceipt | DetectiveExtensionReceipt, state: Awaited<ReturnType<typeof current>>) {
+async function matches(c: Container, pin: DetectiveBudgetReceipt | DetectiveExtensionReceipt | DetectiveTailReceipt, state: Awaited<ReturnType<typeof current>>) {
   return state.game.ownerId === pin.ownerId && state.child.id === pin.childId && state.child.identityAssetId === pin.identityAssetId
     && state.child.avatarAssetId === pin.avatarAssetId && state.child.ageYears === pin.ageYears && state.paymentSha256 === pin.paymentSha256
     && hash(state.child.photoCropJson ? JSON.parse(state.child.photoCropJson) : null) === pin.cropSha256
@@ -121,8 +123,12 @@ export async function readDetectivesCompletionBudget(c: Container, worldId: stri
   if (!await matches(c, pin, state)) return null;
   const extension = await extensionReceiptOf(c, pin.gameId);
   if (extension && extension.previousAuthorizationSha256 === pin.authorizationSha256
-    && await originalCompletionResumed(c, pin) && await matches(c, extension, state))
+    && await originalCompletionResumed(c, pin) && await matches(c, extension, state)) {
+    const tail = await tailReceiptOf(c, pin.gameId);
+    if (tail && tail.previousAuthorizationSha256 === extension.authorizationSha256 && await extensionResumed(c, extension) && await matches(c, tail, state))
+      return { worldId, capMicroUsd: DETECTIVES_TAIL_CAP, authorizationSha256: tail.authorizationSha256 };
     return { worldId, capMicroUsd: DETECTIVES_EXTENSION_CAP, authorizationSha256: extension.authorizationSha256 };
+  }
   return { worldId, capMicroUsd: DETECTIVES_COMPLETION_CAP, authorizationSha256: pin.authorizationSha256 };
 }
 
@@ -236,7 +242,8 @@ export async function nextDetectivesCompletionWake(c: Container, gameId: string 
   const jobs = await c.db.generationJob.findMany({ where: { ...(gameId ? { gameId } : {}), status: "FAILED", currentStep: { in: [EXHAUSTED, "local-patch:needs-release"] },
     game: { status: "TARGETS_GENERATING", deletedAt: null, searchLevel: "detectives", styleVersion: "local-patch-world-v1" } },
     orderBy: { updatedAt: "asc" }, select: { gameId: true } });
-  for (const job of jobs) if (await resumeDetectivesCompletionExtension(c, job.gameId).catch(() => false)
+  for (const job of jobs) if (await resumeDetectivesCompletionTail(c, job.gameId).catch(() => false)
+    || await resumeDetectivesCompletionExtension(c, job.gameId).catch(() => false)
     || await resumeDetectivesCompletionBudget(c, job.gameId).catch(() => false)
     || await resumeDetectivesApplyingRepair(c, job.gameId).catch(() => false)
     || await resumeDetectivesLowEngineRecovery(c, job.gameId).catch(() => false)) return job.gameId;
@@ -375,7 +382,9 @@ export async function authorizeDetectivesCompletionExtension(c: Container, input
   if (old) {
     demand(old.operatorId === operatorId && old.planSha256 === expected && old.ownerAuthorizationSha256 === evidence, "Existing extension differs");
     const authority = await readDetectivesCompletionBudget(c, worldOf(gameId));
-    demand(authority?.capMicroUsd === DETECTIVES_EXTENSION_CAP && authority.authorizationSha256 === old.authorizationSha256, "Existing extension is no longer current");
+    const tail = await tailReceiptOf(c, gameId);
+    demand(authority?.capMicroUsd === DETECTIVES_EXTENSION_CAP && authority.authorizationSha256 === old.authorizationSha256
+      || authority?.capMicroUsd === DETECTIVES_TAIL_CAP && tail?.authorizationSha256 === authority.authorizationSha256 && tail.previousAuthorizationSha256 === old.authorizationSha256, "Existing extension is no longer current");
     return old;
   }
   const plan = await planDetectivesCompletionExtension(c, gameId);
@@ -562,4 +571,148 @@ export async function singleLowContinuationPublishable(db: Pick<Prisma.Transacti
     && proof.grantSha256 === grant.authorizationSha256 && proof.variantId === approval.variantId && proof.imageSha256 === approval.imageSha256
     && proof.requestKey === approval.requestKey && proof.operationFingerprint === approval.operationFingerprint
     && typeof proof.retainedPayloadSha256 === "string" && /^[a-f0-9]{64}$/.test(proof.retainedPayloadSha256) && sha256Bytes(Buffer.from(JSON.stringify(proof))) === approval.authorizationSha256;
+}
+
+async function extensionResumed(c: {db:Pick<Prisma.TransactionClient,"auditLog">}, pin:DetectiveExtensionReceipt) {
+  const row=await c.db.auditLog.findUnique({where:{id:detectivesExtensionResumeId(pin.gameId)}});
+  let value; try {value=JSON.parse(row?.metaJson??"null");}catch{return false;}
+  return !!row && row.actorType==="SYSTEM" && row.actorId===null && row.action===DETECTIVES_EXTENSION_RESUMED
+    && row.entityType==="Game" && row.entityId===pin.gameId && value?.version===DETECTIVES_EXTENSION_BUDGET
+    && value.authorizationSha256===pin.authorizationSha256 && value.holdSha256===pin.holdSha256;
+}
+async function tailReceiptOf(c:{db:Pick<Prisma.TransactionClient,"auditLog">},gameId:string):Promise<DetectiveTailReceipt|null> {
+  const row=await c.db.auditLog.findUnique({where:{id:detectivesTailId(gameId)}}); if(!row)return null;
+  const pin=detectiveTailReceiptSchema.parse(JSON.parse(row.metaJson??"null")),{authorizationSha256,...body}=pin;
+  demand(row.actorType==="ADMIN" && row.actorId===pin.operatorId && row.action===DETECTIVES_TAIL_ACTION
+    && row.entityType==="Game" && row.entityId===gameId && pin.gameId===gameId && pin.worldId===worldOf(gameId)
+    && pin.operatorId===pin.ownerId && row.metaJson===JSON.stringify(pin) && authorizationSha256===hash(body),"Invalid or foreign finite-tail receipt");
+  const {planSha256:_plan,operatorId:_operator,ownerAuthorizationSha256:_evidence,authorizedAt:_at,automaticRelease:_release,...binding}=body;
+  demand(pin.planSha256===hash(detectiveTailBindingSchema.parse(binding)) && new Set(pin.tailRows.map(r=>r.rowId)).size===pin.tailRows.length
+    && pin.tailRows.every(r=>r.mode==="guided-third" ? r.originalAttempts===2 && r.maxAttempt===3 && r.retainedRenderSha256===null
+      : r.originalAttempts===3 && r.maxAttempt===4 && !!r.retainedRenderSha256),"Invalid finite-tail plan"); return pin;
+}
+const tailRowsOf=(c:Container,gameId:string)=>c.db.targetVariantAsset.findMany({where:{provider:LOCAL_PATCH_PROVIDER,variant:LOCAL_PATCH_VARIANT,
+  targetInstance:{gameScene:{gameId,sceneVersion:13}}},orderBy:{id:"asc"},include:{targetInstance:{select:{targetId:true,gameSceneId:true}}}});
+const tailRowInvariant=(row:Awaited<ReturnType<typeof tailRowsOf>>[number])=>hash(Object.fromEntries(Object.entries(row).filter(([k])=>!["attempts","status","lastError","updatedAt","judgeJson"].includes(k))));
+const tailRowHash=(row:Awaited<ReturnType<typeof tailRowsOf>>[number])=>hash(row);
+/** READ only. Each remaining appearance has one prospective painting, and one combined LOW assessment. */
+export async function planDetectivesCompletionTail(c:Container,gameId:string) {
+  detectiveBudgetIdSchema.parse(gameId); demand(!await tailReceiptOf(c,gameId),"The single finite-tail extension already exists");
+  const prior=await extensionReceiptOf(c,gameId),original=await receiptOf(c,gameId),state=await current(c,gameId),{game,child}=state;
+  demand(prior && original && prior.previousAuthorizationSha256===original.authorizationSha256 && await originalCompletionResumed(c,original)
+    && await extensionResumed(c,prior) && await matches(c,prior,state),"Original consumed eight-dollar authorization required");
+  demand(game.status==="TARGETS_GENERATING" && !game.readyAt && !game.configJson && !await identityRevisionPending(c.db,gameId),"Only unfinished original-identity work may receive a tail");
+  demand(await c.db.game.count({where:{childProfileId:child.id,deletedAt:null,NOT:{id:gameId}}})===0,"Shared profile refused");
+  const job=await c.db.generationJob.findUniqueOrThrow({where:{id:prior.jobId}});
+  demand(job.gameId===gameId && job.status==="FAILED" && job.currentStep===EXHAUSTED && job.attempts>prior.jobAttempts
+    && (job.lastError??"").startsWith("local-patch: no automatic action remains within the authorized world budget;"),"Exact eight-dollar exhausted hold required");
+  demand(!(await backgroundReviewWaiting(c.db,gameId,{inFlightOnly:true})).size,"Existing provider work must settle first");
+  const store=PrismaWorldBudgetStore.forReadOnlyTransaction(c.db),stored=await store.read(prior.worldId);
+  demand(stored && stored.revision<=WORLD_BUDGET_LEDGER_MAX_REVISION-2,"Safe existing ledger revision required");
+  const audit=auditWorldBudget(stored.snapshot,DETECTIVES_EXTENSION_CAP);
+  demand(!audit.held && !audit.pendingRequestKeys.length && !audit.conflictRequestKeys.length && !audit.overrunRequestKeys.length
+    && audit.committedMicroUsd>DETECTIVES_COMPLETION_CAP && audit.remainingMicroUsd<GUIDED_FRAME_MIN_CAPACITY_MICRO_USD,"Genuine eight-dollar capacity stop required");
+  const rows=await tailRowsOf(c,gameId),pending=rows.filter(r=>r.status!=="GENERATED");
+  demand(rows.length===27 && pending.length>=1 && pending.length<=4 && rows.filter(r=>r.status==="GENERATED").every(r=>{
+    try {const j=JSON.parse(r.judgeJson??"null");return j?.reviewState==="board-review-complete" && j.verdict?.verdict==="pass" && j.wireFault===null;}catch{return false;}
+  }),"All27 appearances and at most four diagnosed remaining failures required");
+  const tailRows=[];
+  for(const row of pending) {
+    const scene=game.scenes.find(s=>s.id===row.targetInstance.gameSceneId),hide=scene && DETECTIVE_PATCH_BOARDS.find(b=>b.board===scene.sceneSlug)?.hides.find(h=>h.targetId===row.targetInstance.targetId);
+    demand(hide,"Exact authored tail hide required");
+    if(guidedFrameCandidate(row) && row.status==="FAILED") {tailRows.push({rowId:row.id,hideId:hide.id,rowSha256:tailRowHash(row),rowInvariantSha256:tailRowInvariant(row),originalAttempts:2,maxAttempt:3,mode:"guided-third",retainedRenderSha256:null});continue;}
+    const j=JSON.parse(row.judgeJson??"null");
+    demand(nativeMaskTailCandidate(row),
+      "A native-mask alternative needs the actual exhausted, stationary return-boundary failure");
+    const key=hide.id+":"+hide.pose+":render:3",bill=stored.snapshot.requests.find(r=>r.requestKey===key),retained=await new PrismaRetainedPurchaseStore(c.db).get(prior.worldId,key);
+    demand(bill?.state==="settled" && bill.scope==="image" && !bill.conflicts.length && retained?.evidence && retained.scope==="image" && retained.operationFingerprint===bill.operationFingerprint
+      && retained.unknownReason===null && sameChargeEvidence(retained.evidence,bill.evidence),"Exact settled third painting required for native-mask diagnosis");
+    const result=JSON.parse(retained.bytes.toString());
+    demand(result.version==="local-patch-render/v1" && result.rejected===null && typeof result.bytesBase64==="string"
+      && JSON.stringify(result.authoredReturn)===JSON.stringify(j.authoredReturn),"Original third painting source/window binding changed");
+    tailRows.push({rowId:row.id,hideId:hide.id,rowSha256:tailRowHash(row),rowInvariantSha256:tailRowInvariant(row),originalAttempts:3,maxAttempt:4,mode:"native-mask-fourth",retainedRenderSha256:retained.payloadSha256});
+  }
+  const avatarSha256=await verifyAssetsAndBill(c,state,store);demand(avatarSha256===prior.avatarSha256,"Original avatar pixels changed");
+  const {authorizationSha256:_authorization,planSha256:_plan,operatorId:_operator,ownerAuthorizationSha256:_evidence,authorizedAt:_at,automaticRelease:_release,...oldBinding}=prior;
+  const binding=detectiveTailBindingSchema.parse({...oldBinding,version:DETECTIVES_TAIL_BUDGET,baseCapMicroUsd:DETECTIVES_EXTENSION_CAP,capMicroUsd:DETECTIVES_TAIL_CAP,
+    previousAuthorizationSha256:prior.authorizationSha256,jobAttempts:job.attempts,holdSha256:parkedHoldSha256(job),ledgerRevision:stored.revision,ledgerSha256:hash(stored.snapshot),
+    committedMicroUsd:audit.committedMicroUsd,reservedMicroUsd:audit.reservedMicroUsd,allRowsSha256:hash(rows),tailRows,
+    retainedUnknowns:stored.snapshot.requests.filter(r=>r.state==="unknown").map(r=>({requestKey:r.requestKey,operationFingerprint:r.operationFingerprint,reserveMicroUsd:r.reserveMicroUsd}))});
+  return {binding,planSha256:hash(binding),state,job,stored};
+}
+export async function authorizeDetectivesCompletionTail(c:Container,input:{gameId:string;operatorId:string;expectedPlanSha256:string;ownerAuthorizationSha256:string}) {
+  const gameId=detectiveBudgetIdSchema.parse(input.gameId),operatorId=detectiveBudgetIdSchema.parse(input.operatorId),expected=detectiveBudgetHashSchema.parse(input.expectedPlanSha256),evidence=detectiveBudgetHashSchema.parse(input.ownerAuthorizationSha256);
+  demand(env().APP_ENV==="qa" && c.storage.id==="db","QA database required");await administrator(c,operatorId);
+  const old=await tailReceiptOf(c,gameId);
+  if(old){demand(old.operatorId===operatorId && old.planSha256===expected && old.ownerAuthorizationSha256===evidence,"Existing finite-tail authorization differs");
+    const authority=await readDetectivesCompletionBudget(c,worldOf(gameId));demand(authority?.capMicroUsd===DETECTIVES_TAIL_CAP && authority.authorizationSha256===old.authorizationSha256,"Finite-tail authority is no longer current");return old;}
+  const plan=await planDetectivesCompletionTail(c,gameId);demand(plan.planSha256===expected && plan.binding.ownerId===operatorId,"Owner administrator or finite-tail plan changed");
+  return c.db.$transaction(async tx=>{const scoped=transactionContainer(c,tx),fresh=await planDetectivesCompletionTail(scoped,gameId);await administrator(scoped,operatorId);
+    demand(fresh.planSha256===expected && fresh.binding.ownerId===operatorId,"Source, tail rows, hold or ledger changed");
+    const locked=await tx.game.updateMany({where:{id:gameId,updatedAt:fresh.state.game.updatedAt,status:"TARGETS_GENERATING",deletedAt:null,ownerId:operatorId,childProfileId:fresh.binding.childId},data:{updatedAt:new Date()}});
+    const ledger=await tx.worldBudgetLedger.updateMany({where:{worldId:fresh.binding.worldId,revision:fresh.stored.revision},data:{revision:{increment:1}}});demand(locked.count===1 && ledger.count===1,"Concurrent finite-tail plan changed");
+    const body=detectiveTailReceiptBodySchema.parse({...fresh.binding,planSha256:expected,operatorId,ownerAuthorizationSha256:evidence,authorizedAt:new Date().toISOString(),automaticRelease:false});
+    const pin=detectiveTailReceiptSchema.parse({...body,authorizationSha256:hash(body)});
+    await tx.auditLog.create({data:{id:detectivesTailId(gameId),actorType:"ADMIN",actorId:operatorId,action:DETECTIVES_TAIL_ACTION,entityType:"Game",entityId:gameId,metaJson:JSON.stringify(pin)}});return pin;
+  },{isolationLevel:Prisma.TransactionIsolationLevel.Serializable,timeout:30_000});
+}
+export async function resumeDetectivesCompletionTail(c:Container,gameId:string):Promise<boolean> {
+  if(env().APP_ENV!=="qa" || c.storage.id!=="db")return false;
+  const pin=await tailReceiptOf(c,gameId);if(!pin || await c.db.auditLog.findUnique({where:{id:detectivesTailResumeId(gameId)}}))return false;
+  const job=await c.db.generationJob.findUnique({where:{id:pin.jobId}});if(!job || job.status!=="FAILED" || job.currentStep!==EXHAUSTED || job.attempts!==pin.jobAttempts || parkedHoldSha256(job)!==pin.holdSha256)return false;
+  return c.db.$transaction(async tx=>{const scoped=transactionContainer(c,tx),state=await current(scoped,gameId),prior=await extensionReceiptOf(scoped,gameId);
+    demand(prior && prior.authorizationSha256===pin.previousAuthorizationSha256 && await extensionResumed(scoped,prior) && await matches(scoped,pin,state)
+      && state.game.status==="TARGETS_GENERATING" && !state.game.readyAt && !state.game.configJson && !await identityRevisionPending(tx,gameId),"Current paid source and prior extension required");
+    demand(hash(await tailRowsOf(scoped,gameId))===pin.allRowsSha256,"Authorized finite-tail rows changed before wake");
+    const locked=await tx.game.updateMany({where:{id:gameId,updatedAt:state.game.updatedAt,status:"TARGETS_GENERATING",deletedAt:null,ownerId:pin.ownerId,childProfileId:pin.childId},data:{updatedAt:new Date()}});
+    const store=PrismaWorldBudgetStore.forReadOnlyTransaction(tx),stored=await store.read(pin.worldId);
+    demand(locked.count===1 && stored && stored.revision===pin.ledgerRevision+1 && hash(stored.snapshot)===pin.ledgerSha256 && !auditWorldBudget(stored.snapshot,DETECTIVES_TAIL_CAP).held,"Authorized finite-tail ledger changed before wake");
+    demand(await verifyAssetsAndBill(scoped,state,store)===pin.avatarSha256,"Original avatar pixels changed");
+    const ledger=await tx.worldBudgetLedger.updateMany({where:{worldId:pin.worldId,revision:stored.revision},data:{revision:{increment:1}}});
+    const resumed=await tx.generationJob.updateMany({where:{id:pin.jobId,gameId,status:"FAILED",currentStep:EXHAUSTED,attempts:pin.jobAttempts,updatedAt:job.updatedAt,lastError:job.lastError},data:{status:"QUEUED",currentStep:"local-patch",lastError:null}});
+    demand(ledger.count===1 && resumed.count===1,"Finite-tail hold changed concurrently");
+    await tx.auditLog.create({data:{id:detectivesTailResumeId(gameId),actorType:"SYSTEM",action:DETECTIVES_TAIL_RESUMED,entityType:"Game",entityId:gameId,metaJson:JSON.stringify({version:DETECTIVES_TAIL_BUDGET,authorizationSha256:pin.authorizationSha256,previousAuthorizationSha256:pin.previousAuthorizationSha256,holdSha256:pin.holdSha256,jobAttempts:pin.jobAttempts,requestsPreserved:true,attemptsReset:false,providerCallsAdded:0})}});return true;
+  },{isolationLevel:Prisma.TransactionIsolationLevel.Serializable,timeout:30_000});
+}
+/** The LOW experiment keeps its original eight-dollar identity. A later capacity receipt cannot rebind old answers. */
+export async function hasDetectivesLowCapacity(c:Container,gameId:string) {
+  const grant=await detectivesSingleReviewAuthorization(c.db,gameId),authority=await readDetectivesCompletionBudget(c,worldOf(gameId));
+  if(!grant || !authority)return false;
+  if(authority.capMicroUsd===DETECTIVES_EXTENSION_CAP)return authority.authorizationSha256===grant.authorizationSha256;
+  const tail=await tailReceiptOf(c,gameId);return authority.capMicroUsd===DETECTIVES_TAIL_CAP && tail?.authorizationSha256===authority.authorizationSha256 && tail.previousAuthorizationSha256===grant.authorizationSha256;
+}
+export async function detectivesNativeMaskTail(c:Container,gameId:string,rowId:string) {
+  const pin=await tailReceiptOf(c,gameId);if(!pin || !await hasDetectivesLowCapacity(c,gameId) || !await c.db.auditLog.findUnique({where:{id:detectivesTailResumeId(gameId)}}))return null;
+  const selected=pin.tailRows.find(r=>r.rowId===rowId && r.mode==="native-mask-fourth");return selected?{pin,selected}:null;
+}
+
+/** This renderer allowance cannot outlive its exact finite-tail row and consumed grant. */
+export async function requireDetectivesNativeMaskTail(c:Container,gameId:string,rowId:string) {
+  const tail=await detectivesNativeMaskTail(c,gameId,rowId);demand(tail,"No native-mask finite-tail authority");
+  const row=(await tailRowsOf(c,gameId)).find(r=>r.id===rowId);demand(row && nativeMaskTailCandidate(row),"No current diagnosed native-mask candidate");
+  const expected=nativeMaskTailMarkerSchema.parse({version:"single-low-native-mask-tail/v1",authorizationSha256:tail.pin.authorizationSha256,
+    previousAuthorizationSha256:tail.pin.previousAuthorizationSha256,rowId,sourceRowSha256:tail.selected.rowSha256,
+    retainedRenderSha256:tail.selected.retainedRenderSha256,originalAttempts:3,authorizedAttempt:4});
+  demand(row.status==="FAILED" ? tailRowHash(row)===tail.selected.rowSha256 : tailRowInvariant(row)===tail.selected.rowInvariantSha256
+    && JSON.stringify(nativeMaskTailMarker(row))===JSON.stringify(expected),"Finite-tail pixels, geometry or checkpoint changed");
+  return expected;
+}
+
+/** Capacity proof for the prospective fourth painting, in addition to all ordinary visual/source publication checks. */
+export async function nativeMaskTailPublicationAuthorized(db:Pick<Prisma.TransactionClient,"auditLog">,input:{gameId:string;variantId:string;hideId:string;attempts:number;sceneVersion:number;judgeJson:string|null}) {
+  try {
+    const value=JSON.parse(input.judgeJson??"null"),marker=nativeMaskTailMarker({judgeJson:input.judgeJson});
+    if(input.sceneVersion!==13)return value?.nativeMaskTail===undefined;
+    if(input.attempts<=3 && value?.nativeMaskTail===undefined)return true;
+    if(input.sceneVersion!==13 || input.attempts!==4 || !marker)return false;
+    const pin=await tailReceiptOf({db},input.gameId),base=await detectivesSingleReviewAuthorization(db,input.gameId);
+    if(!pin || !base || pin.previousAuthorizationSha256!==base.authorizationSha256 || marker.authorizationSha256!==pin.authorizationSha256
+      || marker.previousAuthorizationSha256!==base.authorizationSha256 || marker.rowId!==input.variantId)return false;
+    const row=pin.tailRows.find(r=>r.rowId===input.variantId && r.hideId===input.hideId && r.mode==="native-mask-fourth");
+    if(!row || row.rowSha256!==marker.sourceRowSha256 || row.retainedRenderSha256!==marker.retainedRenderSha256)return false;
+    const wake=await db.auditLog.findUnique({where:{id:detectivesTailResumeId(input.gameId)}});let proof;try{proof=JSON.parse(wake?.metaJson??"null");}catch{return false;}
+    return !!wake && wake.actorType==="SYSTEM" && wake.actorId===null && wake.action===DETECTIVES_TAIL_RESUMED && wake.entityType==="Game"
+      && wake.entityId===input.gameId && proof?.version===DETECTIVES_TAIL_BUDGET && proof.authorizationSha256===pin.authorizationSha256
+      && proof.previousAuthorizationSha256===base.authorizationSha256 && proof.holdSha256===pin.holdSha256;
+  }catch{return false;}
 }

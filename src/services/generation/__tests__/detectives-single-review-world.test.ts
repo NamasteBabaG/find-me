@@ -1,3 +1,6 @@
+import { planDetectivesCompletionTail, authorizeDetectivesCompletionTail, resumeDetectivesCompletionTail } from "../detectives-completion-budget";
+import { detectivesTailId, detectivesTailResumeId } from "../../../domain/generation/detectives-completion-budget";
+import { nativeMaskTailMarker } from "../../../domain/generation/native-mask-tail";
 import { guidedFrameGeometry, guidedFrameCandidate, GUIDED_FRAME_RECOVERY_VERSION } from "../../../domain/generation/guided-frame-recovery";
 import { cropOf } from "../../../domain/scene/local-patch-hides";
 import { runLocalPatchHide } from "../local-patch-hide";
@@ -147,33 +150,58 @@ function controlledSol(interrupted = false, guided = false, guidedHideId?: strin
   return { fake, creates };
 }
 
-it.each([{mode:"clean",interrupted:false,guided:false},{mode:"transport",interrupted:true,guided:false},{mode:"guided",interrupted:false,guided:true}])("completes27 hides with bounded LOW review and no extra planner; mode=$mode", async ({mode,interrupted,guided}) => {
+it.each([{mode:"clean",interrupted:false,guided:false},{mode:"transport",interrupted:true,guided:false},{mode:"guided",interrupted:false,guided:true},{mode:"tail",interrupted:false,guided:true}])("completes27 hides with bounded LOW review and no extra planner; mode=$mode", async ({mode,interrupted,guided}) => {
   vi.useFakeTimers({ toFake: ["Date"] });
   const gameId = "detective-single-world-synthetic-" + mode; await newDetectiveWorld(gameId);
   const context = await resolveLocalPatchBoardsForGame(db, gameId, 13), hides = context.boards.flatMap(board => board.hides);
   expect(context.boards).toHaveLength(9); expect(hides).toHaveLength(27);
   expect(hides.every(hide => sourcePlacementForHide(context, hide.id)!.sourceNeighbors)).toBe(true);
-  const prompts = new Map<string, string>(), provider = controlledSol(interrupted, guided);
+  const tail = mode === "tail", guidedHideId = tail ? context.boards.find(b=>b.board==="paris")!.hides[0]!.id : hides[0]!.id;
+  const prompts = new Map<string, string>(), provider = controlledSol(interrupted, guided, guidedHideId);
+  let tailExtended = false, protectedRows: unknown[] = [];
   const synchronous = vi.fn<NonNullable<Container["visualReview"]>["request"]>(async () => { throw Error("Historical single review forbidden"); });
   const container = { ...c, visualReview: { request: synchronous }, backgroundReview: provider.fake } as Container;
   const deps: LocalPatchHideDeps = { readBoardArt: readArt, renderPolicySha256: localPatchRenderPolicySha256(LOCAL_PATCH_IMAGE_POLICY),
     judge: async () => { throw Error("Historical per-hide judge forbidden"); },
-    render: async ({ requestKey, stylePng, prompt, subjectQuality, placementGuidePng }) => {
+    render: async ({ requestKey, stylePng, prompt, subjectQuality, placementGuidePng, maskPng }) => {
       expect(subjectQuality).toBe("medium");
       const hide = hides.find(hide => requestKey.startsWith(hide.id + ":")); if (!hide) throw Error("Unregistered Detective painter request");
-      if (guided && hide.id === hides[0]!.id) {
-        expect([1,2,3]).toContain(Number(requestKey.split(":").at(-1)));
+      if (guided && hide.id === guidedHideId) {
+        expect(tail ? [1,2,3,4] : [1,2,3]).toContain(Number(requestKey.split(":").at(-1)));
         if (requestKey.endsWith(":render:3")) expect(placementGuidePng).toBeDefined();
       } else expect(requestKey.endsWith(":render:1")).toBe(true);
       expect(prompt).toContain("local-patch-authored-paint/v1"); prompts.set(requestKey, prompt);
       const mask = placementGuidePng ? guidedFrameGeometry(maskForHide(hide), hide.returnRect!).target : maskForHide(hide), figure = await sharp({ create: { width: Math.round(mask.width * 0.6), height: Math.round(mask.height * 0.8), channels: 4, background: requestKey.endsWith(":render:2") ? "#304f91" : "#1e3ca0" } }).png().toBuffer();
-      const png = await sharp(stylePng).composite([{ input: figure, left: mask.left + Math.round(mask.width * 0.2), top: mask.top + Math.round(mask.height * 0.2) }]).png().toBuffer();
+      let png = await sharp(stylePng).composite([{ input: figure, left: mask.left + Math.round(mask.width * 0.2), top: mask.top + Math.round(mask.height * 0.2) }]).png().toBuffer();
+      if (tail && hide.id === guidedHideId && requestKey.endsWith(":render:3")) {
+        // A genuinely different prospective mask is required after this stationary background rewrite.
+        png=await sharp({create:{width:512,height:768,channels:4,background:"#808080"}}).png().toBuffer();
+      }
+      if (tail && hide.id === guidedHideId && requestKey.endsWith(":render:4")) {
+        expect(prompt).toContain("NATIVE EDIT MASK");const alpha=await sharp(maskPng).ensureAlpha().raw().toBuffer();let clear=0;
+        let mismatches=0;for(let y=0;y<768;y++)for(let x=0;x<512;x++){const editable=alpha[(y*512+x)*4+3]===0;if(editable)clear++;if(editable!==(x>=mask.left&&x<mask.left+mask.width&&y>=mask.top&&y<mask.top+mask.height))mismatches++;}
+        expect(mismatches).toBe(0);expect(clear).toBe(mask.width*mask.height);
+      }
       return paintedOk(png, bill("paint-" + gameId + "-" + requestKey));
     } };
   const diagnose = vi.fn(async () => { throw Error("Clean controlled answers cannot authorize a diagnosis"); });
   let result = { pending: true, attention: null as string | null }, ticks = 0;
   for (; ticks < 900 && result.pending; ticks++) {
     result = await runLocalPatchWorldSlice(container, deps, gameId, { hardDeadlineAt: Date.now() + 270_000, diagnose });
+    if (tail && result.attention && !tailExtended) {
+      const rows=await db.targetVariantAsset.findMany({where:{variant:"A",targetInstance:{gameScene:{gameId}}},orderBy:{id:"asc"}});
+      expect(rows).toHaveLength(27);const remaining=rows.filter(r=>r.status!=="GENERATED");expect(remaining).toHaveLength(1);
+      const rejected=JSON.parse(remaining[0]!.judgeJson!);expect(remaining[0]!.attempts).toBe(3);expect(rejected.seam).toMatchObject({verdict:"background-rewritten",shift:{dx:0,dy:0}});
+      protectedRows=rows.filter(r=>r.status==="GENERATED");
+      const budget=boardWizardBudgetOf(container),worldId=boardWizardWorldId(gameId),fill=7_750_000-(await budget.audit(worldId)).committedMicroUsd;expect(fill).toBeGreaterThan(0);
+      await budget.reserve(worldId,{requestKey:"synthetic-finishing-eight-cap",scope:"image",operationFingerprint:"c".repeat(64),reserveMicroUsd:fill});await budget.settle(worldId,"synthetic-finishing-eight-cap",bill("req-eight-filled-"+gameId,fill));
+      // Synthetic resource-stop fixture only. Real jobs use the normal exhaustion path.
+      await db.generationJob.update({where:{id:"job_"+gameId},data:{lastError:"local-patch: no automatic action remains within the authorized world budget; synthetic eight-dollar stop"}});
+      const plan=await planDetectivesCompletionTail(container,gameId);expect(plan.binding.tailRows).toMatchObject([{mode:"native-mask-fourth",originalAttempts:3,maxAttempt:4}]);
+      const owner=(await db.game.findUniqueOrThrow({where:{id:gameId}})).ownerId;
+      await authorizeDetectivesCompletionTail(container,{gameId,operatorId:owner!,expectedPlanSha256:plan.planSha256,ownerAuthorizationSha256:"d".repeat(64)});
+      expect(await resumeDetectivesCompletionTail(container,gameId)).toBe(true);tailExtended=true;result={pending:true,attention:null};continue;
+    }
     expect(result.attention).toBeNull();
     const checkpoint = await db.generationJob.findUniqueOrThrow({ where: { id: "job_" + gameId } });
     if (checkpoint.currentStep === "local-patch:recovery-budget-wait") {
@@ -192,9 +220,16 @@ it.each([{mode:"clean",interrupted:false,guided:false},{mode:"transport",interru
   expect(config.scenes.every(scene => scene.art.base.includes("-detectives-"))).toBe(true);
   expect(await subjectUpgradeOf(db, gameId)).toMatchObject({ actorType: "SYSTEM", operatorId: SYSTEM_ENROLLMENT_OPERATOR, ageYears: 8 });
   const rows = await db.targetVariantAsset.findMany({ where: { variant: "A", targetInstance: { gameScene: { gameId } } } });
-  expect(rows).toHaveLength(27); expect(rows.every(row => row.status === "GENERATED" && row.attempts === (guided && JSON.parse(row.judgeJson!).hide === hides[0]!.id ? 3 : 1))).toBe(true);
-  expect(prompts.size).toBe(guided ? 29 : 27); expect(provider.creates).toHaveLength(guided ? 29 : interrupted ? 28 : 27); expect(provider.creates.filter(create => create.quality)).toHaveLength(guided ? 29 : interrupted ? 28 : 27);
+  expect(rows).toHaveLength(27); expect(rows.every(row => row.status === "GENERATED" && row.attempts === (guided && JSON.parse(row.judgeJson!).hide === guidedHideId ? tail ? 4 : 3 : 1))).toBe(true);
+  expect(prompts.size).toBe(tail ? 30 : guided ? 29 : 27); expect(provider.creates).toHaveLength(guided ? 29 : interrupted ? 28 : 27); expect(provider.creates.filter(create => create.quality)).toHaveLength(guided ? 29 : interrupted ? 28 : 27);
   expect(provider.creates.filter(create => create.tier === "default")).toHaveLength(interrupted ? 1 : 0);
+  if (tail) {
+    expect(tailExtended).toBe(true);expect(await db.targetVariantAsset.findMany({where:{id:{in:(protectedRows as {id:string}[]).map(r=>r.id)}},orderBy:{id:"asc"}})).toEqual(protectedRows);
+    const native=rows.find(r=>r.attempts===4)!;expect(nativeMaskTailMarker(native)).not.toBeNull();
+    const nativeBinding={...publicationBinding(gameId,native),sceneVersion:13};
+    for(const id of [detectivesTailId(gameId),detectivesTailResumeId(gameId)]) {const proof=await db.auditLog.findUniqueOrThrow({where:{id}});await db.auditLog.delete({where:{id}});expect(await allowedDualPublication(db,nativeBinding)).toBe(false);await db.auditLog.create({data:proof});}
+    const changed=JSON.parse(native.judgeJson!);changed.nativeMaskTail.sourceRowSha256="e".repeat(64);expect(await allowedDualPublication(db,{...nativeBinding,judgeJson:JSON.stringify(changed)})).toBe(false);
+  }
   const store = new PrismaRetainedPurchaseStore(db), worldId = boardWizardWorldId(gameId);
   for (const row of rows) {
     const receipt = JSON.parse(row.judgeJson!), proof = receipt.boardReview.dual as DualReviewProof;
@@ -237,7 +272,7 @@ it.each([{mode:"clean",interrupted:false,guided:false},{mode:"transport",interru
   expect(oversized.kind).toBe("image");
   if (oversized.kind === "image") { expect(oversized.rect!.h * 2160).toBe(768); expect(oversized.hitRect!.h * 2160).toBeGreaterThan(540 * 0.8); }
   const audit = await boardWizardBudgetOf(c).audit(worldId);
-  expect(audit).toMatchObject({ capMicroUsd: 8_000_000, held: false, pendingRequestKeys: [] });
+  expect(audit).toMatchObject({ capMicroUsd: tail ? 10_000_000 : 8_000_000, held: false, pendingRequestKeys: [] });
   expect(audit.unknownRequestKeys).toHaveLength(interrupted ? 1 : 0);
   if (interrupted) {
     const unknown = await boardWizardBudgetOf(c).readRequest(worldId, audit.unknownRequestKeys[0]!);

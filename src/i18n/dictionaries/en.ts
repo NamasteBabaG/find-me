@@ -6,6 +6,10 @@ import { worldPurchaseEn, worldSelectorEn, friendsEn } from "./world-features";
 
 export const en = {
   adminIdentityRevision: {
+    detectivesTailTitle: "Finite completion for this Detective world",
+    detectivesTailDescription: "After explicit owner authorization: extend this same QA world from $8 to $10 total. Preserve all charges and unknown reservations. Each of the at most four remaining appearances receives one diagnosed prospective painting and one combined Sol 6.1 LOW assessment; publication still requires all27 passes.",
+    detectivesTailConfirm: "The owner authorized $10 cumulative for this same world and its finite automatic tail. This does not approve art or publish the game.",
+    detectivesTailGrant: "Authorize this Detective world up to $10 total",
     detectivesExtensionTitle: "Separate completion extension for this Detective world",
     detectivesExtensionDescription: "Only after a new explicit owner authorization: extend this existing QA world from $6 to $8 total. The original authorization, every historical charge, unknown reservation and source remain intact. New image assessments use one Sol 6.1 LOW answer containing every required check.",
     detectivesExtensionConfirm: "The owner authorized up to $8 in total for this same world, including all history and uncertain charges. This does not approve art or publish the game.",

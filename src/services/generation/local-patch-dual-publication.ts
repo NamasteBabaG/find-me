@@ -1,6 +1,6 @@
 import { SINGLE_VISUAL_REVIEW_VERSION, readSingleVisualReview } from "../../domain/generation/single-visual-review";
 import { isSingleLowReviewPolicy } from "../../domain/generation/visual-review-policy";
-import { detectivesSingleReviewAuthorization } from "./detectives-completion-budget";
+import { detectivesSingleReviewAuthorization, nativeMaskTailPublicationAuthorized } from "./detectives-completion-budget";
 import { hasLocalPatchCapability } from "../../domain/scene/local-patch-family";
 import type { Prisma } from "@prisma/client";
 import { localPatchRuntimeContinuityVerdict } from "../../domain/scene/local-patch-body-continuity";
@@ -29,6 +29,7 @@ const equal = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b
  * historical strict reading, and a re-reading must describe that exact text. */
 export async function allowedDualPublication(db: Prisma.TransactionClient, input: LocalPatchPublicationBinding): Promise<boolean> {
   try {
+    if (!await nativeMaskTailPublicationAuthorized(db, input)) return false;
     const version = await dualVisualReviewVersion(db, input.gameId);
     const receipt = JSON.parse(input.judgeJson ?? "null"), review = receipt?.boardReview;
     const proof = review?.dual as DualReviewProof | undefined;

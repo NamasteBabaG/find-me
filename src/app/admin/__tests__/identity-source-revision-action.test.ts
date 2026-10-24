@@ -20,11 +20,11 @@ vi.mock("@/services/generation/identity-source-revision", () => ({
 }));
 vi.mock("@/services/generation/lean-completion-budget", () => ({ authorizeLeanCompletionBudget: f.grant }));
 vi.mock("@/services/generation/lean-capacity-recovery", () => ({ authorizeLeanCapacityRecovery: f.capacity }));
-vi.mock("@/services/generation/detectives-completion-budget", () => ({ authorizeDetectivesCompletionBudget: f.detectives, authorizeDetectivesCompletionExtension: f.extension }));
-import { DETECTIVES_COMPLETION_CONFIRMATION, DETECTIVES_EXTENSION_CONFIRMATION } from "@/domain/generation/detectives-completion-budget";
+vi.mock("@/services/generation/detectives-completion-budget", () => ({ authorizeDetectivesCompletionBudget: f.detectives, authorizeDetectivesCompletionTail: f.extension, authorizeDetectivesCompletionExtension: f.extension }));
+import { DETECTIVES_COMPLETION_CONFIRMATION, DETECTIVES_EXTENSION_CONFIRMATION, DETECTIVES_TAIL_CONFIRMATION } from "@/domain/generation/detectives-completion-budget";
 import { LEAN_CAPACITY_RECOVERY_CONFIRMATION } from "@/domain/generation/lean-capacity-recovery";
 import { LEAN_COMPLETION_BUDGET_CONFIRMATION } from "@/domain/generation/lean-completion-budget";
-import { beginIdentitySourceRevisionAction, retryIdentitySourceRevisionAction, authorizeLeanCompletionBudgetAction, authorizeLeanCapacityRecoveryAction, authorizeDetectivesCompletionBudgetAction, authorizeDetectivesCompletionExtensionAction } from "../actions";
+import { beginIdentitySourceRevisionAction, retryIdentitySourceRevisionAction, authorizeLeanCompletionBudgetAction, authorizeLeanCapacityRecoveryAction, authorizeDetectivesCompletionBudgetAction, authorizeDetectivesCompletionExtensionAction, authorizeDetectivesCompletionTailAction } from "../actions";
 const destination = "/admin/orders/game-synthetic", digest = "a".repeat(64);
 function form() {
   const data = new FormData(); data.set("gameId", "game-synthetic"); data.set("planSha256", digest);
@@ -194,4 +194,17 @@ it.each(['no-admin', 'qa-denied', 'production', 'cross-origin', 'missing-origin'
   if (mode === 'old-six-confirm') data.set('confirm', DETECTIVES_COMPLETION_CONFIRMATION);
   if (mode === 'unconfirmed') data.delete('confirm');
   await expect(authorizeDetectivesCompletionExtensionAction(data)).rejects.toThrow(); expect(f.extension).not.toHaveBeenCalled();
+});
+
+it('uses the session owner admin and fresh finite-tail plan for a separate ten-dollar continuation', async()=>{
+ const data=extensionForm();data.set('confirm',DETECTIVES_TAIL_CONFIRMATION);data.set('operatorId','forged');
+ await expect(authorizeDetectivesCompletionTailAction(data)).rejects.toThrow('redirect:'+destination+'?detectivesExtension=authorized');
+ expect(f.extension).toHaveBeenCalledExactlyOnceWith({synthetic:true},{gameId:'game-synthetic',operatorId:'real-session-admin',expectedPlanSha256:digest,ownerAuthorizationSha256:digest});
+});
+it.each(['old-eight-confirm','cross-origin','duplicate-confirm','duplicate-plan','production','no-admin'])('refuses %s finite-tail action before dispatch',async mode=>{
+ const data=extensionForm();data.set('confirm',DETECTIVES_TAIL_CONFIRMATION);
+ if(mode==='old-eight-confirm')data.set('confirm',DETECTIVES_EXTENSION_CONFIRMATION);if(mode==='cross-origin')f.requestHeaders.set('origin','https://attacker.invalid');
+ if(mode==='duplicate-confirm')data.append('confirm',DETECTIVES_TAIL_CONFIRMATION);if(mode==='duplicate-plan')data.append('planSha256',digest);
+ if(mode==='production')f.appEnv='production';if(mode==='no-admin')f.admin=null;
+ await expect(authorizeDetectivesCompletionTailAction(data)).rejects.toThrow();expect(f.extension).not.toHaveBeenCalled();
 });

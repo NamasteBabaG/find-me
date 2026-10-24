@@ -1,3 +1,5 @@
+import { nativeMaskTailPublicationAuthorized } from "./detectives-completion-budget";
+import { nativeMaskTailMarker } from "../../domain/generation/native-mask-tail";
 import { sourceNeighborReviewContext } from "../../domain/scene/local-patch-review-context";
 import { hasLocalPatchCapability } from "../../domain/scene/local-patch-family";
 import sharp from "sharp";
@@ -195,8 +197,11 @@ export async function prepareLocalPatchBoardReview(c: Container, input: { gameId
     entries.push({ hide, row, asset, bytes, crop, imageSha256, geometrySha256, ...(reviewContextRect ? { reviewContextRect } : {}) });
   }
   if (!entries.length) return { ready: false as const, reason: "No ready appearance awaits review" };
-  if (entries.some(entry => entry.row.attempts > LOCAL_PATCH_MAX_ATTEMPTS)) {
-    demand(extraPlan, "A fourth-attempt review requires its original scoped authority");
+  const nativeFourth = !extraPlan && entries.some(entry => entry.row.attempts > LOCAL_PATCH_MAX_ATTEMPTS);
+  if (nativeFourth) for (const entry of entries.filter(e => e.row.attempts > LOCAL_PATCH_MAX_ATTEMPTS)) {
+    demand(scene.sceneVersion === 13 && entry.row.attempts === 4 && await nativeMaskTailPublicationAuthorized(c.db, {
+      gameId: game.id, variantId: entry.row.id, hideId: entry.hide.id, attempts: entry.row.attempts, sceneVersion: scene.sceneVersion, judgeJson: entry.row.judgeJson,
+    }), "A fourth-attempt review requires its original scoped authority or exact finite native-mask grant");
   }
   if (extraPlan) await requireLocalPatchExtraReview(c, { gameId: game.id, sceneId: scene.id, authorizationId: extraPlan.authorizationId });
   // A new candidate does not retire the original approvals of unchanged
@@ -240,7 +245,7 @@ export async function prepareLocalPatchBoardReview(c: Container, input: { gameId
   // all three large native panels unless replay requires the old full question.
   if (incremental && (!recovering || options.playerReview)) {
     const unapproved = entries.filter(eligible).sort(continuityFirst);
-    const oldKey = entries.length === board.hides.length ? localPatchBoardReviewKey(board.board, entries.map(e => e.row.attempts),
+    const oldKey = !nativeFourth && entries.length === board.hides.length ? localPatchBoardReviewKey(board.board, entries.map(e => e.row.attempts),
       entries.some(e => e.hide.returnRect) ? AUTHORED_PATCH_COMPOSITION_VERSION : LOCAL_PATCH_COMPOSITION_VERSION, scene.sceneVersion) : null;
     if (options.playerReview || !oldKey || unapproved.some(e => localPatchEvidenceRecovery(e.row)) || !await budget.readRequest(worldId, oldKey)) {
       requestEntries = [(unapproved.length ? unapproved : entries).sort(nextFirst)[0]!];
@@ -324,12 +329,13 @@ export async function prepareLocalPatchBoardReview(c: Container, input: { gameId
     ...(authoredReturns.length ? { authoredReturns } : {}),
     ...(authoredRecoveries.length ? { authoredRecoveries } : {}),
     ...(extraPlan ? { extraAttemptAuthorizationId: extraPlan.authorizationId, protectedRows: [...protectedRows].sort() } : {}),
+    ...(nativeFourth ? { nativeMaskTail: supplied.filter(e => e.row.attempts === 4).map(e => nativeMaskTailMarker(e.row)) } : {}),
     ...(repairingSupplied ? { selfRepair: supplied.map(e => JSON.parse(e.row.judgeJson!).selfRepair ?? null),
       ...(!independent ? { protectedRows: [...protectedRows].sort() } : {}) } : {}),
     hides: supplied.map(e => ({ hide: e.hide.id, target: e.row.targetInstanceId, attempts: e.row.attempts, asset: e.asset.id,
       imageSha256: e.imageSha256, geometrySha256: e.geometrySha256 })),
   });
-    const requestKey = recovering || request.reviewScope === "ready-only/v1" ? `self-repair:board:${board.board}:${fingerprint}` : localPatchBoardReviewKey(board.board, strict ? entries.map(e => e.row.attempts) : undefined, questionComposition, scene.sceneVersion, extraPlan ? 4 : 3)
+    const requestKey = recovering || request.reviewScope === "ready-only/v1" ? `self-repair:board:${board.board}:${fingerprint}` : localPatchBoardReviewKey(board.board, strict ? entries.map(e => e.row.attempts) : undefined, questionComposition, scene.sceneVersion, extraPlan || nativeFourth ? 4 : 3)
       + (extraPlan ? ":visible-body-v1" : "");
     return { prompt, fingerprint, requestKey };
   };

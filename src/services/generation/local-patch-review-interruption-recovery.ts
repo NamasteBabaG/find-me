@@ -1,5 +1,5 @@
 import { SINGLE_VISUAL_REVIEW_VERSION } from "../../domain/generation/single-visual-review";
-import { detectivesSingleReviewAuthorization, readDetectivesCompletionBudget } from "./detectives-completion-budget";
+import { detectivesSingleReviewAuthorization, hasDetectivesLowCapacity } from "./detectives-completion-budget";
 import { detectiveAutomaticRecoveryQualified } from "./detective-automatic-recovery";
 import { hasLocalPatchCapability } from "../../domain/scene/local-patch-family";
 import type { Prisma } from "@prisma/client";
@@ -130,8 +130,7 @@ export async function recoverPreparedLocalPatchReviews(c: Container, prepared: P
   const capacity = pinned && prepared.scene.sceneVersion !== 13 ? await leanCapacityRecoveryOf(c.db, prepared.game.id) : null;
   const counts = await prepared.budget.countContinuationApprovals(prepared.worldId);
   const singleGrant = await detectivesSingleReviewAuthorization(c.db, prepared.game.id);
-  const currentCap = singleGrant ? await readDetectivesCompletionBudget(c, prepared.worldId) : null;
-  const singleAuthorized = singleGrant && currentCap?.capMicroUsd === 8_000_000 && currentCap.authorizationSha256 === singleGrant.authorizationSha256;
+  const singleAuthorized = singleGrant && await hasDetectivesLowCapacity(c, prepared.game.id);
   let freeV1 = WORLD_AUTOMATIC_REVIEW_RECOVERY_V1_LIMIT - (counts[REVIEW_APPROVAL_V1] ?? 0);
   let freeV2 = enrolled ? WORLD_AUTOMATIC_REVIEW_RECOVERY_V2_LIMIT - (counts[REVIEW_APPROVAL_V2] ?? 0) : 0;
   let freeV3 = pinned ? WORLD_AUTOMATIC_REVIEW_RECOVERY_V3_LIMIT - (counts[REVIEW_APPROVAL_V3] ?? 0) : 0;

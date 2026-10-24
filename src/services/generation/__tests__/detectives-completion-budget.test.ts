@@ -1,3 +1,5 @@
+import { planDetectivesCompletionTail, authorizeDetectivesCompletionTail, resumeDetectivesCompletionTail, hasDetectivesLowCapacity, detectivesSingleReviewAuthorization } from "../detectives-completion-budget";
+import { detectivesTailId, detectivesTailResumeId } from "../../../domain/generation/detectives-completion-budget";
 import { singleLowContinuationPublishable } from "../detectives-completion-budget";
 import type { WorldAutomaticReviewRecoveryV5 } from "../world-budget";
 import { resumeDetectivesLowEngineRecovery } from "../detectives-completion-budget";
@@ -398,4 +400,60 @@ it("admits a counted LOW unknown for publication only through its exact SYSTEM p
  const a:WorldAutomaticReviewRecoveryV5={version:"world-automatic-review-recovery/v5",policyId:"single-sol-low-transport-recovery/v1",worldId:f.worldId,approvalId:"synthetic-low-proof-"+f.gameId,requestKey:key,scope:"judge",operationFingerprint:fingerprint(70),reserveMicroUsd:210_553,unknownReasons:["unpriced failure"],grantSha256:grant.authorizationSha256,variantId:proof.variantId,imageSha256:proof.imageSha256,authorizationSha256:sha256Bytes(Buffer.from(JSON.stringify(proof))),authorizedAt:"2026-10-23T00:00:00.000Z"};
  const row=await db.auditLog.create({data:{id:a.approvalId,actorType:"SYSTEM",action:a.policyId,entityType:"Game",entityId:f.gameId,metaJson:JSON.stringify(proof)}});expect(await singleLowContinuationPublishable(db,f.gameId,a)).toBe(true);
  for(const kind of ["actor","foreign-image","changed-proof","grant"]){if(kind==="actor")await db.auditLog.update({where:{id:row.id},data:{actorType:"ADMIN"}});if(kind==="foreign-image")a.imageSha256=fingerprint(75);if(kind==="changed-proof")await db.auditLog.update({where:{id:row.id},data:{metaJson:JSON.stringify({...proof,extra:"changed"})}});if(kind==="grant")a.grantSha256=fingerprint(76);expect(await singleLowContinuationPublishable(db,f.gameId,a)).toBe(false);a.imageSha256=proof.imageSha256;a.grantSha256=grant.authorizationSha256;await db.auditLog.update({where:{id:row.id},data:{actorType:"SYSTEM",metaJson:row.metaJson}});}
+});
+
+async function tenDollarFixture() {
+  const f=await extensionFixture();await f.extend();expect(await resumeDetectivesCompletionExtension(c,f.gameId)).toBe(true);
+  const budget=boardWizardBudgetOf(c);await budget.reserve(f.worldId,{requestKey:"synthetic-eight-dollar-tail",scope:"image",operationFingerprint:fingerprint(91),reserveMicroUsd:1_800_000});
+  await budget.settle(f.worldId,"synthetic-eight-dollar-tail",bill("req-eight-tail-"+f.gameId,1_800_000));
+  await db.generationJob.update({where:{id:"job_"+f.gameId},data:{status:"FAILED",attempts:22,currentStep:"local-patch:recovery-exhausted",lastError:"local-patch: no automatic action remains within the authorized world budget; synthetic eight-dollar stop"}});
+  let failedRow="";
+  for(const [i,board] of DETECTIVE_PATCH_BOARDS.entries())for(const [n,hide] of board.hides.entries()){
+    const targetId="ten-target-"+f.gameId+"-"+i+"-"+n,rowId="ten-row-"+f.gameId+"-"+i+"-"+n;
+    await db.targetInstance.create({data:{id:targetId,gameSceneId:"gsc-"+f.gameId+"-"+board.board,targetId:hide.targetId,targetType:"child",slotAId:hide.id,slotBId:hide.id}});
+    const failing=i===0&&n===0,j=failing?{reviewState:"board-review-complete",wireFault:null,judgedSha256:fingerprint(40),verdict:{verdict:"fail",childComplete:"fail",boundaryIntegrity:{top:{status:"fail"}}},boardReview:{dual:{single:SINGLE_VISUAL_REVIEW_VERSION,quality:{requestKey:"synthetic-old-low",policy:{effort:"low",model:"gpt-6.1-sol"},raw:JSON.stringify({version:SINGLE_VISUAL_REVIEW_VERSION,assessment:{},continuity:{},doubt:false,doubtReason:null})}}}}:{reviewState:"board-review-complete",wireFault:null,verdict:{verdict:"pass"}};
+    await db.targetVariantAsset.create({data:{id:rowId,targetInstanceId:targetId,variant:"A",slotId:hide.id,provider:LOCAL_PATCH_PROVIDER,status:failing?"FAILED":"GENERATED",attempts:failing?2:1,assetId:"synthetic-asset-"+rowId,judgeJson:JSON.stringify(j)}});if(failing)failedRow=rowId;
+  }
+  const plan=await planDetectivesCompletionTail(c,f.gameId),authorize=(container=c,observed=plan)=>authorizeDetectivesCompletionTail(container,{gameId:f.gameId,operatorId:f.ownerId,expectedPlanSha256:observed.planSha256,ownerAuthorizationSha256:"a".repeat(64)});
+  return {...f,plan,authorizeTen:authorize,failedRow};
+}
+describe("explicit finite ten-dollar Detective continuation",()=>{
+  it("preserves all old receipts, unknowns and27rows; grants once and wakes the exact hold through the normal queue",async()=>{
+    const f=await tenDollarFixture(),before=await immutable(f),rows=await db.targetVariantAsset.findMany({where:{targetInstance:{gameScene:{gameId:f.gameId}}},orderBy:{id:"asc"}});
+    const oldGrant=await db.auditLog.findUniqueOrThrow({where:{id:detectivesExtensionId(f.gameId)}}),single=await detectivesSingleReviewAuthorization(db,f.gameId);
+    expect(f.plan.binding).toMatchObject({baseCapMicroUsd:8_000_000,capMicroUsd:10_000_000,committedMicroUsd:7_700_000,tailRows:[{rowId:f.failedRow,originalAttempts:2,maxAttempt:3,mode:"guided-third"}]});
+    const grant=await f.authorizeTen();expect(await f.authorizeTen()).toEqual(grant);expect(await immutable(f)).toEqual(before);
+    expect(await readBoardWizardBudgetAuthority(c,f.worldId)).toMatchObject({capMicroUsd:10_000_000,authorizationSha256:grant.authorizationSha256});
+    expect(await detectivesSingleReviewAuthorization(db,f.gameId)).toEqual(single);expect(await f.extend()).toEqual(JSON.parse(oldGrant.metaJson!));expect(await hasDetectivesLowCapacity(c,f.gameId)).toBe(true);
+    expect(await nextDetectivesCompletionWake(c,f.gameId)).toBe(f.gameId);expect(await resumeDetectivesCompletionTail(c,f.gameId)).toBe(false);
+    expect(await db.generationJob.findUniqueOrThrow({where:{id:"job_"+f.gameId}})).toMatchObject({status:"QUEUED",attempts:22});
+    expect(await db.auditLog.findUniqueOrThrow({where:{id:detectivesExtensionId(f.gameId)}})).toEqual(oldGrant);
+    expect(await db.targetVariantAsset.findMany({where:{targetInstance:{gameScene:{gameId:f.gameId}}},orderBy:{id:"asc"}})).toEqual(rows);expect(await immutable(f)).toEqual(before);
+    expect(await db.auditLog.count({where:{id:detectivesTailResumeId(f.gameId)}})).toBe(1);
+    await expect(boardWizardBudgetOf(c).reserve(f.worldId,{requestKey:"synthetic-over-ten",scope:"judge",operationFingerprint:fingerprint(92),reserveMicroUsd:2_300_001})).rejects.toThrow();
+  },60_000);
+  it.each(["no-admin","production","age","avatar","hold","ledger","pending","refund","tail-row","accepted-row","no-diagnosis","foreign-plan"])("refuses stale or unauthorized finite-tail binding: %s",async fault=>{
+    const f=await tenDollarFixture();
+    if(fault==="production")settings.APP_ENV="production";
+    if(fault==="age")await db.childProfile.update({where:{id:f.childId},data:{ageYears:7}});
+    if(fault==="avatar")await c.storage.put("game/avatar-"+f.gameId,Buffer.from("changed synthetic avatar"),"image/png");
+    if(fault==="hold")await db.generationJob.update({where:{id:"job_"+f.gameId},data:{lastError:"Different service hold"}});
+    if(fault==="ledger")await db.worldBudgetLedger.update({where:{worldId:f.worldId},data:{revision:{increment:1}}});
+    if(fault==="pending")await boardWizardBudgetOf(c).reserve(f.worldId,{requestKey:"synthetic-tail-pending",scope:"judge",operationFingerprint:fingerprint(93),reserveMicroUsd:1});
+    if(fault==="refund")await db.order.update({where:{id:"order-"+f.gameId},data:{paymentStatus:"REFUNDED",refundedAt:new Date()}});
+    if(fault==="tail-row")await db.targetVariantAsset.update({where:{id:f.failedRow},data:{lastError:"Different diagnosed row"}});
+    if(fault==="accepted-row")await db.targetVariantAsset.updateMany({where:{status:"GENERATED",targetInstance:{gameScene:{gameId:f.gameId}}},data:{costCents:99}});
+    if(fault==="no-diagnosis")await db.targetVariantAsset.update({where:{id:f.failedRow},data:{judgeJson:"{}"}});
+    const other=fault==="foreign-plan"?await tenDollarFixture():null;
+    await expect(f.authorizeTen(fault==="no-admin"?{...c,adminEmails:[]}:c,other?.plan??f.plan)).rejects.toThrow();
+    expect(await db.auditLog.findUnique({where:{id:detectivesTailId(f.gameId)}})).toBeNull();expect(fetch).not.toHaveBeenCalled();
+  },60_000);
+  it.each(["ledger","row"])("refuses a changed %s after grant but before normal wake",async fault=>{
+    const f=await tenDollarFixture();await f.authorizeTen();
+    if(fault==="ledger")await db.worldBudgetLedger.update({where:{worldId:f.worldId},data:{revision:{increment:1}}});
+    else await db.targetVariantAsset.update({where:{id:f.failedRow},data:{lastError:"Changed after the grant"}});
+    await expect(resumeDetectivesCompletionTail(c,f.gameId)).rejects.toThrow("changed");
+    expect(await db.generationJob.findUniqueOrThrow({where:{id:"job_"+f.gameId}})).toMatchObject({status:"FAILED",attempts:22});
+    expect(await db.auditLog.findUnique({where:{id:detectivesTailResumeId(f.gameId)}})).toBeNull();
+  },60_000);
 });

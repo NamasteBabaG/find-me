@@ -530,3 +530,25 @@ describe("eight-dollar Detective progress regression", () => {
     expect(mocks.link).not.toHaveBeenCalled();
   });
 });
+
+describe("ten-dollar Detective progress regression", () => {
+  it.each([5_820_811, 6_500_000, 9_900_000, 10_000_000, 10_100_000])("matches the verified ten-dollar engine cap at %i microUSD", async spent => {
+    mocks.game.mockResolvedValue({ ...game, status: "TARGETS_GENERATING", styleVersion: "local-patch-world-v1" });
+    mocks.job.mockResolvedValue({ gameId: game.id, status: "RUNNING", currentStep: "local-patch", stepsJson: "{}" });
+    mocks.ledger.mockResolvedValue({ snapshotJson: JSON.stringify(spentTo(spent)) });
+    mocks.detectivesBudget.mockResolvedValue({ worldId: "synthetic:board-wizard", capMicroUsd: 10_000_000, authorizationSha256: "a".repeat(64) });
+    expect(await (await response()).json()).toMatchObject({ state: spent <= 10_000_000 ? "working" : "held",
+      pending: spent <= 10_000_000, awaitingQa: spent > 10_000_000, done: false, playUrl: null,
+      qaCost: { spentCents: spent / 10_000, capCents: 1000, held: spent > 10_000_000 } });
+    expect(mocks.leanBudget).not.toHaveBeenCalled(); expect(mocks.link).not.toHaveBeenCalled();
+  });
+  it("keeps unapproved unknown reservations held under an ten-dollar authority", async () => {
+    mocks.game.mockResolvedValue({ ...game, status: "TARGETS_GENERATING", styleVersion: "local-patch-world-v1" });
+    mocks.job.mockResolvedValue({ gameId: game.id, status: "RUNNING", currentStep: "local-patch", stepsJson: "{}" });
+    mocks.ledger.mockResolvedValue({ snapshotJson: JSON.stringify(localBudget("unknown")) });
+    mocks.detectivesBudget.mockResolvedValue({ worldId: "synthetic:board-wizard", capMicroUsd: 10_000_000, authorizationSha256: "a".repeat(64) });
+    expect(await (await response()).json()).toMatchObject({ state: "held", pending: false, awaitingQa: true, done: false, playUrl: null,
+      qaCost: { spentCents: 15.08, reservedCents: 40, capCents: 1000, held: true } });
+    expect(mocks.link).not.toHaveBeenCalled();
+  });
+});

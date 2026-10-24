@@ -47,3 +47,23 @@ export const detectiveExtensionReceiptBodySchema = detectiveExtensionBindingSche
   operatorId: id, ownerAuthorizationSha256: digest, authorizedAt: z.string().datetime(), automaticRelease: z.literal(false) }).strict();
 export const detectiveExtensionReceiptSchema = detectiveExtensionReceiptBodySchema.extend({ authorizationSha256: digest }).strict();
 export type DetectiveExtensionReceipt = z.infer<typeof detectiveExtensionReceiptSchema>;
+
+/** A distinct owner decision for a finite tail; preserves the consumed six/eight-dollar receipts. */
+export const DETECTIVES_TAIL_BUDGET = "explicit-detectives-completion-ten-dollar/v1" as const;
+export const DETECTIVES_TAIL_CAP = 10_000_000 as const;
+export const DETECTIVES_TAIL_ACTION = "generation:detectives-completion-tail";
+export const DETECTIVES_TAIL_RESUMED = "generation:detectives-tail-resumed";
+export const DETECTIVES_TAIL_CONFIRMATION = "owner-authorized-ten-dollars-total-for-this-detective-world-v1";
+export const detectivesTailId = (gameId: string) => "aud_detectives_tail_"+gameId;
+export const detectivesTailResumeId = (gameId: string) => "aud_detectives_tail_resume_"+gameId;
+export const detectiveTailRowSchema = z.object({ rowId:id, hideId:id, rowSha256:digest, rowInvariantSha256:digest,
+  originalAttempts:z.union([z.literal(2),z.literal(3)]), maxAttempt:z.union([z.literal(3),z.literal(4)]),
+  mode:z.enum(["guided-third","native-mask-fourth"]), retainedRenderSha256:digest.nullable() }).strict();
+export const detectiveTailBindingSchema = detectiveExtensionBindingSchema.extend({
+  version:z.literal(DETECTIVES_TAIL_BUDGET), baseCapMicroUsd:z.literal(DETECTIVES_EXTENSION_CAP), capMicroUsd:z.literal(DETECTIVES_TAIL_CAP),
+  allRowsSha256:digest, tailRows:z.array(detectiveTailRowSchema).min(1).max(4),
+}).strict();
+export const detectiveTailReceiptBodySchema = detectiveTailBindingSchema.extend({planSha256:digest, operatorId:id,
+  ownerAuthorizationSha256:digest, authorizedAt:z.string().datetime(), automaticRelease:z.literal(false)}).strict();
+export const detectiveTailReceiptSchema = detectiveTailReceiptBodySchema.extend({authorizationSha256:digest}).strict();
+export type DetectiveTailReceipt = z.infer<typeof detectiveTailReceiptSchema>;
