@@ -624,7 +624,7 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
     const sentKey = (row: (typeof rows)[number]) => {
       try { const sha = JSON.parse(row.judgeJson ?? "null")?.judgedSha256; return typeof sha === "string" ? `${row.id}:${sha}` : null; } catch { return null; }
     };
-    const firstPassComplete = work.every(item => {
+    const firstPassComplete = () => work.every(item => {
       const row = stateOf(item.sceneId, item.hide.targetId);
       return !!row && row.status !== "PENDING" && (row.status !== "GENERATED" || reviewedOnce(row));
     });
@@ -651,7 +651,7 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
     for (const { scene, ready, firstWork, retry } of plans) {
       if (!hasLocalPatchCapability(scene.sceneVersion, "integratedQuality") || scene.generationStatus === "GENERATED" && !subjectPending.has(scene.id)) continue;
       if (!(firstWork || retry) && ready.length !== boardFor(scene.sceneSlug, scene.sceneVersion)?.hides.length) continue;
-      if (!firstWork && retry && !firstPassComplete) continue;
+      if (!firstWork && retry && !firstPassComplete()) continue;
       // Every question it owes is sent: decided by a later slice, once its answer arrives.
       if (awaitingBoards.has(scene.id)) continue;
       // local-patch-slice-pacing/v1: no board is started that the slice cannot finish; the next tick takes the rest.
@@ -670,6 +670,9 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
         scene.generationStatus = review.state === "done" ? "GENERATED" : "NEEDS_REGENERATION";
         await c.db.$transaction(async tx => { await fence(tx); await tx.gameScene.update({ where: { id: scene.id },
           data: { generationStatus: scene.generationStatus } }); });
+        // A completed free reading changes which appearances still owe a first answer.
+        // Re-read these rows before deciding whether an already-paid continuation may run.
+        await reload();
         // One paid assessment per slice. Do not spend the provider window on
         // every board before the worker can durably yield its claim.
         if ((dual || playerReviewEnabled()) && review.costCents > 0) break;

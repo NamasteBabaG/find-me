@@ -232,3 +232,13 @@ the same paid source, identity, avatar, age, all-nine family and eight-dollar gr
 the original job and ledger revision, preserves every request and attempt, and buys nothing.
 The current world's ceiling and commercial defaults are unchanged. These checks prove wiring
 and permissions; only real returned images and their strict reviews prove product quality.
+
+Retained paid LOW replies are consumed before an unaffordable next repair. Board review
+refreshes the first-answer state after each free result, so a settled continuation cannot
+be stranded behind a stale first-pass snapshot. The retained-low-answer/v1 SYSTEM wake
+is once per existing eight-dollar grant and requires the exact current image bytes,
+geometry, authored return, original source/identity/age and trusted v5 continuation
+authority, plus the same settled charge and immutable complete LOW reply. Its v2 audit
+binds both request keys and the retained payload hash. It preserves the ledger snapshot,
+UNKNOWN reservations and attempts; the normal reviewers still decide every mandatory
+quality, identity, source-neighbor and anatomy check. This path buys no new opinion.

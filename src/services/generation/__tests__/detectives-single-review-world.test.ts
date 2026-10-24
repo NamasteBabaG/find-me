@@ -1,9 +1,11 @@
 import { guidedFrameGeometry, guidedFrameCandidate, GUIDED_FRAME_RECOVERY_VERSION } from "../../../domain/generation/guided-frame-recovery";
 import { cropOf } from "../../../domain/scene/local-patch-hides";
 import { runLocalPatchHide } from "../local-patch-hide";
+import { reviewLocalPatchBoard } from "../local-patch-board-review";
+import { advanceContinuityInBackground } from "../continuity-background";
 import { SINGLE_VISUAL_REVIEW_VERSION } from "../../../domain/generation/single-visual-review";
 import { enrollLeanWorld } from "../lean-enrollment";
-import { planDetectivesCompletionBudget, authorizeDetectivesCompletionBudget, resumeDetectivesCompletionBudget, planDetectivesCompletionExtension, authorizeDetectivesCompletionExtension, resumeDetectivesCompletionExtension } from "../detectives-completion-budget";
+import { planDetectivesCompletionBudget, authorizeDetectivesCompletionBudget, resumeDetectivesCompletionBudget, planDetectivesCompletionExtension, authorizeDetectivesCompletionExtension, resumeDetectivesCompletionExtension, resumeDetectivesLowEngineRecovery } from "../detectives-completion-budget";
 import { detectivesExtensionId } from "../../../domain/generation/detectives-completion-budget";
 import { mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -18,7 +20,7 @@ import type { BackgroundReviewState, BackgroundReviewTransport } from "../../../
 import { localPatchRenderPolicySha256, LOCAL_PATCH_IMAGE_POLICY } from "../../../infra/generation/openai-local-patch";
 import { maskForHide } from "../../../domain/scene/local-patch-hides";
 import { parseGameConfig } from "../../../domain/game/config";
-import { PrismaRetainedPurchaseStore } from "../../../infra/db/prisma-retained-purchase-store";
+import { PrismaRetainedPurchaseStore, retainedPurchaseKey } from "../../../infra/db/prisma-retained-purchase-store";
 import { SOURCE_NEIGHBOR_ANSWER_VERSION, SOURCE_NEIGHBOR_BUNDLE_VERSION, type SourceNeighborContract } from "../../../domain/scene/local-patch-source-neighbors";
 import type { SourceNeighborQualityBundleBinding } from "../../../domain/generation/source-neighbor-quality-bundle";
 import { SUBJECT_POLICY_V2, SUBJECT_READER_V2, readSubjectAnswerV2 } from "../../../domain/generation/subject-policy";
@@ -117,7 +119,7 @@ function cleanQuality(prompt: string): string {
     neighbors: contract.neighbors.map((neighbor, i) => ({ sourceId: neighbor.sourceId, outcome: "preserved", status: "pass", after: [{ ref: "controlled-neighbor-" + i, rect: neighbor.head }],
       remnants: "none", occluder: null, observation: "One coherent synthetic source correspondence without shifted or remaining representation." })) } });
 }
-function controlledSol(interrupted = false, guided = false) {
+function controlledSol(interrupted = false, guided = false, guidedHideId?: string) {
   let failedResponse: string | null = null;
   const creates: { hideId: string; quality: boolean; prompt: string; tier: unknown }[] = [], responses = new Map<string, { prompt: string; quality: boolean; tier: unknown; reads: number }>();
   const fake: BackgroundReviewTransport = { namespace: "openai:find-me-existing", create: async body => {
@@ -133,7 +135,7 @@ function controlledSol(interrupted = false, guided = false) {
     if (responseId === failedResponse) return { status: "failed", reading: { responseId, raw: null, usage: null, model: "gpt-6.1-sol", finishReason: "failed", serviceTier: "flex", providerError: { code: "server_error", message: "Synthetic failed response without text or usage" } } };
     const assessment = JSON.parse(cleanQuality(state.prompt));
     const hide = boundHide(state.prompt).hideId;
-    if (guided && hide === DETECTIVE_PATCH_BOARDS[0]!.hides[0]!.id && creates.filter(one => one.hideId === hide).length < 3) {
+    if (guided && hide === (guidedHideId ?? DETECTIVE_PATCH_BOARDS[0]!.hides[0]!.id) && creates.filter(one => one.hideId === hide).length < 3) {
       const verdict = assessment.assessment.quality.hides[0].verdict;
       Object.assign(verdict, { verdict: "fail", childComplete: "fail", pictureWhole: "fail", severeSeam: "fail", reason: "Synthetic crown crosses the immutable top return", faults: [{ check: "childComplete", where: "Synthetic complete crown terminates at the top return boundary" }] });
       verdict.boundaryIntegrity = Object.fromEntries(["left","top","right","bottom"].map(edge => [edge, { status: edge === "top" ? "fail" : "pass", observation: edge === "top" ? "Synthetic crown is cut at the top boundary" : "Synthetic continuous edge" }]));
@@ -310,3 +312,117 @@ it("uses the unchanged authored return as the editor mask and one smaller visual
  await db.targetVariantAsset.update({where:{id:row.id},data:{status:"FAILED",judgeJson:JSON.stringify({...receipt,reviewState:"board-review-complete",verdict:j.verdict})}});
  expect((await runLocalPatchHide(c,deps,{gameId,board,hide,finalRepair:true})).state).toBe("gave-up");expect(calls).toBe(2);
 },300_000);
+
+
+it("consumes retained LOW answers before an unaffordable guided purchase after another first review completes",async()=>{
+ vi.useFakeTimers({toFake:["Date"]});
+ const gameId="detective-retained-low-budget-synthetic";await newDetectiveWorld(gameId);
+ const context=await resolveLocalPatchBoardsForGame(db,gameId,13);
+ const aBoard=context.boards[0]!,aHide=aBoard.hides[0]!;
+ const bBoard=context.boards.find(b=>b.board==="paris")!,bHide=bBoard.hides[1]!;
+ const cBoard=context.boards.at(-1)!,cHide=cBoard.hides[2]!;
+ const rowOf=(board:string,targetId:string)=>db.targetVariantAsset.findFirst({where:{targetInstance:{gameScene:{gameId,sceneSlug:board},targetId}}});
+ const provider=controlledSol(true,true,cHide.id),responseHides=new Map<string,string>();
+ const originalCreate=provider.fake.create,originalRetrieve=provider.fake.retrieve;let cutoff=false;
+ provider.fake.create=async body=>{const reply=await originalCreate(body);const prompt=(body.input as {content:{text?:string}[]}[])[0]!.content[0]!.text!;responseHides.set(reply.responseId,boundHide(prompt).hideId);return reply;};
+ provider.fake.retrieve=async id=>{const reply=await originalRetrieve(id);
+  if(!cutoff&&reply.status==="completed"&&responseHides.get(id)===cHide.id&&provider.creates.filter(x=>x.hideId===cHide.id).length===2){
+   // A process loses its remaining dispatch window after retaining a reply.
+   // Leave enough time to save evidence, but no window for a third painting.
+   cutoff=true;await vi.advanceTimersByTimeAsync(250_000);
+  }return reply;};
+ const container={...c,backgroundReview:provider.fake,visualReview:{request:async()=>{throw Error("No synchronous provider call");}}} as Container;
+ const render=vi.fn<NonNullable<LocalPatchHideDeps["render"]>>(async input=>{
+  if(input.requestKey.startsWith(cHide.id+":")&&input.requestKey.endsWith(":render:3"))throw Error("Synthetic checkpoint must precede the third purchase");
+  return paintedOk(input.stylePng,bill("retained-budget-"+input.requestKey,1000));});
+ const deps:LocalPatchHideDeps={readBoardArt:readArt,renderPolicySha256:localPatchRenderPolicySha256(LOCAL_PATCH_IMAGE_POLICY),render,judge:async()=>{throw Error("No synchronous review");}};
+ const diagnose=vi.fn(async()=>{throw Error("Conclusive framing needs no new planner");});
+ type Row=NonNullable<Awaited<ReturnType<typeof rowOf>>>;let aBefore:Row|null=null,bBefore:Row|null=null;
+ for(let turn=0;turn<650&&!cutoff;turn++){
+  await runLocalPatchWorldSlice(container,deps,gameId,{hardDeadlineAt:Date.now()+270_000,diagnose});
+  const a=await rowOf(aBoard.board,aHide.targetId),b=await rowOf(bBoard.board,bHide.targetId);
+  if(a&&a.status==="FAILED"&&JSON.parse(a.judgeJson!).reviewInterruption?.single===SINGLE_VISUAL_REVIEW_VERSION)aBefore??=a;
+  if(b&&b.status==="GENERATED"&&JSON.parse(b.judgeJson!).reviewState==="pending-board-review")bBefore??=b;
+  const job=await db.generationJob.findUniqueOrThrow({where:{id:"job_"+gameId}});
+  if(job.currentStep==="local-patch:recovery-budget-wait")await vi.advanceTimersByTimeAsync(LEAN_RECOVERY_BACKOFF_MS+1);
+ }
+ expect(cutoff).toBe(true);expect(aBefore).not.toBeNull();expect(bBefore).not.toBeNull();
+ const review=(board:string)=>reviewLocalPatchBoard(container,{gameId,sceneId:"gsc-"+gameId+"-"+board},{fence:async()=>{},readBoardArt:readArt});
+ const settle=async()=>{for(let i=0;i<3;i++){await vi.advanceTimersByTimeAsync(31_000);await advanceContinuityInBackground(container,gameId);}};
+ const cRow=(await rowOf(cBoard.board,cHide.targetId))!;
+ if(JSON.parse(cRow.judgeJson!).reviewState!=="board-review-complete")await review(cBoard.board);
+ expect(guidedFrameCandidate((await rowOf(cBoard.board,cHide.targetId))!)).toBe(true);
+ // Restore the business rows to their pre-adoption checkpoints while preserving
+ // every normal provider request, immutable paid reply and full UNKNOWN hold.
+ // This models a restart after retention and before these result writes.
+ const restore=async(row:Row)=>{await db.targetVariantAsset.update({where:{id:row.id},data:{status:row.status,attempts:row.attempts,
+  assetId:row.assetId,judgeJson:row.judgeJson,lastError:row.lastError}});await db.targetInstance.update({where:{id:row.targetInstanceId},data:{status:row.status}});};
+ expect((await rowOf(aBoard.board,aHide.targetId))!.assetId).toBe(aBefore!.assetId);
+ expect((await rowOf(bBoard.board,bHide.targetId))!.assetId).toBe(bBefore!.assetId);
+ await restore(aBefore!);await restore(bBefore!);
+ if(provider.creates.filter(x=>x.hideId===aHide.id).length<2){await vi.advanceTimersByTimeAsync(31_000);await review(aBoard.board);}
+ await settle();
+ const budget=boardWizardBudgetOf(container),worldId=boardWizardWorldId(gameId);
+ const intents=await db.auditLog.findMany({where:{entityType:"Game",entityId:gameId,action:"generation:sol-background-review",id:{endsWith:"_intent"}}});
+ const continuation=intents.map(x=>JSON.parse(x.metaJson!).intent).find(x=>x.binding.variantId===aBefore!.id&&x.policyVersion?.includes("-default/single-v1"));
+ expect(continuation).toBeDefined();expect((await budget.readRequest(worldId,continuation.requestKey))?.state).toBe("settled");
+ expect((await rowOf(aBoard.board,aHide.targetId))!.status).toBe("FAILED");
+ expect(JSON.parse((await rowOf(bBoard.board,bHide.targetId))!.judgeJson!).reviewState).toBe("pending-board-review");
+ const beforeFill=await budget.audit(worldId);expect(beforeFill.pendingRequestKeys).toHaveLength(0);
+ const fill=beforeFill.remainingMicroUsd-280_000;expect(fill).toBeGreaterThan(0);
+ await budget.reserve(worldId,{requestKey:"synthetic-earlier-completed-work",operationFingerprint:"c".repeat(64),scope:"image",reserveMicroUsd:fill});
+ await budget.settle(worldId,"synthetic-earlier-completed-work",bill("synthetic-earlier-completed-work",fill));
+ const hold="local-patch: no automatic action remains within the authorized world budget; synthetic paid-answer restart";
+ await db.generationJob.update({where:{id:"job_"+gameId},data:{status:"FAILED",currentStep:"local-patch:recovery-exhausted",lastError:hold}});
+ const beforeWake=(await db.worldBudgetLedger.findUniqueOrThrow({where:{worldId}})).snapshotJson;
+ const beforeJob=await db.generationJob.findUniqueOrThrow({where:{id:"job_"+gameId}}),aStopped=(await rowOf(aBoard.board,aHide.targetId))!;
+ // Foreign source, geometry, counters and missing/corrupt evidence never wake.
+ await db.childProfile.update({where:{id:"chl-"+gameId},data:{ageYears:7}});
+ await expect(resumeDetectivesLowEngineRecovery(container,gameId)).rejects.toThrow("Strict original full-source identity binding required");
+ await db.childProfile.update({where:{id:"chl-"+gameId},data:{ageYears:8}});
+ const originalReceipt=JSON.parse(aStopped.judgeJson!);
+ for(const changed of [
+  {...originalReceipt,judgedSha256:"9".repeat(64)},
+  {...originalReceipt,reviewInterruption:{...originalReceipt.reviewInterruption,recoveryId:"synthetic-foreign-proof"}},
+  {...originalReceipt,evidenceAttempts:[...originalReceipt.evidenceAttempts,...originalReceipt.evidenceAttempts]},
+ ]){
+  await db.targetVariantAsset.update({where:{id:aStopped.id},data:{judgeJson:JSON.stringify(changed)}});
+  expect(await resumeDetectivesLowEngineRecovery(container,gameId)).toBe(false);
+ }
+ await db.targetVariantAsset.update({where:{id:aStopped.id},data:{judgeJson:aStopped.judgeJson,rectJson:"{}"}});
+ expect(await resumeDetectivesLowEngineRecovery(container,gameId)).toBe(false);
+ await db.targetVariantAsset.update({where:{id:aStopped.id},data:{rectJson:aStopped.rectJson}});
+ const keptKey=retainedPurchaseKey(worldId,continuation.requestKey),keptBlob=await db.fileBlob.findUniqueOrThrow({where:{key:keptKey}});
+ await db.fileBlob.delete({where:{key:keptKey}});
+ expect(await resumeDetectivesLowEngineRecovery(container,gameId)).toBe(false);
+ await db.fileBlob.create({data:keptBlob});
+ const targetAsset=await db.asset.findUniqueOrThrow({where:{id:aStopped.assetId!}}),targetBlob=await db.fileBlob.findUniqueOrThrow({where:{key:targetAsset.storagePath}});
+ const changedBytes=Buffer.from(targetBlob.data);changedBytes[changedBytes.length-1]=changedBytes[changedBytes.length-1]!^1;
+ await db.fileBlob.update({where:{key:targetBlob.key},data:{data:changedBytes}});
+ expect(await resumeDetectivesLowEngineRecovery(container,gameId)).toBe(false);
+ await db.fileBlob.update({where:{key:targetBlob.key},data:{data:targetBlob.data}});
+ expect(await resumeDetectivesLowEngineRecovery(container,gameId)).toBe(true);
+ expect((await db.worldBudgetLedger.findUniqueOrThrow({where:{worldId}})).snapshotJson).toBe(beforeWake);
+ expect(await db.generationJob.findUniqueOrThrow({where:{id:"job_"+gameId}})).toMatchObject({status:"QUEUED",attempts:beforeJob.attempts});
+ const wakes=await db.auditLog.findMany({where:{entityId:gameId,action:"generation:detectives-low-engine-resumed"}});
+ const freeWakes=wakes.filter(w=>JSON.parse(w.metaJson!).mode==="retained-low-answer/v1");
+ expect(freeWakes).toHaveLength(1);expect(freeWakes[0]).toMatchObject({actorType:"SYSTEM",actorId:null});
+ expect(JSON.parse(freeWakes[0]!.metaJson!)).toMatchObject({version:"detectives-low-engine-wake/v2",attemptsReset:false,providerCallsAdded:0,budgetChanged:false});
+ expect(await resumeDetectivesLowEngineRecovery(container,gameId)).toBe(false);
+
+ const before=await budget.audit(worldId),purchases=provider.creates.length,paintings=render.mock.calls.length;
+ expect(before.remainingMicroUsd).toBe(280_000);
+ await runLocalPatchWorldSlice(container,deps,gameId,{hardDeadlineAt:Date.now()+270_000,diagnose});
+ const a=(await rowOf(aBoard.board,aHide.targetId))!,b=(await rowOf(bBoard.board,bHide.targetId))!,aReceipt=JSON.parse(a.judgeJson!),bReceipt=JSON.parse(b.judgeJson!);
+ expect(bReceipt.reviewState).toBe("board-review-complete");
+ expect(aReceipt.boardReview.dual?.single).toBe(SINGLE_VISUAL_REVIEW_VERSION);
+ expect(aReceipt.boardReview.dual?.quality.policy.serviceTier).toBe("default");
+ expect(aReceipt.wireFault).toBeNull();expect(aReceipt.verdict?.verdict).toBe("pass");
+ expect(a.status).toBe("GENERATED");expect(b.status).toBe("GENERATED");
+ expect(provider.creates).toHaveLength(purchases);expect(render).toHaveBeenCalledTimes(paintings);expect(diagnose).not.toHaveBeenCalled();
+ const after=await budget.audit(worldId);expect(after.remainingMicroUsd).toBe(before.remainingMicroUsd);
+ expect(after.unknownRequestKeys).toEqual(before.unknownRequestKeys);expect(after.reservedMicroUsd).toBe(before.reservedMicroUsd);
+ expect((await db.generationJob.findUniqueOrThrow({where:{id:"job_"+gameId}})).currentStep).toBe("local-patch:recovery-exhausted");
+ expect((await db.game.findUniqueOrThrow({where:{id:gameId}})).configJson).toBeNull();
+ expect((await db.childProfile.findUniqueOrThrow({where:{id:"chl-"+gameId}})).originalPhotoAssetId).not.toBeNull();expect(fetch).not.toHaveBeenCalled();
+},1_500_000);

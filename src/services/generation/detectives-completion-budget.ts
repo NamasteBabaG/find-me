@@ -1,9 +1,11 @@
 import { guidedFrameCandidate, GUIDED_FRAME_MIN_CAPACITY_MICRO_USD } from "../../domain/generation/guided-frame-recovery";
 import { isSingleLowReviewPolicy } from "../../domain/generation/visual-review-policy";
-import { backgroundRoundOfKey, providerEndedFailed } from "./continuity-background";
+import { backgroundRoundOfKey, providerEndedFailed, backgroundRoundsOnImage, roundAnswered, backgroundPolicyOfIntent } from "./continuity-background";
+import { localPatchPublicationGeometryHash } from "./local-patch-publication-policy";
+import { authoredLocalPatchReviewBinding } from "./local-patch-authored-return";
 import { admittedInterruption, providerFailureRefusal } from "./local-patch-review-interruption-recovery";
 import type { WorldAutomaticReviewRecoveryV5 } from "./world-budget";
-import { SINGLE_VISUAL_REVIEW_VERSION } from "../../domain/generation/single-visual-review";
+import { SINGLE_VISUAL_REVIEW_VERSION, readSingleVisualReview } from "../../domain/generation/single-visual-review";
 import { DETECTIVE_PATCH_BOARDS } from "../../../content/detectives/runtime-release";
 import { PrismaRetainedPurchaseStore } from "../../infra/db/prisma-retained-purchase-store";
 import { savedApplyingRepairOf } from "./local-patch-self-repair";
@@ -445,12 +447,10 @@ export async function resumeDetectivesLowEngineRecovery(c: Container, gameId: st
       || await identityRevisionPending(tx, gameId)) return false;
     const job = await tx.generationJob.findUnique({ where: { id: pin.jobId } });
     if (!job || job.status !== "FAILED" || job.attempts <= pin.jobAttempts) return false;
-    const guide = job.currentStep === EXHAUSTED && (job.lastError ?? "").startsWith("local-patch: no automatic action remains within the authorized world budget;");
+    const exhausted = job.currentStep === EXHAUSTED && (job.lastError ?? "").startsWith("local-patch: no automatic action remains within the authorized world budget;");
     const interrupted = job.currentStep === "local-patch:needs-release" && (job.lastError ?? "").startsWith("local-patch-continue-in-slice/v1:")
       && (job.lastError ?? "").endsWith("the interrupted questions cannot be rebuilt on the same pixels");
-    if (!guide && !interrupted) return false;
-    const mode = guide ? "guided-frame/v1" : "single-low-transport/v1", id = "aud_low_engine_" + hash({ gameId, grant: pin.authorizationSha256, mode }).slice(0,40);
-    if (await tx.auditLog.findUnique({ where: { id } })) return false;
+    if (!exhausted && !interrupted) return false;
     const store = PrismaWorldBudgetStore.forReadOnlyTransaction(tx), stored = await store.read(pin.worldId);
     if (!stored || stored.revision >= WORLD_BUDGET_LEDGER_MAX_REVISION) return false;
     const audit = auditWorldBudget(stored.snapshot, DETECTIVES_EXTENSION_CAP);
@@ -458,8 +458,69 @@ export async function resumeDetectivesLowEngineRecovery(c: Container, gameId: st
       || (await backgroundReviewWaiting(tx, gameId, { inFlightOnly: true })).size) return false;
     const rows = await tx.targetVariantAsset.findMany({ where: { provider: LOCAL_PATCH_PROVIDER, variant: LOCAL_PATCH_VARIANT,
       targetInstance: { gameScene: { gameId, sceneVersion:13 } } } });
+    const wakeId = (mode: string) => "aud_low_engine_" + hash({ gameId, grant: pin.authorizationSha256, mode }).slice(0,40);
+    let retainedProof: object | null = null;
+    // This mode can only resume the business adoption of an immutable answer
+    // that has already settled. It authorizes no new opinion, charge or cap.
+    if (exhausted && !audit.held && !await tx.auditLog.findUnique({ where: { id: wakeId("retained-low-answer/v1") } })) {
+      const retainedStore = new PrismaRetainedPurchaseStore(tx);
+      for (const approval of stored.snapshot.unknownContinuationApprovals ?? []) {
+        if (approval.version !== "world-automatic-review-recovery/v5" || approval.grantSha256 !== pin.authorizationSha256
+          || !await singleLowContinuationPublishable(tx, gameId, approval)) continue;
+        const row = rows.find(r => r.id === approval.variantId);
+        let r; try { r = JSON.parse(row?.judgeJson ?? "null"); } catch { continue; }
+        if (!row || row.status !== "FAILED" || !row.assetId || !row.lastError?.startsWith("quality-unresolved:")
+          || r?.reviewState !== "board-review-complete" || r.verdict !== null || !r.wireFault
+          || r.judgedSha256 !== approval.imageSha256 || r.boardReview?.requestKey !== approval.requestKey
+          || r.reviewInterruption?.recoveryId !== approval.approvalId || r.reviewInterruption?.assetId !== row.assetId
+          || r.reviewInterruption?.single !== SINGLE_VISUAL_REVIEW_VERSION
+          || !Array.isArray(r.evidenceAttempts) || r.evidenceAttempts.filter((a: {single?:unknown;imageSha256?:unknown}) =>
+            a.single === SINGLE_VISUAL_REVIEW_VERSION && a.imageSha256 === approval.imageSha256).length !== 1) continue;
+        const unknown = stored.snapshot.requests.find(q => q.requestKey === approval.requestKey);
+        const old = await backgroundRoundOfKey(tx, gameId, pin.worldId, approval.requestKey);
+        if (!unknown || unknown.state !== "unknown" || unknown.operationFingerprint !== approval.operationFingerprint
+          || unknown.reserveMicroUsd !== approval.reserveMicroUsd || !old || !isSingleLowReviewPolicy({ version: old.intent.policyVersion ?? "" })
+          || old.intent.binding.variantId !== row.id || old.intent.binding.imageSha256 !== approval.imageSha256
+          || old.intent.binding.identitySha256 !== pin.identitySha256 || old.intent.binding.geometrySha256 !== localPatchPublicationGeometryHash(row)) continue;
+        const binding = old.intent.binding;
+        let authored: string | undefined;
+        try { authored = authoredLocalPatchReviewBinding({ hideId:binding.hideId,imageSha256:binding.imageSha256,
+          geometrySha256:binding.geometrySha256,identitySha256:binding.identitySha256,authoredReturn:r.authoredReturn,
+          ...(r.authoredRecovery ? { authoredRecovery:r.authoredRecovery } : {}) }); } catch { continue; }
+        if (!authored || authored !== binding.authoredReviewBinding) continue;
+        const asset = await tx.asset.findUnique({ where: { id: row.assetId } });
+        if (!asset || asset.ownerId !== pin.ownerId || asset.type !== "TARGET_SPRITE" || asset.visibility !== "GAME" || asset.status !== "READY") continue;
+        try { if (sha256Bytes(await scoped.storage.get(asset.storagePath)) !== binding.imageSha256) continue; } catch { continue; }
+        for (const imageRound of await backgroundRoundsOnImage(tx, gameId, binding)) {
+          if (imageRound.requestKey === approval.requestKey || imageRound.tier !== "default" || !roundAnswered(imageRound)) continue;
+          const request = stored.snapshot.requests.find(q => q.requestKey === imageRound.requestKey);
+          const round = await backgroundRoundOfKey(tx, gameId, pin.worldId, imageRound.requestKey);
+          if (!request || request.state !== "settled" || request.scope !== "judge" || !round
+            || request.operationFingerprint !== round.intent.fingerprint || request.reserveMicroUsd !== round.intent.reserveMicroUsd) continue;
+          const policy = backgroundPolicyOfIntent(round.intent);
+          if (!isSingleLowReviewPolicy(policy) || policy.serviceTier !== "default") continue;
+          const kept = await retainedStore.get(pin.worldId, request.requestKey);
+          if (!kept || !kept.evidence || kept.scope !== "judge" || kept.operationFingerprint !== request.operationFingerprint
+            || !sameChargeEvidence(kept.evidence, request.evidence)) continue;
+          let wire; try { wire=JSON.parse(kept.bytes.toString()); } catch { continue; }
+          if (!wire || wire.model !== policy.model || wire.finishReason !== "stop" || wire.wireFault !== null || wire.costUnknown !== false
+            || wire.providerStatus !== "completed" || wire.fingerprint !== request.operationFingerprint
+            || wire.authoredReviewBinding !== binding.authoredReviewBinding || !readSingleVisualReview(wire.raw)
+            || !wire.policy || Array.isArray(wire.policy) || Object.keys(wire.policy).length !== Object.keys(policy).length
+            || !Object.entries(policy).every(([key,value]) => wire.policy[key] === value)) continue;
+          retainedProof = { variantId:row.id,imageSha256:binding.imageSha256,geometrySha256:binding.geometrySha256,
+            originalRequestKey:approval.requestKey,requestKey:request.requestKey,fingerprint:request.operationFingerprint,
+            retainedPayloadSha256:kept.payloadSha256,continuationAuthorizationSha256:approval.authorizationSha256 };
+          break;
+        }
+        if (retainedProof) break;
+      }
+    }
+    const mode = retainedProof ? "retained-low-answer/v1" : interrupted ? "single-low-transport/v1" : "guided-frame/v1", id = wakeId(mode);
+    if (await tx.auditLog.findUnique({ where: { id } })) return false;
     let proof: object;
-    if (guide) {
+    if (retainedProof) proof = retainedProof;
+    else if (exhausted) {
       const candidate = rows.find(guidedFrameCandidate);
       if (!candidate || audit.held || audit.remainingMicroUsd < GUIDED_FRAME_MIN_CAPACITY_MICRO_USD) return false;
       proof = { variantId: candidate.id, candidateSha256: hash(candidate.judgeJson) };
@@ -485,8 +546,8 @@ export async function resumeDetectivesLowEngineRecovery(c: Container, gameId: st
       updatedAt:job.updatedAt,lastError:job.lastError},data:{status:"QUEUED",currentStep:"local-patch",lastError:null}});
     demand(locked.count===1 && ledger.count===1 && queued.count===1,"LOW recovery hold changed concurrently");
     await tx.auditLog.create({data:{id,actorType:"SYSTEM",action:"generation:detectives-low-engine-resumed",entityType:"Game",entityId:gameId,
-      metaJson:JSON.stringify({version:"detectives-low-engine-wake/v1",mode,grantSha256:pin.authorizationSha256,holdSha256:parkedHoldSha256(job),
-        proof,ledgerSha256:hash(stored.snapshot),attemptsReset:false,providerCallsAdded:0,budgetChanged:false})}});
+      metaJson:JSON.stringify({version:retainedProof?"detectives-low-engine-wake/v2":"detectives-low-engine-wake/v1",mode,grantSha256:pin.authorizationSha256,
+        holdSha256:parkedHoldSha256(job),proof,ledgerSha256:hash(stored.snapshot),attemptsReset:false,providerCallsAdded:0,budgetChanged:false})}});
     return true;
   },{isolationLevel:Prisma.TransactionIsolationLevel.Serializable,timeout:30_000});
 }
