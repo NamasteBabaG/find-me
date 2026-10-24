@@ -1,4 +1,6 @@
 import { createHash } from "node:crypto";
+import { detectivesOperationalPolicyOf } from "./detectives-operational-policy";
+import type { DetectivesOperationalReceipt } from "../../domain/generation/detectives-operational-policy";
 import { readSourceBodyRepairPin } from './source-body-repair-pin';
 import { SOURCE_BODY_REPAIR_MANIFEST, SOURCE_BODY_REPAIR_MANIFEST_SHA256 } from '../../../content/detectives/source-body-repair';
 import { validateSourceBodyGeometry, type SourceBodyGeometry } from '../../domain/scene/source-body-repair';
@@ -194,7 +196,7 @@ export type TrustedSourcePlacementContext = {
   readonly release: SourcePlacementReleasePin | null;
   readonly manifestSha256: string | null;
 };
-type ContextProof = { digest: string; contracts: Map<string, SourcePlacementHideContract>; bodies: Map<string, SourceBodyGeometry> };
+type ContextProof = { digest: string; contracts: Map<string, SourcePlacementHideContract>; bodies: Map<string, SourceBodyGeometry>; birthPin: DetectivesOperationalReceipt|null };
 const trustedContexts = new WeakMap<object, ContextProof>();
 function freeze<T>(value: T): T {
   if (value !== null && typeof value === "object") {
@@ -245,9 +247,12 @@ export async function resolveLocalPatchBoardsForGame(db: Reader, gameId: string,
   }
   const bodies=new Map<string,SourceBodyGeometry>();
   const bodyPin=sceneVersion===13 ? await readSourceBodyRepairPin(db,gameId) : null;
-  if(bodyPin){
+  const birthPin=sceneVersion===13?await detectivesOperationalPolicyOf(db,gameId):null;
+  demand(!(bodyPin&&birthPin),"Historical repair and from-birth source policy cannot overlap");
+  const bodySelections:readonly {hideId:string}[]=bodyPin?.selected??(birthPin?SOURCE_BODY_REPAIR_MANIFEST.entries:[]);
+  if(bodySelections.length){
     demand(release?.manifestSha256===SOURCE_BODY_REPAIR_MANIFEST.parentManifestSha256,'Body repair parent family changed');
-    for(const selected of bodyPin.selected){const geometry=SOURCE_BODY_REPAIR_MANIFEST.entries.find(e=>e.hideId===selected.hideId),entry=contracts.get(selected.hideId);
+    for(const selected of bodySelections){const geometry=SOURCE_BODY_REPAIR_MANIFEST.entries.find(e=>e.hideId===selected.hideId),entry=contracts.get(selected.hideId);
       demand(geometry&&entry?.sourceNeighbors,'Body repair requires original annotated public geometry');
       const parent=authoredLocalPatchReturnContract({contentVersion:13,boardId:entry!.boardId,hideId:entry!.hideId,source:entry!.source,crop:entry!.effective.crop,child:entry!.effective.child,authored:entry!.effective.returnRect,sourcePlacement:{manifestSha256:release!.manifestSha256,basePlacementSha256:entry!.basePlacementSha256}});
       const g=freeze(validateSourceBodyGeometry(geometry,parent,entry!.sourceNeighbors!.contract.neighbors));bodies.set(g.hideId,g);
@@ -259,7 +264,7 @@ export async function resolveLocalPatchBoardsForGame(db: Reader, gameId: string,
   }
   const context: TrustedSourcePlacementContext = Object.freeze({ [contextBrand]: true as const, gameId, sceneVersion,
     boards, release: release ? freeze(release) : null, manifestSha256: release?.manifestSha256 ?? null });
-  trustedContexts.set(context, { digest: contextDigest(context), contracts, bodies });
+  trustedContexts.set(context, { digest: contextDigest(context), contracts, bodies, birthPin:birthPin?freeze(birthPin):null });
   return context;
 }
 
@@ -280,3 +285,5 @@ export async function resolveLocalPatchBoardForGame(db: Reader, gameId: string, 
 
 export function sourceBodyForHide(context:TrustedSourcePlacementContext,hideId:string){assertTrustedSourcePlacementContext(context);return trustedContexts.get(context)!.bodies.get(hideId)??null;}
 export function sourcePlacementManifestForHide(context:TrustedSourcePlacementContext,hideId:string){return sourceBodyForHide(context,hideId)?SOURCE_BODY_REPAIR_MANIFEST_SHA256:context.manifestSha256;}
+
+export function sourceBodyBirthForHide(context:TrustedSourcePlacementContext,hideId:string){assertTrustedSourcePlacementContext(context);const proof=trustedContexts.get(context)!;return proof.bodies.has(hideId)?proof.birthPin:null;}

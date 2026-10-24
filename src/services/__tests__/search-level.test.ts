@@ -1,3 +1,7 @@
+import { boardConditioningHash } from "../generation/board-conditioned-source";
+import { DETECTIVES_OPERATIONAL_RELEASE } from "../../domain/generation/detectives-operational-policy";
+import { pinDetectivesOperationalPolicy, detectivesOperationalPolicyOf, detectivesOperationalId } from "../generation/detectives-operational-policy";
+import { resolveLocalPatchBoardsForGame, sourceBodyBirthForHide } from "../generation/source-placement-release";
 import { mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -45,7 +49,7 @@ afterAll(async () => {
   const absolute = path.resolve(scratch);
   if (path.dirname(absolute) === realpathSync(tmpdir()) && path.basename(absolute).startsWith("findme-search-level-")) rmSync(absolute, { recursive: true, force: true });
 });
-beforeEach(() => { f.env = { APP_ENV: "qa", SEARCH_LEVEL_CHOICE: "on", LOCAL_PATCH_PROMPT_RELEASE: "v19",
+beforeEach(() => { delete c.detectivesOperationalRelease; f.env = { APP_ENV: "qa", SEARCH_LEVEL_CHOICE: "on", LOCAL_PATCH_PROMPT_RELEASE: "v19",
   LOCAL_PATCH_IDENTITY_SOURCE: "full-source-v1" }; f.releases = [JOURNEY_AT_13]; });
 // A failed assertion must not leave a provider or transaction spy counting into the next test.
 afterEach(() => { vi.restoreAllMocks(); });
@@ -427,4 +431,23 @@ it("rolls back already-created draft/base pins when the final family write fails
   finally { spy.mockRestore(); }
   expect(sawCreatedDraftAndPins).toBe(true);
   expect({ games: await db.game.count(), audits: await db.auditLog.count(), profiles: await db.childProfile.count() }).toEqual(before);
+});
+
+
+describe('prospective single LOW from normal draft creation',()=>{
+ it('pins a fresh Detective at normal four-dollar capacity with corrected source windows',async()=>{c.detectivesOperationalRelease=DETECTIVES_OPERATIONAL_RELEASE;const d=await named({ageYears:7,searchLevel:'detectives'});expect(await detectivesOperationalPolicyOf(db,d.gameId)).toMatchObject({model:'gpt-6.1-sol',effort:'low',worldCapMicroUsd:4000000,automaticBudgetExtension:false});expect(await attachPhoto(c,d.gameId,{buffer:photo,mimeType:"image/png",crop:null})).toEqual({ok:true});expect(await selectPackage(c,d.gameId,"ONE_WORLD")).toEqual({ok:true});const context=await resolveLocalPatchBoardsForGame(db,d.gameId,13);for(const board of ['paris','giza']){const b=context.boards.find(b=>b.board===board)!,h=b.hides.find(h=>h.id.endsWith(board==='paris'?'hide-1':'hide-2'))!;expect(sourceBodyBirthForHide(context,h.id)).not.toBeNull();expect(h.returnRect!.width).toBe(board==='paris'?226:232);}expect(await db.order.count({where:{gameId:d.gameId}})).toBe(0);expect(await db.worldBudgetLedger.count({where:{worldId:d.gameId+':board-wizard'}})).toBe(0);});
+ it('uses the same policy for family world purchase and still refuses Kingdom13',async()=>{c.detectivesOperationalRelease=DETECTIVES_OPERATIONAL_RELEASE;const f=await family();const d=await beginWorldPurchase(c,{...f,worldSlug:'journey',searchLevel:'detectives'});expect(d.ok).toBe(true);if(!d.ok)return;expect(await detectivesOperationalPolicyOf(db,d.gameId)).toMatchObject({worldCapMicroUsd:4000000,effort:'low'});expect((await game(d.gameId)).scenes).toHaveLength(9);const denied=await beginWorldPurchase(c,{...await family(),worldSlug:'kingdom',searchLevel:'detectives'});expect(denied.ok).toBe(false);});
+ it('keeps earlier drafts pinned and refuses late or forged single LOW policy',async()=>{const old=await photographed({ageYears:7,searchLevel:'detectives'});c.detectivesOperationalRelease=DETECTIVES_OPERATIONAL_RELEASE;expect(await detectivesOperationalPolicyOf(db,old.gameId)).toBeNull();await expect(db.$transaction(tx=>pinDetectivesOperationalPolicy(tx,old.gameId,DETECTIVES_OPERATIONAL_RELEASE,c.storage.id))).rejects.toThrow('before its photo');const fresh=await named({ageYears:7,searchLevel:'detectives'});const p=await db.auditLog.findUniqueOrThrow({where:{id:detectivesOperationalId(fresh.gameId)}});await db.auditLog.update({where:{id:p.id},data:{actorType:'ADMIN'}});await expect(detectivesOperationalPolicyOf(db,fresh.gameId)).rejects.toThrow();expect(await db.order.count({where:{gameId:fresh.gameId}})).toBe(0);});
+});
+
+it('refuses self-consistent forged from-birth source, cap and world receipts',async()=>{
+ c.detectivesOperationalRelease=DETECTIVES_OPERATIONAL_RELEASE;const draft=await named({ageYears:7,searchLevel:'detectives'}),row=await db.auditLog.findUniqueOrThrow({where:{id:detectivesOperationalId(draft.gameId)}});
+ for(const change of [{sourceFamilySha256:'f'.repeat(64)},{sourcePlacementManifestSha256:'f'.repeat(64)},{sourceBodyManifestSha256:'f'.repeat(64)},{worldId:'foreign:board-wizard'},{worldCapMicroUsd:10000000}]){
+  const {authorizationSha256:_ignored,...body}={...JSON.parse(row.metaJson!),...change};
+  await db.auditLog.update({where:{id:row.id},data:{metaJson:JSON.stringify({...body,authorizationSha256:boardConditioningHash(body)})}});
+  await expect(detectivesOperationalPolicyOf(db,draft.gameId)).rejects.toThrow();
+  await db.auditLog.update({where:{id:row.id},data:{metaJson:row.metaJson}});
+ }
+ expect(await detectivesOperationalPolicyOf(db,draft.gameId)).not.toBeNull();
+ expect(await db.worldBudgetLedger.count({where:{worldId:draft.gameId+':board-wizard'}})).toBe(0);
 });

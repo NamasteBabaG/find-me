@@ -1,8 +1,10 @@
+import { sourceBodyBirthMarker } from "../../domain/generation/detectives-operational-policy";
 import { readSourceBodyRepairPin, sourceBodyPurchaseCandidate } from './source-body-repair-pin';
 import { sourceBodyMarker } from '../../domain/scene/source-body-repair';
 import { nativeMaskTailCandidate, nativeMaskTailExhausted } from "../../domain/generation/native-mask-tail";
 import { guidedFrameCandidate, guidedFrameExhausted } from "../../domain/generation/guided-frame-recovery";
-import { detectivesSingleReviewAuthorization, hasDetectivesLowCapacity, detectivesNativeMaskTail } from "./detectives-completion-budget";
+import { detectivesNativeMaskTail } from "./detectives-completion-budget";
+import { singleLowReviewAuthorization as detectivesSingleReviewAuthorization, hasSingleLowCapacity as hasDetectivesLowCapacity } from "./single-low-policy";
 import { hasLocalPatchCapability } from "../../domain/scene/local-patch-family";
 import { Prisma } from "@prisma/client";
 import type { Container } from "../container";
@@ -554,7 +556,7 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
   if (guideCapacity) for (const row of rows) if (nativeMaskTailCandidate(row) && await detectivesNativeMaskTail(c, gameId, row.id)) nativeTailRows.add(row.id);
   const nativeFourthPainting = (row: typeof rows[number] | undefined) => !!row && nativeTailRows.has(row.id) && nativeMaskTailCandidate(row);
   const guidedThirdPainting = (row: Parameters<typeof guidedFrameCandidate>[0] | undefined) => !!row && !!guideGrant
-    && guideCapacity && guidedFrameCandidate(row);
+    && guideCapacity && !sourceBodyBirthMarker(row) && guidedFrameCandidate(row);
   /** A v1 pose-plan refusal awaiting its v2 question about the same pixels (subject-rejudge/v1), read at the enrolled age. */
   const rejudgePending = (row: Parameters<typeof subjectRejudgePending>[0]) => !!subjectUpgrade && subjectRejudgePending(row, subjectUpgrade.ageYears);
   // A board also owes its v2 re-judgments (subject-rejudge/v1), whatever status the board itself carries.
@@ -736,7 +738,7 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
   const repairCheckpoints = new Map(rows.map(row => [row.id, JSON.stringify(selfRepairOf(row) ?? null)]));
   const automaticWork = automatic && !extraPlan ? work.filter(item => {
     const row = stateOf(item.sceneId, item.hide.targetId);
-    return needsSelfRepair(row) && !bodyPainting(row) && !bodyExhausted(row) && !(row && (guidedFrameExhausted(row) || nativeMaskTailExhausted(row))) && !leanThirdPainting(row) && !guidedThirdPainting(row) && !(hasLocalPatchCapability(game.scenes.find(scene => scene.id === item.sceneId)?.sceneVersion, "integratedQuality")
+    return needsSelfRepair(row) && !sourceBodyBirthMarker(row!) && !bodyPainting(row) && !bodyExhausted(row) && !(row && (guidedFrameExhausted(row) || nativeMaskTailExhausted(row))) && !leanThirdPainting(row) && !guidedThirdPainting(row) && !(hasLocalPatchCapability(game.scenes.find(scene => scene.id === item.sceneId)?.sceneVersion, "integratedQuality")
       && (localPatchEvidenceRecovery(row!) || playerReviewEnabled() && needsPlayerReview(row!)))
       // Re-asked under v2 about the same pixels before any repair (subject-rejudge/v1).
       && !rejudgePending(row!);
@@ -1021,7 +1023,7 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
         evidence: recovery ? { retry: recovery.retry, waiting: recovery.waiting, exhausted: recovery.exhausted,
           ...(diagnosis ? { kind: `${diagnosis.role} ${diagnosis.kind}` } : {}) } : null,
         reviewOwed: !!row && (rejudgePending(row) || playerReviewEnabled() && needsPlayerReview(row)),
-        repairSpent: progress && !!row && !bodyPainting(row) && !nativeFourthPainting(row) && (bodyExhausted(row) || guidedFrameExhausted(row) || nativeMaskTailExhausted(row) || needsSelfRepair(row) && selfRepairProgress(selfRepairOf(row), row.attempts).exhausted) });
+        repairSpent: progress && !!row && !bodyPainting(row) && !nativeFourthPainting(row) && (bodyExhausted(row) || !!sourceBodyBirthMarker(row) && row.attempts>=LOCAL_PATCH_MAX_ATTEMPTS || guidedFrameExhausted(row) || nativeMaskTailExhausted(row) || needsSelfRepair(row) && selfRepairProgress(selfRepairOf(row), row.attempts).exhausted) });
     });
     const rest = pendingReviews ? null : localPatchRestDecision(rests);
     if (rest?.action === "wait") {

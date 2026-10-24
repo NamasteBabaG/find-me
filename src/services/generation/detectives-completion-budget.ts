@@ -563,7 +563,7 @@ export async function resumeDetectivesLowEngineRecovery(c: Container, gameId: st
 }
 
 export async function singleLowContinuationPublishable(db: Pick<Prisma.TransactionClient,"auditLog">, gameId: string, approval: WorldAutomaticReviewRecoveryV5): Promise<boolean> {
-  const grant = await detectivesSingleReviewAuthorization(db, gameId);
+  const grant = await (await import("./single-low-policy")).singleLowReviewAuthorization(db, gameId);
   if (!grant || approval.worldId !== worldOf(gameId) || approval.grantSha256 !== grant.authorizationSha256) return false;
   const row = await db.auditLog.findUnique({where:{id:approval.approvalId}});
   let proof: Record<string,unknown>; try { proof=JSON.parse(row?.metaJson ?? "null"); } catch { return false; }
@@ -707,6 +707,7 @@ export async function requireDetectivesNativeMaskTail(c:Container,gameId:string,
 export async function nativeMaskTailPublicationAuthorized(db:Pick<Prisma.TransactionClient,"auditLog">,input:{gameId:string;variantId:string;hideId:string;attempts:number;sceneVersion:number;judgeJson:string|null}) {
   try {
     const value=JSON.parse(input.judgeJson??"null"),marker=nativeMaskTailMarker({judgeJson:input.judgeJson});
+    if(value?.sourceBodyBirth!==undefined)return (await import("./detectives-operational-policy")).sourceBodyBirthPublicationAuthorized(db,input);
     if(value?.sourceBodyRepair!==undefined)return (await import('./source-body-repair-pin')).sourceBodyPublicationAuthorized(db,input);
     if(input.sceneVersion!==13)return value?.nativeMaskTail===undefined;
     if(input.attempts<=3 && value?.nativeMaskTail===undefined)return true;

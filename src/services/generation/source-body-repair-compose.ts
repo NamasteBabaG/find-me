@@ -1,4 +1,6 @@
 import sharp from 'sharp';
+import { sourceBodyBirthMarkerSchema } from '../../domain/generation/detectives-operational-policy';
+import { sourceBodyBirthPublicationAuthorized, sourceBodyBirthRequestKey } from './detectives-operational-policy';
 import type { Prisma } from '@prisma/client';
 import { sourceBodyAlpha, SOURCE_BODY_COMPOSE_VERSION, type SourceBodyGeometry } from '../../domain/scene/source-body-repair';
 import { sha256Bytes } from './fixed-sprite';
@@ -35,14 +37,14 @@ export async function sourceBodyCompositionEvidenceMatches(db: Prisma.Transactio
     beforePng: Buffer;
 }) {
     try {
-        const { receipt: r, geometry: g } = input, p = await readSourceBodyRepairPin(db, input.gameId), s = p?.selected.find(s => s.hideId === input.hideId);
-        if (!p || !s || !same(r.sourceBodyRepair, sourceBodyMarkerFor(p, s)))
-            return false;
-        const worldId = input.gameId + ':board-wizard', ledger = await PrismaWorldBudgetStore.forReadOnlyTransaction(db).read(worldId), bill = ledger?.snapshot.requests.find(b => b.requestKey === s.requestKey), kept = await new PrismaRetainedPurchaseStore(db).get(worldId, s.requestKey);
+        const {receipt:r,geometry:g}=input;let requestKey:string;
+        if(r.sourceBodyBirth!==undefined){const born=sourceBodyBirthMarkerSchema.safeParse(r.sourceBodyBirth);if(!born.success||!await sourceBodyBirthPublicationAuthorized(db,{gameId:input.gameId,variantId:born.data.rowId,hideId:input.hideId,attempts:born.data.attempt,sceneVersion:13,judgeJson:JSON.stringify(r)}))return false;requestKey=sourceBodyBirthRequestKey(born.data);}
+        else{const p=await readSourceBodyRepairPin(db,input.gameId),s=p?.selected.find(s=>s.hideId===input.hideId);if(!p||!s||!same(r.sourceBodyRepair,sourceBodyMarkerFor(p,s)))return false;requestKey=s.requestKey;}
+        const worldId=input.gameId+':board-wizard',ledger=await PrismaWorldBudgetStore.forReadOnlyTransaction(db).read(worldId),bill=ledger?.snapshot.requests.find(b=>b.requestKey===requestKey),kept=await new PrismaRetainedPurchaseStore(db).get(worldId,requestKey);
         if (!bill || bill.state !== 'settled' || bill.scope !== 'image' || bill.conflicts.length || !kept?.evidence || kept.scope !== 'image' || kept.operationFingerprint !== bill.operationFingerprint || !sameChargeEvidence(kept.evidence, bill.evidence))
             return false;
         const wire = JSON.parse(kept.bytes.toString());
-        if (wire.version !== 'local-patch-render/v1' || wire.rejected !== null || typeof wire.bytesBase64 !== 'string' || !same(wire.authoredReturn, r.authoredReturn) || !same(wire.sourceBodyRepair, r.sourceBodyRepair))
+        if (wire.version !== 'local-patch-render/v1' || wire.rejected !== null || typeof wire.bytesBase64 !== 'string' || !same(wire.authoredReturn, r.authoredReturn) || !same(wire.sourceBodyRepair, r.sourceBodyRepair) || !same(wire.sourceBodyBirth,r.sourceBodyBirth))
             return false;
         const original = Buffer.from(wire.bytesBase64, 'base64');
         if (original.toString('base64') !== wire.bytesBase64)

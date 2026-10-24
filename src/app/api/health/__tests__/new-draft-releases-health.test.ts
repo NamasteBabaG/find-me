@@ -43,3 +43,15 @@ describe("health reports how new drafts' Opus quality questions are delivered", 
     expect((await health()).body.qualityChannel).toEqual({ newGames: "sync", qualified: true, configured: true });
   });
 });
+
+
+describe('health reports the prospective Detective judge separately from historical policies',()=>{
+ it('identifies one combined SOL LOW answer and the ordinary 4m cap for qualified new Detectives',async()=>{
+  Object.assign(f.environment,{LOCAL_PATCH_LEAN:'lean-v1',LOCAL_PATCH_IDENTITY_SOURCE:'full-source-v1'});
+  expect((await health()).body.visualReview.detectivesNewGames).toMatchObject({version:'detectives-operational/v1',reviewMode:'single-sol-low/v1',model:'gpt-6.1-sol',effort:'low',oneUsableAssessmentPerImage:true,normalImageAttemptLimit:3,worldCapMicroUsd:4000000,automaticBudgetExtension:false});
+ });
+ it.each([{APP_ENV:'production'},{LOCAL_PATCH_IDENTITY_SOURCE:'legacy'},{LOCAL_PATCH_LEAN:'off'},{STORAGE_PROVIDER:'local'}])('does not advertise the new Detective policy in an unqualified deployment: %j',async change=>{
+  Object.assign(f.environment,{LOCAL_PATCH_LEAN:'lean-v1',LOCAL_PATCH_IDENTITY_SOURCE:'full-source-v1'},change);
+  expect((await health()).body.visualReview.detectivesNewGames).toBeNull();
+ });
+});

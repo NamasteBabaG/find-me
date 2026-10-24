@@ -1,6 +1,7 @@
 import { sourceBodyMarkerSchema, sourceBodyDirections, sourceBodyOverlay, SOURCE_BODY_REPAIR_VERSION, type SourceBodyMarker } from '../../domain/scene/source-body-repair';
 import { sourceBodyMaskPng, applySourceBodyPixels } from './source-body-repair-compose';
-import { sourceBodyForHide } from './source-placement-release';
+import { sourceBodyForHide, sourceBodyBirthForHide } from './source-placement-release';
+import { sourceBodyBirthMarkerSchema, type SourceBodyBirthMarker } from '../../domain/generation/detectives-operational-policy';
 import { nativeMaskTailMarkerSchema, nativeMaskTailDirections, nativeMaskTailEditRegion, type NativeMaskTailMarker } from "../../domain/generation/native-mask-tail";
 import { GUIDED_FRAME_RECOVERY_VERSION, guidedFrameGeometry, guidedFrameOverlay, guidedFrameDirections, parseGuidedFrameMarker, type GuidedFrameMarker } from '../../domain/generation/guided-frame-recovery';
 import { hasLocalPatchCapability } from "../../domain/scene/local-patch-family";
@@ -116,6 +117,7 @@ export type LocalPatchAttemptInput = {
   readonly guidedFrameRecovery?: GuidedFrameMarker;
   readonly nativeMaskTail?: NativeMaskTailMarker;
   readonly sourceBodyRepair?: SourceBodyMarker;
+  readonly sourceBodyBirth?: SourceBodyBirthMarker;
   readonly identityPng: Buffer;
   readonly referenceMode?: LocalPatchReferenceMode;
   readonly canonicalIdentityPng?: Buffer;
@@ -376,7 +378,10 @@ export async function renderLocalPatchHide(deps: LocalPatchRenderDeps, input: Lo
   if (input.nativeMaskTail && (!nativeMaskTailMarkerSchema.safeParse(input.nativeMaskTail).success || !input.guidedFrameRecovery
     || input.nativeMaskTail.previousAuthorizationSha256 !== input.guidedFrameRecovery.authorizationSha256)) throw Error("NATIVE_MASK_TAIL: exact finite allowance and original guide required");
   const body=input.placementContext?sourceBodyForHide(input.placementContext,input.hide.id):null;
-  if(body ? !input.sourceBodyRepair||!sourceBodyMarkerSchema.safeParse(input.sourceBodyRepair).success||input.attempt!==input.sourceBodyRepair.authorizedAttempt||input.guidedFrameRecovery||input.nativeMaskTail||input.selfRepair||input.adaptiveRecovery||input.recoveryDirective : input.sourceBodyRepair!==undefined)throw Error('SOURCE_BODY: trusted prospective geometry and exact finite purchase required');
+  const born=input.placementContext?sourceBodyBirthForHide(input.placementContext,input.hide.id):null;
+  const validBirth=!!born&&sourceBodyBirthMarkerSchema.safeParse(input.sourceBodyBirth).success&&input.sourceBodyBirth!.policySha256===born.authorizationSha256&&input.sourceBodyBirth!.manifestSha256===born.sourceBodyManifestSha256&&input.sourceBodyBirth!.hideId===input.hide.id&&input.sourceBodyBirth!.attempt===input.attempt&&!input.sourceBodyRepair;
+  const validRepair=!born&&!!input.sourceBodyRepair&&sourceBodyMarkerSchema.safeParse(input.sourceBodyRepair).success&&input.attempt===input.sourceBodyRepair.authorizedAttempt&&!input.sourceBodyBirth;
+  if(body ? !(validBirth||validRepair)||input.guidedFrameRecovery||input.nativeMaskTail||input.selfRepair||input.adaptiveRecovery||input.recoveryDirective : input.sourceBodyRepair!==undefined||input.sourceBodyBirth!==undefined)throw Error('SOURCE_BODY: trusted geometry and exact ordinary or finite purchase required');
   const result = await renderLocalPatchHideInner(deps, input, authoredReturn);
   return { ...result, promptVersion: promptVersionOf(input), ...(authoredReturn ? { authoredReturn } : {}),
     ...(isLocalPatchStrictVersion(input.contentVersion) ? { compositionVersion: input.hide.returnRect ? AUTHORED_PATCH_COMPOSITION_VERSION : LOCAL_PATCH_COMPOSITION_VERSION } : {}) };
@@ -424,7 +429,7 @@ async function renderLocalPatchHideInner(deps: LocalPatchRenderDeps, input: Loca
   if (restyling ? !hasLocalPatchCapability(input.contentVersion, "integratedQuality") || !input.restyleSourcePng?.length : input.restyleSourcePng !== undefined)
     throw Error("Retained surface repair requires a v12 diagnosis and authenticated source");
   const authoredMask = recovery?.protectedCore ?? maskForHide(hide);
-  const bodyGeometry=input.sourceBodyRepair&&input.placementContext?sourceBodyForHide(input.placementContext,hide.id):null;
+  const bodyGeometry=(input.sourceBodyRepair||input.sourceBodyBirth)&&input.placementContext?sourceBodyForHide(input.placementContext,hide.id):null;
   if(bodyGeometry&&foreground)throw Error('SOURCE_BODY: a separate authored foreground requires its own qualification');
   const guideGeometry = input.guidedFrameRecovery||bodyGeometry ? guidedFrameGeometry(authoredMask, authoredReturn!.local) : null;
   const mask = authoredMask;
@@ -534,6 +539,7 @@ async function renderLocalPatchHideInner(deps: LocalPatchRenderDeps, input: Loca
     ...(input.authoredDiagnosis ? { authoredDiagnosis: input.authoredDiagnosis } : {}),
     ...(input.nativeMaskTail ? { nativeMaskTail: input.nativeMaskTail } : {}),
     ...(input.sourceBodyRepair ? { sourceBodyRepair: input.sourceBodyRepair } : {}),
+    ...(input.sourceBodyBirth ? {sourceBodyBirth:input.sourceBodyBirth}:{}),
     ...(placementGuidePng ? { guidedFrameRecovery: input.guidedFrameRecovery, placementGuideSha256:sha(placementGuidePng) } : {}),
     ...(plan ? { subject: plan.sha256 } : {}),
   });
@@ -572,6 +578,7 @@ async function renderLocalPatchHideInner(deps: LocalPatchRenderDeps, input: Loca
         rejected: result.rejected,
         ...(result.failureReceipt ? { failureReceipt: fixedSourceFailureReceiptSchema.parse(result.failureReceipt) } : {}),
         ...(input.sourceBodyRepair?{sourceBodyRepair:input.sourceBodyRepair}:{}),
+        ...(input.sourceBodyBirth?{sourceBodyBirth:input.sourceBodyBirth}:{}),
         ...(authoredReturn?.sourcePlacement ? { authoredReturn, ...(input.authoredDiagnosis ? { authoredDiagnosis: input.authoredDiagnosis } : {}) } : {}),
       };
       const bytes = Buffer.from(JSON.stringify(keep));

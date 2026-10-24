@@ -1,6 +1,7 @@
 import { SINGLE_VISUAL_REVIEW_VERSION, readSingleVisualReview } from "../../domain/generation/single-visual-review";
 import { isSingleLowReviewPolicy } from "../../domain/generation/visual-review-policy";
-import { detectivesSingleReviewAuthorization, nativeMaskTailPublicationAuthorized } from "./detectives-completion-budget";
+import { nativeMaskTailPublicationAuthorized } from "./detectives-completion-budget";
+import { singleLowReviewAuthorization as detectivesSingleReviewAuthorization } from "./single-low-policy";
 import { hasLocalPatchCapability } from "../../domain/scene/local-patch-family";
 import type { Prisma } from "@prisma/client";
 import { localPatchRuntimeContinuityVerdict } from "../../domain/scene/local-patch-body-continuity";

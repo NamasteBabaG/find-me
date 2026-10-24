@@ -1,5 +1,5 @@
 import { SINGLE_VISUAL_REVIEW_VERSION } from "../../domain/generation/single-visual-review";
-import { detectivesSingleReviewAuthorization, hasDetectivesLowCapacity } from "./detectives-completion-budget";
+import { singleLowReviewAuthorization as detectivesSingleReviewAuthorization, hasSingleLowCapacity as hasDetectivesLowCapacity } from "./single-low-policy";
 import { detectiveAutomaticRecoveryQualified } from "./detective-automatic-recovery";
 import { hasLocalPatchCapability } from "../../domain/scene/local-patch-family";
 import type { Prisma } from "@prisma/client";

@@ -1,5 +1,5 @@
 import { SINGLE_VISUAL_REVIEW_VERSION, readSingleVisualReview } from "../../domain/generation/single-visual-review";
-import { detectivesSingleReviewAuthorization } from "./detectives-completion-budget";
+import { singleLowReviewAuthorization as detectivesSingleReviewAuthorization } from "./single-low-policy";
 import { hasLocalPatchCapability } from "../../domain/scene/local-patch-family";
 import sharp from "sharp";
 import type { Prisma } from "@prisma/client";

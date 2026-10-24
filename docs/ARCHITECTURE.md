@@ -285,3 +285,12 @@ The painter receives separate whole-original-person edit and whole-new-child pla
 A finite native/body painting selected by the immutable receipt remains runnable when a slice ends before dispatch. Historical subject-cycle exhaustion cannot classify that still-authorized purchase as spent; the ordinary next slice resumes it with the same counters and budget gate. The age-seven27-world regression uses one image per slice to cover this scheduling boundary.
 
 The Giza orange runner fingertips start above the earlier y=583 protected boundary. The prospective mask protects their complete public-source hand from y=570, while the original purple shoe coverage ends before that boundary. Landmark regressions refuse a mask touching those neighboring fingertips before any provider dispatch.
+
+
+### Prospective Detective policy at normal creation
+
+Qualified QA Journey Detectives drafts now pin `detectives-operational/v1` atomically in both ordinary creator and family purchase flows, before photo, payment, ledger or image work. The immutable receipt binds the original source family/placement manifest, the corrected public whole-body footprint manifest, one combined `gpt-6.1-sol` LOW/Flex assessment per image, ordinary three-image limit and existing 4,000,000 microUSD cap. No historical $6/$8/$10 grant is created or required; no automatic cap extension is allowed. Existing drafts and paid games keep their earlier receipts.
+
+The combined answer still decides source correspondence, joins, full body/anatomy, face likeness, scenario age, Antarctic hat, diversity and head continuity. A usable answer never triggers a routine second question. The separately counted, bounded no-answer/no-usage transport continuation keeps its unresolved reservation; uncertainty cannot auto-approve or silently change to dual HIGH. Original public Paris/Giza body footprints apply from their first image, with protected neighboring pixels restored byte for byte and verified again at publication against settled retained RAW. Normal finite failures and budget guards remain.
+
+Synthetic full27 cases cover a clean path, finite redraws after a conclusive fail, no-answer provider interruption and same-key no-dispatch PENDING resumption, including ordinary READY/config/publication/source purge. Representative mock usage exercises admission under 4m; it is neither real provider pricing nor a likeness/quality qualification for a new paid game. The historical current-world recovery remains independently pinned to its existing finite owner grant.

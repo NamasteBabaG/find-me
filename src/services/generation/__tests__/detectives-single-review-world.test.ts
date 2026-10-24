@@ -1,3 +1,6 @@
+import { sceneBySlug } from "../../scene-catalog.service";
+import { DETECTIVES_OPERATIONAL_RELEASE, sourceBodyBirthMarker } from "../../../domain/generation/detectives-operational-policy";
+import { pinDetectivesOperationalPolicy, detectivesOperationalId, detectivesOperationalPolicyOf, sourceBodyBirthMarkerFor } from "../detectives-operational-policy";
 import { resumeSourceBodyGeometryRepair } from '../source-body-repair';
 import { boardConditioningHash } from '../board-conditioned-source';
 import { readSourceBodyRepairPin,sourceBodyRepairId } from '../source-body-repair-pin';
@@ -77,18 +80,21 @@ afterAll(async () => {
   if (path.dirname(directory) === realpathSync(tmpdir()) && path.basename(directory).startsWith("findme-detective-world-")) rmSync(directory, { recursive: true });
 });
 
-async function newDetectiveWorld(gameId: string, ageYears=8) {
+async function newDetectiveWorld(gameId: string, ageYears=8, born=false) {
   const seeded = await seedApprovedGame(c, db, { gameId, approved: false, styleVersion: "local-patch-world-v1", status: "DRAFT", withJob: false,
     scenes: DETECTIVE_PATCH_BOARDS.map(board => ({ slug: board.board, version: 13 })) });
   await db.game.update({ where: { id: gameId }, data: { searchLevel: "detectives" } });
   await db.childProfile.update({where:{id:"chl-"+gameId},data:{ageYears}});
   fixture.testers.push(seeded.email); c.adminEmails!.push(seeded.email);
+  if(born)await db.childProfile.update({where:{id:"chl-"+gameId},data:{originalPhotoAssetId:null}});
   await db.$transaction(async tx => {
     await pinVisualReviewRelease(tx, gameId, DUAL_VISUAL_REVIEW_V3);
     await pinLeanRelease(tx, gameId, LOCAL_PATCH_LEAN_RELEASE);
     await pinIdentitySourceRelease(tx, gameId);
     await pinLocalPatchSourceFamily(tx, gameId, { sceneVersion: 13, searchLevel: "detectives" });
+    if(born)await pinDetectivesOperationalPolicy(tx,gameId,DETECTIVES_OPERATIONAL_RELEASE,c.storage.id);
   });
+  if(born)await db.childProfile.update({where:{id:"chl-"+gameId},data:{originalPhotoAssetId:"ast-photo-"+gameId}});
   await db.game.update({ where: { id: gameId }, data: { status: "TARGETS_GENERATING" } });
   await db.generationJob.create({ data: { id: "job_" + gameId, gameId, status: "QUEUED" } });
   await db.order.create({ data: { id: "order-" + gameId, gameId, userId: seeded.userId, provider: "mock", packageTier: "ONE_WORLD", amountAgorot: 3900, paymentStatus: "PAID", paidAt: new Date() } });
@@ -106,7 +112,16 @@ async function newDetectiveWorld(gameId: string, ageYears=8) {
       provenance: { promptVersion: "character-v8-full-source-volume-identity", quality: "medium", photoAssetId: "ast-photo-" + gameId, photoSha256: sha256Bytes(seeded.sheet), ageYears, crop: null,
         style: { version: "board-matched-identity/v6", catalogSha256: atlas.catalogSha256, atlasSha256: atlas.atlasSha256 } } });
   expect(identity.approved).toBe(true);
-  await prepareSingleAuthorization(gameId, seeded.userId);
+  if(!born)await prepareSingleAuthorization(gameId, seeded.userId);
+  else {
+    expect(await enrollLeanWorld(c,gameId,async()=>{})).toMatchObject({state:"enrolled"});
+    const budget=boardWizardBudgetOf(c),worldId=boardWizardWorldId(gameId);
+    // Synthetic representative initial-work allowance, never a live price measurement.
+    const fill=115238-(await budget.audit(worldId)).committedMicroUsd;
+    expect(fill).toBeGreaterThan(0);
+    await budget.reserve(worldId,{requestKey:"synthetic-initial-work-allowance",scope:"image",operationFingerprint:"9".repeat(64),reserveMicroUsd:fill});
+    await budget.settle(worldId,"synthetic-initial-work-allowance",bill("synthetic-initial-work-allowance-"+gameId,fill));
+  }
 }
 
 const observed = (status: string) => ({ status, observation: "Controlled explicit synthetic observation of this candidate." });
@@ -127,7 +142,7 @@ function cleanQuality(prompt: string): string {
     neighbors: contract.neighbors.map((neighbor, i) => ({ sourceId: neighbor.sourceId, outcome: "preserved", status: "pass", after: [{ ref: "controlled-neighbor-" + i, rect: neighbor.head }],
       remnants: "none", occluder: null, observation: "One coherent synthetic source correspondence without shifted or remaining representation." })) } });
 }
-function controlledSol(interrupted = false, guided = false, guidedHideId?: string | string[], bodyMode=false) {
+function controlledSol(interrupted = false, guided = false, guidedHideId?: string | string[], bodyMode=false, representativeUsage=false) {
   let failedResponse: string | null = null;
   const creates: { hideId: string; quality: boolean; prompt: string; tier: unknown }[] = [], responses = new Map<string, { prompt: string; quality: boolean; tier: unknown; reads: number }>();
   const fake: BackgroundReviewTransport = { namespace: "openai:find-me-existing", create: async body => {
@@ -152,24 +167,25 @@ function controlledSol(interrupted = false, guided = false, guidedHideId?: strin
     if(bodyMode&&hide==='paris-detectives-hide-1'&&creates.filter(one=>one.hideId===hide).length===3){const verdict=assessment.assessment.quality.hides[0].verdict;verdict.childComplete='pass';verdict.pictureWhole='fail';verdict.severeSeam='fail';const orphan=assessment.sourceNeighbors.neighbors.find((n:{sourceId:string})=>n.sourceId==='source-petanque-child');Object.assign(orphan,{outcome:'fragmented',status:'fail',remnants:'present',after:[{ref:'synthetic-old-blue-jacket',rect:{left:810,top:995,width:25,height:105}}],observation:'Synthetic original blue-jacket remnant persists outside the original return window.'});}
     return { status: "completed", reading: { responseId, raw: JSON.stringify({ version: SINGLE_VISUAL_REVIEW_VERSION, assessment,
         continuity: JSON.parse(longAnswer(boundHide(state.prompt).hideId, 400, 400, 160)), doubt: false, doubtReason: null }),
-      usage: { input_tokens: 2000, output_tokens: 500 }, model: "gpt-6.1-sol", finishReason: "stop", serviceTier: String(state.tier) } };
+      usage: representativeUsage ? { input_tokens: 21000, output_tokens: 2500 } : { input_tokens: 2000, output_tokens: 500 }, model: "gpt-6.1-sol", finishReason: "stop", serviceTier: String(state.tier) } };
   }, cancel: async () => {} };
   return { fake, creates };
 }
 
-it.each([{mode:"clean",interrupted:false,guided:false},{mode:"transport",interrupted:true,guided:false},{mode:"guided",interrupted:false,guided:true},{mode:"tail",interrupted:false,guided:true},{mode:"body",interrupted:false,guided:true}])("completes27 hides with bounded LOW review and no extra planner; mode=$mode", async ({mode,interrupted,guided}) => {
+it.each([{mode:"clean",interrupted:false,guided:false},{mode:"transport",interrupted:true,guided:false},{mode:"guided",interrupted:false,guided:true},{mode:"tail",interrupted:false,guided:true},{mode:"body",interrupted:false,guided:true}].map(v=>({...v,born:false})).concat([{mode:"born-clean",interrupted:false,guided:false,born:true},{mode:"born-guided",interrupted:false,guided:true,born:true},{mode:"born-transport",interrupted:true,guided:false,born:true}]))("completes27 hides with bounded LOW review and no extra planner; mode=$mode", async ({mode,interrupted,guided,born}) => {
   vi.useFakeTimers({ toFake: ["Date"] });
-  const body=mode==="body";const gameId = "detective-single-world-synthetic-" + mode; await newDetectiveWorld(gameId,body?7:8);
+  const body=mode==="body";const gameId = "detective-single-world-synthetic-" + mode; await newDetectiveWorld(gameId,body||born?7:8,born);
   const context = await resolveLocalPatchBoardsForGame(db, gameId, 13), hides = context.boards.flatMap(board => board.hides);
   expect(context.boards).toHaveLength(9); expect(hides).toHaveLength(27);
   expect(hides.every(hide => sourcePlacementForHide(context, hide.id)!.sourceNeighbors)).toBe(true);
   const tail = mode === "tail"||body, guidedHideId = tail ? context.boards.find(b=>b.board==="paris")!.hides[0]!.id : hides[0]!.id;
-  const prompts = new Map<string, string>(), provider = controlledSol(interrupted, guided, body?[guidedHideId,"giza-detectives-hide-2"]:guidedHideId,body);
-  let tailExtended = false, protectedRows: unknown[] = [], nativeDeferred = false, nativePendingChecked = false, bodyBudgetFilled=false, bodyAdopted=false, bodyDeferred=false, bodyPendingChecked=false;
+  const prompts = new Map<string, string>(), provider = controlledSol(interrupted, guided, body?[guidedHideId,"giza-detectives-hide-2"]:guidedHideId,body||born,born);
+  let tailExtended = false, protectedRows: unknown[] = [], nativeDeferred = false, nativePendingChecked = false, bodyBudgetFilled=false, bodyAdopted=false, bodyDeferred=false, bodyPendingChecked=false, bornDeferred=false, bornPendingChecked=false;
   const synchronous = vi.fn<NonNullable<Container["visualReview"]>["request"]>(async () => { throw Error("Historical single review forbidden"); });
   const container = { ...c, visualReview: { request: synchronous }, backgroundReview: provider.fake } as Container;
   const deps: LocalPatchHideDeps = { readBoardArt: async (art, sha) => {
     const bytes = await readArt(art, sha);
+    if(mode==="born-clean"&&!bornDeferred&&art===context.boards.find(b=>b.board==="giza")!.art&&await db.targetVariantAsset.findFirst({where:{variant:"A",status:"PENDING",attempts:0,targetInstance:{gameScene:{gameId,sceneSlug:"giza"},targetId:"hide-2"}}})){bornDeferred=true;await vi.advanceTimersByTimeAsync(120001);}
     if(body&&bodyAdopted&&!bodyDeferred&&art===context.boards.find(b=>b.board==="giza")!.art){bodyDeferred=true;await vi.advanceTimersByTimeAsync(120001);}
     if (tail && !body && tailExtended && !nativeDeferred && art === context.boards.find(b=>b.board==="paris")!.art) {
       nativeDeferred = true; await vi.advanceTimersByTimeAsync(120_001);
@@ -200,12 +216,12 @@ it.each([{mode:"clean",interrupted:false,guided:false},{mode:"transport",interru
         let mismatches=0;for(let y=0;y<768;y++)for(let x=0;x<512;x++){const editable=alpha[(y*512+x)*4+3]===0;if(editable)clear++;if(editable!==(x>=edit.left&&x<edit.left+edit.width&&y>=edit.top&&y<edit.top+edit.height))mismatches++;}
         expect(mismatches).toBe(0);expect(clear).toBe(edit.width*edit.height);
       }
-      return paintedOk(png, bill("paint-" + gameId + "-" + requestKey));
+      return paintedOk(png, bill("paint-" + gameId + "-" + requestKey, born ? 66500 : undefined));
     } };
   const diagnose = vi.fn(async () => { throw Error("Clean controlled answers cannot authorize a diagnosis"); });
   let result = { pending: true, attention: null as string | null }, ticks = 0;
   for (; ticks < 900 && result.pending; ticks++) {
-    result = await runLocalPatchWorldSlice(container, deps, gameId, { hardDeadlineAt: Date.now() + 270_000, diagnose, ...(body?{maxHides:1}:{}) });
+    result = await runLocalPatchWorldSlice(container, deps, gameId, { hardDeadlineAt: Date.now() + 270_000, diagnose, ...(body||mode==="born-clean"?{maxHides:1}:{}) });
     if(body&&!tailExtended&&!bodyBudgetFilled){const current=await db.targetVariantAsset.findMany({where:{variant:'A',targetInstance:{gameScene:{gameId}}}});if(current.some(r=>r.attempts===3&&r.status==='FAILED'&&JSON.parse(r.judgeJson!).hide===guidedHideId)&&current.some(r=>r.attempts===2&&r.status==='FAILED'&&JSON.parse(r.judgeJson!).hide==='giza-detectives-hide-2')){const budget=boardWizardBudgetOf(container),worldId=boardWizardWorldId(gameId),fill=7650000-(await budget.audit(worldId)).committedMicroUsd;await budget.reserve(worldId,{requestKey:'synthetic-finishing-eight-cap',scope:'image',operationFingerprint:'c'.repeat(64),reserveMicroUsd:fill});await budget.settle(worldId,'synthetic-finishing-eight-cap',bill('req-eight-filled-'+gameId,fill));bodyBudgetFilled=true;}}
     if(body&&tailExtended&&result.attention&&!bodyAdopted){const protectedBefore=await db.targetVariantAsset.findMany({where:{variant:'A',status:'GENERATED',targetInstance:{gameScene:{gameId}}},orderBy:{id:'asc'}});expect(protectedBefore).toHaveLength(25);const exhaustedPair=await db.targetVariantAsset.findMany({where:{variant:'A',status:'FAILED',targetInstance:{gameScene:{gameId}}}});expect(exhaustedPair.map(r=>r.attempts).sort(),'An authorized unbought native painting must queue, not falsely stop').toEqual([3,4]);protectedRows=protectedBefore;const before=await boardWizardBudgetOf(container).audit(boardWizardWorldId(gameId));console.info('source-body-parent-contracts', (await db.targetVariantAsset.findMany({where:{variant:'A',status:'FAILED',targetInstance:{gameScene:{gameId}}}})).map(r=>{const j=JSON.parse(r.judgeJson!);return {attempts:r.attempts,hide:j.hide,source:j.authoredReturn?.source,local:j.authoredReturn?.local,reviewState:j.reviewState,wireFault:j.wireFault,renderFault:j.renderFault,permission:j.compositionPermission,seam:j.seam,verdict:j.verdict};}));expect(await resumeSourceBodyGeometryRepair(container,gameId)).toBe(true);expect(await resumeSourceBodyGeometryRepair(container,gameId)).toBe(false);const pin=(await readSourceBodyRepairPin(db,gameId))!;expect(pin.selected.map(s=>s.authorizedAttempt).sort()).toEqual([4,5]);const savedBody=await db.auditLog.findUniqueOrThrow({where:{id:sourceBodyRepairId(gameId)}});for(const fault of ['key','counter','protected','family','manifest','cap']){const changed=JSON.parse(savedBody.metaJson!);if(fault==='key')changed.selected[0].requestKey+='foreign';if(fault==='counter')changed.selected[0].authorizedAttempt++;if(fault==='protected')changed.protectedRows[1]=changed.protectedRows[0];if(fault==='family')changed.familySha256='f'.repeat(64);if(fault==='manifest')changed.manifestSha256='f'.repeat(64);if(fault==='cap')changed.capMicroUsd=11000000;const {authorizationSha256:_sha,...unsigned}=changed;changed.authorizationSha256=boardConditioningHash(unsigned);await db.auditLog.update({where:{id:savedBody.id},data:{metaJson:JSON.stringify(changed)}});await expect(readSourceBodyRepairPin(db,gameId)).rejects.toThrow();await db.auditLog.update({where:{id:savedBody.id},data:{metaJson:savedBody.metaJson}});}expect(await boardWizardBudgetOf(container).audit(boardWizardWorldId(gameId))).toEqual(before);bodyAdopted=true;result={pending:true,attention:null};continue;}
     if (tail && result.attention && !tailExtended) {
@@ -225,6 +241,7 @@ it.each([{mode:"clean",interrupted:false,guided:false},{mode:"transport",interru
     }
     expect(result.attention).toBeNull();
     const checkpoint = await db.generationJob.findUniqueOrThrow({ where: { id: "job_" + gameId } });
+    if(mode==="born-clean"&&bornDeferred&&!bornPendingChecked){const pending=await db.targetVariantAsset.findFirstOrThrow({where:{variant:"A",targetInstance:{gameScene:{gameId,sceneSlug:"giza"},targetId:"hide-2"}}});expect(pending).toMatchObject({status:"PENDING",attempts:1});expect(sourceBodyBirthMarker(pending)).not.toBeNull();expect(prompts.has("giza-detectives-hide-2:standing:render:1")).toBe(false);expect(await boardWizardBudgetOf(container).readRequest(boardWizardWorldId(gameId),"giza-detectives-hide-2:standing:render:1")).toBeNull();expect(checkpoint.status).toBe("QUEUED");expect(result.pending).toBe(true);bornPendingChecked=true;}
     if(body&&bodyDeferred&&!bodyPendingChecked){const pending=await db.targetVariantAsset.findFirstOrThrow({where:{variant:'A',targetInstance:{gameScene:{gameId,sceneSlug:'giza'},targetId:'hide-2'}}});expect(pending).toMatchObject({status:'PENDING',attempts:4});expect(sourceBodyMarker(pending)).not.toBeNull();expect(prompts.has('giza-detectives-hide-2:standing:render:4')).toBe(false);expect(await boardWizardBudgetOf(container).readRequest(boardWizardWorldId(gameId),'giza-detectives-hide-2:standing:render:4')).toBeNull();expect(checkpoint.status).toBe('QUEUED');expect(result.pending).toBe(true);bodyPendingChecked=true;}
     if (tail && nativeDeferred && !nativePendingChecked) {
       const pendingNative = await db.targetVariantAsset.findFirstOrThrow({where:{targetInstance:{gameScene:{gameId,sceneSlug:"paris"},targetId:"hide-1"},variant:"A"}});
@@ -247,7 +264,7 @@ it.each([{mode:"clean",interrupted:false,guided:false},{mode:"transport",interru
   expect(config.scenes.flatMap(scene => scene.targets)).toHaveLength(27);
   expect(config.adventure!.boards).toHaveLength(9); expect(config.adventure!.boards.flatMap(board => board.discoveries)).toHaveLength(54);
   expect(config.scenes.every(scene => scene.art.base.includes("-detectives-"))).toBe(true);
-  expect(await subjectUpgradeOf(db, gameId)).toMatchObject({ actorType: "SYSTEM", operatorId: SYSTEM_ENROLLMENT_OPERATOR, ageYears: body?7:8 });
+  expect(await subjectUpgradeOf(db, gameId)).toMatchObject({ actorType: "SYSTEM", operatorId: SYSTEM_ENROLLMENT_OPERATOR, ageYears: body||born?7:8 });
   const rows = await db.targetVariantAsset.findMany({ where: { variant: "A", targetInstance: { gameScene: { gameId } } } });
   expect(rows).toHaveLength(27); expect(rows.every(row => row.status === "GENERATED" && row.attempts === (body ? JSON.parse(row.judgeJson!).hide===guidedHideId?5:JSON.parse(row.judgeJson!).hide==="giza-detectives-hide-2"?4:1 : guided && JSON.parse(row.judgeJson!).hide === guidedHideId ? tail ? 4 : 3 : 1))).toBe(true);
   expect(prompts.size).toBe(body?34:tail ? 30 : guided ? 29 : 27); expect(provider.creates).toHaveLength(body?32:guided ? 29 : interrupted ? 28 : 27); expect(provider.creates.filter(create => create.quality)).toHaveLength(body?32:guided ? 29 : interrupted ? 28 : 27);
@@ -272,7 +289,7 @@ it.each([{mode:"clean",interrupted:false,guided:false},{mode:"transport",interru
     expect(readQualityStage(proof.quality, receipt.hide, 13)?.verdict).toBe("pass");
     expect(readContinuityStage(proof.continuity!, receipt.hide, DUAL_VISUAL_REVIEW_V3)).toMatchObject({ ok: true });
     expect(proof.subject).toMatchObject({ subjectPolicy: SUBJECT_POLICY_V2, reader: SUBJECT_READER_V2, combined: SUBJECT_QUALITY_BUNDLE_VERSION, requestKey: proof.quality.requestKey });
-    expect(readSubjectAnswerV2(subjectStageRaw(proof.subject!), { hideId: receipt.hide, ageYears: body?7:8, plan: subjectPlanOfHide(receipt.hide, 13)! })).toMatchObject({ ok: true, disposition: "pass" });
+    expect(readSubjectAnswerV2(subjectStageRaw(proof.subject!), { hideId: receipt.hide, ageYears: body||born?7:8, plan: subjectPlanOfHide(receipt.hide, 13)! })).toMatchObject({ ok: true, disposition: "pass" });
     for (const stage of [proof.quality, proof.continuity!]) {
       const retained = await store.get(worldId, stage.requestKey); expect(retained).not.toBeNull();
       expect(retained!.operationFingerprint).toBe(stage.fingerprint); expect(JSON.parse(retained!.bytes.toString()).raw).toBe(stage.raw);
@@ -293,7 +310,7 @@ it.each([{mode:"clean",interrupted:false,guided:false},{mode:"transport",interru
     if (corrupt === 'false-doubt') { const raw = JSON.parse(changed.boardReview.dual.quality.raw); raw.doubt = true; raw.doubtReason = 'Synthetic located uncertainty at the left join'; changed.boardReview.dual.quality.raw = JSON.stringify(raw); }
     expect(await allowedDualPublication(db, { ...binding, judgeJson: JSON.stringify(changed) })).toBe(false);
   }
-  const authority = await db.auditLog.findUniqueOrThrow({ where: { id: detectivesExtensionId(gameId) } });
+  const authority = await db.auditLog.findUniqueOrThrow({ where: { id: born?detectivesOperationalId(gameId):detectivesExtensionId(gameId) } });
   await db.auditLog.delete({ where: { id: authority.id } });
   expect(await allowedDualPublication(db, binding)).toBe(false);
   await db.auditLog.create({ data: authority });
@@ -301,8 +318,9 @@ it.each([{mode:"clean",interrupted:false,guided:false},{mode:"transport",interru
   const oversized = config.scenes.find(scene => scene.slug === "paris")!.targets.find(target => target.id === "hide-2")!.sprite;
   expect(oversized.kind).toBe("image");
   if (oversized.kind === "image") { expect(oversized.rect!.h * 2160).toBe(768); expect(oversized.hitRect!.h * 2160).toBeGreaterThan(540 * 0.8); }
+  if(mode==="born-clean")expect(bornPendingChecked).toBe(true);
   const audit = await boardWizardBudgetOf(c).audit(worldId);
-  expect(audit).toMatchObject({ capMicroUsd: tail ? 10_000_000 : 8_000_000, held: false, pendingRequestKeys: [] });
+  expect(audit).toMatchObject({ capMicroUsd: born?4_000_000:tail ? 10_000_000 : 8_000_000, held: false, pendingRequestKeys: [] });
   expect(audit.unknownRequestKeys).toHaveLength(interrupted ? 1 : 0);
   if (interrupted) {
     const unknown = await boardWizardBudgetOf(c).readRequest(worldId, audit.unknownRequestKeys[0]!);
@@ -311,6 +329,7 @@ it.each([{mode:"clean",interrupted:false,guided:false},{mode:"transport",interru
     expect(await boardWizardBudgetOf(c).readContinuationApproval(worldId, audit.unknownRequestKeys[0]!)).toMatchObject({ version: "world-automatic-review-recovery/v5", imageSha256: expect.any(String) });
   } else expect(audit.reservedMicroUsd).toBe(0);
   expect(audit.committedMicroUsd).toBeLessThanOrEqual(audit.capMicroUsd);
+  if(born){expect(await db.auditLog.count({where:{entityType:"Game",entityId:gameId,actorType:"ADMIN"}})).toBe(0);expect(await detectivesOperationalPolicyOf(db,gameId)).toMatchObject({worldCapMicroUsd:4000000,model:"gpt-6.1-sol",effort:"low",automaticBudgetExtension:false});const bodyRows=rows.filter(r=>sourceBodyBirthMarker(r));expect(bodyRows).toHaveLength(2);for(const r of bodyRows){expect(r.attempts).toBe(1);expect(JSON.parse(r.judgeJson!).sourceBodyComposition.outsideChangedPixels).toBe(0);}}
   const child = await db.childProfile.findUniqueOrThrow({ where: { id: "chl-" + gameId } });
   const photo = await db.asset.findUniqueOrThrow({ where: { id: "ast-photo-" + gameId } });
   expect(child.originalPhotoAssetId).toBeNull(); expect(photo.status).toBe("DELETED"); expect(await db.fileBlob.findUnique({ where: { key: photo.storagePath } })).toBeNull();
@@ -491,3 +510,18 @@ it("consumes retained LOW answers before an unaffordable guided purchase after a
  expect((await db.game.findUniqueOrThrow({where:{id:gameId}})).configJson).toBeNull();
  expect((await db.childProfile.findUniqueOrThrow({where:{id:"chl-"+gameId}})).originalPhotoAssetId).not.toBeNull();expect(fetch).not.toHaveBeenCalled();
 },1_500_000);
+
+it('returns a finite gave-up result before creating a fourth from-birth marker',async()=>{
+ const gameId='detective-born-finite-exhaustion';await newDetectiveWorld(gameId,7,true);
+ const context=await resolveLocalPatchBoardsForGame(db,gameId,13),board=context.boards.find(b=>b.board==='giza')!,hide=board.hides[1]!;
+ const scene=await db.gameScene.findFirstOrThrow({where:{gameId,sceneSlug:'giza'}}),target=sceneBySlug('giza',13).targets.find(t=>t.id===hide.targetId)!;
+ const instance=await db.targetInstance.create({data:{id:'tgt-born-exhausted',gameSceneId:scene.id,targetId:target.id,targetType:target.targetType,spriteKind:'image',slotAId:target.slots[0].id,slotBId:target.slots[1].id}});
+ const pin=(await detectivesOperationalPolicyOf(db,gameId))!,rowId='tva-born-exhausted';
+ await db.targetVariantAsset.create({data:{id:rowId,targetInstanceId:instance.id,variant:'A',slotId:target.slots[0].id,provider:'openai',promptVersion:'local-patch-fixed-scenery/v19',status:'FAILED',attempts:3,lastError:'Synthetic conclusive image failure after the normal limit',judgeJson:JSON.stringify({sourceBodyBirth:sourceBodyBirthMarkerFor(pin,rowId,hide.id,3)})}});
+ const audit=await boardWizardBudgetOf(c).audit(boardWizardWorldId(gameId));
+ const forbidden=vi.fn(async()=>{throw Error('No fourth purchase is permitted');});
+ const result=await runLocalPatchHide(c,{render:forbidden,judge:forbidden,renderPolicySha256:localPatchRenderPolicySha256(LOCAL_PATCH_IMAGE_POLICY)},{gameId,board,hide,finalRepair:true});
+ expect(result).toMatchObject({state:'gave-up',attempt:3,attempts:3});expect(forbidden).not.toHaveBeenCalled();
+ expect(await boardWizardBudgetOf(c).audit(boardWizardWorldId(gameId))).toEqual(audit);
+ expect(await db.targetVariantAsset.findUniqueOrThrow({where:{id:rowId}})).toMatchObject({status:'FAILED',attempts:3});
+},180000);

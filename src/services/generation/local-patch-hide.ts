@@ -1,8 +1,11 @@
+import { sourceBodyBirthForHide } from "./source-placement-release";
+import { sourceBodyBirthMarkerFor, fenceSourceBodyBirthPurchase } from "./detectives-operational-policy";
 import { requireSourceBodyPurchase } from './source-body-repair';
 import { fenceSourceBodyPurchase } from './source-body-repair-pin';
 import { nativeMaskTailCandidate, type NativeMaskTailMarker } from "../../domain/generation/native-mask-tail";
 import { guidedFrameCandidate, guidedFrameMarker, newGuidedFrameMarker, GUIDED_FRAME_MIN_CAPACITY_MICRO_USD, type GuidedFrameMarker } from "../../domain/generation/guided-frame-recovery";
-import { detectivesSingleReviewAuthorization, hasDetectivesLowCapacity, requireDetectivesNativeMaskTail } from "./detectives-completion-budget";
+import { requireDetectivesNativeMaskTail } from "./detectives-completion-budget";
+import { singleLowReviewAuthorization as detectivesSingleReviewAuthorization, hasSingleLowCapacity as hasDetectivesLowCapacity } from "./single-low-policy";
 import { WorldBudgetError } from "./world-budget";
 import { hasLocalPatchCapability } from "../../domain/scene/local-patch-family";
 import { createHash } from "node:crypto";
@@ -315,9 +318,6 @@ export async function runLocalPatchHide(c: Container, deps: LocalPatchHideDeps, 
   }
   const bodyRepair=input.sourceBodyRepair?await requireSourceBodyPurchase(c,gameId,row.id):null;
   if(bodyRepair){demand(input.finalRepair&&!input.guidedFrame&&!input.nativeMaskTail&&!input.extraAttemptAuthorizationId&&scene.sceneVersion===13,'Only the finite corrected source-body purchase may use new geometry');const paid=await budget.readRequest(worldId,bodyRepair.selected.requestKey);demand(!paid||row.status==='PENDING','Corrected source-body purchase already started');if(!paid){const room=await budget.audit(worldId);if(room.remainingMicroUsd<GUIDED_FRAME_MIN_CAPACITY_MICRO_USD)throw new WorldBudgetError('cap_exceeded','Corrected source-body image and one LOW must fit existing capacity');}}
-  const original=bodyRepair?JSON.parse(row.judgeJson??'{}'):{};
-  const guidedHistory = bodyRepair?{sourceBodyRepair:bodyRepair.marker,...(original.selfRepair?{selfRepair:original.selfRepair}:{}),...(original.guidedFrameRecovery?{guidedFrameRecovery:original.guidedFrameRecovery}:{}),...(original.nativeMaskTail?{nativeMaskTail:original.nativeMaskTail}:{})}:guidedFrame ? { guidedFrameRecovery: guidedFrame, selfRepair: JSON.parse(row.judgeJson!).selfRepair,
-    ...(nativeMaskTail ? { nativeMaskTail } : {}) } : {};
   if (input.finalRepair) demand(localPatchFinalRepairAllowed(env().APP_ENV, isLocalPatchStrictVersion(scene.sceneVersion))
     && game.styleVersion === "local-patch-world-v1",
     "the final repair pass requires a strict local-patch world or the legacy QA engine");
@@ -326,6 +326,10 @@ export async function runLocalPatchHide(c: Container, deps: LocalPatchHideDeps, 
   }) : null;
   const attemptLimit = nativeMaskTail ? 4 : extra?.authorizedAttempt ?? (input.finalRepair ? LOCAL_PATCH_MAX_ATTEMPTS : LOCAL_PATCH_NORMAL_ATTEMPTS);
   const { attempt, exhausted } = bodyRepair ? {attempt:bodyRepair.selected.authorizedAttempt,exhausted:false} : nextLocalPatchAttempt(row, attemptLimit);
+  const birthPolicy=sourceBodyBirthForHide(placementContext,hide.id),bodyBirth=birthPolicy&&!exhausted?sourceBodyBirthMarkerFor(birthPolicy,row.id,hide.id,attempt):null;
+  if(bodyBirth)demand(!bodyRepair&&!guidedFrame&&!nativeMaskTail&&!extra&&scene.sceneVersion===13,'From-birth footprints keep normal finite image attempts');
+  const original=bodyRepair?JSON.parse(row.judgeJson??'{}'):{};
+  const guidedHistory=bodyBirth?{sourceBodyBirth:bodyBirth}:bodyRepair?{sourceBodyRepair:bodyRepair.marker,...(original.selfRepair?{selfRepair:original.selfRepair}:{}),...(original.guidedFrameRecovery?{guidedFrameRecovery:original.guidedFrameRecovery}:{}),...(original.nativeMaskTail?{nativeMaskTail:original.nativeMaskTail}:{})}:guidedFrame?{guidedFrameRecovery:guidedFrame,selfRepair:JSON.parse(row.judgeJson!).selfRepair,...(nativeMaskTail?{nativeMaskTail}:{})}:{};
   // judgeJson is intentionally kept while PENDING: clearing lastError must not
   // change the prompt/fingerprint when attempt 2/3 resumes after an interruption.
   // v8 corrects its own located defect on the very next attempt. The old paid
@@ -373,7 +377,7 @@ export async function runLocalPatchHide(c: Container, deps: LocalPatchHideDeps, 
   demand(art.width === definition.art.width && art.height === definition.art.height,
     `${board.board} art does not match the size the scene declares; the geometry would be written in the wrong space`);
 
-  const adaptiveRecovery = guidedFrame || bodyRepair ? null : prepareAdaptiveRecovery(row.judgeJson, row, attempt, {
+  const adaptiveRecovery = guidedFrame || bodyRepair || bodyBirth ? null : prepareAdaptiveRecovery(row.judgeJson, row, attempt, {
     gameId, rowId: row.id, contentVersion: scene.sceneVersion, promptVersion, hide,
     boardSha256: sha256Bytes(artwork), identitySha256: sha256Bytes(sheet), ageYears: child.ageYears,
     renderPolicySha256: deps.renderPolicySha256,
@@ -397,13 +401,14 @@ export async function runLocalPatchHide(c: Container, deps: LocalPatchHideDeps, 
     await fenceLocalPatchImages(tx, gameId);
     await deps.fence?.(tx);
     if(bodyRepair)await fenceSourceBodyPurchase(tx,gameId,row.id,bodyRepair.marker);
+    if(bodyBirth)await fenceSourceBodyBirthPurchase(tx,gameId,row.id,bodyBirth);
     if (extra) await fenceLocalPatchExtraAttempt(tx, {
       gameId, hideId: hide.id, rowId: row.id, authorizationId: input.extraAttemptAuthorizationId!,
     });
     await tx.targetVariantAsset.update({ where: { id: row.id }, data: {
       attempts: attempt, status: "PENDING", lastError: null,
       provider: LOCAL_PATCH_PROVIDER, promptVersion, slotId: target.slots[0].id,
-      ...((adaptiveRecovery || guidedFrame || bodyRepair) ? { judgeJson: JSON.stringify({ ...JSON.parse(row.judgeJson ?? "{}"), ...guidedHistory, ...(adaptiveRecovery ? { adaptiveRecovery } : {}) }) } : {}),
+      ...((adaptiveRecovery || guidedFrame || bodyRepair || bodyBirth) ? { judgeJson: JSON.stringify({ ...JSON.parse(row.judgeJson ?? "{}"), ...guidedHistory, ...(adaptiveRecovery ? { adaptiveRecovery } : {}) }) } : {}),
     } });
   });
   const started = { ...base, attempts: attempt };
@@ -428,6 +433,7 @@ export async function runLocalPatchHide(c: Container, deps: LocalPatchHideDeps, 
     ...(guidedFrame ? { guidedFrameRecovery: guidedFrame } : {}),
     ...(nativeMaskTail ? { nativeMaskTail } : {}),
     ...(bodyRepair?{sourceBodyRepair:bodyRepair.marker}:{}),
+    ...(bodyBirth?{sourceBodyBirth:bodyBirth}:{}),
     ...(attempt === 3 && adaptiveRecovery?.plan ? { adaptiveRecovery: adaptiveRecovery.plan } : {}),
     ...(input.deadlineAt === undefined ? {} : { deadlineAt: input.deadlineAt }),
     ...(subjectDirection ? { subjectDirection } : {}),
@@ -467,6 +473,7 @@ export async function runLocalPatchHide(c: Container, deps: LocalPatchHideDeps, 
       await fenceLocalPatchImages(tx, gameId);
       await deps.fence?.(tx);
       if(bodyRepair)await fenceSourceBodyPurchase(tx,gameId,row.id,bodyRepair.marker);
+    if(bodyBirth)await fenceSourceBodyBirthPurchase(tx,gameId,row.id,bodyBirth);
     if (extra) await fenceLocalPatchExtraAttempt(tx, {
         gameId, hideId: hide.id, rowId: row.id, authorizationId: input.extraAttemptAuthorizationId!,
       });
@@ -508,6 +515,7 @@ export async function runLocalPatchHide(c: Container, deps: LocalPatchHideDeps, 
     await fenceLocalPatchImages(tx, gameId);
     await deps.fence?.(tx);
     if(bodyRepair)await fenceSourceBodyPurchase(tx,gameId,row.id,bodyRepair.marker);
+    if(bodyBirth)await fenceSourceBodyBirthPurchase(tx,gameId,row.id,bodyBirth);
     if (extra) await fenceLocalPatchExtraAttempt(tx, {
       gameId, hideId: hide.id, rowId: row.id, authorizationId: input.extraAttemptAuthorizationId!,
     });

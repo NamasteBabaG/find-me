@@ -1,3 +1,5 @@
+import { DETECTIVES_OPERATIONAL_RELEASE, detectivesOperationalQualified } from "@/domain/generation/detectives-operational-policy";
+import { SOURCE_BODY_REPAIR_MANIFEST_SHA256 } from "../../../../content/detectives/source-body-repair";
 import { promises as dns } from "node:dns";
 import { qaAccessDenied } from "@/lib/server/qa-access";
 import { NextResponse } from "next/server";
@@ -47,6 +49,7 @@ export async function GET(req: Request) {
   const leanRequested = e.APP_ENV === "qa" && e.LOCAL_PATCH_LEAN === "lean-v1";
   const leanQualified = !leanRequested || leanReleaseQualified({ appEnv: e.APP_ENV, promptRelease: e.LOCAL_PATCH_PROMPT_RELEASE,
     reviewRelease: e.LOCAL_PATCH_VISUAL_REVIEW === "dual-high-v3" ? DUAL_VISUAL_REVIEW_V3 : undefined });
+  const detectivesNewPolicy = e.STORAGE_PROVIDER === "db" && detectivesOperationalQualified({appEnv:e.APP_ENV,promptRelease:e.LOCAL_PATCH_PROMPT_RELEASE,identitySource:e.LOCAL_PATCH_IDENTITY_SOURCE,reviewRelease:e.LOCAL_PATCH_VISUAL_REVIEW==="dual-high-v3"?DUAL_VISUAL_REVIEW_V3:undefined,leanRelease:leanRequested?"local-patch-lean/v1":undefined});
   const leanConfigured = !leanRequested || (e.GENERATION_PROVIDER === "openai" && !!e.OPENAI_API_KEY?.trim());
   const ok = db.ok && !(e.APP_ENV === "qa" && e.LOCAL_PATCH_VISUAL_REVIEW !== "legacy" && !dualConfigured) && !painterUnqualified
     && batchQualified && batchConfigured && leanQualified && leanConfigured;
@@ -62,12 +65,13 @@ export async function GET(req: Request) {
     visualReview: { newGames: e.APP_ENV === "qa" ? e.LOCAL_PATCH_VISUAL_REVIEW : "legacy",
       configured: dualConfigured,
       quality: { model: visualReviewPolicy("scene-quality").model, effort: "high" },
-      continuity: { model: visualReviewPolicy("head-continuity").model, effort: "high" } },
+      continuity: { model: visualReviewPolicy("head-continuity").model, effort: "high" },
+      detectivesNewGames: detectivesNewPolicy ? {version:DETECTIVES_OPERATIONAL_RELEASE,reviewMode:"single-sol-low/v1",model:"gpt-6.1-sol",effort:"low",initialTier:"flex",oneUsableAssessmentPerImage:true,normalImageAttemptLimit:3,worldCapMicroUsd:4000000,automaticBudgetExtension:false,sourceBodyManifestSha256:SOURCE_BODY_REPAIR_MANIFEST_SHA256} : null },
     // Which wording NEW hides and identities receive; stored ones keep their own.
     promptRelease: e.LOCAL_PATCH_PROMPT_RELEASE,
     // The painting quality NEW local-patch drafts are pinned to; existing games keep their own.
     painter: { newGames: e.APP_ENV === "qa" ? e.LOCAL_PATCH_PAINTER ?? "by-version" : "by-version", qualified: !painterUnqualified },
-    // How NEW local-patch drafts have their Opus quality questions delivered; existing games keep their own.
+    // Legacy channel configuration; new qualified Detectives use their combined SOL LOW policy; existing games keep their own.
     qualityChannel: { newGames: batchRequested ? "anthropic-batch-v1" : "sync", qualified: batchQualified, configured: batchConfigured },
     // Whether NEW local-patch drafts are pinned lean (local-patch-lean/v1), instead of the painter and channel above.
     lean: { newGames: leanRequested ? "lean-v1" : "off", qualified: leanQualified, configured: leanConfigured,

@@ -134,7 +134,7 @@ export async function authoredLocalPatchRecoveryEvidenceMatches(db: Prisma.Trans
   const body=sourceBodyForHide(placementContext,hide.id);
   if(body){const before=input.beforePng??await (await import('./local-patch-hide')).readShippedBoardArt(board.art,body.sourceSha256);
     return (await import('./source-body-repair-compose')).sourceBodyCompositionEvidenceMatches(db,{gameId:input.gameId,hideId:hide.id,receipt:receipt as unknown as Record<string,unknown>,geometry:body,beforePng:before});}
-  if ((receipt as Record<string,unknown>).sourceBodyRepair!==undefined) return false;
+  if ((receipt as Record<string,unknown>).sourceBodyRepair!==undefined || (receipt as Record<string,unknown>).sourceBodyBirth!==undefined) return false;
   if (receipt.authoredRecovery === undefined) return receipt.compositionVersion !== AUTHORED_RECOVERY_COMPOSITION_VERSION;
   try {
     if (!authoredLocalPatchReturnMatches(receipt, board, hide, input.sceneVersion, false, placementContext)) return false;

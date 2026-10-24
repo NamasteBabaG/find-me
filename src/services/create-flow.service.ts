@@ -1,3 +1,4 @@
+import { pinDetectivesOperationalPolicy } from "./generation/detectives-operational-policy";
 import { Prisma } from "@prisma/client";
 import { newDraftToken, newId } from "@/lib/ids";
 import { normalizeChildName } from "@/lib/copy";
@@ -81,6 +82,7 @@ export async function createDraft(c: Container, ownerId: string | null, locale: 
       if (lean || selectedLevel === "detectives") {
         if (selectedVersion === null || selectedVersion === undefined) throw Error("A local-patch source family requires its exact scene version");
         await pinLocalPatchSourceFamily(tx, created.id, { sceneVersion: selectedVersion, searchLevel: selectedLevel });
+        if(selectedVersion===13)await pinDetectivesOperationalPolicy(tx,created.id,c.detectivesOperationalRelease,c.storage.id);
       }
     }
     if (options.askSearchLevel) await pinSearchLevelChoice(tx, created.id);

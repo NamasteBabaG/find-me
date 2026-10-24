@@ -1,3 +1,4 @@
+import { pinDetectivesOperationalPolicy } from "./generation/detectives-operational-policy";
 import { Prisma } from "@prisma/client";
 import { pinVisualReviewRelease } from "./generation/visual-review-release";
 import { pinNewQaWorldBudget } from "./generation/local-patch-qa-budget";
@@ -145,6 +146,7 @@ export async function beginWorldPurchase(c: Container, input: WorldPurchaseInput
           if (lean || requested === "detectives") {
             if (version === undefined) throw Error("A local-patch source family requires its exact scene version");
             await pinLocalPatchSourceFamily(tx, gameId, { sceneVersion: version, searchLevel: requested ?? "explorers" });
+            if(version===13)await pinDetectivesOperationalPolicy(tx,gameId,c.detectivesOperationalRelease,c.storage.id);
           }
         }
         if (choice.shown) await pinSearchLevelChoice(tx, gameId);
