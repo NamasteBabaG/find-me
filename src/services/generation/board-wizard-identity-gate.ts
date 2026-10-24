@@ -96,7 +96,7 @@ export const identityGateReceiptSchema = z.object({ version: z.enum([LEGACY_IDEN
   automaticSelection: z.object({ policy: z.literal(IDENTITY_SELECTION_POLICY), sourceFingerprint: digest,
     candidates: z.array(z.string()).min(1).max(2), selectedIdentityAssetId: z.string(),
     reason: z.enum(["first-sufficient", "best-of-two", "budget-fallback"]) }).strict().optional(),
-  requestId: z.string().nullable(), costMicroUsd: z.number().int().nonnegative(), usage: z.record(z.number()).nullable(),
+  requestId: z.string().nullable(), costMicroUsd: z.number().int().nonnegative(), usage: z.record(z.string(), z.number()).nullable(),
   model: z.enum([BOARD_JUDGE_MODEL, "gpt-5.6-luna", "gpt-6.1-sol"]), effort: z.enum(["high", "low"]), prompt: z.string(),
   outcome: identityReviewOutcomeSchema.optional(), rejudge: identitySourceRejudgeBindingSchema.optional(),
 }).strict().refine(r => isFullSourceGate(r.version)

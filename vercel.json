@@ -6,5 +6,8 @@
       "path": "/api/jobs/tick",
       "schedule": "* * * * *"
     }
-  ]
+  ],
+  "git": {
+    "deploymentEnabled": false
+  }
 }

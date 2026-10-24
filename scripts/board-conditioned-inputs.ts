@@ -118,7 +118,7 @@ function chooseOriginalPeople(s: CatalogSlot, frozen: BoardSlotDirection["slot"]
 export async function loadBoardConditioningInputs(options: LoadBoardConditioningInputsOptions): Promise<BoardConditioningInput[]> {
   const opts = structuredClone(options);
   demand(opts.sourcePresentation === undefined || ["compact-board-paint/v2", "compact-reference/v3", "local-composite/v4", "local-composite/v5"].includes(opts.sourcePresentation), "INVALID_INPUT", "unknown source presentation");
-  const overrides = z.record(z.object({ poseDescription: boardSlotDirectionSchema.shape.poseDescription.optional(), lighting: boardSlotDirectionSchema.shape.lighting.optional() }).strict()).parse(opts.slotDirectionOverrides ?? {});
+  const overrides = z.record(z.string(), z.object({ poseDescription: boardSlotDirectionSchema.shape.poseDescription.optional(), lighting: boardSlotDirectionSchema.shape.lighting.optional() }).strict()).parse(opts.slotDirectionOverrides ?? {});
   demand(/^[A-Za-z0-9_-]{1,120}$/.test(opts.child?.profileId ?? "") && Number.isInteger(opts.child?.ageYears) && opts.child.ageYears >= 2 && opts.child.ageYears <= 10,
     "INVALID_INPUT", "nonsecret child profile ID and age 2–10 required");
   demand(opts.boardIds?.length > 0 && new Set(opts.boardIds).size === opts.boardIds.length && opts.boardIds.every(id => /^[A-Za-z0-9_-]{1,120}$/.test(id)), "INVALID_INPUT", "unique explicit board IDs required");

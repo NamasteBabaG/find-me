@@ -303,11 +303,17 @@ describe("full original source identity review (synthetic, zero paid calls)", ()
     const f = await fullFixture(content), r = await reviewBoardWizardIdentity(f.deps, { ...f.input, contentVersion: 12 });
     expect(r.checks).toBeNull(); expect(r.approved).toBe(false); expect(r.costMicroUsd).toBeGreaterThan(0);
     expect(r.outcome).toMatchObject({ state: "schema-invalid", dispatchAttempted: true, httpStatus: 200, finishReason: "stop", choiceCount: 1, refusal: false,
-      rawContent: JSON.stringify(content), schemaIssues: [{ path: "checks.age", code: "invalid_enum_value" }] });
+      rawContent: JSON.stringify(content), schemaIssues: [{ path: "checks.age", code: "invalid_value" }] });
     expect(r.outcome?.contentSha256).toBe(sha256Bytes(Buffer.from(JSON.stringify(content))));
     expect(r.reason).toContain("schema-invalid");
     expect((await f.budget.audit("synthetic-game:board-wizard")).unknownRequestKeys).toHaveLength(0);
     expect(await reviewBoardWizardIdentity(f.deps, { ...f.input, contentVersion: 12 })).toEqual(r);
+    expect(f.fetchOnce).toHaveBeenCalledOnce();
+    // Persisted Zod 3 diagnostics remain private evidence and must replay unchanged.
+    const legacyDiagnostic = structuredClone(r);
+    legacyDiagnostic.outcome!.schemaIssues[0]!.code = "invalid_enum_value";
+    f.rows[f.rows.length - 1]!.metaJson = JSON.stringify(legacyDiagnostic);
+    expect(await reviewBoardWizardIdentity(f.deps, { ...f.input, contentVersion: 12 })).toEqual(legacyDiagnostic);
     expect(f.fetchOnce).toHaveBeenCalledOnce();
     const long = await fullFixture({ ...fullAnswer(), reason: "x".repeat(25_000) });
     const rejected = await reviewBoardWizardIdentity(long.deps, { ...long.input, contentVersion: 12 });

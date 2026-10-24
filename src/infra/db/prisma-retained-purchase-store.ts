@@ -90,10 +90,10 @@ export function retainedPurchaseKeysFor(worldId: string, requestKeys: readonly s
 
 const digest = z.string().regex(/^[a-f0-9]{64}$/);
 const text = z.string().min(1).max(500);
-const json: z.ZodType<unknown> = z.lazy(() => z.union([z.null(), z.boolean(), z.number().finite(), z.string(), z.array(json), z.record(json)]));
+const json: z.ZodType<unknown> = z.lazy(() => z.union([z.null(), z.boolean(), z.number().finite(), z.string(), z.array(json), z.record(z.string(), json)]));
 const evidenceSchema = z.object({
   providerNamespace: text, providerRequestId: text, usageId: text,
-  rawUsage: z.record(json), model: text,
+  rawUsage: z.record(z.string(), json), model: text,
   amountMicroUsd: z.number().int().nonnegative(),
   costBasis: z.enum(["provider-billed", "conservative-upper-estimate"]),
 }).strict();

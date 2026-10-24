@@ -5,7 +5,7 @@ export const ProgressEventInput = z.object({
   eventType: z.enum(["scene_started", "target_found", "hint_used", "scene_completed", "game_completed", "game_replayed", "scene_unlocked", "journey_finished"]),
   sceneSlug: z.string().min(1).max(160).optional(),
   targetId: z.string().min(1).max(160).optional(),
-  hintsUsed: z.number().int().min(0).max(99).default(0),
+  hintsUsed: z.number().int().min(0).max(99).prefault(0),
 });
 
 export const ProgressBatchInput = z.object({

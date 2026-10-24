@@ -9,8 +9,8 @@ export const SupportInput = z.object({
   requestKey: z.string().uuid(), locale: z.enum(["he", "en"]),
   topic: z.enum(["help", "cancellation", "privacy", "accessibility"]),
   email: z.string().trim().email().max(254).transform(v => v.toLowerCase()),
-  order: z.string().trim().max(160).default(""), message: z.string().trim().max(2500).default(""),
-  website: z.literal("").default(""),
+  order: z.string().trim().max(160).prefault(""), message: z.string().trim().max(2500).prefault(""),
+  website: z.literal("").prefault(""),
 }).strict();
 type SupportDb = Pick<Container["db"], "auditLog">;
 const REQUEST_ACTION = "support:received";

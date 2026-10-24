@@ -13,7 +13,7 @@ export const sourceNeighborQualityBundleBindingSchema = z.object({
   reader: z.literal(SOURCE_NEIGHBOR_READER), contractSha256: sha256, candidateSha256: sha256,
 }).strict();
 export type SourceNeighborQualityBundleBinding = z.infer<typeof sourceNeighborQualityBundleBindingSchema>;
-const document = z.record(z.unknown());
+const document = z.record(z.string(), z.unknown());
 const shape = z.object({ version: z.literal(SOURCE_NEIGHBOR_BUNDLE_VERSION), assessment: document,
   sourceNeighbors: document }).strict();
 // Only identify the assessment's document family here. Its existing quality and

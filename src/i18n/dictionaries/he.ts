@@ -115,7 +115,7 @@ export const he: Dictionary = {
     gameShape: "{worlds} · {places} מקומות · {spots} מחבואים",
     searchesCount: "{n} מחבואים",
   },
-  nav: { demo: "מנסים את המשחק", how: "איך זה עובד", gift: "משחק במתנה", pricing: "חבילות ומחירים" },
+  nav: { main: "ניווט ראשי", demo: "מנסים את המשחק", how: "איך זה עובד", gift: "משחק במתנה", pricing: "חבילות ומחירים" },
   footer: {
     blurb: "משחק חיפוש אישי בתוך ציורי הרפתקאות.",
     product: "המוצר",
@@ -417,8 +417,9 @@ export const he: Dictionary = {
     choose: "למי ההרפתקה?", newChild: "לילד/ה נוסף/ת",
     existingHint: "נבחר תמונה חדשה להרפתקה הזאת. ההרפתקאות הקודמות נשארות כמו שהן.",
     open: "ההרפתקאות של {name}", add: "יוצרים לילד/ה נוסף/ת", more: "עוד הרפתקה ל{name}",
+    moreLead: "אפשר לבחור את ההרפתקה הבאה ולראות מה מחכה בה.", exploreMore: "לגלות הרפתקאות נוספות",
     passport: "הדרכון של {name}", back: "לאזור המשפחתי", empty: "ההרפתקה הראשונה מתחילה כאן", emptyLead: "יוצרים הרפתקה לילד או לילדה. אחרי הרכישה יופיע כאן המקום שלהם.",
-    tests: "QA: הרפתקאות בדיקה שלא שויכו", count: "{n} הרפתקאות", preparing: "ההרפתקה בהכנה", noAdventures: "עדיין אין כאן הרפתקאות.",
+    tests: "QA: הרפתקאות בדיקה שלא שויכו", count: "{n} הרפתקאות", countOne: "הרפתקה אחת", preparing: "ההרפתקה בהכנה", noAdventures: "עדיין אין כאן הרפתקאות.",
     getHelp: "פנייה לעזרה",
     generationState: {
       preparing: { title: "ההרפתקה בהכנה", hint: "אפשר לצאת מהעמוד. ההכנה ממשיכה בשרת." },

@@ -96,7 +96,7 @@ function readStructured(value: unknown, requiredIds: readonly string[], reader: 
   const parsed = schema.safeParse(value);
   if (!parsed.success) {
     const issue = parsed.error.issues[0]!, path = issue.path.join(".");
-    if (issue.code === "too_big" || issue.code === "too_small") return fail(issue.type === "string" ? "length" : issue.type === "array" && path !== "cases" ? "count" : issue.type === "array" ? "ids" : "shape", path);
+    if (issue.code === "too_big" || issue.code === "too_small") return fail(issue.origin === "string" ? "length" : issue.origin === "array" && path !== "cases" ? "count" : issue.origin === "array" ? "ids" : "shape", path);
     return fail("shape", path);
   }
   const cases = parsed.data.cases as { id: string }[];

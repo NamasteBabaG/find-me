@@ -9,7 +9,7 @@ export const PlayRoundSchema = z.object({
   active: z.boolean(),
   route: z.array(z.string()).min(1),
   progress: GameProgressSchema,
-  discoveries: z.record(z.array(z.string())).default({}),
+  discoveries: z.record(z.string(), z.array(z.string())).prefault({}),
 });
 export type PlayRound = z.infer<typeof PlayRoundSchema>;
 

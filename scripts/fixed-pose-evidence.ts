@@ -31,7 +31,7 @@ const receiptSchema = z.object({
 const requestSchema = z.object({
   version: z.literal(1), promptSha256: digest, inputs: z.array(inputHash).min(1),
   policy: z.object({ imageModel: z.literal("gpt-image-2"), imageQuality: z.enum(["medium", "low"]), judgeModel: z.literal("gpt-5.6-sol"), judgeEffort: z.literal("high"), noAutomaticRetries: z.literal(true) }).passthrough(),
-  settings: z.record(z.unknown()),
+  settings: z.record(z.string(), z.unknown()),
 }).passthrough();
 const imageIdentity = z.object({ sha256: digest, width: integer.positive(), height: integer.positive(), bytes: integer.positive() });
 const observerSchema = z.object({
@@ -48,7 +48,7 @@ const evidenceSchema = z.object({
   imageRequestId: requestId, observationRequestId: requestId,
   missingHistoricalCaptures: z.array(text).length(0), productionEvidenceEligible: z.literal(true),
   processorFiles: z.array(z.object({ file: text, sha256: digest })),
-  lowContinuation: z.record(z.unknown()).optional(),
+  lowContinuation: z.record(z.string(), z.unknown()).optional(),
 }).strip();
 const slotSchema = z.object({
   id: text, contract: fixedSlotV3ContractSchema, foregroundFile: text.optional(),

@@ -37,9 +37,9 @@ export const MapNodeSchema = z.object({
    * up next.
    */
   iconAsset: z.string().min(1).optional(),
-  labelAnchor: z.enum(["top", "bottom", "start", "end"]).default("bottom"),
-  markerScale: z.number().positive().max(1).default(0.09),
-  travelStyle: TravelStyle.default("walk"),
+  labelAnchor: z.enum(["top", "bottom", "start", "end"]).prefault("bottom"),
+  markerScale: z.number().positive().max(1).prefault(0.09),
+  travelStyle: TravelStyle.prefault("walk"),
 });
 export type MapNode = z.infer<typeof MapNodeSchema>;
 
@@ -74,9 +74,9 @@ export const WorldDefinitionSchema = z.object({
     text: LocalizedTextSchema,
     icon: z.string().min(1),
   }),
-  active: z.boolean().default(true),
+  active: z.boolean().prefault(true),
   /** A world can be finished but not yet for sale. */
-  purchasable: z.boolean().default(true),
+  purchasable: z.boolean().prefault(true),
   version: z.number().int().positive(),
 });
 export type WorldDefinition = z.infer<typeof WorldDefinitionSchema>;

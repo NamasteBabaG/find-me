@@ -29,7 +29,10 @@ describe("reviewed release tooling", () => {
     const root = mkdtempSync(path.join(tmpdir(), "findme-release-guard-"));
     const repo = path.join(root, "repo"), remote = path.join(root, "remote.git");
     mkdirSync(repo);
-    const git = (...args: string[]) => execFileSync("git", args, { cwd: repo, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
+    // Synthetic repositories must not inherit the release checkout selected by Git environment variables.
+    const fixtureEnv = { ...process.env };
+    for (const name of Object.keys(fixtureEnv)) if (name.startsWith("GIT_")) delete fixtureEnv[name];
+    const git = (...args: string[]) => execFileSync("git", args, { cwd: repo, env: fixtureEnv, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
     try {
       git("init", "--bare", remote); git("init");
       git("config", "user.name", "Synthetic Review"); git("config", "user.email", "test@example.test");
@@ -42,7 +45,7 @@ describe("reviewed release tooling", () => {
       const valid = { projectId: "prj_LbqCRqwU8WfZpeaWU7HTXM4SsfG4", orgId: "team_2bLUDGyHayGB1UHIvcCBgyWh" };
       writeFileSync(project, JSON.stringify(valid));
       git("add", "."); git("commit", "-m", "synthetic base"); git("push", "find-me", "HEAD");
-      const check = () => spawnSync(process.execPath, ["guard.mjs", "--check"], { cwd: repo, encoding: "utf8" });
+      const check = () => spawnSync(process.execPath, ["guard.mjs", "--check"], { cwd: repo, env: fixtureEnv, encoding: "utf8" });
       expect(check().status).toBe(0);
       writeFileSync(path.join(repo, "new.txt"), "fixture");
       expect(check().stderr).toContain("dirty release tree");

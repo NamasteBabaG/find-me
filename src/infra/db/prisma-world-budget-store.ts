@@ -20,11 +20,11 @@ function fail(code: WorldBudgetStoreError["code"], message: string): never { thr
 const nonempty = z.string().refine(value => value.trim().length > 0);
 const money = z.number().int().min(0).max(Number.MAX_SAFE_INTEGER);
 const jsonValue: z.ZodType<BudgetJson> = z.lazy(() => z.union([
-  z.null(), z.boolean(), z.number().finite(), z.string(), z.array(jsonValue), z.record(jsonValue),
+  z.null(), z.boolean(), z.number().finite(), z.string(), z.array(jsonValue), z.record(z.string(), jsonValue),
 ]));
 const evidenceSchema = z.object({
   providerNamespace: nonempty, providerRequestId: nonempty, usageId: nonempty,
-  rawUsage: z.record(jsonValue).refine(value => Object.keys(value).length > 0),
+  rawUsage: z.record(z.string(), jsonValue).refine(value => Object.keys(value).length > 0),
   model: nonempty, amountMicroUsd: money,
   costBasis: z.enum(["provider-billed", "conservative-upper-estimate"]),
 }).strict();

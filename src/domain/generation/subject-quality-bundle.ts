@@ -6,7 +6,7 @@ export type SubjectQualityBundleBinding = { readonly version: typeof SUBJECT_QUA
   readonly photoSha256: string; readonly planSha256: string;
   /** Absent: the inner subject document is local-patch-subject/v1 (every bundle bought before v2). */
   readonly subjectPolicy?: "local-patch-subject/v2" };
-const shape = z.object({ version: z.literal(SUBJECT_QUALITY_BUNDLE_VERSION), quality: z.record(z.unknown()), subject: z.record(z.unknown()) }).strict();
+const shape = z.object({ version: z.literal(SUBJECT_QUALITY_BUNDLE_VERSION), quality: z.record(z.string(), z.unknown()), subject: z.record(z.string(), z.unknown()) }).strict();
 
 /** Never extract a convenient fragment from prose. Each inner document still has its own strict reader. */
 export function readSubjectQualityBundle(raw: string | null): { quality: string; subject: string } | null {

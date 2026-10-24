@@ -10,7 +10,7 @@
 
 /* A way back, as an adult control: a full touch height, quiet until pointed at. */
 .family-back, .family-manage {
-  display: inline-flex; align-items: center; gap: var(--space-1); min-height: var(--touch-min);
+  display: inline-flex; align-items: center; gap: var(--space-1); min-height: var(--touch-min); min-inline-size: var(--touch-min);
   padding-inline: var(--space-2); border-radius: var(--radius-pill);
   color: var(--ink-2); font-weight: 700; text-decoration: none;
   transition: background var(--dur-1) var(--ease-out), color var(--dur-1) var(--ease-out);
@@ -20,10 +20,16 @@
 
 .family-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); flex-wrap: wrap; }
 .family-head h1, .family-head p { margin: 0; }
+.family-head h1 { font-size: var(--fs-700); line-height: var(--lh-700); overflow-wrap: anywhere; }
+.family-head__lead { max-inline-size: var(--measure); color: var(--ink-2); font-size: var(--fs-200); line-height: var(--lh-200); }
+.family-head > .fm-stack { min-width: 0; }
+:is(.family-back, .family-manage, .kid, .family-add):focus-visible { outline: 3px solid var(--focus); outline-offset: var(--space-0-5); }
 
 /* The child, by name. The sticker is the one they play as. */
-.family-hero { display: flex; align-items: center; gap: var(--space-3); }
-.family-hero h1 { margin: 0; font-size: var(--fs-800); line-height: var(--lh-800); letter-spacing: -0.02em; overflow-wrap: anywhere; }
+.family-hero { display: flex; align-items: center; gap: var(--space-3); min-width: 0; }
+.family-hero__copy { display: flex; flex-direction: column; gap: var(--space-1); min-width: 0; }
+.family-hero__copy p { margin: 0; color: var(--ink-2); font-size: var(--fs-200); line-height: var(--lh-200); font-weight: 700; }
+.family-hero h1 { margin: 0; font-size: var(--fs-700); line-height: var(--lh-700); letter-spacing: -0.02em; overflow-wrap: anywhere; }
 /* The whole illustrated portrait, contained like the game's face: a circle crop cut the hair off. */
 .family-sticker { flex-shrink: 0; width: var(--space-8); height: var(--space-8); }
 img.family-sticker { border-radius: var(--radius-2); object-fit: contain; }
@@ -39,7 +45,7 @@ img.family-sticker { border-radius: var(--radius-2); object-fit: contain; }
 .family-desk { display: grid; gap: var(--space-4); align-items: start; }
 .family-desk__main, .family-desk__side { display: flex; flex-direction: column; gap: var(--space-4); min-width: 0; }
 @media (min-width: 960px) {
-  .family-desk { grid-template-columns: minmax(0, 1fr) 352px; gap: var(--space-6); }
+  .family-desk { grid-template-columns: minmax(0, 1fr) calc(var(--space-20) * 2 + var(--space-4)); gap: var(--space-6); }
   .family-desk__side { position: sticky; top: var(--space-4); }
 }
 
@@ -52,13 +58,20 @@ img.family-sticker { border-radius: var(--radius-2); object-fit: contain; }
 .adventure .adventure__play::after { border-radius: var(--radius-4); }
 .adventure:has(.adventure__play:hover) { box-shadow: var(--shadow-2); }
 .adventure:has(.adventure__play:active, .adventure__play[data-press-feedback="true"]) { filter: brightness(0.97); }
-.adventure .family-manage, .adventure .family-friends { position: relative; z-index: 1; }
+.adventure__tools { position: relative; z-index: 1; display: flex; flex-direction: column; align-items: stretch; gap: var(--space-1); margin-block-start: var(--space-1); padding-block-start: var(--space-2); border-block-start: 1px solid var(--line); }
+.adventure__tools > .family-manage { align-self: flex-start; padding-inline: var(--space-1); font-size: var(--fs-100); line-height: var(--lh-100); }
+.adventure__tools .family-friends { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-1); margin: 0; }
+.adventure__tools .family-friends > .fm-btn { min-height: var(--touch-min); min-width: var(--touch-min); padding: var(--space-1); background: var(--paper); box-shadow: none; font-size: var(--fs-100); line-height: var(--lh-100); white-space: normal; text-align: center; }
+.adventure__tools .family-friends > .fm-btn:hover { background: var(--paper-2); box-shadow: var(--shadow-1); }
+.adventure:has(.adventure__play:focus-visible) { outline: 3px solid var(--focus); outline-offset: var(--space-0-5); }
 .adventure__map { display: block; }
 .adventure__body { display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-3) var(--space-4) var(--space-4); }
-.adventure__body h2 { margin: 0; font-size: var(--fs-500); line-height: var(--lh-500); }
+.adventure__body h2 { margin: 0; min-width: 0; font-size: var(--fs-500); line-height: var(--lh-500); overflow-wrap: anywhere; }
+.adventure__hint { margin: 0; color: var(--ink-2); font-size: var(--fs-200); line-height: var(--lh-200); }
 .adventure__title { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); flex-wrap: wrap; }
 .adventure__progress { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; margin: 0; color: var(--ink-2); font-size: var(--fs-100); line-height: var(--lh-100); font-weight: 700; }
 .adventure__actions { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; margin-block-start: var(--space-1); }
+.adventure__actions > .fm-btn { width: 100%; white-space: normal; text-align: center; }
 .adventure__worlds { display: flex; flex-wrap: wrap; gap: var(--space-1); margin: 0; padding: 0; list-style: none; }
 .adventure__worlds li {
   padding: var(--space-0-5) var(--space-2); border-radius: var(--radius-pill);
@@ -81,7 +94,6 @@ img.family-sticker { border-radius: var(--radius-2); object-fit: contain; }
   .adventure__wait { height: 100%; }
   .adventure__body { justify-content: center; padding: var(--space-4); }
   .adventure__actions { flex-direction: column; align-items: stretch; }
-  .adventure__actions .family-manage { justify-content: center; }
 }
 
 /* ─── The map, with the child on it ─────────────────────────────────────── */
@@ -99,7 +111,7 @@ img.family-sticker { border-radius: var(--radius-2); object-fit: contain; }
 .glimpse__sticker { width: var(--space-8); height: var(--space-8); animation: family-here 2400ms var(--ease-out) 600ms 3 both; }
 .glimpse__place {
   padding: var(--space-0-5) var(--space-2); border-radius: var(--radius-pill);
-  background: var(--sun); color: var(--ink); font-weight: 800; font-size: var(--fs-100); line-height: var(--lh-100); white-space: nowrap;
+  background: var(--sun); color: var(--ink); font-weight: 800; font-size: var(--fs-100); line-height: var(--lh-100); white-space: nowrap; max-inline-size: var(--space-16); overflow: hidden; text-overflow: ellipsis;
   box-shadow: 0 0 0 2px var(--white), var(--shadow-sticker);
 }
 /* "Here": a slow ring that leaves the sticker, three times, and then is still. */
@@ -111,7 +123,7 @@ img.family-sticker { border-radius: var(--radius-2); object-fit: contain; }
 /* One mark per place, as the route on the map: stamped places in the passport's "found" green, the child's
    place in the map's sun, the rest still paper. */
 .route { display: inline-flex; flex-wrap: wrap; gap: var(--space-0-5); }
-.route__mark { width: var(--space-2); height: var(--space-2); border-radius: var(--radius-pill); background: var(--paper-3); }
+.route__mark { width: var(--space-1); height: var(--space-1); border-radius: var(--radius-pill); background: var(--paper-3); }
 .route__mark--stamped { background: var(--leaf); }
 .route__mark--here { background: var(--sun); box-shadow: inset 0 0 0 2px var(--sun-deep); }
 
@@ -126,7 +138,7 @@ img.family-sticker { border-radius: var(--radius-2); object-fit: contain; }
   width: var(--space-2); height: var(--space-2); background: var(--grad-gold);
   clip-path: polygon(50% 0%, 61% 35%, 98% 35%, 68% 57%, 79% 91%, 50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%);
 }
-.tally__total { color: var(--ink-3); font-weight: 700; }
+.tally__total { color: var(--ink-2); font-weight: 700; }
 
 /* ─── The passport: the same board, foil and keyline as the book itself ── */
 .family-passport {
@@ -154,7 +166,7 @@ img.family-sticker { border-radius: var(--radius-2); object-fit: contain; }
   border: 1px solid color-mix(in srgb, var(--gold-light) 38%, transparent); border-radius: var(--radius-1);
 }
 .family-passport:hover { transform: translateY(calc(var(--space-0-5) * -1)); }
-.family-passport:focus-visible { outline: 3px solid var(--sun); outline-offset: 4px; }
+.family-passport:focus-visible { outline: 3px solid var(--focus); outline-offset: var(--space-0-5); }
 .family-passport__crest {
   display: grid; place-items: center; width: var(--space-5); height: var(--space-5); margin-block-end: var(--space-1);
   border: 1px solid color-mix(in srgb, var(--gold-light) 60%, transparent); border-radius: var(--radius-pill); font-size: var(--fs-300);
@@ -167,11 +179,16 @@ img.family-sticker { border-radius: var(--radius-2); object-fit: contain; }
   box-shadow: 0 4px 0 var(--gold-edge);
 }
 
-.family-more { display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-2); padding: var(--space-3); border: 2px dashed var(--ink-4); border-radius: var(--radius-4); }
-.family-more p { margin: 0; color: var(--ink-2); font-size: var(--fs-100); line-height: var(--lh-100); }
+.family-more { display: grid; grid-template-columns: var(--control-h) minmax(0, 1fr); align-items: center; gap: var(--space-2); padding: var(--space-3); border-radius: var(--radius-4); background: var(--white); box-shadow: var(--shadow-1); }
+.family-more__icon { display: grid; place-items: center; width: var(--control-h); height: var(--control-h); border-radius: var(--radius-2); background: var(--lavender-soft); color: var(--ink); }
+.family-more__icon .scene__icon { display: block; width: var(--space-4); height: var(--space-4); }
+.family-more h2 { margin: 0; font-size: var(--fs-300); line-height: var(--lh-300); overflow-wrap: anywhere; }
+.family-more p { grid-column: 1 / -1; margin: 0; color: var(--ink-2); font-size: var(--fs-100); line-height: var(--lh-100); }
+.family-more__price { padding: var(--space-2); border-radius: var(--radius-2); background: var(--paper); font-weight: 700; }
+.family-more > .fm-btn { grid-column: 1 / -1; width: 100%; padding-inline: var(--space-2); white-space: normal; text-align: center; }
 
 /* ─── The family shelf: one card per child ──────────────────────────────── */
-.family-shelf { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 352px), 1fr)); gap: var(--space-4); margin: 0; padding: 0; list-style: none; }
+.family-shelf { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, calc(var(--space-20) * 2 + var(--space-4))), 1fr)); gap: var(--space-4); margin: 0; padding: 0; list-style: none; }
 .kid {
   display: flex; flex-direction: column; height: 100%; overflow: hidden;
   background: var(--white); border-radius: var(--radius-4); box-shadow: var(--shadow-1);
@@ -184,12 +201,13 @@ img.family-sticker { border-radius: var(--radius-2); object-fit: contain; }
   background: repeating-linear-gradient(135deg, var(--paper-2) 0 var(--space-2), var(--paper) var(--space-2) var(--space-4));
 }
 .kid__wait .family-sticker { width: var(--space-12); height: var(--space-12); }
-.kid__body { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: var(--space-0-5) var(--space-2); padding: var(--space-3) var(--space-4) var(--space-4); }
-.kid__name { grid-column: 1; margin: 0; font-size: var(--fs-500); line-height: var(--lh-500); overflow-wrap: anywhere; }
-.kid__line { grid-column: 1; color: var(--ink-2); font-weight: 700; }
-.kid__progress { grid-column: 1; display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; color: var(--ink-3); font-size: var(--fs-100); line-height: var(--lh-100); font-weight: 700; }
+.kid__body { display: flex; flex: 1; flex-direction: column; align-items: stretch; gap: var(--space-1); padding: var(--space-3) var(--space-4) var(--space-4); min-width: 0; }
+.kid__name { margin: 0; font-size: var(--fs-500); line-height: var(--lh-500); overflow-wrap: anywhere; }
+.kid__line { color: var(--ink-2); font-weight: 700; overflow-wrap: anywhere; }
+.kid__progress { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; color: var(--ink-2); font-size: var(--fs-100); line-height: var(--lh-100); font-weight: 700; }
+.kid__footer { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); margin-block-start: auto; padding-block-start: var(--space-2); color: var(--ink); font-size: var(--fs-100); line-height: var(--lh-100); font-weight: 800; }
 .kid__go {
-  grid-column: 2; grid-row: 1 / span 3; display: grid; place-items: center;
+  display: grid; place-items: center; flex: 0 0 auto;
   width: var(--touch-min); height: var(--touch-min); border-radius: var(--radius-pill);
   background: var(--sun); color: var(--ink); font-size: var(--fs-300);
   transition: box-shadow var(--dur-2) var(--ease-out);
@@ -200,6 +218,7 @@ img.family-sticker { border-radius: var(--radius-2); object-fit: contain; }
 .family-add {
   display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--space-2);
   height: 100%; min-height: var(--space-20); padding: var(--space-4); border-radius: var(--radius-4);
+  background: var(--white); box-shadow: inset 0 0 0 1px var(--line);
   color: var(--ink-2); font-weight: 800; text-align: center; text-decoration: none;
   transition: background var(--dur-1) var(--ease-out), color var(--dur-1) var(--ease-out);
 }
@@ -213,6 +232,7 @@ img.family-sticker { border-radius: var(--radius-2); object-fit: contain; }
 
 .family-empty { display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-2); padding: var(--space-6); background: var(--white); border-radius: var(--radius-4); box-shadow: var(--shadow-1); }
 .family-empty h2, .family-empty p { margin: 0; }
+.family-empty p { max-inline-size: var(--measure); color: var(--ink-2); }
 
 .family-drafts { display: flex; flex-direction: column; gap: var(--space-2); }
 .family-drafts h2 { margin: 0; font-size: var(--fs-400); line-height: var(--lh-400); }
@@ -228,15 +248,20 @@ img.family-sticker { border-radius: var(--radius-2); object-fit: contain; }
   .family-hero__sticker.family-sticker--initial { font-size: var(--fs-500); }
   .adventure__body, .kid__body { padding: var(--space-2) var(--space-3) var(--space-3); }
   .adventure__actions .fm-btn { flex: 1 1 100%; }
-  .adventure__actions .family-manage { margin-inline: auto; }
   .glimpse__here { left: clamp(var(--space-6), var(--x), calc(100% - var(--space-6))); top: clamp(var(--space-8), var(--y), calc(100% - var(--space-2))); }
   .glimpse__sticker { width: var(--space-6); height: var(--space-6); }
-  .glimpse__place { font-size: var(--fs-50); line-height: var(--lh-50); }
-  .family-passport { padding: var(--space-4) var(--space-3); }
+  .glimpse__place { max-inline-size: var(--space-12); font-size: var(--fs-50); line-height: var(--lh-50); }
+  .family-desk__side { gap: var(--space-3); }
+  .family-passport { display: grid; grid-template-columns: var(--space-6) minmax(0, 1fr); align-items: center; column-gap: var(--space-2); padding: var(--space-3); text-align: start; }
+  .family-passport__crest { grid-column: 1; grid-row: 1 / span 2; margin: 0; }
+  .family-passport__title, .family-passport__count { grid-column: 2; }
+  .family-passport__open { grid-column: 1 / -1; justify-content: center; }
+  .family-empty { padding: var(--space-3); }
+  .family-draft .fm-btn { width: 100%; }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .glimpse__sticker { animation: none; }
-  .kid, .family-passport, .family-back, .family-manage, .family-add, .kid__go { transition: none; }
+  .adventure, .kid, .family-passport, .family-back, .family-manage, .family-add, .kid__go { transition: none; }
   .kid:hover, .family-passport:hover { transform: none; }
 }

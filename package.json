@@ -27,7 +27,8 @@
     "perf:audit": "node scripts/audit-player-performance.mjs",
     "patches:judge": "tsx scripts/judge-patches.ts",
     "db:guard": "tsx scripts/guard-db-target.ts",
-    "db:client:local": "node scripts/prisma-generate.mjs --sqlite"
+    "db:client:local": "node scripts/prisma-generate.mjs --sqlite",
+    "payments:preflight": "tsx scripts/payment-readiness.ts"
   },
   "dependencies": {
     "@prisma/client": "^6.19.3",
@@ -35,7 +36,7 @@
     "react": "^19.2.5",
     "react-dom": "^19.2.5",
     "sharp": "0.35.5",
-    "zod": "^3.25.76",
+    "zod": "4.6.6",
     "zustand": "^5.0.8"
   },
   "devDependencies": {

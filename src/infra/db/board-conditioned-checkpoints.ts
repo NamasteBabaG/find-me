@@ -91,9 +91,9 @@ const sha = z.string().regex(/^[a-f0-9]{64}$/);
 const text = z.string().min(1).max(500).refine(s => s.trim() === s);
 const money = z.number().int().min(0).max(Number.MAX_SAFE_INTEGER);
 const positive = money.refine(n => n > 0);
-const json: z.ZodType<unknown> = z.lazy(() => z.union([z.null(), z.boolean(), z.number().finite(), z.string(), z.array(json), z.record(json)]));
+const json: z.ZodType<unknown> = z.lazy(() => z.union([z.null(), z.boolean(), z.number().finite(), z.string(), z.array(json), z.record(z.string(), json)]));
 const evidence = z.object({
-  providerNamespace: text, providerRequestId: text, usageId: text, rawUsage: z.record(json).refine(v => Object.keys(v).length > 0),
+  providerNamespace: text, providerRequestId: text, usageId: text, rawUsage: z.record(z.string(), json).refine(v => Object.keys(v).length > 0),
   model: text, amountMicroUsd: money, costBasis: z.enum(["provider-billed", "conservative-upper-estimate"]),
 }).strict();
 const keys = z.array(text).max(1000);
@@ -157,7 +157,7 @@ const observationReceipt = z.object({
   requestId: text.nullable(), responseId: text.nullable(), httpStatus: z.number().int().min(100).max(599).nullable(),
   serviceTier: text.nullable(), finishReason: text.nullable(),
   // Keep the full bounded model JSON verbatim, not the short identifier limit.
-  responseText: z.string().max(65_536).nullable(), rawUsage: z.record(json).nullable(),
+  responseText: z.string().max(65_536).nullable(), rawUsage: z.record(z.string(), json).nullable(),
   costUnknown: z.boolean(), costCents: z.number().finite().nonnegative(), attempts: z.literal(1),
   transportTimeoutMs: z.number().int().min(1).max(240_000).optional(),
 }).strict();

@@ -16,7 +16,7 @@ const landmarkNameSchema = z.enum(["headTop", "headBottom", "headCenter", "feet"
 export type LandmarkName = z.infer<typeof landmarkNameSchema>;
 export type NormalizedPoint = z.infer<typeof pointSchema>;
 export type NormalizedPolygon = NormalizedPoint[];
-const landmarksSchema = z.record(landmarkNameSchema, pointSchema).refine(
+const landmarksSchema = z.partialRecord(landmarkNameSchema, pointSchema).refine(
   (value) => Boolean(value.headTop && value.headBottom), "Explicit headTop and headBottom landmarks are required",
 );
 const boardSchema = z.object({ sha256: z.string().regex(/^[a-f0-9]{64}$/), width: z.number().int().positive(), height: z.number().int().positive() }).strict();
@@ -28,7 +28,7 @@ export const spriteSourceSchema = z.object({
   /** An authored polygon INSIDE the face, excluding the silhouette's antialiased edge. */
   protectedFacePolygon: polygonSchema,
   /** Validation only: an authored landmark is never moved to a nearby alpha pixel. */
-  landmarkTolerancePx: z.number().min(0).max(32).default(2),
+  landmarkTolerancePx: z.number().min(0).max(32).prefault(2),
 }).strict();
 export type SpriteSource = z.infer<typeof spriteSourceSchema>;
 
@@ -42,7 +42,7 @@ export const visibleSpriteSourceSchema = z.object({
   poseId: z.literal("standing"),
   landmarks: z.object({ eyeMidpoint: pointSchema, chin: pointSchema, leftFoot: pointSchema, rightFoot: pointSchema }).strict(),
   protectedFacePolygon: polygonSchema,
-  landmarkTolerancePx: z.number().min(0).max(32).default(2),
+  landmarkTolerancePx: z.number().min(0).max(32).prefault(2),
   measurementFrame: z.object({
     rgbaSha256: z.string().regex(/^[a-f0-9]{64}$/), width: z.number().int().positive(), height: z.number().int().positive(),
     cell: cellSchema, coordinates: z.literal("cell-normalized-pixel-edges"),
@@ -70,7 +70,7 @@ export const fixedSlotContractSchema = z.object({
   /** The immutable recipe names a measurement, never coordinates on a child's sheet. */
   scale: z.object({ kind: z.literal("landmark-distance"), from: landmarkNameSchema, to: landmarkNameSchema, destinationDistancePx: z.number().positive(), tolerancePx: z.number().min(0).max(32) }).strict(),
   /** Additional authored correspondences are checked, never used to distort the sprite. */
-  anchorChecks: z.array(z.object({ sourceLandmark: landmarkNameSchema, destination: pointSchema, tolerancePx: z.number().min(0).max(32) }).strict()).default([]),
+  anchorChecks: z.array(z.object({ sourceLandmark: landmarkNameSchema, destination: pointSchema, tolerancePx: z.number().min(0).max(32) }).strict()).prefault([]),
   allowedEnvelope: polygonSchema,
   forbiddenRegions: z.array(z.object({ id: z.string().min(1), polygon: polygonSchema }).strict()),
   /** The runner must verify this identity before compositing the board-sized foreground over the sprite. */
@@ -110,7 +110,7 @@ export const fixedSlotV3ContractSchema = z.object({
   requiredHiddenLandmarks: z.array(z.object({
     sourceLandmark: z.enum(["leftFoot", "rightFoot"]), radiusPx: z.number().finite().positive().max(16),
   }).strict()).length(2).refine((checks) => new Set(checks.map((check) => check.sourceLandmark)).size === 2, "Both distinct observed soles must be required").optional(),
-  anchorChecks: z.array(z.object({ sourceLandmark: visibleLandmarkNameSchema, destination: pointSchema, tolerancePx: z.number().min(0).max(32) }).strict()).default([]),
+  anchorChecks: z.array(z.object({ sourceLandmark: visibleLandmarkNameSchema, destination: pointSchema, tolerancePx: z.number().min(0).max(32) }).strict()).prefault([]),
   allowedEnvelope: polygonSchema,
   forbiddenRegions: z.array(z.object({
     id: z.string().min(1), polygon: polygonSchema,

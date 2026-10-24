@@ -1,6 +1,6 @@
 "use client";
 
-import type { RefObject } from "react";
+import { useId, useLayoutEffect, useRef, type RefObject } from "react";
 import Image from "next/image";
 import type { TargetConfig } from "@/domain/game/config";
 import type { HintLevel } from "@/domain/game/hints";
@@ -66,6 +66,17 @@ interface Props {
  */
 export function MissionCard({ index, total, target, found, order, stars, trayRef, hintLevel, hintPulse, hintText, onHint, repeatLastHint = false, avatarUrl, childName, quiet = false, obscured = false, onExpand, minimal = false, findAny = false, onAdvance, advanceLabel, replay = false, showReplayNote = true, onReplay }: Props) {
   const { g, tf } = useGameText();
+  const hintDetailsId = useId();
+  const hintDetailsRef = useRef<HTMLDivElement>(null);
+  const focusHintDetails = useRef(false);
+  // A keyboard-opened disclosure hands focus to its revealed words before
+  // the next paint. Automatic hint changes never move focus.
+  useLayoutEffect(() => {
+    if (!quiet && focusHintDetails.current) {
+      focusHintDetails.current = false;
+      hintDetailsRef.current?.focus({ preventScroll: true });
+    }
+  }, [quiet]);
   const foundCount = Math.min(found.length, total);
   const lit = Math.min(stars ?? found.length, total);
   const remainingToFinish = Math.max(0, total - foundCount);
@@ -74,32 +85,28 @@ export function MissionCard({ index, total, target, found, order, stars, trayRef
     : findingAnother ? tf(g.scene.findChildAgain, { name: childName })
       : tf(g.scene.findChild, { name: childName });
   const hasHintDetails = !minimal && hintLevel >= 1 && (!!hintText || !!target?.mission);
-  const expandable = quiet && hasHintDetails;
+  const expandable = quiet && hasHintDetails && !!onExpand;
   void order;
   return (
     <section
       className={`mission${expandable ? " mission--quiet" : ""}${findAny ? " mission--free" : ""}${obscured ? " mission--obscured" : ""}`}
       inert={obscured ? true : undefined}
       aria-hidden={obscured ? true : undefined}
-      onClick={expandable ? onExpand : undefined}
-      // Folded, the card is a control: a real button to a keyboard and a screen reader, not a div that happens to listen.
-      role={expandable ? "button" : undefined}
-      tabIndex={expandable ? 0 : undefined}
-      aria-expanded={expandable ? false : undefined}
-      aria-label={expandable ? g.scene.expandMission : undefined}
-      onKeyDown={
-        expandable
-          ? (e) => {
-              if (e.target !== e.currentTarget) return;
-              if (e.key === "Enter" || e.key === " ") {
-                e.preventDefault();
-                onExpand?.();
-              }
-            }
-          : undefined
-      }
     >
       <div className="mission__top">
+        {/* A native disclosure over the identity cue. Hint and the way forward
+            are siblings, so their pointer and keyboard actions stay independent. */}
+        {expandable ? <button
+          type="button"
+          className="mission__expand"
+          aria-expanded={false}
+          aria-controls={hintDetailsId}
+          aria-label={g.scene.expandMission}
+          onClick={(event) => {
+            focusHintDetails.current = event.detail === 0;
+            onExpand?.();
+          }}
+        /> : null}
         <div className="mission__thumb mission__thumb--face" aria-hidden>
           {avatarUrl ? (
             <Image src={avatarUrl} alt="" width={64} height={64} unoptimized className="mission__sprite mission__face" draggable={false} />
@@ -123,7 +130,7 @@ export function MissionCard({ index, total, target, found, order, stars, trayRef
           </button>
         )}
       </div>
-      {hasHintDetails ? <div className="mission__body" hidden={quiet}>
+      {hasHintDetails ? <div id={hintDetailsId} ref={hintDetailsRef} className="mission__body" hidden={quiet} tabIndex={-1}>
         {/* The authored mission names the place — "hiding behind the fallen
             log" — which is the answer, printed above the picture. It is the
             first hint now; until then the game only says who to look for. */}

@@ -120,7 +120,7 @@ const localPatchVerdictWireSchema = z.object({
    * operator nor the product owner could locate. A located claim can be checked;
    * an unlocated one cannot, so the schema stops accepting them.
    */
-  faults: z.array(faultEntry(300)).max(8).default([]),
+  faults: z.array(faultEntry(300)).max(8).prefault([]),
 }).strict();
 /** One located fault, its location bounded by the reader that reads it. */
 function faultEntry(whereMax: number) {
@@ -295,7 +295,7 @@ const integratedVerdictSchema = (reader: QualityReader) => localPatchVerdictWire
   faceLikeness: check, faceReadable: check, severeSeam: check, ageAppropriate: check,
   lightingMatch: check, neighborsIntact: check, integrationEvidence: integrationEvidenceSchema,
   boundaryIntegrity: boundaryIntegritySchema.optional(),
-  faults: z.array(faultEntry(QUALITY_FAULT_LOCATION_MAX[reader])).max(16).default([]),
+  faults: z.array(faultEntry(QUALITY_FAULT_LOCATION_MAX[reader])).max(16).prefault([]),
 }).strict().transform(v => {
   // Thirteen checks can produce thirteen legitimate faults. The legacy parser's
   // eight-fault limit must not discard an otherwise actionable v12 diagnosis.
@@ -927,7 +927,7 @@ export function diagnoseLocalPatchBoardAnswer(text: string | null, hideIds: read
   // A string over its bound is the only size failure; a short or missing field is malformed.
   const fromIssue = (error: z.ZodError, prefix: string) => {
     const issue = error.issues[0]!, path = [prefix, ...issue.path.map(String)].filter(Boolean).join(".");
-    return fault(issue.code === "too_big" ? issue.type === "string" ? "length" : issue.type === "array" ? "count" : "shape" : "shape", path);
+    return fault(issue.code === "too_big" ? issue.origin === "string" ? "length" : issue.origin === "array" ? "count" : "shape" : "shape", path);
   };
   if (!text?.trim()) return fault("empty");
   const verdicts = parseLocalPatchBoardVerdicts(text, hideIds, contentVersion, reviewScope, assessmentMode, reader);

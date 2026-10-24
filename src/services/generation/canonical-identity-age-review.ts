@@ -30,7 +30,7 @@ export type CanonicalIdentityAgeReviewInput = CanonicalIdentityAgeBinding & { ca
 const check = z.enum(["pass", "fail", "uncertain"]);
 const answerSchema = z.object({ checks: z.object({ identity: check, faceAge: check, usableFace: check }).strict(),
   reason: z.string().trim().min(1).max(1200) }).strict();
-const retainedWireSchema = z.object({ raw: z.string().max(100_000).nullable(), usage: z.record(z.unknown()).nullable(),
+const retainedWireSchema = z.object({ raw: z.string().max(100_000).nullable(), usage: z.record(z.string(), z.unknown()).nullable(),
   requestId: z.string().nullable(), model: z.string().nullable(), finishReason: z.string().nullable(),
   wireFault: z.string().nullable(), costUnknown: z.boolean() }).strict();
 export type CanonicalIdentityAgeReview = {

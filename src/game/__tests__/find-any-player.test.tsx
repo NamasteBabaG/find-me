@@ -301,8 +301,29 @@ describe("find-any rendering and mobile feedback", () => {
     expect(view.getByRole("heading").textContent).toContain("Alex");
     expect(view.container.querySelector(".mission__body")!.hasAttribute("hidden")).toBe(true);
     const card = view.container.querySelector(".mission")!;
-    expect(card.getAttribute("role")).toBe("button"); expect(card.getAttribute("aria-expanded")).toBe("false");
-    fireEvent.keyDown(card, { key: "Enter" }); expect(onExpand).toHaveBeenCalledOnce();
+    expect(card.getAttribute("role")).toBeNull();
+    const expand = view.getByRole("button", { name: getDict(locale).game.scene.expandMission });
+    expect(expand.tagName).toBe("BUTTON");
+    expect(expand.getAttribute("aria-expanded")).toBe("false");
+    expect(expand.getAttribute("aria-controls")).toBe(view.container.querySelector(".mission__body")!.id);
+    fireEvent.click(expand, { detail: 0 }); expect(onExpand).toHaveBeenCalledOnce();
+    view.rerender(<GameI18nProvider locale={locale}><MissionCard {...props} quiet={false} /></GameI18nProvider>);
+    expect(document.activeElement).toBe(view.container.querySelector(".mission__body"));
+  });
+
+  it.each(["en", "he"] as const)("keeps folded Hint and Continue clicks independent from expansion in %s", locale => {
+    const scene = fiveScene(), onExpand = vi.fn(), onHint = vi.fn(), onAdvance = vi.fn();
+    const order = scene.targets.map(target => target.id);
+    const props = { index: 4, total: 5, target: scene.targets[3]!, order, found: order.slice(0, 3),
+      hintLevel: 1 as const, hintPulse: false, hintText: "Beside the tree", onHint, onAdvance, childName: "Alex", findAny: true, onExpand };
+    const view = render(<GameI18nProvider locale={locale}><MissionCard {...props} quiet /></GameI18nProvider>);
+    expect(view.container.querySelector("button button")).toBeNull();
+    fireEvent.click(view.container.querySelector(".mission__hintbtn")!);
+    expect(onHint).toHaveBeenCalledOnce(); expect(onAdvance).not.toHaveBeenCalled(); expect(onExpand).not.toHaveBeenCalled();
+    fireEvent.click(view.container.querySelector(".mission__continue")!);
+    expect(onAdvance).toHaveBeenCalledOnce(); expect(onHint).toHaveBeenCalledOnce(); expect(onExpand).not.toHaveBeenCalled();
+    fireEvent.click(view.getByRole("button", { name: getDict(locale).game.scene.expandMission }));
+    expect(onExpand).toHaveBeenCalledOnce();
   });
 
   it("replaces each found child, blocks hidden targets during the turn, and unlocks after the third", async () => {

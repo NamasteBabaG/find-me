@@ -361,7 +361,7 @@ export function subjectHasOnlyOverlongObservations(raw: string | null): boolean 
   try { value = JSON.parse(body); } catch { return false; }
   const parsed = answerSchema.safeParse(value);
   return !parsed.success && parsed.error.issues.length > 0 && parsed.error.issues.every(issue =>
-    issue.code === "too_big" && issue.type === "string" && issue.maximum === 400
+    issue.code === "too_big" && issue.origin === "string" && issue.maximum === 400
     && (issue.path.length === 3 && issue.path[0] === "checks" && issue.path[2] === "observation"
       || issue.path.length === 3 && issue.path[0] === "faults" && issue.path[2] === "where"));
 }

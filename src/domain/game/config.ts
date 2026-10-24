@@ -50,9 +50,9 @@ export const SpriteRefSchema = z.discriminatedUnion("kind", [
 export type SpriteRef = z.infer<typeof SpriteRefSchema>;
 
 export const TargetAdjustSchema = z.object({
-  dx: z.number().min(-0.2).max(0.2).default(0),
-  dy: z.number().min(-0.2).max(0.2).default(0),
-  scale: z.number().min(0.5).max(2).default(1),
+  dx: z.number().min(-0.2).max(0.2).prefault(0),
+  dy: z.number().min(-0.2).max(0.2).prefault(0),
+  scale: z.number().min(0.5).max(2).prefault(1),
 });
 export type TargetAdjust = z.infer<typeof TargetAdjustSchema>;
 
@@ -62,10 +62,10 @@ export const PlaySlotSchema = z.object({
   x: Unit,
   y: Unit,
   scale: z.number(),
-  rotation: z.number().default(0),
-  zIndex: z.number().int().default(10),
-  layer: z.enum(["front", "behindForeground"]).default("front"),
-  flip: z.boolean().default(false),
+  rotation: z.number().prefault(0),
+  zIndex: z.number().int().prefault(10),
+  layer: z.enum(["front", "behindForeground"]).prefault("front"),
+  flip: z.boolean().prefault(false),
   hintZone: z.object({ x: Unit, y: Unit, r: z.number() }),
   hintText: z.string(),
 });
@@ -99,7 +99,7 @@ export const PlayAmbientSchema = z.object({
   sound: SoundCue.optional(),
   reaction: z.string().optional(),
   glyph: z.string().optional(),
-  cooldownMs: z.number().int().default(1500),
+  cooldownMs: z.number().int().prefault(1500),
 });
 export type PlayAmbient = z.infer<typeof PlayAmbientSchema>;
 
@@ -147,7 +147,7 @@ export const SceneConfigSchema = z.object({
   bonus: PlayBonusSchema.optional(),
   celebration: z.object({ kind: CelebrationKind, completeText: z.string() }),
   collectible: z.object({ id: z.string(), name: z.string(), icon: z.string() }),
-  sounds: z.object({ ambient: SoundCue.optional() }).default({}),
+  sounds: z.object({ ambient: SoundCue.optional() }).prefault({}),
 }).superRefine((scene, ctx) => {
   const free = scene.playMode === "find-any";
   if ((scene.targets.length === 2) !== Boolean(scene.retainedSubset) || (scene.retainedSubset && (scene.version !== 10 || !free)))

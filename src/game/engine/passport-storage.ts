@@ -4,7 +4,7 @@ import type { PassportPreference } from "@/domain/passport/passport";
 const Preference = z.object({ photoTargetId: z.string().nullable(), stampSeen: z.boolean(), seenDiscoveries: z.array(z.string()).max(6) });
 const key = (gameId: string) => `findme:passport:v1:${gameId}`;
 export function readPassportPreferences(gameId: string): Record<string, PassportPreference> {
-  try { return z.record(Preference).parse(JSON.parse(localStorage.getItem(key(gameId)) ?? "{}")); } catch { return {}; }
+  try { return z.record(z.string(), Preference).parse(JSON.parse(localStorage.getItem(key(gameId)) ?? "{}")); } catch { return {}; }
 }
 export function keepPassportPreference(gameId: string, board: string, patch: Partial<PassportPreference>) {
   const all = readPassportPreferences(gameId);

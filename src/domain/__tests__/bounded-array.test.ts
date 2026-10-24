@@ -9,7 +9,7 @@ describe("early collection size rejection", () => {
     expect(boundedArray(z.string(), maximum).safeParse(values).success).toBe(false);
   });
   it("still applies element parsing and defaults inside the limit", () => {
-    expect(boundedArray(z.number().default(0), 2).parse([undefined, 2])).toEqual([0, 2]);
+    expect(boundedArray(z.number().prefault(0), 2).parse([undefined, 2])).toEqual([0, 2]);
     expect(boundedArray(z.number(), 2).safeParse(["bad"]).success).toBe(false);
   });
   it.each([null, {}, "text"])("refuses non-array input %j", value => {

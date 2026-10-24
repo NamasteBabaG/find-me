@@ -69,11 +69,11 @@ export const SlotSchema = z.object({
   y: Unit,
   /** Sprite height as a fraction of scene height. Spec target: ~0.04 / 0.03 / 0.025. */
   scale: z.number().min(0.015).max(0.25),
-  rotation: z.number().min(-45).max(45).default(0),
-  zIndex: z.number().int().min(0).max(100).default(10),
+  rotation: z.number().min(-45).max(45).prefault(0),
+  zIndex: z.number().int().min(0).max(100).prefault(10),
   /** `behindForeground` renders under the foreground overlay so the art occludes part of the sprite. */
-  layer: z.enum(["front", "behindForeground"]).default("front"),
-  flip: z.boolean().default(false),
+  layer: z.enum(["front", "behindForeground"]).prefault("front"),
+  flip: z.boolean().prefault(false),
   /** Level-2 hint: the glowing area. Radius is a fraction of scene width. Must contain (x,y). */
   hintZone: z.object({ x: Unit, y: Unit, r: z.number().min(0.03).max(0.5) }),
   /** Level-1 hint: a gentle verbal nudge specific to this hiding spot. */
@@ -143,7 +143,7 @@ export const AmbientSchema = z.object({
   reaction: LocalizedTextSchema.optional(),
   /** Optional emoji/glyph shown while the art is a placeholder. */
   glyph: z.string().optional(),
-  cooldownMs: z.number().int().min(0).max(10000).default(1500),
+  cooldownMs: z.number().int().min(0).max(10000).prefault(1500),
 });
 export type Ambient = z.infer<typeof AmbientSchema>;
 
@@ -195,7 +195,7 @@ export const SceneDefinitionSchema = z.object({
     .object({
       from: z.object({ x: Unit, y: Unit, zoom: z.number().min(1).max(4) }),
       to: z.object({ x: Unit, y: Unit, zoom: z.number().min(1).max(4) }),
-      durationMs: z.number().int().min(300).max(4000).default(1600),
+      durationMs: z.number().int().min(300).max(4000).prefault(1600),
     })
     .optional(),
   targets: z.array(TargetSchema).min(TARGETS_PER_SCENE).max(5),
@@ -207,7 +207,7 @@ export const SceneDefinitionSchema = z.object({
     completeText: LocalizedTextSchema,
   }),
   collectible: z.object({ id: z.string().min(1), name: LocalizedTextSchema, icon: z.string().min(1) }),
-  sounds: z.object({ ambient: SoundCue.optional() }).default({}),
+  sounds: z.object({ ambient: SoundCue.optional() }).prefault({}),
 }).superRefine((scene, ctx) => {
   const free = scene.playMode === "find-any";
   const count = isCollectionVersion(scene.version) ? 3 : 5;

@@ -13,18 +13,18 @@ const boardSchema = z.object({ sha256: hashSchema, ...dimensions }).strict();
 
 /** Pixel thresholds are source-resolution values. Defaults are conservative, not learned QA. */
 export const fixedTemplateThresholdsSchema = z.object({
-  boundaryBandPx: z.number().int().min(1).max(32).default(2),
-  opaqueAlphaMin: z.number().int().min(1).max(255).default(224),
-  faceAlphaMin: z.number().int().min(1).max(255).default(224),
-  changeThreshold: z.number().int().min(1).max(255).default(1),
-  maxBoundaryChangedPixels: z.number().int().nonnegative().default(0),
-  maxSeamRgbJumpIncrease: z.number().min(0).max(255).default(32),
-  maxSeamAlphaJumpIncrease: z.number().min(0).max(255).default(32),
-  maxSeamOutlierEdges: z.number().int().nonnegative().default(0),
-  maxProtectedFaceMissingPixels: z.number().int().nonnegative().default(0),
-  maxChangedPixelsOutsideAllowedHeadRegion: z.number().int().nonnegative().default(0),
-  minEditedVisiblePixels: z.number().int().nonnegative().default(1),
-  frameClearancePx: z.number().int().min(1).max(32).default(1),
+  boundaryBandPx: z.number().int().min(1).max(32).prefault(2),
+  opaqueAlphaMin: z.number().int().min(1).max(255).prefault(224),
+  faceAlphaMin: z.number().int().min(1).max(255).prefault(224),
+  changeThreshold: z.number().int().min(1).max(255).prefault(1),
+  maxBoundaryChangedPixels: z.number().int().nonnegative().prefault(0),
+  maxSeamRgbJumpIncrease: z.number().min(0).max(255).prefault(32),
+  maxSeamAlphaJumpIncrease: z.number().min(0).max(255).prefault(32),
+  maxSeamOutlierEdges: z.number().int().nonnegative().prefault(0),
+  maxProtectedFaceMissingPixels: z.number().int().nonnegative().prefault(0),
+  maxChangedPixelsOutsideAllowedHeadRegion: z.number().int().nonnegative().prefault(0),
+  minEditedVisiblePixels: z.number().int().nonnegative().prefault(1),
+  frameClearancePx: z.number().int().min(1).max(32).prefault(1),
 }).strict();
 
 export const fixedTemplateRecipeSchema = z.object({
@@ -48,7 +48,7 @@ export const fixedTemplateRecipeSchema = z.object({
     scale: z.number().finite().positive(),
     destinationSeat: pointSchema,
   }).strict(),
-  thresholds: fixedTemplateThresholdsSchema.default({}),
+  thresholds: fixedTemplateThresholdsSchema.prefault({}),
 }).strict().superRefine((recipe, context) => {
   if (recipe.template.width !== recipe.editableMask.width || recipe.template.height !== recipe.editableMask.height) {
     context.addIssue({ code: z.ZodIssueCode.custom, message: "Template and edit mask must use the same frame" });

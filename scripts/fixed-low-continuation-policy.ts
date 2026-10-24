@@ -61,7 +61,7 @@ const capture = z.object({ file: z.string(), sha256: digest, bytes: z.number().i
 const sourceRequestSchema = z.object({
   version: z.literal(1), promptSha256: digest,
   inputs: z.tuple([capture.extend({ file: z.literal("style.png") }), capture.extend({ file: z.literal("identity.png") })]),
-  policy: z.record(z.unknown()), settings: z.record(z.unknown()),
+  policy: z.record(z.string(), z.unknown()), settings: z.record(z.string(), z.unknown()),
 }).passthrough(); // Existing createdAt/commit/sourceFiles recording remains the harness's responsibility.
 const commonPolicy = { imageModel: z.literal("gpt-image-2"), imageQuality: z.literal("low"),
   judgeModel: z.literal("gpt-5.6-sol"), judgeEffort: z.literal("high"), noAutomaticRetries: z.literal(true) };

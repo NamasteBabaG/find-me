@@ -8,16 +8,16 @@ import type { MissionState } from "./mission";
  * owner's progress) and mirrored as aggregate events for product analytics.
  */
 export const SceneProgressSchema = z.object({
-  plays: z.number().int().min(0).default(0),
-  completed: z.boolean().default(false),
-  lastVariants: z.record(z.enum(["A", "B"])).default({}),
-  lastOrder: z.array(z.string()).default([]),
-  noHintClear: z.boolean().default(false),
-  collectible: z.boolean().default(false),
-  bonusFound: z.boolean().default(false),
+  plays: z.number().int().min(0).prefault(0),
+  completed: z.boolean().prefault(false),
+  lastVariants: z.record(z.string(), z.enum(["A", "B"])).prefault({}),
+  lastOrder: z.array(z.string()).prefault([]),
+  noHintClear: z.boolean().prefault(false),
+  collectible: z.boolean().prefault(false),
+  bonusFound: z.boolean().prefault(false),
   sceneVersion: z.number().int().optional(),
   foundTargetIds: z.array(z.string()).optional(),
-  foundRecords: z.record(z.object({ hintsUsed: z.number().nonnegative(), misses: z.number().nonnegative(), elapsedMs: z.number().nonnegative() })).optional(),
+  foundRecords: z.record(z.string(), z.object({ hintsUsed: z.number().nonnegative(), misses: z.number().nonnegative(), elapsedMs: z.number().nonnegative() })).optional(),
 });
 export type SceneProgress = z.infer<typeof SceneProgressSchema>;
 
@@ -25,10 +25,10 @@ export const GameProgressSchema = z.object({
   v: z.literal(1),
   gameId: z.string(),
   openedAt: z.string().optional(),
-  revealed: z.boolean().default(false),
+  revealed: z.boolean().prefault(false),
   completedAt: z.string().optional(),
   journeyFinishedAt: z.string().optional(),
-  scenes: z.record(SceneProgressSchema).default({}),
+  scenes: z.record(z.string(), SceneProgressSchema).prefault({}),
   /** Legacy serial searches restart; versioned find-any boards also retain partial finds. */
   lastWorld: z.string().optional(),
   lastScene: z.string().optional(),

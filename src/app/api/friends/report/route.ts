@@ -6,7 +6,7 @@ import { friendFailure, friendJson, friendOrigin, friendParent, FRIEND_HEADERS }
 import { getContainer } from "@/services/container";
 import { guestOwnerReport } from "@/services/guest-sharing.service";
 const Id = z.string().regex(/^[A-Za-z0-9_-]{1,160}$/);
-const Body = z.object({ gameId: Id, worldSlug: Id, operation: z.enum(["read", "seen", "remove"]).default("read"),
+const Body = z.object({ gameId: Id, worldSlug: Id, operation: z.enum(["read", "seen", "remove"]).prefault("read"),
   markSeen: boundedArray(z.object({ shareId: z.string().regex(/^gsr_[a-f0-9]{20}$/), revision: z.number().int().nonnegative() }).strict(), 100).optional(),
   removeParticipantId: z.string().regex(/^gpt_[a-f0-9]{20}$/).optional() }).strict();
 export const runtime = "nodejs";

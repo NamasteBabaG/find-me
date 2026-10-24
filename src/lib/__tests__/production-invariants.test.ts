@@ -47,9 +47,9 @@ describe("the live shop", () => {
     expect(read).toThrow(/never delivered/);
   });
 
-  it("allows a fully wired shop", async () => {
+  it("requires actual payment qualification beyond provider-shaped configuration", async () => {
     const read = await envWith({ GENERATION_PROVIDER: "openai", PAYMENT_PROVIDER: "payme", EMAIL_PROVIDER: "resend", RESEND_API_KEY: "x" });
-    expect(read).not.toThrow();
+    expect(read).toThrow(/not qualified/);
   });
 
   it("allows the honest demo: mock generation, mock payment, no money either way", async () => {
@@ -101,11 +101,9 @@ describe("production prelaunch purchasing", () => {
     expect(read).toThrow(/PURCHASING_ENABLED=on requires PAYMENT_PROVIDER=payme/);
   });
 
-  it("requires an explicit launch choice with the real payment adapter", async () => {
+  it("requires payment qualification in addition to an explicit launch choice", async () => {
     const read = await envWith({ APP_ENV: "production", GENERATION_PROVIDER: "mock", PAYMENT_PROVIDER: "payme", PURCHASING_ENABLED: "on" });
-    read();
-    const { purchasingEnabled } = await import("../purchasing");
-    expect(purchasingEnabled()).toBe(true);
+    expect(read).toThrow(/not qualified/);
   });
 
   it.each(["qa", "development"])("preserves the %s creation flow with the production gate off", async appEnv => {

@@ -29,7 +29,7 @@ const recordSchema = z.object({
   version: z.literal("board-conditioned-qa-enrollment/v1"), gameId: id, worldId: z.string(), childProfileId: id, ownerId: z.string().min(1),
   childAgeYears: z.number().int().min(2).max(10), childDisplayName: z.string().min(2).max(80), childIdentityAssetId: z.string().nullable(),
   sourcePolicySha256: digest, createdAt: z.string().datetime(), budgetCapMicroUsd: z.literal(5_000_000),
-  boards: z.array(z.object({ boardId: id, sceneVersion: z.number().int().positive(), contractSha256: digest, contract: z.record(z.unknown()),
+  boards: z.array(z.object({ boardId: id, sceneVersion: z.number().int().positive(), contractSha256: digest, contract: z.record(z.string(), z.unknown()),
     referenceAssetId: z.string().min(1), referenceStoragePath: z.string().min(1), referenceSha256: digest, referenceLineageSha256: digest.nullable(),
   }).strict()).min(1).max(9),
 }).strict();

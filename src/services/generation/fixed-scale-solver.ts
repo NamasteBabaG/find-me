@@ -8,8 +8,8 @@ import {
 
 const policySchema = z.object({
   version: z.literal("fixed-scale-solver/v1"),
-  stepPx: z.number().finite().min(0.01).max(32).default(0.1),
-  maxCandidates: z.number().int().min(3).max(65).default(65),
+  stepPx: z.number().finite().min(0.01).max(32).prefault(0.1),
+  maxCandidates: z.number().int().min(3).max(65).prefault(65),
 }).strict();
 
 export type FixedScaleSolverPolicy = z.input<typeof policySchema>;

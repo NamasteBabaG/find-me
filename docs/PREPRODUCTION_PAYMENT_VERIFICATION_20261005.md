@@ -46,3 +46,28 @@ Force requests to overlap before their row fences, without waiting at a barrier 
 - Marking an observed report revision seen while a new find arrives does not mark the later update seen.
 
 Verify invariants after the contenders finish, repeat failed Serializable requests through the supported service retry path, and remove only the verified synthetic schema after the run. PostgreSQL evidence supplements the source/SQLite/browser checks; real-provider terminal-close, checkout-idempotency and refund contracts still require separate verified adapter evidence.
+
+
+## Preparation update — 2026-10-24
+
+The integrated product keeps PayMe closed. A credential-shaped seller/webhook configuration previously passed environment checks even though checkout/webhook/refund are stubs. Two local negative activation cases reproduced that admission gap; the new pure source-readiness gate rejects it before container/provider creation. QA/mock remains explicitly available, and a closed mock-only production foundation remains closed. No provider request, real order, migration or customer data is involved in the readiness command.
+
+Run the source checks from the merged checkout:
+
+~~~sh
+npm run payments:preflight -- --target qa --provider mock
+npm run payments:preflight -- --target production --provider payme
+~~~
+
+The first is a simulation check (exit 0); the second intentionally fails closed (exit 2). Neither command reads env files or secrets, contacts a merchant or database, or certifies production. The real-payment gate cannot be unlocked by adding an environment flag or merely supplying credentials.
+
+For the PayMe connection session on 2026-10-25:
+
+1. Verify the official merchant/sandbox API contract and permitted return/webhook origins. The current skeleton's environment names are implementation placeholders, not evidence of the actual PayMe authentication/signature protocol. Configure credentials directly in the appropriate secret store; do not paste or commit them.
+2. Implement the existing provider interface: hosted checkout, authoritative verified webhook, refund, and only contract-supported idempotency/terminal closure. Preserve immutable order identity, amount, currency and provider-payment binding. Browser success is never PAID. Lost acknowledgements and timeouts stay unknown until the same attempt is reconciled.
+3. Complete the four financial lifecycle batches described above together: extra-refund entitlement, durable refund operation claim/receipt, historical ambiguous checkout reconciliation, and a genuine PAID event that contradicts terminal close. These remain unqualified in current source; this preparation does not claim that a gate repairs those behaviours.
+4. Qualify isolated PostgreSQL concurrency with synthetic fixtures and two clients, using the separate disposable namespace described above. Do not run against QA game/customer schemas or apply migrations as part of this preparation.
+5. Run merchant sandbox cases for success, browser abandonment, wrong amount/currency, replay/out-of-order events, lost response, duplicate payment, duplicate refund, refund acknowledgement lost, late paid after close and refund of the last valid purchase. Preserve actual provider receipts and use the same operation identity on a permitted retry.
+6. Only after provider implementation, financial lifecycle fixes, sandbox receipts and PostgreSQL evidence are complete should the owned source qualification be revised. Keep production purchasing/generation closed until the combined release also proves delivery, privacy and the configured production database role.
+
+Git auto-deployment is disabled in the integrated source. Merging master is source alignment, not activation of a commercial deployment. Manual QA release still requires the exact pushed SHA, all three quality jobs, build/private-asset proof, same-build promotion and browser verification. No automatic schedule or recurring task was created.
