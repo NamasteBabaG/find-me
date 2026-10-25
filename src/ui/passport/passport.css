@@ -715,3 +715,18 @@
 .travel-passport__fact > .travel-passport__picture { width: 128px; height: 128px; margin: 0 auto var(--space-3); }
 .travel-passport__fact > .travel-passport__picture > img { margin: 0; }
 .travel-passport__photo-picker .travel-passport__picture { height: auto; aspect-ratio: 1; min-height: 0; }
+
+/* Picture owns the reserved keepsake surface. Keep that wrapper at the same
+   responsive size as the older crop, so both sticker rows fit inside the leaf. */
+@media (min-width: 761px) and (max-height: 740px) {
+  .travel-passport__item > .travel-passport__picture { width: var(--space-6); }
+}
+@media (max-width: 760px) {
+  .travel-passport__item > .travel-passport__picture { width: min(100%, 58px); }
+}
+@media (max-width: 760px) and (max-height: 780px) {
+  .travel-passport__item > .travel-passport__picture { width: var(--space-6); }
+}
+@media (max-width: 760px) and (max-height: 700px) {
+  .travel-passport__item > .travel-passport__picture { width: 36px; }
+}
