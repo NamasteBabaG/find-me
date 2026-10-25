@@ -1,3 +1,5 @@
+
+import { creationDraftHref } from "@/domain/creation-draft";
 import { redirect } from "next/navigation";
 import { getContainer } from "@/services/container";
 import { availablePackages, sceneVersionForLevel, searchLevelTerms, worldsForDraft } from "@/services/create-flow.service";
@@ -18,16 +20,17 @@ export async function generateMetadata() {
   return { title: t.create.package.title };
 }
 
-export default async function CreatePackagePage() {
+export default async function CreatePackagePage({ searchParams }: { searchParams?: Promise<{ draft?: string }> } = {}) {
+  const params = await searchParams;
   const c = getContainer();
-  const [user, draft, { t, locale }, currency] = await Promise.all([currentUser(), currentDraft(), getI18n(), getCurrency()]);
-  if (!draft?.childProfile) redirect("/create");
-  if (!draft.childProfile.originalPhotoAssetId) redirect("/create/photo");
+  const [user, draft, { t, locale }, currency] = await Promise.all([currentUser(), currentDraft(params?.draft, "creation"), getI18n(), getCurrency()]);
+  if (!draft?.childProfile) redirect(creationDraftHref("name", params?.draft));
+  if (!draft.childProfile.originalPhotoAssetId) redirect(creationDraftHref("photo", draft.id));
   const level = storedSearchLevel(draft.searchLevel);
   // A level that can no longer be sold goes back to the choice, never to other boards;
   // an open payment keeps its own terms.
   const terms = await searchLevelTerms(c, draft);
-  if (sceneVersionForLevel(draft.styleVersion, level) === null || terms.stale && !terms.openPayment) redirect("/create");
+  if (sceneVersionForLevel(draft.styleVersion, level) === null || terms.stale && !terms.openPayment) redirect(creationDraftHref("name", params?.draft));
   const [worlds, continuation] = await Promise.all([
     worldsForDraft(c, draft.styleVersion, level),
     user && user.id === draft.ownerId ? childHasPaidWorld(c.db, { ownerId: user.id, familyChildId: draft.familyChildId, excludeGameId: draft.id }) : false,
@@ -55,7 +58,7 @@ export default async function CreatePackagePage() {
   const defaultTier = draft.packageTier && available.has(draft.packageTier as PackageTier) ? draft.packageTier : fallbackTier;
   return (
     <CreateFrame width="mid" step={2} title={t.create.package.title} lead={tf(t.create.package.lead, { name: draft.childProfile.displayName, spots: spotsPerBoard })} user={user} isAdmin={isAdminEmail(user?.email)}>
-      <PackagePicker options={options} defaultTier={defaultTier} availableWorldCount={availableWorldCount}
+      <PackagePicker draftGameId={draft.id} options={options} defaultTier={defaultTier} availableWorldCount={availableWorldCount}
         continuationNote={tf(continuation ? t.home.pricing.returning : t.home.pricing.continuation, { price: formatMoney(WORLD_PRICES[currency].additional, currency, locale) })} />
     </CreateFrame>
   );

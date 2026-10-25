@@ -1,5 +1,7 @@
 "use client";
 
+import { creationDraftHref } from "@/domain/creation-draft";
+
 import { useActionState, useState } from "react";
 import { Button, LinkButton } from "@/ui/Button";
 import { useI18n } from "@/i18n/client";
@@ -16,13 +18,14 @@ interface Option {
   popular: boolean;
 }
 
-export function PackagePicker({ options, defaultTier, availableWorldCount, continuationNote }: { options: Option[]; defaultTier: string; availableWorldCount: number; continuationNote?: string }) {
+export function PackagePicker({ draftGameId, options, defaultTier, availableWorldCount, continuationNote }: { draftGameId?: string; options: Option[]; defaultTier: string; availableWorldCount: number; continuationNote?: string }) {
   const { t, tf } = useI18n();
   const p = t.create.package;
   const [tier, setTier] = useState(defaultTier);
   const [state, action, pending] = useActionState<ActionResult | null, FormData>(choosePackageAction, null);
   return (
     <form action={action} className="fm-stack fm-stack--4">
+      {draftGameId ? <input type="hidden" name="draftGameId" value={draftGameId} /> : null}
       <div className="packages" role="radiogroup">
         {options.map((o) => {
           const selected = o.tier === tier;
@@ -47,7 +50,7 @@ export function PackagePicker({ options, defaultTier, availableWorldCount, conti
       {continuationNote ? <p className="fm-hint fm-center">{continuationNote}</p> : null}
       {state && !state.ok ? <p className="fm-error fm-center">{errorText(t, state)}</p> : null}
       <div className="create__actions create__actions--sticky">
-        <LinkButton href="/create/photo" variant="ghost">
+        <LinkButton href={creationDraftHref("photo", draftGameId)} variant="ghost">
           {t.common.back}
         </LinkButton>
         <Button type="submit" size="lg" loading={pending}>

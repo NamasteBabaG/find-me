@@ -21,12 +21,15 @@ export async function POST(req: Request) {
   if (!limited.ok) return tooManyRequests(limited);
   const c = getContainer();
   const token = await draftTokenFromCookie();
-  const gameId = new URL(req.url).searchParams.get("game");
+  const query = new URL(req.url).searchParams;
+  const purchaseId = query.get("game"), creationId = query.get("draft");
+  if (purchaseId && creationId) return new Response("not found", { status: 404 });
+  const gameId = purchaseId ?? creationId;
   if (!token && !gameId) return NextResponse.json({ ok: false, code: "DRAFT_NOT_FOUND", reason: "הטיוטה לא נמצאה. התחילו מחדש." }, { status: 400 });
   const game = await c.db.game.findUnique({ where: gameId ? { id: gameId } : { draftToken: token! } });
   const user = await currentUser();
   if (!game || game.deletedAt || !draftBelongsTo(game, token, user?.id ?? null)
-    || gameId && (!user || game.ownerId !== user.id || !await c.db.childWorldPurchase.findFirst({ where: { activeGameId: game.id, ownerId: user.id, familyChildId: game.familyChildId ?? "" } }))) return NextResponse.json({ ok: false, code: "DRAFT_NOT_FOUND", reason: "הטיוטה לא נמצאה." }, { status: 404 });
+    || purchaseId && (!user || game.ownerId !== user.id || !await c.db.childWorldPurchase.findFirst({ where: { activeGameId: game.id, ownerId: user.id, familyChildId: game.familyChildId ?? "" } }))) return NextResponse.json({ ok: false, code: "DRAFT_NOT_FOUND", reason: "הטיוטה לא נמצאה." }, { status: 404 });
 
   // The browser downscales before sending, so anything this big is either a
   // client that could not re-encode or someone poking the endpoint. Either way
@@ -76,11 +79,15 @@ export async function GET(req: Request) {
   if (denied) return denied;
   const c = getContainer();
   const token = await draftTokenFromCookie();
-  const gameId = new URL(req.url).searchParams.get("game");
+  const query = new URL(req.url).searchParams;
+  const purchaseId = query.get("game"), creationId = query.get("draft");
+  if (purchaseId && creationId) return new Response("not found", { status: 404 });
+  const gameId = purchaseId ?? creationId;
   if (!token && !gameId) return new Response("not found", { status: 404 });
   const game = await c.db.game.findUnique({ where: gameId ? { id: gameId } : { draftToken: token! }, include: { childProfile: true } });
   const user = gameId ? await currentUser() : null;
-  if (gameId && (!user || game?.ownerId !== user.id || !await c.db.childWorldPurchase.findFirst({ where: { activeGameId: gameId, ownerId: user.id, familyChildId: game.familyChildId ?? "" } }))) return new Response("not found", { status: 404 });
+  if (purchaseId && (!user || game?.ownerId !== user.id || !await c.db.childWorldPurchase.findFirst({ where: { activeGameId: gameId, ownerId: user.id, familyChildId: game.familyChildId ?? "" } }))) return new Response("not found", { status: 404 });
+  if (creationId && (!game || !draftBelongsTo(game, token, user?.id ?? null))) return new Response("not found", { status: 404 });
   const photoId = game?.childProfile?.originalPhotoAssetId;
   if (!game || game.deletedAt || game.childProfile?.deletedAt || !photoId) return new Response("not found", { status: 404 });
   const asset = await c.db.asset.findUnique({ where: { id: photoId } });

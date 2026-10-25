@@ -104,3 +104,50 @@ describe("actual installed Detective admission", () => {
     expect(noProvider).not.toHaveBeenCalled();
   });
 });
+
+
+describe("prospective Explorer single LOW admission", () => {
+  it("binds two fresh worlds separately with a hard four-dollar cap, without orders, grants or provider calls", async () => {
+    const { EXPLORERS_OPERATIONAL_RELEASE } = await import("../../domain/generation/explorers-operational-policy");
+    const { explorersOperationalPolicyOf, explorersOperationalId } = await import("../generation/explorers-operational-policy");
+    const { readLeanWorldBudget } = await import("../generation/lean-release");
+    const { DETECTIVES_OPERATIONAL_RELEASE } = await import("../../domain/generation/detectives-operational-policy");
+    const { detectivesOperationalPolicyOf } = await import("../generation/detectives-operational-policy");
+    const release = { ...c, explorersOperationalRelease: EXPLORERS_OPERATIONAL_RELEASE, detectivesOperationalRelease: DETECTIVES_OPERATIONAL_RELEASE };
+    const explorer = await createDraft(release, null, "he", { searchLevel: "explorers" });
+    const detective = await createDraft(release, null, "he", { searchLevel: "detectives" });
+    const first = await explorersOperationalPolicyOf(db, explorer.gameId), second = await detectivesOperationalPolicyOf(db, detective.gameId);
+    expect(first).toMatchObject({ gameId: explorer.gameId, worldId: explorer.gameId + ":board-wizard", model: "gpt-6.1-sol", effort: "low", oneUsableAssessmentPerImage: true, worldCapMicroUsd: 4000000, automaticBudgetExtension: false });
+    expect(second).toMatchObject({ gameId: detective.gameId, worldId: detective.gameId + ":board-wizard", effort: "low", worldCapMicroUsd: 4000000 });
+    expect(first!.authorizationSha256).not.toBe(second!.authorizationSha256);
+    for (const draft of [explorer, detective]) {
+      expect(await readLeanWorldBudget(c, draft.gameId + ":board-wizard")).toMatchObject({ capMicroUsd: 4000000 });
+      expect(await db.order.count({ where: { gameId: draft.gameId } })).toBe(0);
+      expect(await db.worldBudgetLedger.count({ where: { worldId: draft.gameId + ":board-wizard" } })).toBe(0);
+      expect(await db.auditLog.count({ where: { entityId: draft.gameId, actorType: "ADMIN" } })).toBe(0);
+    }
+    const receipt = await db.auditLog.findUniqueOrThrow({ where: { id: explorersOperationalId(explorer.gameId) } });
+    await db.auditLog.update({ where: { id: receipt.id }, data: { metaJson: JSON.stringify({ ...first, effort: "high" }) } });
+    const { singleLowReviewAuthorization } = await import("../generation/single-low-policy");
+    await expect(singleLowReviewAuthorization(db, explorer.gameId)).rejects.toThrow();
+    await db.auditLog.update({ where: { id: receipt.id }, data: { metaJson: receipt.metaJson } });
+    expect(await explorersOperationalPolicyOf(db, explorer.gameId)).toEqual(first);
+    expect(noProvider).not.toHaveBeenCalled();
+  });
+  it("does not retrofit old Explorer drafts or let a copied receipt authorize a different game", async () => {
+    const { EXPLORERS_OPERATIONAL_RELEASE } = await import("../../domain/generation/explorers-operational-policy");
+    const { pinExplorersOperationalPolicy, explorersOperationalPolicyOf, explorersOperationalId } = await import("../generation/explorers-operational-policy");
+    const historical = await createDraft(c, null, "he", { searchLevel: "explorers" });
+    expect(await explorersOperationalPolicyOf(db, historical.gameId)).toBeNull();
+    const born = await createDraft({ ...c, explorersOperationalRelease: EXPLORERS_OPERATIONAL_RELEASE }, null, "he", { searchLevel: "explorers" });
+    const row = await db.auditLog.findUniqueOrThrow({ where: { id: explorersOperationalId(born.gameId) } });
+    await db.auditLog.create({ data: { ...row, id: explorersOperationalId(historical.gameId), entityId: historical.gameId } });
+    await expect(explorersOperationalPolicyOf(db, historical.gameId)).rejects.toThrow("Invalid or foreign");
+    await db.auditLog.delete({ where: { id: explorersOperationalId(historical.gameId) } });
+    await chooseDraftChild(db, { gameId: historical.gameId, actorId: null, draftToken: historical.draftToken, familyChildId: null, name: "Synthetic", ageYears: 7, searchLevel: "explorers" });
+    await attachPhoto(c, historical.gameId, { buffer: photo, mimeType: "image/png", crop: null });
+    await expect(db.$transaction(tx => pinExplorersOperationalPolicy(tx, historical.gameId, EXPLORERS_OPERATIONAL_RELEASE, "db"))).rejects.toThrow("before its photo");
+    expect(await explorersOperationalPolicyOf(db, historical.gameId)).toBeNull();
+    expect(noProvider).not.toHaveBeenCalled();
+  });
+});

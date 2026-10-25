@@ -104,7 +104,7 @@ export type SubjectStage = DualStageBase & { subjectPolicy: typeof SUBJECT_POLIC
   collectionRefusal?: string };
 export type DualReviewStage = ContinuityStage | QualityStage | SubjectStage;
 export type DualReviewProof = { version: DualVisualReviewVersion; hideId: string;
-  /** New Detective proof only; absent on every historical proof. */
+  /** New Detective proof only; absent on every historical proof and v12 binding. */
   sceneVersion?: 13;
   /** These fields project one retained paid document; they are not independent calls. */
   single?: "single-sol-low/v1";

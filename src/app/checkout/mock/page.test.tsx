@@ -43,13 +43,13 @@ describe("mock checkout display authority and stored return destinations", () =>
   it("allows the anonymous creator's exact draft proof without adding compulsory sign-in", async () => {
     f.user.mockResolvedValue(null); f.token.mockResolvedValue("creator-draft");
     expect(paymentProps(await MockCheckoutPage({ searchParams: Promise.resolve({ orderId: "stored-order", success: "https://outside.invalid", cancel: "javascript:alert(1)" }) }))).toMatchObject({
-      orderId: "stored-order", successUrl: "/creating/stored-game", cancelUrl: "/checkout?cancelled=1", declinedUrl: "/checkout?declined=1",
+      orderId: "stored-order", successUrl: "/creating/stored-game", cancelUrl: "/checkout?draft=stored-game&cancelled=1", declinedUrl: "/checkout?draft=stored-game&declined=1",
     });
   });
   it("returns a creator draft to checkout even when its browser is signed in to an unrelated account", async () => {
     f.user.mockResolvedValue({ id: "another-parent", email: "another@example.invalid" }); f.token.mockResolvedValue("creator-draft");
     expect(paymentProps(await MockCheckoutPage({ searchParams: Promise.resolve({ orderId: "stored-order" }) }))).toMatchObject({
-      cancelUrl: "/checkout?cancelled=1", declinedUrl: "/checkout?declined=1",
+      cancelUrl: "/checkout?draft=stored-game&cancelled=1", declinedUrl: "/checkout?draft=stored-game&declined=1",
     });
   });
   it("requires sign-in with only the local stored-order target when an anonymous viewer lacks draft proof", async () => {

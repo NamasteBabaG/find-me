@@ -36,7 +36,7 @@ export async function allowedDualPublication(db: Prisma.TransactionClient, input
     const proof = review?.dual as DualReviewProof | undefined;
     const single = proof?.single === SINGLE_VISUAL_REVIEW_VERSION;
     const authority = single ? await detectivesSingleReviewAuthorization(db, input.gameId) : null;
-    if (single && (!authority || authority.identitySha256 !== input.identitySha256 || input.sceneVersion !== 13
+    if (single && (!authority || authority.identitySha256 !== input.identitySha256 || input.sceneVersion !== authority.sceneVersion
       || !proof?.continuity || !proof.subject || !isSingleLowReviewPolicy(proof.quality.policy)
       || ![proof.continuity, proof.subject].every(stage => stage.requestKey === proof.quality.requestKey && stage.fingerprint === proof.quality.fingerprint
         && stage.raw === proof.quality.raw && equal(stage.policy, proof.quality.policy) && stage.costMicroUsd === proof.quality.costMicroUsd)

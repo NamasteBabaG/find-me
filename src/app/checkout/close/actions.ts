@@ -1,4 +1,6 @@
 "use server";
+
+import { creationDraftHref } from "@/domain/creation-draft";
 import { redirect } from "next/navigation";
 import { requireQaAccess } from "@/lib/server/qa-access";
 import { currentUser } from "@/lib/server/session";
@@ -13,7 +15,7 @@ export async function closePaymentAction(_previous: FlowResult | null, form: For
   await requireQaAccess();
   const gameId = String(form.get("gameId") ?? ""), orderId = String(form.get("orderId") ?? "");
   const user = await currentUser();
-  if (!user) redirect(worldPurchaseSignInHref(form.get("recovery") === "1" ? `/checkout/close?${new URLSearchParams({ game: gameId })}` : worldPurchaseDraftHref(gameId, "checkout")));
+  if (!user) redirect(worldPurchaseSignInHref(`/checkout/close?${new URLSearchParams({ game: gameId })}`));
   if (!rateLimit(`close-payment:${user.id}`, LIMITS.checkout.limit, LIMITS.checkout.windowMs).ok) return flowError("TOO_MANY_REQUESTS", "יותר מדי ניסיונות.");
   const c = getContainer();
   const result = await guardDb(() => closeDraftCheckout(c, { ownerId: user.id, gameId, orderId }));
@@ -23,5 +25,5 @@ export async function closePaymentAction(_previous: FlowResult | null, form: For
     redirect(game?.familyChild && game.familyChild.ownerId === user.id && !game.familyChild.deletedAt ? `/family/${encodeURIComponent(game.familyChild.id)}` : "/family");
   }
   const intent = await c.db.childWorldPurchase.findFirst({ where: { activeGameId: gameId, ownerId: user.id } });
-  redirect(intent ? `${worldPurchaseDraftHref(gameId, "checkout")}&cancelled=1` : "/checkout?cancelled=1");
+  redirect(intent ? `${worldPurchaseDraftHref(gameId, "checkout")}&cancelled=1` : `${creationDraftHref("checkout", gameId)}&cancelled=1`);
 }

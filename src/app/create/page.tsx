@@ -14,9 +14,10 @@ export async function generateMetadata() {
   return { title: t.create.name.title };
 }
 
-export default async function CreateNamePage({ searchParams }: { searchParams: Promise<{ name?: string; child?: string; fresh?: string }> }) {
+export default async function CreateNamePage({ searchParams }: { searchParams: Promise<{ name?: string; child?: string; fresh?: string; draft?: string }> }) {
   if (!purchasingEnabled()) return <CreationPrelaunch />;
-  const [user, draft, params, { t }] = await Promise.all([currentUser(), currentDraft(), searchParams, getI18n()]);
+  const params = await searchParams;
+  const [user, draft, { t }] = await Promise.all([currentUser(), params.fresh === "1" || params.child ? null : currentDraft(params.draft, "creation"), getI18n()]);
   const initialName = draft?.childProfile?.displayName ?? (params.name ?? "").slice(0, 24);
   const c = getContainer();
   const children = user ? await listFamilyChildren(c.db, user.id) : [];
@@ -31,7 +32,7 @@ export default async function CreateNamePage({ searchParams }: { searchParams: P
   const savedLevel = continuing?.searchLevel;
   return (
     <CreateFrame step={0} title={t.create.name.title} user={user} isAdmin={isAdminEmail(user?.email)}>
-      <NameForm initialName={params.child === "new" ? "" : initialName} initialAge={params.child ? null : draft?.childProfile?.ageYears} children={children} initialChildId={initialChildId} fresh={Boolean(params.child) || params.fresh === "1"}
+      <NameForm draftGameId={continuing?.id} initialName={params.child === "new" ? "" : initialName} initialAge={params.child ? null : draft?.childProfile?.ageYears} children={children} initialChildId={initialChildId} fresh={Boolean(params.child) || params.fresh === "1"}
         levelChoice={levels.asked} freshLevelChoice={fresh.asked} allowedLevels={levels.allowedLevels} freshAllowedLevels={fresh.allowedLevels} initialLevel={isSearchLevel(savedLevel) ? savedLevel : null}
         draftChild={continuing?.childProfileId ? { familyChildId: continuing.familyChildId ?? "" } : null} />
     </CreateFrame>

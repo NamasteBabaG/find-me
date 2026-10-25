@@ -9,8 +9,8 @@ import type { SearchLevel } from "@/domain/search-level";
 import { saveNameAction, type ActionResult } from "./actions";
 import { SearchLevelChoice } from "./SearchLevelChoice";
 
-export function NameForm({ initialName, initialAge, children = [], initialChildId = "", fresh = false, levelChoice = false, freshLevelChoice = levelChoice, initialLevel = null, draftChild = null, allowedLevels = ["explorers", "detectives"], freshAllowedLevels = allowedLevels }: {
-  initialName: string; initialAge?: number | null; children?: Array<{ id: string; displayName: string }>; initialChildId?: string; fresh?: boolean;
+export function NameForm({ draftGameId, initialName, initialAge, children = [], initialChildId = "", fresh = false, levelChoice = false, freshLevelChoice = levelChoice, initialLevel = null, draftChild = null, allowedLevels = ["explorers", "detectives"], freshAllowedLevels = allowedLevels }: {
+  draftGameId?: string; initialName: string; initialAge?: number | null; children?: Array<{ id: string; displayName: string }>; initialChildId?: string; fresh?: boolean;
   /** Ask Explorers or Detectives for the draft being continued (the server decides; it re-checks on save). */
   levelChoice?: boolean; initialLevel?: SearchLevel | null;
   /** The continued draft already has a child: choosing another one starts a new draft on
@@ -42,6 +42,7 @@ export function NameForm({ initialName, initialAge, children = [], initialChildI
       setLevelMissing(true);
       event.currentTarget.querySelector<HTMLInputElement>('input[name="searchLevel"]')?.focus();
     }}>
+      {draftGameId ? <input type="hidden" name="draftGameId" value={draftGameId} /> : null}
       <input type="hidden" name="freshAdventure" value={fresh ? "1" : "0"} />
       {children.length > 0 ? <div className="fm-field">
         <label className="fm-label" htmlFor="familyChildId">{t.family.choose}</label>

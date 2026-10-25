@@ -42,6 +42,7 @@ describe("checkout currency contract", () => {
     const c = { db, appUrl: "https://example.invalid", payment, analytics: { track: vi.fn() } } as unknown as Container;
     expect(await startCheckout(c, { gameId: id, email, currency, access: { draftToken: `${id}-cookie`, userId } })).toMatchObject({ ok: true });
     expect(await db.order.findFirstOrThrow({ where: { gameId: id } })).toMatchObject({ currency, amountAgorot: amount, checkoutKey: `world-checkout:${id}`, checkoutClaimUntil: null });
-    expect(provider).toHaveBeenCalledWith(expect.objectContaining({ currency, amountAgorot: amount, idempotencyKey: expect.any(String) }));
+    expect(provider).toHaveBeenCalledWith(expect.objectContaining({ currency, amountAgorot: amount, idempotencyKey: expect.any(String),
+      successUrl: `https://example.invalid/creating/${id}`, cancelUrl: `https://example.invalid/checkout?draft=${id}&cancelled=1` }));
   });
 });

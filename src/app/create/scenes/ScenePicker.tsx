@@ -1,5 +1,7 @@
 "use client";
 
+import { creationDraftHref } from "@/domain/creation-draft";
+
 import { useActionState, useState } from "react";
 import { Button, LinkButton } from "@/ui/Button";
 import { useI18n } from "@/i18n/client";
@@ -15,7 +17,7 @@ interface SceneOption {
 
 /** Independent adventures. The server offers only complete, renderable worlds.
  * `note` says which worlds the chosen search level leaves out, where worlds are chosen. */
-export function ScenePicker({ scenes, want, preselected, note }: { scenes: SceneOption[]; want: number; preselected: string[]; note?: string }) {
+export function ScenePicker({ draftGameId, scenes, want, preselected, note }: { draftGameId?: string; scenes: SceneOption[]; want: number; preselected: string[]; note?: string }) {
   const { t, tf } = useI18n();
   const s = t.create.scenes;
   const [state, action, pending] = useActionState<ActionResult | null, FormData>(chooseScenesAction, null);
@@ -31,6 +33,7 @@ export function ScenePicker({ scenes, want, preselected, note }: { scenes: Scene
 
   return (
     <form action={action} className="fm-stack fm-stack--4">
+      {draftGameId ? <input type="hidden" name="draftGameId" value={draftGameId} /> : null}
       <div className="pick__counter fm-center" aria-live="polite" aria-atomic="true">
         <span className="fm-badge fm-badge--leaf">{tf(s.counter, { picked: included.length, want })}</span>
       </div>
@@ -60,7 +63,7 @@ export function ScenePicker({ scenes, want, preselected, note }: { scenes: Scene
       ))}
       {state && !state.ok ? <p className="fm-error fm-center">{errorText(t, state)}</p> : null}
       <div className="create__actions create__actions--sticky">
-        <LinkButton href="/create/package" variant="ghost">
+        <LinkButton href={creationDraftHref("package", draftGameId)} variant="ghost">
           {s.change}
         </LinkButton>
         <Button type="submit" size="lg" loading={pending} disabled={!full}>

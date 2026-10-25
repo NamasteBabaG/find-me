@@ -1,4 +1,5 @@
 import path from "node:path";
+import { EXPLORERS_OPERATIONAL_RELEASE, type ExplorersOperationalRelease } from "../domain/generation/explorers-operational-policy";
 import { DETECTIVES_OPERATIONAL_RELEASE, detectivesOperationalQualified, type DetectivesOperationalRelease } from "../domain/generation/detectives-operational-policy";
 import { adminEmails, env, flag } from "@/lib/env";
 import { prisma, type Db } from "@/infra/db/prisma";
@@ -79,6 +80,8 @@ export interface Container {
   leanRelease?: LocalPatchLeanRelease;
   /** Prospective Detective drafts only; existing games retain every pinned contract. */
   detectivesOperationalRelease?: DetectivesOperationalRelease;
+  /** Prospective Explorers use the same single LOW judge, with their own source binding. */
+  explorersOperationalRelease?: ExplorersOperationalRelease;
   /** Message Batches, for games pinned to it. Kept whenever credentials exist, so a
    * pinned game is never stranded by a later change to new-draft enrollment. */
   qualityBatch?: QualityBatchTransport;
@@ -149,7 +152,7 @@ function build(): Container {
     ...(e.LOCAL_PATCH_PAINTER === "low-v1" ? { localPatchPainter: LOCAL_PATCH_LOW_PAINTER } : {}),
     ...(e.LOCAL_PATCH_QUALITY_CHANNEL === "anthropic-batch-v1" ? { qualityChannel: QUALITY_BATCH_CHANNEL } : {}),
     ...(e.LOCAL_PATCH_LEAN === "lean-v1" ? { leanRelease: LOCAL_PATCH_LEAN_RELEASE } : {}),
-    ...(detectivesOperationalQualified({appEnv:e.APP_ENV,promptRelease:e.LOCAL_PATCH_PROMPT_RELEASE,identitySource:e.LOCAL_PATCH_IDENTITY_SOURCE,reviewRelease:e.LOCAL_PATCH_VISUAL_REVIEW==="dual-high-v3"?DUAL_VISUAL_REVIEW_V3:undefined,leanRelease:e.LOCAL_PATCH_LEAN==="lean-v1"?LOCAL_PATCH_LEAN_RELEASE:undefined}) ? {detectivesOperationalRelease:DETECTIVES_OPERATIONAL_RELEASE}:{}),
+    ...(detectivesOperationalQualified({appEnv:e.APP_ENV,promptRelease:e.LOCAL_PATCH_PROMPT_RELEASE,identitySource:e.LOCAL_PATCH_IDENTITY_SOURCE,reviewRelease:e.LOCAL_PATCH_VISUAL_REVIEW==="dual-high-v3"?DUAL_VISUAL_REVIEW_V3:undefined,leanRelease:e.LOCAL_PATCH_LEAN==="lean-v1"?LOCAL_PATCH_LEAN_RELEASE:undefined}) ? {detectivesOperationalRelease:DETECTIVES_OPERATIONAL_RELEASE,explorersOperationalRelease:EXPLORERS_OPERATIONAL_RELEASE}:{}),
     ...(e.GENERATION_PROVIDER === "openai" && e.ANTHROPIC_API_KEY?.trim() ? { qualityBatch: new AnthropicMessageBatches(e.ANTHROPIC_API_KEY) } : {}),
     // Kept whenever the credential exists, so an enrolled world is never stranded mid-poll.
     ...(e.GENERATION_PROVIDER === "openai" && e.OPENAI_API_KEY?.trim() ? { backgroundReview: new OpenAiBackgroundReviews(e.OPENAI_API_KEY) } : {}),

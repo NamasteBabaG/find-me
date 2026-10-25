@@ -1,3 +1,7 @@
+import { EXPLORERS_OPERATIONAL_RELEASE } from "../../../domain/generation/explorers-operational-policy";
+import { pinExplorersOperationalPolicy, explorersOperationalPolicyOf } from "../explorers-operational-policy";
+import { localPatchBoardsForVersion } from "../../../domain/scene/local-patch-catalog";
+import { boardsOfWorlds } from "../../world-catalog.service";
 import { sceneBySlug } from "../../scene-catalog.service";
 import { DETECTIVES_OPERATIONAL_RELEASE, sourceBodyBirthMarker } from "../../../domain/generation/detectives-operational-policy";
 import { pinDetectivesOperationalPolicy, detectivesOperationalId, detectivesOperationalPolicyOf, sourceBodyBirthMarkerFor } from "../detectives-operational-policy";
@@ -80,10 +84,13 @@ afterAll(async () => {
   if (path.dirname(directory) === realpathSync(tmpdir()) && path.basename(directory).startsWith("findme-detective-world-")) rmSync(directory, { recursive: true });
 });
 
-async function newDetectiveWorld(gameId: string, ageYears=8, born=false) {
+async function newDetectiveWorld(gameId: string, ageYears=8, born=false, explorer=false) {
+  const version = explorer ? 12 : 13, level = explorer ? "explorers" : "detectives";
+  const journey = new Set(boardsOfWorlds(["journey"]));
+  const boards = explorer ? localPatchBoardsForVersion(12).filter(board => journey.has(board.board)) : DETECTIVE_PATCH_BOARDS;
   const seeded = await seedApprovedGame(c, db, { gameId, approved: false, styleVersion: "local-patch-world-v1", status: "DRAFT", withJob: false,
-    scenes: DETECTIVE_PATCH_BOARDS.map(board => ({ slug: board.board, version: 13 })) });
-  await db.game.update({ where: { id: gameId }, data: { searchLevel: "detectives" } });
+    scenes: boards.map(board => ({ slug: board.board, version })) });
+  await db.game.update({ where: { id: gameId }, data: { searchLevel: level } });
   await db.childProfile.update({where:{id:"chl-"+gameId},data:{ageYears}});
   fixture.testers.push(seeded.email); c.adminEmails!.push(seeded.email);
   if(born)await db.childProfile.update({where:{id:"chl-"+gameId},data:{originalPhotoAssetId:null}});
@@ -91,8 +98,9 @@ async function newDetectiveWorld(gameId: string, ageYears=8, born=false) {
     await pinVisualReviewRelease(tx, gameId, DUAL_VISUAL_REVIEW_V3);
     await pinLeanRelease(tx, gameId, LOCAL_PATCH_LEAN_RELEASE);
     await pinIdentitySourceRelease(tx, gameId);
-    await pinLocalPatchSourceFamily(tx, gameId, { sceneVersion: 13, searchLevel: "detectives" });
-    if(born)await pinDetectivesOperationalPolicy(tx,gameId,DETECTIVES_OPERATIONAL_RELEASE,c.storage.id);
+    await pinLocalPatchSourceFamily(tx, gameId, { sceneVersion: version, searchLevel: level });
+    if(born && explorer) await pinExplorersOperationalPolicy(tx,gameId,EXPLORERS_OPERATIONAL_RELEASE,c.storage.id);
+    else if(born)await pinDetectivesOperationalPolicy(tx,gameId,DETECTIVES_OPERATIONAL_RELEASE,c.storage.id);
   });
   if(born)await db.childProfile.update({where:{id:"chl-"+gameId},data:{originalPhotoAssetId:"ast-photo-"+gameId}});
   await db.game.update({ where: { id: gameId }, data: { status: "TARGETS_GENERATING" } });
@@ -103,12 +111,12 @@ async function newDetectiveWorld(gameId: string, ageYears=8, born=false) {
   await db.asset.create({ data: { id: avatarId, ownerId: seeded.userId, type: "AVATAR", visibility: "GAME", status: "READY", storagePath: "game/" + avatarId + ".png", mimeType: "image/png", bytes: avatar.length, width: 256, height: 256, provider: "openai" } });
   await db.childProfile.update({ where: { id: "chl-" + gameId }, data: { avatarAssetId: avatarId } });
   await c.storage.put("private/photo-" + gameId + ".jpg", seeded.sheet, "image/png");
-  const atlas = await buildBoardWizardIdentityStyle(undefined, "board-matched-identity/v6", "journey", undefined, { sceneVersion: 13 });
+  const atlas = await buildBoardWizardIdentityStyle(undefined, "board-matched-identity/v6", "journey", undefined, explorer ? undefined : { sceneVersion: 13 });
   const checks = { identity: "pass", age: "pass", paintedStyle: "pass", sheetLayout: "pass", sourceFaceVisible: "pass", facialVolume: "pass", viewConsistency: "pass" };
   const identity = await reviewBoardWizardIdentity({ db, apiKey: "synthetic-never-live", budget: boardWizardBudgetOf(c), beforeDispatch: async () => {}, write: work => db.$transaction(work),
     reviewer: { review: async () => ({ httpOk: true, requestId: "req_identity_" + gameId, body: { model: "gpt-6.1-sol", usage: { prompt_tokens: 1500, completion_tokens: 150 },
       choices: [{ finish_reason: "stop", message: { content: JSON.stringify({ checks, reason: "Controlled contract response only" }) } }] } }) } },
-    { gameId, identityAssetId: "ast-sheet-" + gameId, sheet: seeded.sheet, photo: seeded.sheet, atlas: atlas.png, contentVersion: 13,
+    { gameId, identityAssetId: "ast-sheet-" + gameId, sheet: seeded.sheet, photo: seeded.sheet, atlas: atlas.png, contentVersion: version,
       provenance: { promptVersion: "character-v8-full-source-volume-identity", quality: "medium", photoAssetId: "ast-photo-" + gameId, photoSha256: sha256Bytes(seeded.sheet), ageYears, crop: null,
         style: { version: "board-matched-identity/v6", catalogSha256: atlas.catalogSha256, atlasSha256: atlas.atlasSha256 } } });
   expect(identity.approved).toBe(true);
@@ -126,15 +134,18 @@ async function newDetectiveWorld(gameId: string, ageYears=8, born=false) {
 
 const observed = (status: string) => ({ status, observation: "Controlled explicit synthetic observation of this candidate." });
 const heads = ["three-quarter", "profile", "down", "up", "away"] as const, expressions = ["closed-smile", "focused", "surprised", "neutral"] as const;
-function cleanQuality(prompt: string): string {
-  const hideId = boundHide(prompt).hideId, plan = subjectPlanOfHide(hideId, 13);
+function cleanQuality(prompt: string, version = 13): string {
+  const hideId = boundHide(prompt).hideId, plan = subjectPlanOfHide(hideId, version);
   if (!plan) throw Error("No real Detective plan for " + hideId);
-  const index = DETECTIVE_PATCH_BOARDS.flatMap(board => board.hides).findIndex(hide => hide.id === hideId);
+  const index = localPatchBoardsForVersion(version).flatMap(board => board.hides).findIndex(hide => hide.id === hideId);
   const assessment = { version: SUBJECT_QUALITY_BUNDLE_VERSION, quality: { hides: [{ hideId, evidenceIds: localPatchHideEvidenceIds(hideId), verdict: GOOD_V12_VERDICT }] },
     subject: { hideId, subjectPolicy: SUBJECT_POLICY_V2, checks: { photoLikeness: observed("pass"), canonicalAgreement: observed("pass"), faceVisible: observed("pass"),
       perceivedAge: { ...observed("pass"), estimatedMinYears: 7, estimatedMaxYears: 9 }, requiredWardrobe: observed(plan.warmHat ? "pass" : "not-required") },
     appearance: { head: heads[index % heads.length], expression: expressions[index % expressions.length], engagement: index % 2 ? "acting" : "watching", portraitCopy: false }, faults: [] } };
-  if (!prompt.includes(SOURCE_NEIGHBOR_BUNDLE_VERSION)) throw Error("Every Detective quality role must include its actual source contract");
+  if (!prompt.includes(SOURCE_NEIGHBOR_BUNDLE_VERSION)) {
+    if (version === 13) throw Error("Every Detective quality role must include its actual source contract");
+    return JSON.stringify(assessment);
+  }
   const line = prompt.split("\n").find(text => text.startsWith("AUTHORITATIVE SOURCE NEIGHBORS: "))!;
   const { contract } = JSON.parse(line.slice("AUTHORITATIVE SOURCE NEIGHBORS: ".length)) as { contract: SourceNeighborContract };
   const binding = JSON.parse(/Wrapper binding metadata \(do not add policy\/reader fields to the answer\): (\{[^\n]+\})\./.exec(prompt)![1]!) as SourceNeighborQualityBundleBinding;
@@ -142,21 +153,23 @@ function cleanQuality(prompt: string): string {
     neighbors: contract.neighbors.map((neighbor, i) => ({ sourceId: neighbor.sourceId, outcome: "preserved", status: "pass", after: [{ ref: "controlled-neighbor-" + i, rect: neighbor.head }],
       remnants: "none", occluder: null, observation: "One coherent synthetic source correspondence without shifted or remaining representation." })) } });
 }
-function controlledSol(interrupted = false, guided = false, guidedHideId?: string | string[], bodyMode=false, representativeUsage=false) {
+function controlledSol(interrupted = false, guided = false, guidedHideId?: string | string[], bodyMode=false, representativeUsage=false, version=13) {
   let failedResponse: string | null = null;
   const creates: { hideId: string; quality: boolean; prompt: string; tier: unknown }[] = [], responses = new Map<string, { prompt: string; quality: boolean; tier: unknown; reads: number }>();
   const fake: BackgroundReviewTransport = { namespace: "openai:find-me-existing", create: async body => {
     expect(body.model).toBe("gpt-6.1-sol"); expect(["flex", "default"]).toContain(body.service_tier);
     expect(body.reasoning).toMatchObject({ effort: "low" });
     const prompt = (body.input as { content: { text?: string }[] }[])[0]!.content[0]!.text!, quality = prompt.includes(SUBJECT_QUALITY_BUNDLE_VERSION);
-    const hideId = boundHide(prompt).hideId; expect(subjectPlanOfHide(hideId, 13)).not.toBeNull();
+    const hideId = boundHide(prompt).hideId; expect(subjectPlanOfHide(hideId, version)).not.toBeNull();
+    if (prompt.includes(SOURCE_NEIGHBOR_BUNDLE_VERSION)) expect(prompt).toContain('"assessment":<complete final assessment envelope above including quality, subject and sourceNeighbors>');
+    else expect(prompt).toContain('"assessment":<complete final quality and subject assessment envelope above>');
     creates.push({ hideId, quality, prompt, tier: body.service_tier });
     const responseId = "resp_detective_" + creates.length; if (interrupted && creates.length === 1) failedResponse = responseId; responses.set(responseId, { prompt, quality, tier: body.service_tier, reads: 0 }); return { responseId };
   }, retrieve: async (responseId): Promise<BackgroundReviewState> => {
     const state = responses.get(responseId); if (!state) return { status: "missing" };
     if (++state.reads === 1) return { status: "in_progress" };
     if (responseId === failedResponse) return { status: "failed", reading: { responseId, raw: null, usage: null, model: "gpt-6.1-sol", finishReason: "failed", serviceTier: "flex", providerError: { code: "server_error", message: "Synthetic failed response without text or usage" } } };
-    const assessment = JSON.parse(cleanQuality(state.prompt));
+    const assessment = JSON.parse(cleanQuality(state.prompt, version));
     if(bodyMode){assessment.assessment.subject.checks.perceivedAge.estimatedMinYears=6;assessment.assessment.subject.checks.perceivedAge.estimatedMaxYears=8;}
     const hide = boundHide(state.prompt).hideId;
     if (guided && (Array.isArray(guidedHideId)?guidedHideId.includes(hide):hide === (guidedHideId ?? DETECTIVE_PATCH_BOARDS[0]!.hides[0]!.id)) && (creates.filter(one => one.hideId === hide).length < 3 || bodyMode&&hide==="paris-detectives-hide-1"&&creates.filter(one=>one.hideId===hide).length===3)) {
@@ -525,3 +538,49 @@ it('returns a finite gave-up result before creating a fourth from-birth marker',
  expect(await boardWizardBudgetOf(c).audit(boardWizardWorldId(gameId))).toEqual(audit);
  expect(await db.targetVariantAsset.findUniqueOrThrow({where:{id:rowId}})).toMatchObject({status:'FAILED',attempts:3});
 },180000);
+
+it("completes a fresh Explorer Journey with 27 images and exactly 27 combined LOW assessments under its own four-dollar ceiling", async () => {
+  const gameId = "explorer-born-single-world-synthetic";
+  await newDetectiveWorld(gameId, 8, true, true);
+  const context = await resolveLocalPatchBoardsForGame(db, gameId, 12);
+  const journey = new Set(boardsOfWorlds(["journey"]));
+  const hides = context.boards.filter(board => journey.has(board.board)).flatMap(board => board.hides);
+  const provider = controlledSol(false, false, undefined, false, false, 12);
+  const request = vi.fn(async () => { throw Error("A prospective Explorer cannot buy a historical HIGH review"); });
+  const diagnose = vi.fn(async () => { throw Error("Clean synthetic results cannot buy a diagnosis"); });
+  const container = { ...c, visualReview: { request }, backgroundReview: provider.fake } as Container;
+  const render = vi.fn<LocalPatchHideDeps["render"]>(async ({requestKey, stylePng, subjectQuality}) => {
+    expect(subjectQuality).toBe("medium"); expect(requestKey.endsWith(":render:1")).toBe(true);
+    const hide = hides.find(hide => requestKey.startsWith(hide.id + ":")); if (!hide) throw Error("Unknown synthetic Explorer hide");
+    const mask = maskForHide(hide);
+    const figure = await sharp({create:{width:Math.round(mask.width*0.6),height:Math.round(mask.height*0.8),channels:4,background:"#1e3ca0"}}).png().toBuffer();
+    const png = await sharp(stylePng).composite([{input:figure,left:mask.left+Math.round(mask.width*0.2),top:mask.top+Math.round(mask.height*0.2)}]).png().toBuffer();
+    return paintedOk(png, bill(requestKey, 50000));
+  });
+  const deps: LocalPatchHideDeps = { readBoardArt: readArt, renderPolicySha256: localPatchRenderPolicySha256(LOCAL_PATCH_IMAGE_POLICY), render,
+    judge: async () => { throw Error("Per-hide historical judge forbidden"); } };
+  let result = { pending:true, attention:null as string|null }, ticks=0;
+  while (result.pending && ticks++ < 900) {
+    result = await runLocalPatchWorldSlice(container, deps, gameId, {hardDeadlineAt:Date.now()+270000,diagnose});
+    expect(result.attention).toBeNull();
+  }
+  expect(result.pending).toBe(false); expect(render).toHaveBeenCalledTimes(27); expect(provider.creates).toHaveLength(27);
+  expect(new Set(provider.creates.map(create => create.hideId)).size).toBe(27);
+  const game = await db.game.findUniqueOrThrow({where:{id:gameId}});
+  expect(["READY","DELIVERED"]).toContain(game.status);
+  const config = parseGameConfig(game.configJson!);
+  expect(config.scenes).toHaveLength(9); expect(config.scenes.flatMap(scene=>scene.targets)).toHaveLength(27);
+  expect(config.scenes.every(scene=>scene.version===12 && scene.playMode==="find-any")).toBe(true);
+  const rows = await db.targetVariantAsset.findMany({where:{variant:"A",targetInstance:{gameScene:{gameId}}}});
+  for (const row of rows) {
+    expect(row.status).toBe("GENERATED"); expect(row.attempts).toBe(1);
+    expect(JSON.parse(row.judgeJson!).boardReview.dual.single).toBe(SINGLE_VISUAL_REVIEW_VERSION);
+    expect(await allowedDualPublication(db,publicationBinding(gameId,row))).toBe(true);
+  }
+  expect(await boardWizardBudgetOf(container).audit(boardWizardWorldId(gameId))).toMatchObject({capMicroUsd:4000000,held:false,pendingRequestKeys:[],unknownRequestKeys:[]});
+  expect(await explorersOperationalPolicyOf(db,gameId)).toMatchObject({effort:"low",oneUsableAssessmentPerImage:true});
+  const child=await db.childProfile.findUniqueOrThrow({where:{id:"chl-"+gameId}});
+  expect(child.originalPhotoAssetId).toBeNull();
+  expect(await db.auditLog.count({where:{entityId:gameId,actorType:"ADMIN"}})).toBe(0);
+  expect(request).not.toHaveBeenCalled(); expect(diagnose).not.toHaveBeenCalled(); expect(fetch).not.toHaveBeenCalled();
+},1500000);

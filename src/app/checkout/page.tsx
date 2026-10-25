@@ -1,3 +1,5 @@
+
+import { creationDraftHref } from "@/domain/creation-draft";
 import { redirect } from "next/navigation";
 import { getContainer } from "@/services/container";
 import { detectiveSelectionEligible, draftSummary, searchLevelTerms, worldsForDraft } from "@/services/create-flow.service";
@@ -21,10 +23,11 @@ export async function generateMetadata() {
   return { title: t.create.checkout.title };
 }
 
-export default async function CheckoutPage({ searchParams }: { searchParams: Promise<{ cancelled?: string; declined?: string; game?: string }> }) {
+export default async function CheckoutPage({ searchParams }: { searchParams: Promise<{ cancelled?: string; declined?: string; game?: string; draft?: string }> }) {
   const c = getContainer();
   const params = await searchParams;
-  const [user, draft, { t, locale }] = await Promise.all([currentUser(), currentDraft(params.game), getI18n()]);
+  if (params.game && params.draft) redirect("/create");
+  const [user, draft, { t, locale }] = await Promise.all([currentUser(), currentDraft(params.game ?? params.draft, params.draft ? "creation" : "world-purchase"), getI18n()]);
   if (params.game && !user) redirect(worldPurchaseSignInHref(worldPurchaseDraftHref(params.game, "checkout")));
   if (!draft?.childProfile) redirect("/create");
   const intent = user && draft.ownerId === user.id ? await c.db.childWorldPurchase.findUnique({ where: { activeGameId: draft.id } }) : null;
@@ -37,11 +40,11 @@ export default async function CheckoutPage({ searchParams }: { searchParams: Pro
   const level = storedSearchLevel(draft.searchLevel);
   if (!purchase && !terms.openPayment && (terms.stale || terms.required && !draft.searchLevel)) redirect("/create");
   // A Detectives world withdrawn after it was chosen is chosen again where worlds are chosen.
-  if (!purchase && !terms.openPayment && level === "detectives" && !await detectiveSelectionEligible(c, draft)) redirect("/create/scenes");
+  if (!purchase && !terms.openPayment && level === "detectives" && !await detectiveSelectionEligible(c, draft)) redirect(creationDraftHref("scenes", draft.id));
   const [summary, worldCount] = await Promise.all([draftSummary(c, draft.id), worldsForDraft(c, draft.styleVersion, level).then(w => w.length)]);
-  if (!summary?.pkg || summary.scenes.length !== boardsFor(summary.pkg.tier)) redirect("/create/scenes");
+  if (!summary?.pkg || summary.scenes.length !== boardsFor(summary.pkg.tier)) redirect(creationDraftHref("scenes", draft.id));
   // When the package takes every world there is, the worlds step was skipped, so "back" means the package step.
-  const backHref = purchase ? worldPurchaseHref(purchase.familyChildId, purchase.worldSlug, purchase.returnGameId) : worldCount === summary.pkg.worldCount ? "/create/package" : "/create/scenes";
+  const backHref = purchase ? worldPurchaseHref(purchase.familyChildId, purchase.worldSlug, purchase.returnGameId) : worldCount === summary.pkg.worldCount ? creationDraftHref("package", draft.id) : creationDraftHref("scenes", draft.id);
   const ck = t.create.checkout;
   const currency = await getCurrency();
   const continuation = !!user && user.id === draft.ownerId && await childHasPaidWorld(c.db, { ownerId: user.id, familyChildId: draft.familyChildId, excludeGameId: draft.id });
@@ -63,13 +66,13 @@ export default async function CheckoutPage({ searchParams }: { searchParams: Pro
         <div className="fm-card fm-card--pad-4 fm-stack fm-stack--3">
           <div className="summary__identity">
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={purchase ? `/api/drafts/photo?game=${encodeURIComponent(draft.id)}` : "/api/drafts/photo"} alt="" className="fm-sticker summary__face" width={80} height={80} />
+            <img src={purchase ? `/api/drafts/photo?game=${encodeURIComponent(draft.id)}` : `/api/drafts/photo?draft=${encodeURIComponent(draft.id)}`} alt="" className="fm-sticker summary__face" width={80} height={80} />
             <div>
               <h3>{tf(ck.gameTitle, { name })}</h3>
               {summary.child?.ageYears != null ? <p className="fm-muted">{tf(ck.childAge, { age: summary.child.ageYears })}</p> : null}
               {/* The parent sees what they chose before paying; a game from before the cards says nothing new. */}
               {draft.searchLevel ? <p className="fm-muted">{tf(t.create.level.chosen, { level: t.create.level[level].name })}</p> : null}
-              {purchase ? <p className="fm-hint">{tf(t.worldPurchase.frozenAge, { age: summary.child?.ageYears ?? "" })}</p> : <a className="summary__edit" href="/create">{draft.searchLevel ? ck.editChildLevel : ck.editChild}</a>}
+              {purchase ? <p className="fm-hint">{tf(t.worldPurchase.frozenAge, { age: summary.child?.ageYears ?? "" })}</p> : <a className="summary__edit" href={creationDraftHref("name", draft.id)}>{draft.searchLevel ? ck.editChildLevel : ck.editChild}</a>}
             </div>
           </div>
           <div className="fm-stack fm-stack--1">
@@ -104,6 +107,7 @@ export default async function CheckoutPage({ searchParams }: { searchParams: Pro
           outcome={outcome}
           backHref={backHref}
           gameId={purchase ? draft.id : undefined}
+          draftGameId={purchase ? undefined : draft.id}
           backLabel={purchase ? t.worldPurchase.checkoutBack : undefined}
           lockedEmail={Boolean(purchase)}
         />

@@ -6,7 +6,7 @@ import { requireQaAccess } from "./qa-access";
 import { currentUser, draftTokenFromCookie } from "./session";
 
 /** Server-render/action helper, deliberately not a public server action. */
-export async function currentDraft(explicitGameId?: string) {
+export async function currentDraft(explicitGameId?: string, context: "world-purchase" | "creation" = "world-purchase") {
   await requireQaAccess();
   const c = getContainer();
   const token = await draftTokenFromCookie();
@@ -16,9 +16,9 @@ export async function currentDraft(explicitGameId?: string) {
     currentUser(),
   ]);
   if (!game || !isEditableDraft(statusOf(game))) return null;
-  // Explicit continuation links require the signed-in passport owner and its
-  // active purchase intent, even when this browser has the matching cookie.
-  if (game.deletedAt || explicitGameId && (!user || game.ownerId !== user.id || !await c.db.childWorldPurchase.findFirst({ where: { activeGameId: game.id, ownerId: user.id, familyChildId: game.familyChildId ?? "" } }))) return null;
+  // World continuation links require an active purchase intent. Creation links
+  // use the ordinary cookie or signed-in owner check below, even after another tab changed the cookie.
+  if (game.deletedAt || explicitGameId && context === "world-purchase" && (!user || game.ownerId !== user.id || !await c.db.childWorldPurchase.findFirst({ where: { activeGameId: game.id, ownerId: user.id, familyChildId: game.familyChildId ?? "" } }))) return null;
   if (!draftBelongsTo(game, token, user?.id ?? null)) return null;
   return game;
 }

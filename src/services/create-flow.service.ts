@@ -1,3 +1,4 @@
+import { pinExplorersOperationalPolicy } from "./generation/explorers-operational-policy";
 import { pinDetectivesOperationalPolicy } from "./generation/detectives-operational-policy";
 import { Prisma } from "@prisma/client";
 import { newDraftToken, newId } from "@/lib/ids";
@@ -83,6 +84,7 @@ export async function createDraft(c: Container, ownerId: string | null, locale: 
         if (selectedVersion === null || selectedVersion === undefined) throw Error("A local-patch source family requires its exact scene version");
         await pinLocalPatchSourceFamily(tx, created.id, { sceneVersion: selectedVersion, searchLevel: selectedLevel });
         if(selectedVersion===13)await pinDetectivesOperationalPolicy(tx,created.id,c.detectivesOperationalRelease,c.storage.id);
+        if(selectedVersion===12)await pinExplorersOperationalPolicy(tx,created.id,c.explorersOperationalRelease,c.storage.id);
       }
     }
     if (options.askSearchLevel) await pinSearchLevelChoice(tx, created.id);

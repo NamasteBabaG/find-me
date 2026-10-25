@@ -1,4 +1,6 @@
 "use server";
+
+import { creationDraftHref } from "@/domain/creation-draft";
 import { LEGAL_VERSION } from "@/domain/legal";
 
 import { redirect } from "next/navigation";
@@ -30,10 +32,13 @@ export async function saveNameAction(_prev: ActionResult | null, formData: FormD
   const familyChildId = String(formData.get("familyChildId") ?? "") || null;
   const level = formData.get("searchLevel");
   if (!validChildAge(ageYears)) return flowError("INVALID_CHILD_AGE", "בחרו את גיל הדמות במשחק, בין 2 ל־10.");
+  let savedGameId: string | undefined;
+  const requestedDraft = String(formData.get("draftGameId") ?? "") || undefined;
   const guarded = await guardDb(async () => {
   let [draft, user, locale, draftToken] = await Promise.all([
-    formData.get("freshAdventure") === "1" ? null : currentDraft(), currentUser(), getLocale(), draftTokenFromCookie(),
+    formData.get("freshAdventure") === "1" ? null : currentDraft(requestedDraft, "creation"), currentUser(), getLocale(), draftTokenFromCookie(),
   ]);
+  if (requestedDraft && !draft && formData.get("freshAdventure") !== "1") return flowError("DRAFT_NOT_FOUND", "הטיוטה לא נמצאה.");
   if (draft?.childProfileId && draft.familyChildId !== familyChildId) draft = null;
   // Three separate facts, all decided by the server before any draft or cookie:
   // whether this draft must answer (the server's terms, never the form), whether an
@@ -58,10 +63,11 @@ export async function saveNameAction(_prev: ActionResult | null, formData: FormD
     gameId = created.gameId;
   }
     if (!gameId) return flowError("DRAFT_NOT_FOUND", "לא הצלחנו להתחיל טיוטה.");
+    savedGameId = gameId;
     return chooseDraftChild(c.db, { gameId, actorId: user?.id ?? null, draftToken: token, familyChildId, name, ageYears, searchLevel });
   });
   if (!guarded.ok) return guarded;
-  redirect("/create/photo");
+  redirect(creationDraftHref("photo", savedGameId));
 }
 
 export async function choosePackageAction(_prev: ActionResult | null, formData: FormData): Promise<ActionResult> {
@@ -69,13 +75,15 @@ export async function choosePackageAction(_prev: ActionResult | null, formData: 
   if (!purchasingEnabled()) return purchasingClosed();
   const c = getContainer();
   const tier = String(formData.get("tier") ?? "");
+  let savedGameId: string | undefined;
   const res = await guardDb(async () => {
-    const draft = await currentDraft();
+    const draft = await currentDraft(String(formData.get("draftGameId") ?? "") || undefined, "creation");
     if (!draft) return flowError("DRAFT_NOT_FOUND", "הטיוטה לא נמצאה.");
+    savedGameId = draft.id;
     return selectPackage(c, draft.id, tier);
   });
   if (!res.ok) return res;
-  redirect("/create/scenes");
+  redirect(creationDraftHref("scenes", savedGameId));
 }
 
 export async function chooseScenesAction(_prev: ActionResult | null, formData: FormData): Promise<ActionResult> {
@@ -83,13 +91,15 @@ export async function chooseScenesAction(_prev: ActionResult | null, formData: F
   if (!purchasingEnabled()) return purchasingClosed();
   const c = getContainer();
   const slugs = formData.getAll("scene").map(String);
+  let savedGameId: string | undefined;
   const res = await guardDb(async () => {
-    const draft = await currentDraft();
+    const draft = await currentDraft(String(formData.get("draftGameId") ?? "") || undefined, "creation");
     if (!draft) return flowError("DRAFT_NOT_FOUND", "הטיוטה לא נמצאה.");
+    savedGameId = draft.id;
     return selectWorlds(c, draft.id, slugs);
   });
   if (!res.ok) return res;
-  redirect("/checkout");
+  redirect(creationDraftHref("checkout", savedGameId));
 }
 
 export async function checkoutAction(_prev: ActionResult | null, formData: FormData): Promise<ActionResult> {
@@ -104,7 +114,9 @@ export async function checkoutAction(_prev: ActionResult | null, formData: FormD
   const gameId = String(formData.get("gameId") ?? "") || undefined;
   const user = await currentUser();
   if (gameId && !user) redirect(worldPurchaseSignInHref(worldPurchaseDraftHref(gameId, "checkout")));
-  const draft = await currentDraft(gameId);
+  const creationId = String(formData.get("draftGameId") ?? "") || undefined;
+  if (gameId && creationId) return flowError("DRAFT_NOT_FOUND", "הטיוטה לא נמצאה.");
+  const draft = await currentDraft(gameId ?? creationId, creationId ? "creation" : "world-purchase");
   if (!draft) redirect("/create");
   if (!rateLimit(`checkout-draft:${draft.id}`, LIMITS.checkout.limit, LIMITS.checkout.windowMs).ok) {
     return flowError("TOO_MANY_REQUESTS", "יותר מדי ניסיונות. נסו שוב בעוד כמה דקות.");

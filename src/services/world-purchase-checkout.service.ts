@@ -1,3 +1,5 @@
+
+import { creationDraftHref } from "@/domain/creation-draft";
 import { Prisma } from "@prisma/client";
 import { createHash } from "node:crypto";
 import { worldsOwned } from "./world-catalog.service";
@@ -160,7 +162,7 @@ async function startClaimedCheckout(c: Container, input: CheckoutClaimInput, req
     if (!stillApplicable) return flowError("DRAFT_LOCKED", "ההזמנה השתנתה לפני פתיחת התשלום.");
     const session = await c.payment.createCheckout({ orderId: claimed.order.id, idempotencyKey: claimed.order.id,
       amountAgorot: claimed.order.amountAgorot, currency: claimed.order.currency, description: input.description, customerEmail: input.email,
-      successUrl: `${c.appUrl}/creating/${input.gameId}`, cancelUrl: requireWorldIntent ? `${c.appUrl}/checkout?game=${encodeURIComponent(input.gameId)}&cancelled=1` : `${c.appUrl}/checkout?cancelled=1` });
+      successUrl: `${c.appUrl}/creating/${input.gameId}`, cancelUrl: requireWorldIntent ? `${c.appUrl}/checkout?game=${encodeURIComponent(input.gameId)}&cancelled=1` : `${c.appUrl}${creationDraftHref("checkout", input.gameId)}&cancelled=1` });
     const saved = await c.db.order.updateMany({ where: { id: claimed.order.id, checkoutKey: key, paymentStatus: "PENDING", checkoutUrl: null, checkoutClaimUntil: leaseUntil,
       game: { ownerId: input.userId, deletedAt: null, status: "CHECKOUT_PENDING" } }, data: { checkoutUrl: session.checkoutUrl, providerPaymentId: session.providerPaymentId ?? null, checkoutClaimUntil: null } });
     if (saved.count !== 1) return flowError("DRAFT_LOCKED", "ההזמנה השתנתה לפני פתיחת התשלום.");

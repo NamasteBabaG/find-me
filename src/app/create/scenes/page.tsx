@@ -1,3 +1,5 @@
+
+import { creationDraftHref } from "@/domain/creation-draft";
 import { redirect } from "next/navigation";
 import { getContainer } from "@/services/container";
 import { sceneVersionForLevel, searchLevelTerms, worldsForDraft } from "@/services/create-flow.service";
@@ -19,16 +21,17 @@ export async function generateMetadata() {
 }
 
 /** Which worlds. Each one brings its nine boards, so this step counts journeys, not boards. */
-export default async function CreateScenesPage() {
+export default async function CreateScenesPage({ searchParams }: { searchParams?: Promise<{ draft?: string }> } = {}) {
+  const params = await searchParams;
   const c = getContainer();
-  const [user, draft, { t, locale }] = await Promise.all([currentUser(), currentDraft(), getI18n()]);
-  if (!draft?.childProfile) redirect("/create");
-  if (!draft.packageTier || !isPackageTier(draft.packageTier)) redirect("/create/package");
+  const [user, draft, { t, locale }] = await Promise.all([currentUser(), currentDraft(params?.draft, "creation"), getI18n()]);
+  if (!draft?.childProfile) redirect(creationDraftHref("name", params?.draft));
+  if (!draft.packageTier || !isPackageTier(draft.packageTier)) redirect(creationDraftHref("package", draft.id));
   const want = PACKAGES[draft.packageTier].worldCount;
   const level = storedSearchLevel(draft.searchLevel);
   const version = sceneVersionForLevel(draft.styleVersion, level);
   const terms = await searchLevelTerms(c, draft);
-  if (version === null || terms.stale && !terms.openPayment) redirect("/create");
+  if (version === null || terms.stale && !terms.openPayment) redirect(creationDraftHref("name", params?.draft));
   const worlds = await worldsForDraft(c, draft.styleVersion, level);
   // Said where worlds are chosen: a world without its own Detectives boards is not on this list.
   const explorersOnly = level === "detectives"
@@ -40,7 +43,7 @@ export default async function CreateScenesPage() {
   // Nothing to choose: the package takes every world there is, and the package
   // step already stored that selection. Rendering a page must never write, so we
   // only skip ahead when the draft is already complete; otherwise the picker posts it.
-  if (worlds.length === want && chosen.length === want) redirect("/checkout");
+  if (worlds.length === want && chosen.length === want) redirect(creationDraftHref("checkout", draft.id));
 
   const options = worlds.map((w) => {
     const slug = boardSlugs(w)[0]!;
@@ -53,7 +56,7 @@ export default async function CreateScenesPage() {
   }; });
   return (
     <CreateFrame width="mid" step={3} title={t.create.scenes.title} lead={t.create.scenes.lead} user={user} isAdmin={isAdminEmail(user?.email)}>
-      <ScenePicker note={explorersOnly.length ? tf(t.create.scenes.explorersOnly, { worlds: explorersOnly.join(", ") }) : undefined} key={`${want}:${chosen.map(w => w.slug).join(",")}`} scenes={options} want={want} preselected={chosen.map((w) => w.slug)} />
+      <ScenePicker draftGameId={draft.id} note={explorersOnly.length ? tf(t.create.scenes.explorersOnly, { worlds: explorersOnly.join(", ") }) : undefined} key={`${want}:${chosen.map(w => w.slug).join(",")}`} scenes={options} want={want} preselected={chosen.map((w) => w.slug)} />
     </CreateFrame>
   );
 }

@@ -9,13 +9,14 @@ import { checkoutAction, type ActionResult } from "../create/actions";
 import Link from "next/link";
 import { LEGAL_VERSION, serviceCopy } from "@/domain/legal";
 
-export function CheckoutForm({ defaultEmail, priceLabel, outcome, backHref, automaticPublication = false, gameId, backLabel, lockedEmail = false }: { defaultEmail: string; priceLabel: string; outcome: "declined" | "cancelled" | null; backHref: string; automaticPublication?: boolean; gameId?: string; backLabel?: string; lockedEmail?: boolean }) {
+export function CheckoutForm({ defaultEmail, priceLabel, outcome, backHref, automaticPublication = false, gameId, draftGameId, backLabel, lockedEmail = false }: { defaultEmail: string; priceLabel: string; outcome: "declined" | "cancelled" | null; backHref: string; automaticPublication?: boolean; gameId?: string; draftGameId?: string; backLabel?: string; lockedEmail?: boolean }) {
   const { t, tf, locale } = useI18n();
   const legal = serviceCopy[locale];
   const ck = t.create.checkout;
   const [state, action, pending] = useActionState<ActionResult | null, FormData>(checkoutAction, null);
   return (
     <form action={action} className="fm-card fm-card--pad-4 fm-stack fm-stack--3">
+      {draftGameId ? <input type="hidden" name="draftGameId" value={draftGameId} /> : null}
       {gameId ? <input type="hidden" name="gameId" value={gameId} /> : null}
       {outcome === "declined" ? <Notice kind="warn">{ck.declined}</Notice> : outcome === "cancelled" ? <Notice kind="warn">{ck.cancelled}</Notice> : null}
       <div className="fm-field">
@@ -40,7 +41,7 @@ export function CheckoutForm({ defaultEmail, priceLabel, outcome, backHref, auto
         <span className="fm-btn__arrow fm-btn__arrow--back" aria-hidden>
           ➜
         </span>
-        {backLabel ?? (backHref === "/create/package" ? ck.backPackage : ck.backScenes)}
+        {backLabel ?? (backHref.split("?")[0] === "/create/package" ? ck.backPackage : ck.backScenes)}
       </LinkButton>
     </form>
   );

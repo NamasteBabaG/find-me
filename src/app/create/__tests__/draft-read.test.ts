@@ -78,3 +78,21 @@ it("starts a fresh child's draft without fetching an empty draft again before th
   expect(f.lookup).not.toHaveBeenCalled();
   expect(f.choose).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ gameId: "new-draft", actorId: "owner", draftToken: "new-token", ageYears: 8 }));
 });
+
+
+it("keeps an ordinary creation draft isolated from the other tab's cookie without a family purchase intent", async () => {
+  f.token = "other-tab-cookie"; f.intent.mockResolvedValue(null);
+  f.lookup.mockResolvedValue({ id: "first-game", ownerId: "owner", draftToken: "first-token", status: "PHOTO_APPROVED", scenes: [] });
+  expect(await currentDraft("first-game", "creation")).toMatchObject({ id: "first-game" });
+  expect(f.lookup.mock.calls[0]![0].where).toEqual({ id: "first-game" });
+  expect(f.intent).not.toHaveBeenCalled();
+});
+it.each(["foreign", "signed-out", "deleted", "paid"])("an explicit ordinary creation draft rejects %s without falling back to another cookie", async kind => {
+  f.token = "other-tab-cookie";
+  f.lookup.mockResolvedValue({ id: "first-game", ownerId: "owner", draftToken: "first-token", status: kind === "paid" ? "PAID" : "DRAFT", deletedAt: kind === "deleted" ? new Date() : null });
+  if (kind === "foreign") f.user.mockResolvedValue({ id: "different-owner" });
+  if (kind === "signed-out") f.user.mockResolvedValue(null);
+  expect(await currentDraft("first-game", "creation")).toBeNull();
+  expect(f.lookup).toHaveBeenCalledOnce();
+  expect(f.lookup.mock.calls[0]![0].where).toEqual({ id: "first-game" });
+});

@@ -1,3 +1,5 @@
+
+import { creationDraftHref } from "@/domain/creation-draft";
 import { notFound, redirect } from "next/navigation";
 import { getContainer } from "@/services/container";
 import { getI18n } from "@/i18n/server";
@@ -40,8 +42,8 @@ export default async function MockCheckoutPage({ searchParams }: { searchParams:
   // financial recovery; a creator with only draft proof returns to that draft.
   const successUrl = `/creating/${encodeURIComponent(order.gameId)}`;
   const closeUrl = `/checkout/close?${new URLSearchParams({ game: order.gameId })}`;
-  const cancelUrl = accountAuthority ? closeUrl : "/checkout?cancelled=1";
-  const declinedUrl = accountAuthority ? closeUrl : "/checkout?declined=1";
+  const cancelUrl = accountAuthority ? closeUrl : `${creationDraftHref("checkout", order.gameId)}&cancelled=1`;
+  const declinedUrl = accountAuthority ? closeUrl : `${creationDraftHref("checkout", order.gameId)}&declined=1`;
   const m = t.create.mock;
   const amount = formatMoney(order.amountAgorot, order.currency === "USD" ? "USD" : "ILS", locale);
   const pkgName = isPackageTier(order.packageTier) ? pick(PACKAGES[order.packageTier].name, locale) : order.packageTier;

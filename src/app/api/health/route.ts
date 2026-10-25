@@ -1,3 +1,4 @@
+import { EXPLORERS_OPERATIONAL_RELEASE } from "@/domain/generation/explorers-operational-policy";
 import { DETECTIVES_OPERATIONAL_RELEASE, detectivesOperationalQualified } from "@/domain/generation/detectives-operational-policy";
 import { SOURCE_BODY_REPAIR_MANIFEST_SHA256 } from "../../../../content/detectives/source-body-repair";
 import { promises as dns } from "node:dns";
@@ -66,6 +67,7 @@ export async function GET(req: Request) {
       configured: dualConfigured,
       quality: { model: visualReviewPolicy("scene-quality").model, effort: "high" },
       continuity: { model: visualReviewPolicy("head-continuity").model, effort: "high" },
+      explorersNewGames: detectivesNewPolicy ? {version:EXPLORERS_OPERATIONAL_RELEASE,reviewMode:"single-sol-low/v1",model:"gpt-6.1-sol",effort:"low",initialTier:"flex",oneUsableAssessmentPerImage:true,normalImageAttemptLimit:3,worldCapMicroUsd:4000000,automaticBudgetExtension:false} : null,
       detectivesNewGames: detectivesNewPolicy ? {version:DETECTIVES_OPERATIONAL_RELEASE,reviewMode:"single-sol-low/v1",model:"gpt-6.1-sol",effort:"low",initialTier:"flex",oneUsableAssessmentPerImage:true,normalImageAttemptLimit:3,worldCapMicroUsd:4000000,automaticBudgetExtension:false,sourceBodyManifestSha256:SOURCE_BODY_REPAIR_MANIFEST_SHA256} : null },
     // Which wording NEW hides and identities receive; stored ones keep their own.
     promptRelease: e.LOCAL_PATCH_PROMPT_RELEASE,
