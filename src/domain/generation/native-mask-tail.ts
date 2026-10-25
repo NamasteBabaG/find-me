@@ -12,6 +12,7 @@ export function nativeMaskTailMarker(row:Pick<GuidedFrameRow,"judgeJson">):Nativ
 }
 export function nativeMaskTailExhausted(row:GuidedFrameRow){return row.status==="FAILED" && row.attempts===4 && !!nativeMaskTailMarker(row);}
 export function nativeMaskTailCandidate(row:GuidedFrameRow){
+  if(guidedFrameMarker(row)?.sceneVersion===12)return false;
   if(row.status==="PENDING" && row.attempts===4)return !!nativeMaskTailMarker(row) && !!guidedFrameMarker(row);
   if(!guidedFrameExhausted(row) || nativeMaskTailMarker(row))return false;
   try{const j=JSON.parse(row.judgeJson??"null"),s=j?.seam;return j.renderFault?.startsWith("quality-seam:") && j.compositionPermission==="refused"

@@ -3,9 +3,9 @@ import { sourceBodyBirthMarkerFor, fenceSourceBodyBirthPurchase } from "./detect
 import { requireSourceBodyPurchase } from './source-body-repair';
 import { fenceSourceBodyPurchase } from './source-body-repair-pin';
 import { nativeMaskTailCandidate, type NativeMaskTailMarker } from "../../domain/generation/native-mask-tail";
-import { guidedFrameCandidate, guidedFrameMarker, newGuidedFrameMarker, GUIDED_FRAME_MIN_CAPACITY_MICRO_USD, type GuidedFrameMarker } from "../../domain/generation/guided-frame-recovery";
+import { guidedFrameCandidate, guidedFrameMarker, newGuidedFrameMarker, guidedFrameVersionMatches, GUIDED_FRAME_MIN_CAPACITY_MICRO_USD, type GuidedFrameMarker } from "../../domain/generation/guided-frame-recovery";
 import { requireDetectivesNativeMaskTail } from "./detectives-completion-budget";
-import { singleLowReviewAuthorization as detectivesSingleReviewAuthorization, hasSingleLowCapacity as hasDetectivesLowCapacity } from "./single-low-policy";
+import { singleLowReviewAuthorization, hasSingleLowCapacity } from "./single-low-policy";
 import { WorldBudgetError } from "./world-budget";
 import { hasLocalPatchCapability } from "../../domain/scene/local-patch-family";
 import { createHash } from "node:crypto";
@@ -289,11 +289,11 @@ export async function runLocalPatchHide(c: Container, deps: LocalPatchHideDeps, 
 
   let guidedFrame: GuidedFrameMarker | null = null;
   if (input.guidedFrame) {
-    const grant = await detectivesSingleReviewAuthorization(c.db, gameId);
-    demand(input.finalRepair && !input.extraAttemptAuthorizationId && scene.sceneVersion === 13 && guidedFrameCandidate(row)
-      && grant && await hasDetectivesLowCapacity(c, gameId), "exact LOW grant and original-geometry recovery required");
-    guidedFrame = guidedFrameMarker(row) ?? newGuidedFrameMarker(row, grant.authorizationSha256);
-    demand(guidedFrame.authorizationSha256 === grant.authorizationSha256, "guided recovery authority changed");
+    const grant = await singleLowReviewAuthorization(c.db, gameId);
+    demand(input.finalRepair && !input.extraAttemptAuthorizationId && grant && scene.sceneVersion === grant.sceneVersion && guidedFrameCandidate(row)
+      && await hasSingleLowCapacity(c, gameId), "exact LOW grant and original-geometry recovery required");
+    guidedFrame = guidedFrameMarker(row) ?? newGuidedFrameMarker(row, grant.authorizationSha256, grant.sceneVersion);
+    demand(guidedFrame.authorizationSha256 === grant.authorizationSha256 && guidedFrameVersionMatches(guidedFrame, scene.sceneVersion), "guided recovery authority changed");
     const priorPicture = await c.db.asset.findUniqueOrThrow({ where: { id: guidedFrame.sourceAssetId } });
     demand(row.assetId === priorPicture.id && priorPicture.ownerId === game.ownerId && priorPicture.status === "READY" && !priorPicture.deletedAt
       && sha256Bytes(await c.storage.get(priorPicture.storagePath)) === guidedFrame.sourceImageSha256, "guided failure pixels changed");

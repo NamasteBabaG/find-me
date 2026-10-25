@@ -7,16 +7,20 @@ export const GUIDED_FRAME_MIN_CAPACITY_MICRO_USD = 370_000;
 export type GuideRect = { left: number; top: number; width: number; height: number };
 export type GuidedFrameRow = { status: string; attempts: number; assetId?: string | null; judgeJson: string | null };
 export type GuidedFrameMarker = { version: typeof GUIDED_FRAME_RECOVERY_VERSION; authorizationSha256: string;
-  sourceImageSha256: string; sourceAssetId: string; sourceReviewRequestKey: string; originalAttempts: 2; repairCyclesPreserved: number };
+  sourceImageSha256: string; sourceAssetId: string; sourceReviewRequestKey: string; originalAttempts: 2; repairCyclesPreserved: number; sceneVersion?: 12 };
 const object = (v: unknown): Record<string, unknown> | null => v && typeof v === 'object' && !Array.isArray(v) ? v as Record<string, unknown> : null;
 const hash = (v: unknown): v is string => typeof v === 'string' && /^[a-f0-9]{64}$/.test(v);
 const boundedId = z.string().min(1).max(240).regex(/^[A-Za-z0-9_:.-]+$/);
 const markerSchema = z.object({ version:z.literal(GUIDED_FRAME_RECOVERY_VERSION),authorizationSha256:z.string().regex(/^[a-f0-9]{64}$/),
   sourceImageSha256:z.string().regex(/^[a-f0-9]{64}$/),sourceAssetId:boundedId,sourceReviewRequestKey:boundedId,
-  originalAttempts:z.literal(2),repairCyclesPreserved:z.number().int().min(0).max(3) }).strict();
+  originalAttempts:z.literal(2),repairCyclesPreserved:z.number().int().min(0).max(3),sceneVersion:z.literal(12).optional() }).strict();
 function receipt(row: GuidedFrameRow) { try { return object(JSON.parse(row.judgeJson ?? 'null')); } catch { return null; } }
 export function parseGuidedFrameMarker(value: unknown): GuidedFrameMarker | null { const parsed=markerSchema.safeParse(value); return parsed.success ? parsed.data : null; }
 export function guidedFrameMarker(row: GuidedFrameRow): GuidedFrameMarker | null { return parseGuidedFrameMarker(receipt(row)?.guidedFrameRecovery); }
+/** New Explorer guides bind v12 explicitly. Historical v13 markers keep their original bytes. */
+export function guidedFrameVersionMatches(marker: GuidedFrameMarker, sceneVersion: number | undefined): boolean {
+  return marker.sceneVersion === 12 ? sceneVersion === 12 : sceneVersion === 13;
+}
 /** Scheduling only: the service verifies the actual one-world authority and the renderer enforces the unchanged source/window. */
 export function guidedFrameCandidate(row: GuidedFrameRow): boolean {
   const r=receipt(row), repair=object(r?.selfRepair);
@@ -33,11 +37,12 @@ export function guidedFrameCandidate(row: GuidedFrameRow): boolean {
     && ['left','top','right','bottom'].some(k=>object(boundaries?.[k])?.status === 'fail');
 }
 export function guidedFrameExhausted(row: GuidedFrameRow): boolean { return row.status === 'FAILED' && row.attempts === 3 && !!guidedFrameMarker(row); }
-export function newGuidedFrameMarker(row: GuidedFrameRow, authorizationSha256: string): GuidedFrameMarker {
+export function newGuidedFrameMarker(row: GuidedFrameRow, authorizationSha256: string, sceneVersion: 12 | 13 = 13): GuidedFrameMarker {
   if (!hash(authorizationSha256) || row.status !== 'FAILED' || !guidedFrameCandidate(row)) throw Error('GUIDED_FRAME: conclusive current LOW boundary failure after two paintings required');
   const r=receipt(row)!, q=object(object(object(r.boardReview)?.dual)?.quality)!;
   return markerSchema.parse({version:GUIDED_FRAME_RECOVERY_VERSION,authorizationSha256,sourceImageSha256:r.judgedSha256,
-    sourceAssetId:row.assetId,sourceReviewRequestKey:q.requestKey,originalAttempts:2,repairCyclesPreserved:object(r.selfRepair)?.subjectV2Cycles ?? 0});
+    sourceAssetId:row.assetId,sourceReviewRequestKey:q.requestKey,originalAttempts:2,repairCyclesPreserved:object(r.selfRepair)?.subjectV2Cycles ?? 0,
+    ...(sceneVersion === 12 ? { sceneVersion: 12 } : {})});
 }
 function valid(r: GuideRect) { return [r.left,r.top,r.width,r.height].every(Number.isSafeInteger) && r.left >= 0 && r.top >= 0 && r.width > 0 && r.height > 0 && r.left+r.width <= 512 && r.top+r.height <= 768; }
 export function guidedFrameGeometry(child: GuideRect, returned: GuideRect) {

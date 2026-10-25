@@ -3,7 +3,7 @@ import { sourceBodyMaskPng, applySourceBodyPixels } from './source-body-repair-c
 import { sourceBodyForHide, sourceBodyBirthForHide } from './source-placement-release';
 import { sourceBodyBirthMarkerSchema, type SourceBodyBirthMarker } from '../../domain/generation/detectives-operational-policy';
 import { nativeMaskTailMarkerSchema, nativeMaskTailDirections, nativeMaskTailEditRegion, type NativeMaskTailMarker } from "../../domain/generation/native-mask-tail";
-import { GUIDED_FRAME_RECOVERY_VERSION, guidedFrameGeometry, guidedFrameOverlay, guidedFrameDirections, parseGuidedFrameMarker, type GuidedFrameMarker } from '../../domain/generation/guided-frame-recovery';
+import { GUIDED_FRAME_RECOVERY_VERSION, guidedFrameGeometry, guidedFrameOverlay, guidedFrameDirections, parseGuidedFrameMarker, guidedFrameVersionMatches, type GuidedFrameMarker } from '../../domain/generation/guided-frame-recovery';
 import { hasLocalPatchCapability } from "../../domain/scene/local-patch-family";
 import { isCollectionVersion } from "../../domain/scene/local-patch-versions";
 import { SUBJECT_PAINTER_V2, SUBJECT_PAINTER_V3, SUBJECT_PAINTER_V4, isPlanLedPainter, type SubjectPainterVersion } from "../../domain/generation/subject-painter";
@@ -372,10 +372,10 @@ export async function renderLocalPatchHide(deps: LocalPatchRenderDeps, input: Lo
     assertAuthoredLocalPatchRecoveryGeometry(authoredReturn, input.placementContext, input.selfRepair.decision);
     authoredRecoveryDiagnosisSchema.parse(input.authoredDiagnosis);
   } else if (input.authoredDiagnosis !== undefined) throw Error("LOCAL_PATCH: authored diagnosis requires an authored recovery");
-  if (input.guidedFrameRecovery && (!parseGuidedFrameMarker(input.guidedFrameRecovery) || input.contentVersion !== 13 || (input.nativeMaskTail ? input.attempt !== 4 : input.attempt !== 3)
+  if (input.guidedFrameRecovery && (!parseGuidedFrameMarker(input.guidedFrameRecovery) || !guidedFrameVersionMatches(input.guidedFrameRecovery, input.contentVersion) || (input.nativeMaskTail ? input.attempt !== 4 : input.attempt !== 3)
     || !authoredReturn?.sourcePlacement || input.selfRepair || input.adaptiveRecovery || input.recoveryDirective))
     throw Error('GUIDED_FRAME: only a trusted original-geometry third painting may use this guide');
-  if (input.nativeMaskTail && (!nativeMaskTailMarkerSchema.safeParse(input.nativeMaskTail).success || !input.guidedFrameRecovery
+  if (input.nativeMaskTail && (input.contentVersion !== 13 || !nativeMaskTailMarkerSchema.safeParse(input.nativeMaskTail).success || !input.guidedFrameRecovery
     || input.nativeMaskTail.previousAuthorizationSha256 !== input.guidedFrameRecovery.authorizationSha256)) throw Error("NATIVE_MASK_TAIL: exact finite allowance and original guide required");
   const body=input.placementContext?sourceBodyForHide(input.placementContext,input.hide.id):null;
   const born=input.placementContext?sourceBodyBirthForHide(input.placementContext,input.hide.id):null;

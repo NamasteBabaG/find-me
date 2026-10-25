@@ -170,10 +170,11 @@ function controlledSol(interrupted = false, guided = false, guidedHideId?: strin
     if (++state.reads === 1) return { status: "in_progress" };
     if (responseId === failedResponse) return { status: "failed", reading: { responseId, raw: null, usage: null, model: "gpt-6.1-sol", finishReason: "failed", serviceTier: "flex", providerError: { code: "server_error", message: "Synthetic failed response without text or usage" } } };
     const assessment = JSON.parse(cleanQuality(state.prompt, version));
-    if(bodyMode){assessment.assessment.subject.checks.perceivedAge.estimatedMinYears=6;assessment.assessment.subject.checks.perceivedAge.estimatedMaxYears=8;}
+    const qualityAssessment = assessment.version === SOURCE_NEIGHBOR_BUNDLE_VERSION ? assessment.assessment : assessment;
+    if(bodyMode){qualityAssessment.subject.checks.perceivedAge.estimatedMinYears=6;qualityAssessment.subject.checks.perceivedAge.estimatedMaxYears=8;}
     const hide = boundHide(state.prompt).hideId;
     if (guided && (Array.isArray(guidedHideId)?guidedHideId.includes(hide):hide === (guidedHideId ?? DETECTIVE_PATCH_BOARDS[0]!.hides[0]!.id)) && (creates.filter(one => one.hideId === hide).length < 3 || bodyMode&&hide==="paris-detectives-hide-1"&&creates.filter(one=>one.hideId===hide).length===3)) {
-      const verdict = assessment.assessment.quality.hides[0].verdict;
+      const verdict = qualityAssessment.quality.hides[0].verdict;
       Object.assign(verdict, { verdict: "fail", childComplete: "fail", pictureWhole: "fail", neighborsIntact:"fail", severeSeam: "fail", reason: "Synthetic crown crosses the immutable top return", faults: [{ check: "childComplete", where: "Synthetic complete crown terminates at the top return boundary" }] });
       verdict.boundaryIntegrity = Object.fromEntries(["left","top","right","bottom"].map(edge => [edge, { status: edge === "top" ? "fail" : "pass", observation: edge === "top" ? "Synthetic crown is cut at the top boundary" : "Synthetic continuous edge" }]));
     }
@@ -584,3 +585,84 @@ it("completes a fresh Explorer Journey with 27 images and exactly 27 combined LO
   expect(await db.auditLog.count({where:{entityId:gameId,actorType:"ADMIN"}})).toBe(0);
   expect(request).not.toHaveBeenCalled(); expect(diagnose).not.toHaveBeenCalled(); expect(fetch).not.toHaveBeenCalled();
 },1500000);
+
+
+it("completes a from-birth Explorer guided third painting through one fresh LOW and normal all-27 publication", async () => {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  try {
+    const gameId = "explorer-born-guided-third-synthetic";
+    await newDetectiveWorld(gameId, 8, true, true);
+    const context = await resolveLocalPatchBoardsForGame(db, gameId, 12);
+    const journey = new Set(boardsOfWorlds(["journey"]));
+    const hides = context.boards.filter(board => journey.has(board.board)).flatMap(board => board.hides);
+    const selected = context.boards.find(board => board.board === "greatwall")!.hides[1]!;
+    const provider = controlledSol(false, true, selected.id, false, false, 12);
+    const synchronous = vi.fn(async () => { throw Error("An Explorer cannot buy a historical HIGH question"); });
+    const diagnose = vi.fn(async () => { throw Error("A conclusive LOW boundary refusal already locates this repair"); });
+    const container = { ...c, visualReview: { request: synchronous }, backgroundReview: provider.fake } as Container;
+    let guides = 0;
+    const render = vi.fn<LocalPatchHideDeps["render"]>(async ({ requestKey, stylePng, placementGuidePng, placementGuideVersion, maskPng, subjectQuality }) => {
+      expect(subjectQuality).toBe("medium");
+      const hide = hides.find(hide => requestKey.startsWith(hide.id + ":"));
+      if (!hide) throw Error("Unknown synthetic Explorer hide");
+      const attempt = Number(requestKey.split(":").at(-1));
+      expect(hide.id === selected.id ? [1, 2, 3] : [1]).toContain(attempt);
+      let frame = maskForHide(hide);
+      if (hide.id === selected.id && attempt === 3) {
+        guides++;
+        expect(placementGuideVersion).toBe(GUIDED_FRAME_RECOVERY_VERSION);
+        expect(placementGuidePng).toBeDefined();
+        const geometry = guidedFrameGeometry(frame, hide.returnRect!);
+        expect(geometry.returned).toEqual(hide.returnRect!);
+        frame = geometry.target;
+        const alpha = await sharp(maskPng).ensureAlpha().raw().toBuffer();
+        let editable = 0;
+        for (let i = 3; i < alpha.length; i += 4) if (alpha[i] === 0) editable++;
+        expect(editable).toBe(hide.returnRect!.width * hide.returnRect!.height);
+      } else expect(placementGuidePng).toBeUndefined();
+      const figure = await sharp({ create: { width: Math.round(frame.width * 0.6), height: Math.round(frame.height * 0.8), channels: 4,
+        background: attempt === 2 ? "#304f91" : attempt === 3 ? "#704f91" : "#1e3ca0" } }).png().toBuffer();
+      const png = await sharp(stylePng).composite([{ input: figure, left: frame.left + Math.round(frame.width * 0.2), top: frame.top + Math.round(frame.height * 0.2) }]).png().toBuffer();
+      return paintedOk(png, bill(requestKey, 50000));
+    });
+    const deps: LocalPatchHideDeps = { readBoardArt: readArt, renderPolicySha256: localPatchRenderPolicySha256(LOCAL_PATCH_IMAGE_POLICY), render,
+      judge: async () => { throw Error("Per-hide historical judge forbidden"); } };
+    let result = { pending: true, attention: null as string | null }, ticks = 0;
+    while (result.pending && ticks++ < 900) {
+      result = await runLocalPatchWorldSlice(container, deps, gameId, { hardDeadlineAt: Date.now() + 270000, diagnose });
+      expect(result.attention).toBeNull();
+      if (result.pending) await vi.advanceTimersByTimeAsync(LEAN_RECOVERY_BACKOFF_MS + 1);
+    }
+    expect(result.pending).toBe(false);
+    expect(render).toHaveBeenCalledTimes(29);
+    expect(guides).toBe(1);
+    expect(provider.creates).toHaveLength(29);
+    expect(provider.creates.filter(question => question.hideId === selected.id)).toHaveLength(3);
+    const game = await db.game.findUniqueOrThrow({ where: { id: gameId } });
+    expect(["READY", "DELIVERED"]).toContain(game.status);
+    const config = parseGameConfig(game.configJson!);
+    expect(config.scenes).toHaveLength(9);
+    expect(config.scenes.flatMap(scene => scene.targets)).toHaveLength(27);
+    const rows = await db.targetVariantAsset.findMany({ where: { variant: "A", targetInstance: { gameScene: { gameId } } }, include: { targetInstance: { include: { gameScene: true } } } });
+    for (const row of rows) {
+      const guided = row.targetInstance.gameScene.sceneSlug === "greatwall" && row.targetInstance.targetId === selected.targetId;
+      expect(row.status).toBe("GENERATED");
+      expect(row.attempts).toBe(guided ? 3 : 1);
+      const receipt = JSON.parse(row.judgeJson!);
+      expect(receipt.boardReview.dual.single).toBe(SINGLE_VISUAL_REVIEW_VERSION);
+      if (guided) {
+        expect(receipt.guidedFrameRecovery).toMatchObject({ version: GUIDED_FRAME_RECOVERY_VERSION, sceneVersion: 12, originalAttempts: 2 });
+        expect(receipt.qualityDisposition.state).toBe("acceptable");
+      }
+      expect(await allowedDualPublication(db, publicationBinding(gameId, row))).toBe(true);
+      expect(await hasLocalPatchPublicationPolicy(container, publicationBinding(gameId, row))).toBe(true);
+    }
+    const audit = await boardWizardBudgetOf(container).audit(boardWizardWorldId(gameId));
+    expect(audit).toMatchObject({ capMicroUsd: 4000000, held: false, pendingRequestKeys: [], unknownRequestKeys: [] });
+    expect(audit.committedMicroUsd).toBeLessThanOrEqual(4000000);
+    expect(await db.childProfile.findUniqueOrThrow({ where: { id: "chl-" + gameId } })).toMatchObject({ originalPhotoAssetId: null });
+    expect(await db.auditLog.count({ where: { entityId: gameId, actorType: "ADMIN" } })).toBe(0);
+    expect(await db.auditLog.findUnique({ where: { id: detectivesExtensionId(gameId) } })).toBeNull();
+    expect(synchronous).not.toHaveBeenCalled(); expect(diagnose).not.toHaveBeenCalled(); expect(fetch).not.toHaveBeenCalled();
+  } finally { vi.useRealTimers(); }
+}, 1500000);

@@ -43,7 +43,7 @@
   width: 100%; min-width: 0; max-width: calc(var(--leaf-width) * 2 + var(--space-12));
   margin-inline: auto; color: var(--ink); font-family: var(--font-display);
 }
-.travel-passport button, .travel-passport select, .travel-passport summary { min-height: var(--touch-min); }
+.travel-passport button, .travel-passport select, .travel-passport summary { min-height: var(--touch-kid); }
 .travel-passport button { -webkit-tap-highlight-color: transparent; }
 
 /* ─── The cover: board, foil and a debossed frame ──────────────────────────
@@ -104,15 +104,15 @@
 .travel-passport__motto { font-size: var(--fs-100); line-height: var(--lh-200); margin: 0; opacity: 0.86; }
 
 /* ─── Reader chrome ───────────────────────────────────────────────────────── */
-.travel-passport__toolbar { display: flex; align-items: flex-end; justify-content: space-between; gap: var(--space-1); height: 62px; padding: 0 var(--space-5); }
-.travel-passport__toolbar > .fm-btn { margin-bottom: var(--space-1); min-inline-size: var(--touch-min); flex-shrink: 0; }
+.travel-passport__toolbar { display: flex; align-items: flex-end; justify-content: space-between; gap: var(--space-1); height: calc(var(--touch-kid) + var(--space-2)); padding: 0 var(--space-5); }
+.travel-passport__toolbar > .fm-btn { margin-bottom: var(--space-1); min-inline-size: var(--touch-kid); flex-shrink: 0; }
 /* Index tabs, standing on the head of the book. The current one is the same
    paper as the page and loses its bottom edge so it joins the leaf below it;
    the others are board, sunk a few pixels, the way a divider you have not
    turned to sits lower in the stack. */
 .travel-passport__tabs { display: flex; align-items: flex-end; gap: var(--space-0-5); min-width: 0; max-width: 72%; overflow-x: auto; scrollbar-width: none; padding-inline-end: var(--space-1); }
 .travel-passport__tab {
-  flex: 0 1 auto; min-width: 0; min-height: var(--touch-min) !important;
+  flex: 0 1 auto; min-width: 0; min-height: var(--touch-kid) !important;
   max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   padding: var(--space-1) var(--space-2) var(--space-2);
   border: 0; cursor: pointer; font: inherit; font-family: var(--font-display); font-weight: 700; font-size: var(--fs-100);
@@ -211,7 +211,7 @@
 .travel-passport__photo img { display: block; width: 100%; height: 100%; min-height: 0; object-fit: contain; background: var(--paper-2); }
 .travel-passport__photo-wait { min-height: 0; height: calc(var(--book-height) * 0.36); display: grid; align-content: center; justify-items: center; text-align: center; padding: var(--space-1); background: var(--paper-2); color: var(--ink-3); font-size: var(--fs-100); }
 .travel-passport__photo-wait > span { font-size: var(--fs-600); color: var(--gold-light); }
-.travel-passport__picture-retry { position: absolute; inset-inline-end: var(--space-1); bottom: var(--space-1); min-width: var(--touch-min); min-height: var(--touch-min); padding: var(--space-1); }
+.travel-passport__picture-retry { position: absolute; inset-inline-end: var(--space-1); bottom: var(--space-1); min-width: var(--touch-kid); min-height: var(--touch-kid); padding: var(--space-1); }
 
 /* One ring/mark in both surfaces. Solid ink with a light halo stays readable
    where it overlaps a photograph; multiply made it disappear into the art.
@@ -386,9 +386,9 @@
   .travel-passport__missing { height: 88px; }
   .travel-passport__collection-note { display: none; }
   .travel-passport__page-head h2, .travel-passport__collection-head h3 { font-size: var(--fs-300); }
-  .travel-passport__toolbar { height: 50px; }
+  .travel-passport__toolbar { height: calc(var(--touch-kid) + var(--space-1)); }
   .travel-passport__reader-footer { padding-top: var(--space-1); }
-  .travel-passport__place { flex-basis: var(--touch-min); min-height: var(--touch-min) !important; padding: var(--space-0-5); }
+  .travel-passport__place { flex-basis: var(--touch-kid); min-height: var(--touch-kid) !important; padding: var(--space-0-5); }
   .travel-passport__reader-status { line-height: var(--lh-50); }
   .travel-passport__page-head .travel-passport__eyebrow,
   .travel-passport__collection-head .travel-passport__eyebrow { display: none; }
@@ -398,7 +398,7 @@
 @media (max-width: 760px) {
   .travel-passport { --book-height: clamp(488px, calc(100svh - 248px), 560px); --leaf-width: min(100%, 360px); max-width: 400px; }
   .travel-passport__cover { width: min(100%, 340px); padding: var(--space-3); }
-  .travel-passport__toolbar { height: 50px; padding: 0 0 var(--space-0-5); gap: var(--space-0-5); }
+  .travel-passport__toolbar { height: calc(var(--touch-kid) + var(--space-1)); padding: 0 0 var(--space-0-5); gap: var(--space-0-5); }
   .travel-passport__toolbar > .fm-btn { font-size: var(--fs-50); padding-inline: var(--space-1); margin-bottom: var(--space-0-5); }
   .travel-passport__tabs { max-width: 68%; gap: 2px; padding-inline-end: 0; }
   .travel-passport__tab { font-size: var(--fs-50); padding: var(--space-0-5) var(--space-1) var(--space-1); max-width: 128px; border-radius: var(--radius-1, 8px) var(--radius-1, 8px) 0 0; }
@@ -426,7 +426,7 @@
   .passport-stamp::before { inset: 3px; }
 
   .travel-passport__memory-actions { margin-top: var(--space-1); padding-inline: 0; gap: var(--space-0-5); }
-  .travel-passport__memory-actions > .fm-btn, .travel-passport__memory-actions > a.fm-btn { font-size: var(--fs-50); min-height: var(--touch-min) !important; padding: var(--space-0-5); }
+  .travel-passport__memory-actions > .fm-btn, .travel-passport__memory-actions > a.fm-btn { font-size: var(--fs-50); min-height: var(--touch-kid) !important; padding: var(--space-0-5); }
   .travel-passport__collection-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-0-5); margin-bottom: var(--space-1); padding-top: var(--space-1); border-top: 1px solid var(--pp-rule); }
   .travel-passport__collection-head h3 { font-size: var(--fs-300); margin: 0; }
   .travel-passport__collection-head p { font-size: var(--fs-50); white-space: nowrap; }
@@ -443,7 +443,7 @@
   .travel-passport__edge:disabled { opacity: .15; }
   .travel-passport__reader-footer { position: relative; padding: var(--space-1) 0 0; }
   .travel-passport__places { justify-content: flex-start; }
-  .travel-passport__place { flex-basis: var(--touch-min); min-height: var(--touch-min) !important; padding: var(--space-0-5); }
+  .travel-passport__place { flex-basis: var(--touch-kid); min-height: var(--touch-kid) !important; padding: var(--space-0-5); }
   .travel-passport__place > span { width: 28px; height: 28px; font-size: var(--fs-50); }
   .travel-passport__swipe-hint { display: none; }
   .travel-passport__reader-status { font-size: var(--fs-50); }
@@ -513,11 +513,11 @@
 
 /* The room the book sits in: the site's own warm ground, not a private one. */
 .passport-view { min-height: 100svh; padding: var(--space-1) var(--space-3); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--space-0-5); background: radial-gradient(ellipse at 50% 42%, var(--white), var(--paper-2)); }
-.passport-view__nav { width: min(100%, 900px); display: flex; align-items: center; justify-content: space-between; min-height: var(--touch-min); }
+.passport-view__nav { width: min(100%, 900px); display: flex; align-items: center; justify-content: space-between; min-height: var(--touch-kid); }
 .passport-view__nav > span { font-size: var(--fs-50); letter-spacing: .09em; text-transform: uppercase; color: var(--ink-3); }
-.passport-view__nav .fm-btn { min-height: var(--touch-min); }
+.passport-view__nav .fm-btn { min-height: var(--touch-kid); }
 .passport-view .passport-sharing { width: min(100%, 900px); margin: 0; text-align: center; }
-.passport-view .passport-sharing > .fm-btn { min-height: var(--touch-min); background: transparent; box-shadow: none; border: 0; font-size: var(--fs-50); }
+.passport-view .passport-sharing > .fm-btn { min-height: var(--touch-kid); background: transparent; box-shadow: none; border: 0; font-size: var(--fs-50); }
 .passport-view .passport-sharing__panel { text-align: start; }
 .travel-passport__avatar { width: 112px; height: 112px; display: grid; place-items: center; overflow: hidden; }
 .travel-passport__avatar img { width: 100%; height: 100%; object-fit: contain; }
@@ -588,7 +588,7 @@
 .passport-finale__actions > .fm-btn { order: 0; flex: 0 1 240px; min-width: 0; min-height: var(--touch-kid); }
 /* The two ways out: still real targets, but read as what they are. */
 .passport-finale__actions > .fm-btn--ghost {
-  order: 2; flex: 0 0 auto; min-height: var(--touch-min);
+  order: 2; flex: 0 0 auto; min-height: var(--touch-kid);
   background: transparent; box-shadow: none; border: 0;
   color: var(--white); font-size: var(--fs-100); font-weight: 700;
   text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 4px;
@@ -669,8 +669,8 @@
 @media (prefers-reduced-motion: reduce) { .passport-finale *, .passport-finale *::before, .passport-finale *::after { animation: none !important; transition: none !important; } .passport-finale .celebration { display: none; } }
 @media (max-width: 760px) {
   .passport-view { padding: var(--space-0-5) var(--space-2); justify-content: flex-start; gap: 0; }
-  .passport-view__nav { min-height: var(--touch-min); }
-  .passport-view__nav .fm-btn { min-height: var(--touch-min); font-size: var(--fs-50); padding-inline: var(--space-0-5); }
+  .passport-view__nav { min-height: var(--touch-kid); }
+  .passport-view__nav .fm-btn { min-height: var(--touch-kid); font-size: var(--fs-50); padding-inline: var(--space-0-5); }
   .passport-view__nav > span { font-size: 9px; }
   .travel-passport__item { font-size: var(--fs-50); gap: 3px; }
   .travel-passport__item > .album__crop { width: 58px; }
