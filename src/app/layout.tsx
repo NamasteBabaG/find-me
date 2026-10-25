@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { Fredoka, Rubik } from "next/font/google";
+import localFont from "next/font/local";
 import { I18nProvider } from "@/i18n/client";
 import { getI18n } from "@/i18n/server";
 import { env } from "@/lib/env";
@@ -8,8 +8,8 @@ import { InteractionFeedback } from "@/ui/InteractionFeedback";
 import "./globals.css";
 
 // Rubik carries the site (400–900, Latin + Hebrew). Fredoka is reserved for kid-facing game UI.
-const rubik = Rubik({ subsets: ["hebrew", "latin"], weight: ["400", "500", "600", "700", "800", "900"], variable: "--font-rubik", display: "swap" });
-const fredoka = Fredoka({ subsets: ["hebrew", "latin"], weight: ["400", "500", "600"], variable: "--font-fredoka", display: "swap" });
+const rubik = localFont({ src: "./fonts/rubik-variable.ttf", weight: "400 900", variable: "--font-rubik", display: "swap" });
+const fredoka = localFont({ src: "./fonts/fredoka-variable.ttf", weight: "400 600", variable: "--font-fredoka", display: "swap" });
 
 export async function generateMetadata(): Promise<Metadata> {
   const { t } = await getI18n();

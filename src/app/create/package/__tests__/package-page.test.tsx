@@ -22,7 +22,7 @@ beforeEach(() => { pricing.user = null; pricing.eligible.mockReset().mockResolve
 
 it("advertises 27 hides per new QA world before any scenes have been selected", async () => {
   vi.stubGlobal("React", React);
-  const page = await CreatePackagePage();
+  const page = await CreatePackagePage({ searchParams: Promise.resolve({}) });
   const options = page.props.children.props.options as { meta: string }[];
   expect(options).toHaveLength(3);
   expect(options[0]!.meta).toContain("27");
@@ -35,7 +35,7 @@ it.each([false, true])("shows the server-verified passport prices (eligible=%s)"
   vi.stubGlobal("React", React);
   pricing.user = { id: "parent", email: "parent@example.invalid" };
   pricing.eligible.mockResolvedValue(eligible);
-  const page = await CreatePackagePage();
+  const page = await CreatePackagePage({ searchParams: Promise.resolve({}) });
   const picker = page.props.children.props;
   expect(picker.options.map((o: { price: string }) => o.price)).toEqual((eligible ? [3000, 6000, 9000] : [3900, 6900, 9900]).map(p => formatMoney(p, "ILS", "he")));
   expect(picker.options[0].name).toBe(eligible ? he.home.pricing.additionalTitle : "הרפתקה ראשונה");
@@ -46,7 +46,7 @@ it("never offers a passport discount to a different signed-in account", async ()
   vi.stubGlobal("React", React);
   pricing.user = { id: "another-parent", email: "other@example.invalid" };
   pricing.eligible.mockResolvedValue(true);
-  const page = await CreatePackagePage();
+  const page = await CreatePackagePage({ searchParams: Promise.resolve({}) });
   expect(page.props.children.props.options[0].price).toBe(formatMoney(3900, "ILS", "he"));
   expect(pricing.eligible).not.toHaveBeenCalled();
 });

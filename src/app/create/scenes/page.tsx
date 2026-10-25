@@ -21,7 +21,7 @@ export async function generateMetadata() {
 }
 
 /** Which worlds. Each one brings its nine boards, so this step counts journeys, not boards. */
-export default async function CreateScenesPage({ searchParams }: { searchParams?: Promise<{ draft?: string }> } = {}) {
+export default async function CreateScenesPage({ searchParams }: { searchParams: Promise<{ draft?: string }> }) {
   const params = await searchParams;
   const c = getContainer();
   const [user, draft, { t, locale }] = await Promise.all([currentUser(), currentDraft(params?.draft, "creation"), getI18n()]);

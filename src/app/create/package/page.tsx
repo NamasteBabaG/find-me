@@ -20,7 +20,7 @@ export async function generateMetadata() {
   return { title: t.create.package.title };
 }
 
-export default async function CreatePackagePage({ searchParams }: { searchParams?: Promise<{ draft?: string }> } = {}) {
+export default async function CreatePackagePage({ searchParams }: { searchParams: Promise<{ draft?: string }> }) {
   const params = await searchParams;
   const c = getContainer();
   const [user, draft, { t, locale }, currency] = await Promise.all([currentUser(), currentDraft(params?.draft, "creation"), getI18n(), getCurrency()]);

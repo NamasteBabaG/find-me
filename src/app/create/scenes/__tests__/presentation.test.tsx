@@ -20,7 +20,7 @@ describe("creation world artwork", () => {
   it("uses only artwork bound to the purchased scene, otherwise the actual scene or map", async () => {
     vi.stubGlobal("React", React);
     try {
-      const result = await CreateScenesPage();
+      const result = await CreateScenesPage({ searchParams: Promise.resolve({}) });
       const picker = result.props.children;
       expect(picker.type).toBe(ScenePicker);
       for (const world of allWorlds()) {

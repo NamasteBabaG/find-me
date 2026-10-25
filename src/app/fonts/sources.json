@@ -1,0 +1,46 @@
+{
+  "purpose": "Pinned, unmodified local copies of the existing Rubik and Fredoka families; builds do not fetch Google Fonts.",
+  "license": "SIL Open Font License 1.1; original notices accompany each family.",
+  "fonts": [
+    {
+      "family": "rubik",
+      "googleFontsCommit": "8b0a1d0f5983c89bc2b93f1b5fb55f9e252744b5",
+      "files": {
+        "rubik-variable.ttf": {
+          "upstream": "https://raw.githubusercontent.com/google/fonts/8b0a1d0f5983c89bc2b93f1b5fb55f9e252744b5/ofl/rubik/Rubik%5Bwght%5D.ttf",
+          "sha256": "1b3a7437ba2af80e465e773ed60c5036d1ba6ace492d89046dbcf18fb31e4e88",
+          "bytes": 359804
+        },
+        "rubik-OFL.txt": {
+          "upstream": "https://raw.githubusercontent.com/google/fonts/8b0a1d0f5983c89bc2b93f1b5fb55f9e252744b5/ofl/rubik/OFL.txt",
+          "sha256": "3cb6a6084f5d942a8f3b5fda0f6a90dde18d7f7f1798886f4043d18f8c1a811e",
+          "bytes": 4383,
+          "upstreamSha256": "472cbe7c25441df63e9c7864b43eb3c0f4b3df950c66a76224e6cfe1eae843fb",
+          "formatting": "Trailing whitespace normalized; original copyright and license wording unchanged."
+        }
+      },
+      "publicLicenseUrl": "/fonts/rubik-OFL.txt",
+      "unmodifiedFontFiles": true
+    },
+    {
+      "family": "fredoka",
+      "googleFontsCommit": "a60a77e14f28abd4ef243a1b5dfc48df0cec5205",
+      "files": {
+        "fredoka-variable.ttf": {
+          "upstream": "https://raw.githubusercontent.com/google/fonts/a60a77e14f28abd4ef243a1b5dfc48df0cec5205/ofl/fredoka/Fredoka%5Bwdth%2Cwght%5D.ttf",
+          "sha256": "2ba02e68b152868aef9ba28e24b3648c7d457fe6f25c761f2c2c53fb61a73fc8",
+          "bytes": 159184
+        },
+        "fredoka-OFL.txt": {
+          "upstream": "https://raw.githubusercontent.com/google/fonts/a60a77e14f28abd4ef243a1b5dfc48df0cec5205/ofl/fredoka/OFL.txt",
+          "sha256": "9bbd4f5f107895d5a213579b73821fadd05105241cf4360e86050199fcfd6034",
+          "bytes": 4387,
+          "upstreamSha256": "5c9e7eee5c6b25f4b05b8d53b2e470ea4962f9ced742d044a98f7d95d1375bab",
+          "formatting": "Trailing whitespace normalized; original copyright and license wording unchanged."
+        }
+      },
+      "publicLicenseUrl": "/fonts/fredoka-OFL.txt",
+      "unmodifiedFontFiles": true
+    }
+  ]
+}
