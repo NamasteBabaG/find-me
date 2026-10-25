@@ -110,7 +110,8 @@ export function PhotoUploader({ childName, hasPhoto, rejectedCode, endpoint = "/
   useEffect(() => {
     const el = cropperRef.current;
     if (!el) return;
-    const measure = () => setBox(Math.round(el.getBoundingClientRect().width) || BOX_MAX);
+    // The entrance animation scales painted bounds; cropping uses the stable layout size.
+    const measure = () => setBox(el.clientWidth || BOX_MAX);
     measure();
     window.addEventListener("resize", measure);
     return () => window.removeEventListener("resize", measure);

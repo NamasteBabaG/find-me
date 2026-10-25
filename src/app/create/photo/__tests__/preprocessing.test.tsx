@@ -74,3 +74,28 @@ it("resumes a saved paid-game photo through its supplied route, not the new-orde
   expect(router.prefetch).not.toHaveBeenCalled();
   expect(fetch).not.toHaveBeenCalled();
 });
+
+
+it.each([320, 256])("keeps the %ipx layout crop when the entrance animation scales its painted bounds", async layoutWidth => {
+  vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(layoutWidth);
+  vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(() =>
+    new DOMRect(0, 0, layoutWidth * 0.6, layoutWidth * 0.6));
+  vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockImplementation(() => ({ drawImage: vi.fn() }) as unknown as CanvasRenderingContext2D);
+  vi.spyOn(HTMLCanvasElement.prototype, "toBlob").mockImplementation(cb => cb(new Blob(["synthetic"], { type: "image/jpeg" })));
+  const view = render(<I18nProvider locale="en" dict={en}><PhotoUploader childName="Example" hasPhoto={false} rejectedCode={null} /></I18nProvider>);
+  fireEvent.change(view.container.querySelector('input[type="file"]')!, { target: { files: [new File(["synthetic"], "sample.png", { type: "image/png" })] } });
+  const img = view.container.querySelector(".cropper img") as HTMLImageElement;
+  Object.defineProperties(img, { naturalWidth: { value: 800 }, naturalHeight: { value: 1000 } });
+  fireEvent.load(img);
+  await waitFor(() => expect(img.style.width).toBe(`${layoutWidth}px`));
+  expect(img.style.height).toBe(`${layoutWidth * 1.25}px`);
+  fireEvent.click(view.getByRole("checkbox"));
+  fireEvent.click(view.getByRole("button", { name: new RegExp(en.create.photo.confirm) }));
+  await waitFor(() => expect(fetch).toHaveBeenCalledTimes(1));
+  const sent = vi.mocked(fetch).mock.calls[0]![1]!.body as FormData;
+  const crop = JSON.parse(String(sent.get("crop")));
+  expect(crop.x).toBeCloseTo(0);
+  expect(crop.y).toBeCloseTo(0.02);
+  expect(crop.w).toBeCloseTo(1);
+  expect(crop.h).toBeCloseTo(0.8);
+});
