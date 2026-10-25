@@ -1,3 +1,4 @@
+import { abandonedLocalPatchImageProof } from "./local-patch-pending-image";
 import { detectiveAutomaticRecoveryQualified } from "./detective-automatic-recovery";
 import { hasLocalPatchCapability } from "../../domain/scene/local-patch-family";
 import type { Container } from "../container";
@@ -54,7 +55,7 @@ export async function recoverLocalPatchImageInterruptions(c: Container, gameId: 
   const worldId = boardWizardWorldId(gameId), budget = boardWizardBudgetOf(c), audit = await budget.audit(worldId);
   if (audit.overCapMicroUsd || audit.conflictRequestKeys.length || audit.overrunRequestKeys.length) return 0;
   const store = new LocalPatchRetainedPurchaseStore(c, gameId, budget);
-  let recovered = 0;
+  let recovered = 0, reconciled = 0;
   for (const requestKey of audit.unknownRequestKeys) {
     const authored = interruptedLocalPatchImageRequest(requestKey);
     if (!authored || authored.attempt !== 1) continue;
@@ -71,7 +72,15 @@ export async function recoverLocalPatchImageInterruptions(c: Container, gameId: 
     if (!request || request.state !== "unknown" || request.origin !== "reserved" || request.scope !== "image" || request.conflicts.length) continue;
     let diagnostic: unknown = null;
     if (retained) {
-      if (retained.evidence || retained.operationFingerprint !== request.operationFingerprint) continue;
+      if (retained.operationFingerprint !== request.operationFingerprint) continue;
+      if (retained.evidence) {
+        // The answer can arrive after lease closure but before business adoption.
+        // Reconcile that original bill; it authorizes no image or new opinion.
+        if (await abandonedLocalPatchImageProof(c, gameId, request, row.id)) {
+          await budget.settle(worldId, requestKey, retained.evidence); reconciled++;
+        }
+        continue;
+      }
       let envelope: { version?: string; bytesBase64?: unknown; failureReceipt?: unknown };
       try { envelope = JSON.parse(retained.bytes.toString()); } catch { continue; }
       if (envelope.version !== RETAINED_RENDER_VERSION || envelope.bytesBase64 !== null) continue;
@@ -88,7 +97,10 @@ export async function recoverLocalPatchImageInterruptions(c: Container, gameId: 
       // Legacy adapter discarded the typed transport receipt. Only its exact
       // missing-result marker qualifies, not arbitrary unknown billing evidence.
       const legacy = `${requestKey} failed after dispatch: LOCAL_PATCH_PAINTER: ${requestKey} was dispatched and no usable image came back (cost_unknown: Request billing is unknown; reservation retained and no retry dispatched)`;
-      if (request.unknownReasons.length !== 1 || request.unknownReasons[0] !== legacy) continue;
+      if (request.unknownReasons.length !== 1 || request.unknownReasons[0] !== legacy) {
+        diagnostic = await abandonedLocalPatchImageProof(c, gameId, request, row.id);
+        if (!diagnostic) continue;
+      }
     }
     const proof = { policyId: IMAGE_INTERRUPTION_POLICY, gameId, ownerId: game.ownerId, sceneId: scene.id,
       variantId: row.id, requestKey, operationFingerprint: request.operationFingerprint, unknownReasons: request.unknownReasons, diagnostic };
@@ -123,6 +135,14 @@ export async function recoverLocalPatchImageInterruptions(c: Container, gameId: 
       await tx.generationJob.updateMany({ where: { id: `job_${gameId}`, status: "FAILED", currentStep: "local-patch:needs-release" },
         data: { status: "QUEUED", currentStep: "local-patch", lastError: null } });
       recovered++;
+    });
+  }
+  if (reconciled && !(await budget.audit(worldId)).held) {
+    await c.db.$transaction(async tx => {
+      await fenceLocalPatchImages(tx, gameId); await fence?.(tx);
+      await tx.generationJob.updateMany({ where: { id: `job_${gameId}`, status: "FAILED", currentStep: "local-patch:needs-release",
+        lastError: "local-patch: the world ledger is held; reconcile its unresolved charge before continuing" },
+        data: { status: "QUEUED", currentStep: "local-patch", lastError: null } });
     });
   }
   return recovered;

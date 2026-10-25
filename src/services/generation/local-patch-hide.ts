@@ -418,7 +418,7 @@ export async function runLocalPatchHide(c: Container, deps: LocalPatchHideDeps, 
   const subjectDirection = await subjectDirectionFor(c, gameId, hide.id, scene.sceneVersion, row.judgeJson,
     { basePolicySha256: deps.renderPolicySha256, attemptNumber: attempt });
   const attemptResult = await renderLocalPatchHide({
-    ledger: budget, store: new LocalPatchRetainedPurchaseStore(c, gameId, budget),
+    ledger: budget, store: new LocalPatchRetainedPurchaseStore(c, gameId, budget, input.deadlineAt),
     renderPolicySha256: deps.renderPolicySha256, render: deps.render, ...(deps.judge ? { judge: deps.judge } : {}),
   }, {
     worldId, board, hide, composedPng: artwork, contentVersion: scene.sceneVersion, placementContext,

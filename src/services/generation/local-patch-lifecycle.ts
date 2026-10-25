@@ -21,7 +21,7 @@ export async function fenceLocalPatchImages(tx: Prisma.TransactionClient, gameId
  * must not save a new envelope or start the subsequent judge purchase. */
 export class LocalPatchRetainedPurchaseStore implements RetainedPurchaseStore {
   constructor(private readonly c: Container, private readonly gameId: string,
-    private readonly ledger: Pick<PurchaseLedger, "settle" | "markUnknown">) {}
+    private readonly ledger: Pick<PurchaseLedger, "settle" | "markUnknown">, private readonly retentionDeadlineAt?: number) {}
 
   get(worldId: string, requestKey: string) {
     this.checkWorld(worldId);
@@ -31,10 +31,28 @@ export class LocalPatchRetainedPurchaseStore implements RetainedPurchaseStore {
   async put(worldId: string, requestKey: string, value: RetainedPurchase) {
     this.checkWorld(worldId);
     try {
-      await this.c.db.$transaction(async tx => {
-        await fenceLocalPatchImages(tx, this.gameId);
-        await new PrismaRetainedPurchaseStore(tx).put(worldId, requestKey, value);
-      }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, timeout: 30_000 });
+      // Retry ONLY the immutable answer's idempotent put. Parallel worlds can
+      // contend for a transaction connection; dropping a paid answer at P2028
+      // left its reservation pending forever. No provider is called here.
+      const until = Math.min(Date.now() + 25_000, this.retentionDeadlineAt ?? Infinity);
+      let previous: unknown;
+      for (let attempt = 0; ; attempt++) {
+        const remaining = until - Date.now();
+        if (remaining < 2_000) throw previous ?? new Error("LOCAL_PATCH_RETAIN: no retention window remains");
+        const maxWait = Math.min(5_000, Math.floor(remaining / 3));
+        try {
+          await this.c.db.$transaction(async tx => {
+            await fenceLocalPatchImages(tx, this.gameId);
+            await new PrismaRetainedPurchaseStore(tx).put(worldId, requestKey, value);
+          }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, maxWait, timeout: Math.min(20_000, remaining - maxWait - 1_000) });
+          break;
+        } catch (error) {
+          const transient = error instanceof Prisma.PrismaClientKnownRequestError
+            && ["P2028", "P2024", "P2034"].includes(error.code);
+          if (!transient || attempt >= 2) throw error;
+          previous = error;
+        }
+      }
     } catch (error) {
       if (!(error instanceof LocalPatchDeleted)) throw error;
       if (value.evidence) await this.ledger.settle(worldId, requestKey, value.evidence);

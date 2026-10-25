@@ -24,7 +24,7 @@ import { foregroundForPinnedPrompt, foregroundPlanConflict } from "./local-patch
 const equal = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
 const object = (value: unknown): Record<string, unknown> => value !== null && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
 export type AuthoredLocalPatchReceipt = { compositionVersion?: unknown; authoredReturn?: unknown; authoredRecovery?: unknown;
-  selfRepair?: unknown; recoveryComposition?: unknown; foreground?: unknown; judgedSha256?: unknown; promptVersion?: unknown; boardReview?: unknown };
+  propJoinCorrection?: unknown; selfRepair?: unknown; recoveryComposition?: unknown; foreground?: unknown; judgedSha256?: unknown; promptVersion?: unknown; boardReview?: unknown };
 
 /** Reconstruct from trusted pinned source data, never from a claimed receipt. */
 export function expectedAuthoredLocalPatchReturn(board: LocalPatchBoard, hide: LocalPatchHide, contentVersion: number,
@@ -184,7 +184,7 @@ export async function authoredLocalPatchRecoveryEvidenceMatches(db: Prisma.Trans
 /** Both publication routes resolve game authority afresh. No base-catalog
  * fallback can erase a malformed or unknown companion pin. */
 export async function authoredLocalPatchPublicationMatches(db: Prisma.TransactionClient,
-  input: { gameId: string; sceneVersion: number; hideId: string; judgeJson: string | null; variantId?: string }): Promise<boolean> {
+  input: { gameId: string; sceneVersion: number; hideId: string; judgeJson: string | null; variantId?: string; assetId?: string }): Promise<boolean> {
   try {
     const placementContext = await resolveLocalPatchBoardsForGame(db, input.gameId, input.sceneVersion);
     let receipt: AuthoredLocalPatchReceipt | null;
@@ -194,6 +194,8 @@ export async function authoredLocalPatchPublicationMatches(db: Prisma.Transactio
       || receipt?.authoredReturn !== undefined || receipt?.authoredRecovery !== undefined;
     if (!claims && !hide?.returnRect) return true;
     if (!board || !hide || !authoredLocalPatchReturnMatches(receipt, board, hide, input.sceneVersion, true, placementContext)) return false;
+    if (input.assetId?.startsWith("ast_prop_") && receipt?.propJoinCorrection === undefined) return false;
+    if (receipt?.propJoinCorrection !== undefined && !await (await import("./prop-join-repair")).propJoinPublicationMatches(db,input)) return false;
     if (receipt?.authoredRecovery === undefined && !sourceBodyForHide(placementContext,input.hideId)) return true;
     const row = input.variantId ? await db.targetVariantAsset.findUnique({ where: { id: input.variantId }, select: { promptVersion: true } }) : null;
     return !!row && await authoredLocalPatchRecoveryEvidenceMatches(db, { gameId: input.gameId, board, hide, sceneVersion: input.sceneVersion,

@@ -1,3 +1,4 @@
+import { resumePropJoinRepair,applyPropJoinRepair } from "./prop-join-repair";
 import { sourceBodyBirthMarker } from "../../domain/generation/detectives-operational-policy";
 import { readSourceBodyRepairPin, sourceBodyPurchaseCandidate } from './source-body-repair-pin';
 import { sourceBodyMarker } from '../../domain/scene/source-body-repair';
@@ -34,6 +35,8 @@ import { needsPlayerReview, playerReviewEnabled } from "./local-patch-player-rev
 import { runLocalPatchSelfRepair, savedApplyingRepairOf, SELF_REPAIR_REQUEST_ACTION, type SelfRepairDeps } from "./local-patch-self-repair";
 import { WorldBudgetError } from "./world-budget";
 import { recoverLocalPatchImageInterruptions } from "./local-patch-interruption-recovery";
+import { reconcilePendingLocalPatchImages } from "./local-patch-pending-image";
+import { PENDING_IMAGE_LEASE_MS } from "../../domain/generation/pending-image-lease";
 import { recoverPreparedLocalPatchReview } from "./local-patch-review-interruption-recovery";
 import { activateLocalPatchEmergencyBudget } from "./local-patch-budget-recovery";
 import { localPatchEvidenceRecovery, LOCAL_PATCH_EVIDENCE_RETRY_BACKOFF_MS } from "./local-patch-review-recovery";
@@ -80,7 +83,7 @@ import {
 /** Games this engine owns. Nothing else may route here, and it routes nowhere else. */
 export const LOCAL_PATCH_STYLE = "local-patch-world-v1";
 /** After this long without a heartbeat, another worker may take the work. */
-export const LOCAL_PATCH_LEASE_MS = 6 * 60_000;
+export const LOCAL_PATCH_LEASE_MS = PENDING_IMAGE_LEASE_MS;
 /** A slice that cannot finish one paid hide should not start one. */
 export const LOCAL_PATCH_MIN_SLICE_MS = 240_000;
 /** How many hides one tick paints unless told otherwise. */
@@ -319,6 +322,10 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
   // and the job sat occupied until the lease ran out. Losing the race is fine -
   // the next tick takes it - but believing you won it with the wrong number is
   // not.
+  // A bounded free compositor correction can resume ONLY its authenticated
+  // from-birth prop refusal. It grants no picture, opinion or budget.
+  if (job.currentStep === LOCAL_PATCH_RECOVERY_EXHAUSTED && await resumePropJoinRepair(c, gameId))
+    job = await c.db.generationJob.findUniqueOrThrow({ where: { id: job.id } });
   // A job parked for a person is not a job to take. Every OTHER failure stays
   // claimable, because those do get better by trying again.
   if (job.currentStep && PARKED_STEPS.includes(job.currentStep)) {
@@ -442,6 +449,12 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
     // A transient DB write/lost acknowledgement does not authorize a fresh
     // image or require an operator: the same durable repair branch replays.
     return { ...empty, claimed: true, pending: !refused, paused: false, attention: refused ? reason : null };
+  }
+
+  if (automatic) {
+    await reconcilePendingLocalPatchImages(c, gameId, claim, fence);
+    await recoverLocalPatchImageInterruptions(c, gameId, fence);
+    await applyPropJoinRepair(c, gameId, undefined, { fence, readBoardArt: deps.readBoardArt });
   }
 
   const blocked: { boardId: string; reason: string }[] = [];
@@ -831,6 +844,10 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
       catch (error) {
         if (automatic && error instanceof WorldBudgetError && error.code === "cap_exceeded") { deferredBudgetError = error; continue; }
         throw error;
+      }
+      if (outcome.state === "generated") {
+        const corrected = await applyPropJoinRepair(c, gameId, item.hide.id, { fence, readBoardArt: deps.readBoardArt });
+        if (corrected) outcome = { ...outcome, assetId: corrected };
       }
       outcomes.push(outcome);
       if (outcome.state === "held") {
