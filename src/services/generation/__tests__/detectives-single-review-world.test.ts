@@ -1,3 +1,4 @@
+import { localPatchReturnRegion, LOCAL_PATCH_COMPOSITION_VERSION, AUTHORED_PATCH_COMPOSITION_VERSION } from "../../../domain/scene/local-patch-return-region";
 import { EXPLORERS_OPERATIONAL_RELEASE } from "../../../domain/generation/explorers-operational-policy";
 import { pinExplorersOperationalPolicy, explorersOperationalPolicyOf } from "../explorers-operational-policy";
 import { localPatchBoardsForVersion } from "../../../domain/scene/local-patch-catalog";
@@ -12,7 +13,7 @@ import { sourceBodyMarker } from '../../../domain/scene/source-body-repair';
 import { planDetectivesCompletionTail, authorizeDetectivesCompletionTail, resumeDetectivesCompletionTail } from "../detectives-completion-budget";
 import { detectivesTailId, detectivesTailResumeId } from "../../../domain/generation/detectives-completion-budget";
 import { nativeMaskTailMarker } from "../../../domain/generation/native-mask-tail";
-import { guidedFrameGeometry, guidedFrameCandidate, GUIDED_FRAME_RECOVERY_VERSION } from "../../../domain/generation/guided-frame-recovery";
+import { guidedFrameGeometry, guidedFrameCandidate, newGuidedFrameMarker, GUIDED_FRAME_RECOVERY_VERSION } from "../../../domain/generation/guided-frame-recovery";
 import { cropOf } from "../../../domain/scene/local-patch-hides";
 import { runLocalPatchHide } from "../local-patch-hide";
 import { reviewLocalPatchBoard } from "../local-patch-board-review";
@@ -587,38 +588,43 @@ it("completes a fresh Explorer Journey with 27 images and exactly 27 combined LO
 },1500000);
 
 
-it("completes a from-birth Explorer guided third painting through one fresh LOW and normal all-27 publication", async () => {
+it("resumes v3 and v4 Explorer guided thirds through one fresh LOW each and normal all-27 publication", async () => {
   vi.useFakeTimers({ toFake: ["Date"] });
   try {
     const gameId = "explorer-born-guided-third-synthetic";
-    await newDetectiveWorld(gameId, 8, true, true);
+    await newDetectiveWorld(gameId, 7, true, true);
     const context = await resolveLocalPatchBoardsForGame(db, gameId, 12);
     const journey = new Set(boardsOfWorlds(["journey"]));
     const hides = context.boards.filter(board => journey.has(board.board)).flatMap(board => board.hides);
-    const selected = context.boards.find(board => board.board === "greatwall")!.hides[1]!;
-    const provider = controlledSol(false, true, selected.id, false, false, 12);
+    const legacy = context.boards.find(board => board.board === "paris")!.hides[2]!;
+    const authored = context.boards.find(board => board.board === "greatwall")!.hides[1]!;
+    expect(legacy.returnRect).toBeUndefined(); expect(authored.returnRect).toBeDefined();
+    const selected = [legacy, authored];
+    const selectedIds = selected.map(hide => hide.id);
+    const provider = controlledSol(false, true, selectedIds, true, false, 12);
     const synchronous = vi.fn(async () => { throw Error("An Explorer cannot buy a historical HIGH question"); });
     const diagnose = vi.fn(async () => { throw Error("A conclusive LOW boundary refusal already locates this repair"); });
     const container = { ...c, visualReview: { request: synchronous }, backgroundReview: provider.fake } as Container;
-    let guides = 0;
+    let guides = 0, resumedCheckpoint = false;
     const render = vi.fn<LocalPatchHideDeps["render"]>(async ({ requestKey, stylePng, placementGuidePng, placementGuideVersion, maskPng, subjectQuality }) => {
       expect(subjectQuality).toBe("medium");
       const hide = hides.find(hide => requestKey.startsWith(hide.id + ":"));
       if (!hide) throw Error("Unknown synthetic Explorer hide");
       const attempt = Number(requestKey.split(":").at(-1));
-      expect(hide.id === selected.id ? [1, 2, 3] : [1]).toContain(attempt);
+      expect(selectedIds.includes(hide.id) ? [1, 2, 3] : [1]).toContain(attempt);
       let frame = maskForHide(hide);
-      if (hide.id === selected.id && attempt === 3) {
+      if (selectedIds.includes(hide.id) && attempt === 3) {
         guides++;
         expect(placementGuideVersion).toBe(GUIDED_FRAME_RECOVERY_VERSION);
         expect(placementGuidePng).toBeDefined();
-        const geometry = guidedFrameGeometry(frame, hide.returnRect!);
-        expect(geometry.returned).toEqual(hide.returnRect!);
+        const unchangedReturn = localPatchReturnRegion(cropOf(hide), frame, hide.returnRect).local;
+        const geometry = guidedFrameGeometry(frame, unchangedReturn);
+        expect(geometry.returned).toEqual(unchangedReturn);
         frame = geometry.target;
         const alpha = await sharp(maskPng).ensureAlpha().raw().toBuffer();
         let editable = 0;
         for (let i = 3; i < alpha.length; i += 4) if (alpha[i] === 0) editable++;
-        expect(editable).toBe(hide.returnRect!.width * hide.returnRect!.height);
+        expect(editable).toBe(unchangedReturn.width * unchangedReturn.height);
       } else expect(placementGuidePng).toBeUndefined();
       const figure = await sharp({ create: { width: Math.round(frame.width * 0.6), height: Math.round(frame.height * 0.8), channels: 4,
         background: attempt === 2 ? "#304f91" : attempt === 3 ? "#704f91" : "#1e3ca0" } }).png().toBuffer();
@@ -631,13 +637,27 @@ it("completes a from-birth Explorer guided third painting through one fresh LOW 
     while (result.pending && ticks++ < 900) {
       result = await runLocalPatchWorldSlice(container, deps, gameId, { hardDeadlineAt: Date.now() + 270000, diagnose });
       expect(result.attention).toBeNull();
+      if (!resumedCheckpoint) {
+        const row = await db.targetVariantAsset.findFirst({ where: { variant: "A", status: "FAILED", attempts: 2,
+          targetInstance: { gameScene: { gameId, sceneSlug: "paris" }, targetId: legacy.targetId } } });
+        if (row && guidedFrameCandidate(row)) {
+          const grant = await explorersOperationalPolicyOf(db, gameId);
+          expect(grant).not.toBeNull();
+          const receipt = JSON.parse(row.judgeJson!);
+          // Local synthetic interruption fixture: the real failing case already
+          // wrote this checkpoint and made no third provider purchase.
+          await db.targetVariantAsset.update({ where: { id: row.id }, data: { status: "PENDING", attempts: 3,
+            judgeJson: JSON.stringify({ ...receipt, guidedFrameRecovery: newGuidedFrameMarker(row, grant!.authorizationSha256, 12) }) } });
+          resumedCheckpoint = true;
+        }
+      }
       if (result.pending) await vi.advanceTimersByTimeAsync(LEAN_RECOVERY_BACKOFF_MS + 1);
     }
     expect(result.pending).toBe(false);
-    expect(render).toHaveBeenCalledTimes(29);
-    expect(guides).toBe(1);
-    expect(provider.creates).toHaveLength(29);
-    expect(provider.creates.filter(question => question.hideId === selected.id)).toHaveLength(3);
+    expect(render).toHaveBeenCalledTimes(31);
+    expect(guides).toBe(2); expect(resumedCheckpoint).toBe(true);
+    expect(provider.creates).toHaveLength(31);
+    for (const hide of selected) expect(provider.creates.filter(question => question.hideId === hide.id)).toHaveLength(3);
     const game = await db.game.findUniqueOrThrow({ where: { id: gameId } });
     expect(["READY", "DELIVERED"]).toContain(game.status);
     const config = parseGameConfig(game.configJson!);
@@ -645,7 +665,7 @@ it("completes a from-birth Explorer guided third painting through one fresh LOW 
     expect(config.scenes.flatMap(scene => scene.targets)).toHaveLength(27);
     const rows = await db.targetVariantAsset.findMany({ where: { variant: "A", targetInstance: { gameScene: { gameId } } }, include: { targetInstance: { include: { gameScene: true } } } });
     for (const row of rows) {
-      const guided = row.targetInstance.gameScene.sceneSlug === "greatwall" && row.targetInstance.targetId === selected.targetId;
+      const guided = selected.some(hide => row.targetInstance.gameScene.sceneSlug === (hide.id === legacy.id ? "paris" : "greatwall") && row.targetInstance.targetId === hide.targetId);
       expect(row.status).toBe("GENERATED");
       expect(row.attempts).toBe(guided ? 3 : 1);
       const receipt = JSON.parse(row.judgeJson!);
@@ -653,6 +673,10 @@ it("completes a from-birth Explorer guided third painting through one fresh LOW 
       if (guided) {
         expect(receipt.guidedFrameRecovery).toMatchObject({ version: GUIDED_FRAME_RECOVERY_VERSION, sceneVersion: 12, originalAttempts: 2 });
         expect(receipt.qualityDisposition.state).toBe("acceptable");
+        if (row.targetInstance.gameScene.sceneSlug === "paris") {
+          expect(receipt.compositionVersion).toBe(LOCAL_PATCH_COMPOSITION_VERSION);
+          expect(receipt.authoredReturn).toBeUndefined();
+        } else expect(receipt.compositionVersion).toBe(AUTHORED_PATCH_COMPOSITION_VERSION);
       }
       expect(await allowedDualPublication(db, publicationBinding(gameId, row))).toBe(true);
       expect(await hasLocalPatchPublicationPolicy(container, publicationBinding(gameId, row))).toBe(true);

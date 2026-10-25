@@ -5,7 +5,7 @@ import sharp from "sharp";
 import type { LocalPatchBoard, LocalPatchHide } from "../../domain/scene/local-patch-hides";
 import { cropOf, maskForHide } from "../../domain/scene/local-patch-hides";
 import { localPatchBoardsForVersion } from "../../domain/scene/local-patch-catalog";
-import { AUTHORED_PATCH_COMPOSITION_VERSION, authoredLocalPatchReturnContract, type AuthoredLocalPatchReturnContract } from "../../domain/scene/local-patch-return-region";
+import { AUTHORED_PATCH_COMPOSITION_VERSION, localPatchReturnRegion, authoredLocalPatchReturnContract, type AuthoredLocalPatchReturnContract } from "../../domain/scene/local-patch-return-region";
 import { AUTHORED_RECOVERY_COMPOSITION_VERSION, AUTHORED_RECOVERY_CONTEXT_VERSION, authoredRecoveryAlpha,
   authoredRecoveryParentSha256, readAuthoredLocalPatchRecovery } from "../../domain/scene/local-patch-authored-recovery";
 import { SELF_REPAIR_VERSION, selfRepairDecisionSchema } from "../../domain/scene/local-patch-self-repair";
@@ -44,6 +44,27 @@ export function expectedAuthoredLocalPatchReturn(board: LocalPatchBoard, hide: L
     source: { art: board.art, sha256: definition.art.sha256 ?? "", width: definition.art.width, height: definition.art.height },
     crop: cropOf(hide), child: maskForHide(hide), authored: hide.returnRect,
     ...(entry ? { sourcePlacement: { manifestSha256: sourcePlacementManifestForHide(placementContext!,hide.id)!, basePlacementSha256: entry.basePlacementSha256 } } : {}) });
+}
+
+/** A guide changes painter instructions, never the return contract. Legacy v3
+ * Explorers retain their implicit original window and v3 receipt; no v4 receipt
+ * is manufactured. Resolve every coordinate and source from the trusted pin. */
+export function expectedGuidedLocalPatchReturn(board: LocalPatchBoard, hide: LocalPatchHide, contentVersion: number,
+  placementContext?: TrustedSourcePlacementContext): Pick<AuthoredLocalPatchReturnContract, "local" | "source"> {
+  assertTrustedSourcePlacementContext(placementContext);
+  if (placementContext.sceneVersion !== contentVersion) throw Error("GUIDED_FRAME: source context version differs");
+  const authored = expectedAuthoredLocalPatchReturn(board, hide, contentVersion, placementContext);
+  if (authored?.sourcePlacement) return { local: authored.local, source: authored.source };
+  const entry = sourcePlacementForHide(placementContext, hide.id);
+  const definition = sceneBySlug(board.board, contentVersion);
+  const source = { art: board.art, sha256: definition.art.sha256 ?? "", width: definition.art.width, height: definition.art.height };
+  const local = localPatchReturnRegion(cropOf(hide), maskForHide(hide)).local;
+  if (contentVersion !== 12 || hide.returnRect || !placementContext.manifestSha256 || !entry
+    || entry.boardId !== board.board || `public${definition.art.base}` !== board.art || !equal(entry.source, source)
+    || !equal(entry.effective.crop, cropOf(hide)) || !equal(entry.effective.child, maskForHide(hide))
+    || !equal(entry.effective.returnRect, local))
+    throw Error("GUIDED_FRAME: legacy source, child and implicit window must match their pinned placement");
+  return { local, source };
 }
 
 /** A caller cannot buy an alternate envelope under a pinned hide id. */

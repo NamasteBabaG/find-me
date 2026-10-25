@@ -31,7 +31,7 @@ import { selfRepairDecisionSchema, selfRepairRenderInstructions, type SelfRepair
 import { retainedRestylePrompt } from "./local-patch-restyle";
 import { ageBodyRequestDirections, LOCAL_PATCH_AGE_BODY_PROMPT_VERSION, LOCAL_PATCH_AGE_BODY_PROP_PROMPT_VERSION, LOCAL_PATCH_FIXED_SCENERY_PROMPT_VERSION, LOCAL_PATCH_FOREGROUND_PROMPT_VERSION, referenceNeutralHairDirections } from "./local-patch-prompt";
 import { foregroundForPinnedPrompt, foregroundPlanConflict, foregroundRecord, occludeLocalPatch, type LocalPatchForegroundRecord } from "./local-patch-foreground";
-import { assertAuthoredLocalPatchPlacement, assertAuthoredLocalPatchRecoveryGeometry, expectedAuthoredLocalPatchReturn } from "./local-patch-authored-return";
+import { assertAuthoredLocalPatchPlacement, assertAuthoredLocalPatchRecoveryGeometry, expectedAuthoredLocalPatchReturn, expectedGuidedLocalPatchReturn } from "./local-patch-authored-return";
 import { assertTrustedSourcePlacementContext, sourcePlacementForHide, type TrustedSourcePlacementContext } from "./source-placement-release";
 import { authoredRecoveryDiagnosisSchema, type AuthoredRecoveryDiagnosis } from "../../domain/scene/local-patch-authored-recovery";
 import { prepareSourceNeighborContract } from "../../domain/scene/local-patch-source-neighbors";
@@ -373,8 +373,13 @@ export async function renderLocalPatchHide(deps: LocalPatchRenderDeps, input: Lo
     authoredRecoveryDiagnosisSchema.parse(input.authoredDiagnosis);
   } else if (input.authoredDiagnosis !== undefined) throw Error("LOCAL_PATCH: authored diagnosis requires an authored recovery");
   if (input.guidedFrameRecovery && (!parseGuidedFrameMarker(input.guidedFrameRecovery) || !guidedFrameVersionMatches(input.guidedFrameRecovery, input.contentVersion) || (input.nativeMaskTail ? input.attempt !== 4 : input.attempt !== 3)
-    || !authoredReturn?.sourcePlacement || input.selfRepair || input.adaptiveRecovery || input.recoveryDirective))
+    || input.selfRepair || input.adaptiveRecovery || input.recoveryDirective))
     throw Error('GUIDED_FRAME: only a trusted original-geometry third painting may use this guide');
+  const guidedReturn = input.guidedFrameRecovery
+    ? expectedGuidedLocalPatchReturn(input.board, input.hide, input.contentVersion!, input.placementContext) : undefined;
+  if (guidedReturn && input.authoredSource && (input.authoredSource.sha256 !== guidedReturn.source.sha256
+    || input.authoredSource.width !== guidedReturn.source.width || input.authoredSource.height !== guidedReturn.source.height))
+    throw Error("GUIDED_FRAME: source pixels differ from the trusted placement");
   if (input.nativeMaskTail && (input.contentVersion !== 13 || !nativeMaskTailMarkerSchema.safeParse(input.nativeMaskTail).success || !input.guidedFrameRecovery
     || input.nativeMaskTail.previousAuthorizationSha256 !== input.guidedFrameRecovery.authorizationSha256)) throw Error("NATIVE_MASK_TAIL: exact finite allowance and original guide required");
   const body=input.placementContext?sourceBodyForHide(input.placementContext,input.hide.id):null;
@@ -382,7 +387,7 @@ export async function renderLocalPatchHide(deps: LocalPatchRenderDeps, input: Lo
   const validBirth=!!born&&sourceBodyBirthMarkerSchema.safeParse(input.sourceBodyBirth).success&&input.sourceBodyBirth!.policySha256===born.authorizationSha256&&input.sourceBodyBirth!.manifestSha256===born.sourceBodyManifestSha256&&input.sourceBodyBirth!.hideId===input.hide.id&&input.sourceBodyBirth!.attempt===input.attempt&&!input.sourceBodyRepair;
   const validRepair=!born&&!!input.sourceBodyRepair&&sourceBodyMarkerSchema.safeParse(input.sourceBodyRepair).success&&input.attempt===input.sourceBodyRepair.authorizedAttempt&&!input.sourceBodyBirth;
   if(body ? !(validBirth||validRepair)||input.guidedFrameRecovery||input.nativeMaskTail||input.selfRepair||input.adaptiveRecovery||input.recoveryDirective : input.sourceBodyRepair!==undefined||input.sourceBodyBirth!==undefined)throw Error('SOURCE_BODY: trusted geometry and exact ordinary or finite purchase required');
-  const result = await renderLocalPatchHideInner(deps, input, authoredReturn);
+  const result = await renderLocalPatchHideInner(deps, input, authoredReturn, guidedReturn);
   return { ...result, promptVersion: promptVersionOf(input), ...(authoredReturn ? { authoredReturn } : {}),
     ...(isLocalPatchStrictVersion(input.contentVersion) ? { compositionVersion: input.hide.returnRect ? AUTHORED_PATCH_COMPOSITION_VERSION : LOCAL_PATCH_COMPOSITION_VERSION } : {}) };
 }
@@ -402,7 +407,8 @@ function promptVersionOf(input: LocalPatchAttemptInput): string {
     : input.boardPeoplePng ? LOCAL_PATCH_BOARD_DRAWN_PROMPT_VERSION : LOCAL_PATCH_PROMPT_VERSION;
 }
 
-async function renderLocalPatchHideInner(deps: LocalPatchRenderDeps, input: LocalPatchAttemptInput, authoredReturn?: AuthoredLocalPatchReturnContract): Promise<LocalPatchAttempt> {
+async function renderLocalPatchHideInner(deps: LocalPatchRenderDeps, input: LocalPatchAttemptInput, authoredReturn?: AuthoredLocalPatchReturnContract,
+  guidedReturn?: Pick<AuthoredLocalPatchReturnContract, "local" | "source">): Promise<LocalPatchAttempt> {
   const { worldId, board, hide, attempt } = input;
   if (isLocalPatchAgeVersion(input.contentVersion)) {
     if (input.referenceMode !== LOCAL_PATCH_PORTRAIT_ONLY_REFERENCE_MODE || input.canonicalIdentityPng || input.boardPeoplePng) {
@@ -431,7 +437,8 @@ async function renderLocalPatchHideInner(deps: LocalPatchRenderDeps, input: Loca
   const authoredMask = recovery?.protectedCore ?? maskForHide(hide);
   const bodyGeometry=(input.sourceBodyRepair||input.sourceBodyBirth)&&input.placementContext?sourceBodyForHide(input.placementContext,hide.id):null;
   if(bodyGeometry&&foreground)throw Error('SOURCE_BODY: a separate authored foreground requires its own qualification');
-  const guideGeometry = input.guidedFrameRecovery||bodyGeometry ? guidedFrameGeometry(authoredMask, authoredReturn!.local) : null;
+  const guideReturn = guidedReturn?.local ?? authoredReturn?.local;
+  const guideGeometry = input.guidedFrameRecovery||bodyGeometry ? guidedFrameGeometry(authoredMask, guideReturn!) : null;
   const mask = authoredMask;
   const paintTarget = guideGeometry?.target ?? mask;
   if (input.adaptiveRecovery && (attempt !== 3 || !isLocalPatchStrictVersion(input.contentVersion) || input.recoveryDirective)) {
@@ -494,14 +501,15 @@ async function renderLocalPatchHideInner(deps: LocalPatchRenderDeps, input: Loca
     const directed = authoredPaint ? `${base}\n\n${authoredPaint}` : base;
     if(bodyGeometry)return directed+'\n\n'+sourceBodyDirections(bodyGeometry);
     if (!guideGeometry) return directed;
-    const guide = guidedFrameDirections(authoredMask, authoredReturn!.local);
+    const guide = guidedFrameDirections(authoredMask, guideReturn!);
     const permission = input.nativeMaskTail ? guide.replace("The editor mask covers the orange context so surrounding scenery can be reconstructed coherently, but the child must stay inside cyan.",
       "The native editor mask covers only the ORIGINAL child envelope. Remove the original target person WHOLE inside that envelope, including hair above cyan, then draw the whole new child inside cyan. The orange return-boundary band is protected.") : guide;
     return directed + '\n\n' + permission + (input.nativeMaskTail ? '\n\n'+nativeMaskTailDirections : '');
   };
 
   const meta = await sharp(input.composedPng, { limitInputPixels: 8_294_400 }).metadata();
-  if (authoredReturn && (meta.width !== authoredReturn.source.width || meta.height !== authoredReturn.source.height))
+  const pinnedSource = authoredReturn?.source ?? guidedReturn?.source;
+  if (pinnedSource && (meta.width !== pinnedSource.width || meta.height !== pinnedSource.height))
     throw Error("LOCAL_PATCH: authored source pixels differ from the pinned dimensions");
   const stylePng = restyling ? await sharp(input.restyleSourcePng!, { limitInputPixels: 8_294_400 }).resize(512, 768, { fit: "fill" }).png().toBuffer()
     : await sharp(input.composedPng, { limitInputPixels: 8_294_400 }).extract(crop).png().toBuffer();
@@ -511,8 +519,8 @@ async function renderLocalPatchHideInner(deps: LocalPatchRenderDeps, input: Loca
   const renderIdentityPng = restyling ? await sharp(stylePng).extract(mask).png().toBuffer() : input.identityPng;
   // Editing context and target placement differ: repaint only the existing returned context,
   // and keep the whole target within its unchanged authored envelope via the cyan guide.
-  const maskPng = bodyGeometry ? await sourceBodyMaskPng(bodyGeometry) : await poseMask(guideGeometry ? { ...hide, mask: nativeEdit ? nativeEdit.editable : authoredReturn!.local } : recovery ? { ...hide, mask } : hide);
-  const placementGuidePng = guideGeometry ? await sharp(stylePng).composite([...(bodyGeometry?[{input:Buffer.from(sourceBodyOverlay(bodyGeometry))}]:[]),{ input:Buffer.from(guidedFrameOverlay(authoredMask,authoredReturn!.local)) }]).png().toBuffer() : undefined;
+  const maskPng = bodyGeometry ? await sourceBodyMaskPng(bodyGeometry) : await poseMask(guideGeometry ? { ...hide, mask: nativeEdit ? nativeEdit.editable : guideReturn! } : recovery ? { ...hide, mask } : hide);
+  const placementGuidePng = guideGeometry ? await sharp(stylePng).composite([...(bodyGeometry?[{input:Buffer.from(sourceBodyOverlay(bodyGeometry))}]:[]),{ input:Buffer.from(guidedFrameOverlay(authoredMask,guideReturn!)) }]).png().toBuffer() : undefined;
 
   const renderKey = input.selfRepair ? `${hide.id}:${hide.pose}:self-repair:${input.selfRepair.cycle}` : `${hide.id}:${hide.pose}:render:${attempt}`;
   // Everything that decides what is being bought. A different photograph,

@@ -1,3 +1,8 @@
+import { cropOf, maskForHide } from "../../../domain/scene/local-patch-hides";
+import { localPatchReturnRegion } from "../../../domain/scene/local-patch-return-region";
+import { GUIDED_FRAME_RECOVERY_VERSION } from "../../../domain/generation/guided-frame-recovery";
+import { expectedGuidedLocalPatchReturn } from "../local-patch-authored-return";
+import { renderLocalPatchHide, type LocalPatchRenderDeps, type LocalPatchAttemptInput } from "../local-patch-render";
 import { createHash } from "node:crypto";
 import type { Prisma } from "@prisma/client";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -149,4 +154,50 @@ describe("runtime-authoritative effective placement context", () => {
     const result = await resolveLocalPatchBoardForGame(f.tx, f.state.game.id, "greatwall", 12);
     expect(result.board!.board).toBe("greatwall");
   });
+});
+
+describe("guided original return authority", () => {
+  it("resolves every original v3 and effective v4 window without changing the catalog or return contract", async () => {
+    const f = database(); await basePins(f); await pinSourcePlacementRelease(f.tx, f.state.game.id);
+    const context = await resolveLocalPatchBoardsForGame(f.tx, f.state.game.id, 12);
+    const before = sourcePlacementCanonical(context.boards);
+    let legacy = 0, authored = 0;
+    for (const board of context.boards) for (const hide of board.hides) {
+      const original = localPatchReturnRegion(cropOf(hide), maskForHide(hide), hide.returnRect);
+      const guide = expectedGuidedLocalPatchReturn(board, hide, 12, context);
+      expect(guide.local).toEqual(original.local);
+      expect(guide.source).toEqual(sourcePlacementForHide(context, hide.id)!.source);
+      if (hide.returnRect) authored++; else legacy++;
+    }
+    expect(legacy).toBe(53); expect(authored).toBe(1);
+    expect(sourcePlacementCanonical(context.boards)).toBe(before);
+  });
+  it.each(["crop", "child", "window", "source", "source-pixels", "context", "foreign-game", "fourth", "family", "missing-pin"])(
+    "rejects a changed %s before any provider or reservation", async kind => {
+      const f = database(); await basePins(f); await pinSourcePlacementRelease(f.tx, f.state.game.id);
+      const context = await resolveLocalPatchBoardsForGame(f.tx, f.state.game.id, 12);
+      const board = context.boards.find(b => b.board === "paris")!, hide = board.hides[2]!;
+      expect(hide.returnRect).toBeUndefined();
+      const render = vi.fn(), reserve = vi.fn(), retainedGet = vi.fn();
+      const deps = { render, ledger: { reserve }, store: { get: retainedGet }, renderPolicySha256: "synthetic" } as unknown as LocalPatchRenderDeps;
+      const input: LocalPatchAttemptInput = { worldId: f.state.game.id, board, hide, attempt: 3,
+        contentVersion: 12, composedPng: Buffer.alloc(0), identityPng: Buffer.alloc(0), ageYears: 7,
+        judgeIdentityPng: Buffer.alloc(0), apiKey: "synthetic-unused",
+        placementContext: context, guidedFrameRecovery: { version: GUIDED_FRAME_RECOVERY_VERSION,
+          authorizationSha256: "a".repeat(64), sourceImageSha256: "b".repeat(64), sourceAssetId: "synthetic-original",
+          sourceReviewRequestKey: "synthetic-review", originalAttempts: 2, repairCyclesPreserved: 0, sceneVersion: 12 } };
+      const changed = { ...input };
+      if (kind === "crop") changed.hide = { ...hide, left: hide.left + 1 };
+      if (kind === "child") changed.hide = { ...hide, mask: { ...maskForHide(hide), left: maskForHide(hide).left + 1 } };
+      if (kind === "window") changed.hide = { ...hide, returnRect: { ...localPatchReturnRegion(cropOf(hide), maskForHide(hide)).local, left: 1 } };
+      if (kind === "source") changed.board = { ...board, art: "public/scenes/synthetic-wrong/base.webp" };
+      if (kind === "source-pixels") changed.authoredSource = { sha256: "0".repeat(64), width: 3840, height: 2160 };
+      if (kind === "context") changed.placementContext = { ...context };
+      if (kind === "foreign-game") changed.worldId = "synthetic-other-game";
+      if (kind === "fourth") changed.attempt = 4;
+      if (kind === "family") changed.guidedFrameRecovery = { ...input.guidedFrameRecovery!, sceneVersion: undefined };
+      if (kind === "missing-pin") changed.placementContext = await resolveLocalPatchBoardsForGame(database().tx, f.state.game.id, 12);
+      await expect(renderLocalPatchHide(deps, changed)).rejects.toThrow(/GUIDED_FRAME|SOURCE_PLACEMENT|authored/i);
+      expect(render).not.toHaveBeenCalled(); expect(reserve).not.toHaveBeenCalled(); expect(retainedGet).not.toHaveBeenCalled();
+    });
 });
