@@ -1,3 +1,4 @@
+import { nextBoundEnvelopeReconciliation } from "./bound-envelope-reconciliation";
 import { nextPublishedCrownRepair,tickPublishedCrownRepair } from "./published-crown-repair";
 import { nextPropJoinRepair } from "./prop-join-repair";
 import { nextIdentitySourceRevision, tickIdentitySourceRevision } from "./identity-source-revision-queue";
@@ -128,7 +129,8 @@ export async function tickGeneration(c: Container, gameId: string | null, budget
   const reconciled = await resumeIdentityReasonHold(c, gameId);
   const capacityWake = await nextDetectivesCompletionWake(c, gameId);
   const propWake = gameId ? null : await nextPropJoinRepair(c);
-  const id = gameId ?? reconciled ?? capacityWake ?? propWake ?? (wake && await claimParkedWake(c, wake) ? wake.gameId : null) ?? (await nextPendingGame(c));
+  const envelopeWake = gameId ? null : await nextBoundEnvelopeReconciliation(c);
+  const id = gameId ?? reconciled ?? envelopeWake ?? capacityWake ?? propWake ?? (wake && await claimParkedWake(c, wake) ? wake.gameId : null) ?? (await nextPendingGame(c));
   if (!id) return { gameId: null, status: null, pending: false };
   const before = await c.db.game.findUnique({ where: { id }, select: { status: true, styleVersion: true, scenes: { select: { sceneVersion: true } } } });
   if (!before) return { gameId: id, status: null, pending: false };

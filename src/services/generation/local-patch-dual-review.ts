@@ -1,3 +1,4 @@
+import { BOUND_SUBJECT_QUALITY_ENVELOPE_READER } from "../../domain/generation/bound-subject-quality-envelope";
 import { singleMediumEvidence, singleMediumPrompt, singleMediumAnatomyPrompt } from "./single-medium-evidence";
 import { publishedCrownSubjectAnchor } from "./published-crown-repair";
 import { singleReviewHeadEvidence } from "./single-review-head-evidence";
@@ -13,7 +14,7 @@ import { PLAYER_REVIEW_MODE } from "./local-patch-player-review";
 import { visualReviewCharge } from "../../infra/generation/visual-review-pricing";
 import { CONTINUITY_READER_STRICT, localPatchRuntimeContinuityVerdict, readLocalPatchBodyContinuity, type ContinuityReading } from "../../domain/scene/local-patch-body-continuity";
 import { nextLocalPatchEvidenceStep, type EvidenceAttempt, type EvidenceDiagnosis, type EvidenceFaultKind, type EvidenceRole, type EvidenceStrategy } from "../../domain/scene/local-patch-evidence-policy";
-import { CURRENT_CONTINUITY_READER, CURRENT_QUALITY_READER, qualityReaderReadsMore, qualityStageReader, qualityStageRaw, subjectStageRaw, readContinuityStage, readQualityStage, verifiedDualStage, visualStageReadable,
+import { CURRENT_CONTINUITY_READER, CURRENT_QUALITY_READER, localPatchBoundEnvelopeUndecided, qualityReaderReadsMore, qualityStageReader, qualityStageRaw, subjectStageRaw, readContinuityStage, readQualityStage, verifiedDualStage, visualStageReadable,
   type ContinuityReReading, type ContinuityStage, type DualReviewProof, type DualReviewStage, type DualStageBase, type QualityReReading, type QualityStage,
   type SubjectStage, sourceNeighborQualityEvidence, readSourceNeighborQualityStage, sourceNeighborPublicationMatches,
   type SourceNeighborQualityEvidence } from "./local-patch-dual-evidence";
@@ -651,14 +652,11 @@ async function carriedLeanAnswers(c: Container, prepared: Prepared, version: Dua
 async function dualReview(c: Container, prepared: Prepared, deps: LocalPatchBoardReviewDeps, version: DualVisualReviewVersion, deadlineAt: number | undefined,
   options: { decideRetained?: boolean }): Promise<Waiting | Reviewed> {
   const { request, game, budget, worldId, evidenceReviewAttempt } = prepared;
-  if (options.decideRetained) {
-    // A corrected free reading cannot carry a subject stage; an enrolled world decides on its paid route.
-    if (await subjectUpgradeOf(c.db, game.id)) return { kind: "waiting", outcome: { state: "pending",
-      reason: "An enrolled world decides retained answers together with their subject review", replayed: true, costCents: 0 } };
-    return decideRetainedAnswer(c, prepared, version, dualBinding(prepared, version));
-  }
-  // An enrolled world asks its new continuity questions in the background and adds the subject stage.
+  // Historical separate-role answers keep their existing free reading. A
+  // retained single MEDIUM answer can carry all mandatory roles for free only
+  // when they are literally the same settled immutable paid document.
   const upgrade = await subjectUpgradeOf(c.db, game.id);
+  if (options.decideRetained && !upgrade) return decideRetainedAnswer(c, prepared, version, dualBinding(prepared, version));
   let subjectContext: SubjectQuestionContext | undefined;
   if (upgrade) {
     const plan = subjectPlanOfHide(request.hides[0]!.hideId, prepared.scene.sceneVersion);
@@ -671,6 +669,11 @@ async function dualReview(c: Container, prepared: Prepared, deps: LocalPatchBoar
   }
   const singleAuthority = subjectContext ? await detectivesSingleReviewAuthorization(c.db, game.id) : null;
   if (singleAuthority && singleAuthority.sceneVersion !== prepared.scene.sceneVersion) throw Error("SINGLE_REVIEW: source family differs from review authority");
+  if (options.decideRetained) {
+    if (!subjectContext || !singleAuthority) return { kind:"waiting", outcome:{state:"pending",
+      reason:"No complete single-answer envelope awaits a corrected reading",replayed:true,costCents:0} };
+    return decideRetainedSingleEnvelope(c,prepared,deps,version,subjectContext,deadlineAt);
+  }
   if (subjectContext && singleAuthority)
     return singleLowReview(c, prepared, deps, version, subjectContext, deadlineAt);
   const makeKey = (question: PreparedVisualReview) => `self-repair:board:${prepared.board.board}:${question.fingerprint}`;
@@ -1136,19 +1139,50 @@ async function prepareSingleLowQuestion(c: Pick<Container, "db" | "storage">, pr
   return { binding, hideId, entry, receipt, sourceNeighbors, combined, question, requestKey, bound, attempt, continued, singleVersion, head, anchor };
 }
 
+/** Read all roles from one existing settled question, without a reservation,
+ * dispatch, settlement or interpretation of a different image or identity. */
+async function decideRetainedSingleEnvelope(c:Container,prepared:Prepared,deps:LocalPatchBoardReviewDeps,version:DualVisualReviewVersion,
+  subject:SubjectQuestionContext,deadlineAt?:number):Promise<Waiting|Reviewed>{
+  const not=(reason:string):Waiting=>({kind:"waiting",outcome:{state:"pending",reason,replayed:true,costCents:0}});
+  const entry=prepared.entries.find(e=>e.hide.id===prepared.request.hides[0]?.hideId);
+  if(!entry||!localPatchBoundEnvelopeUndecided(entry.row))return not("No bound single envelope awaits reconciliation");
+  const live=await c.db.game.findUnique({where:{id:prepared.game.id},include:{orders:true}});
+  if(!live||live.status!=="TARGETS_GENERATING"||live.deletedAt||live.ownerId!==prepared.game.ownerId
+    ||!live.orders.some(o=>o.userId===live.ownerId&&o.paymentStatus==="PAID"&&o.paidAt&&!o.refundedAt)
+    ||live.orders.some(o=>o.paymentStatus==="REFUNDED"||o.refundedAt))return not("The original paid world is no longer in generation");
+  const receipt=JSON.parse(entry.row.judgeJson!),prior=receipt.boardReview.dual as DualReviewProof,binding=dualBinding(prepared,version);
+  if(prior.version!==version||prior.single!==SINGLE_MEDIUM_VISUAL_REVIEW_VERSION||!prior.subject||!prior.continuity
+    ||prior.hideId!==binding.hideId||prior.imageSha256!==binding.imageSha256||prior.geometrySha256!==binding.geometrySha256
+    ||prior.identitySha256!==binding.identitySha256||JSON.stringify(prior.authoredReturn)!==JSON.stringify(binding.authoredReturn))
+    return not("Retained single roles differ from the current immutable candidate");
+  const options={allowSingle:true,...(binding.authoredReturn?{authoredReviewBinding:authoredLocalPatchReviewBinding(binding)}:{})};
+  const quality=await verifiedDualStage(c.db,prepared.worldId,prior.quality,"scene-quality",options);
+  const continuity=await verifiedDualStage(c.db,prepared.worldId,prior.continuity,"head-continuity",options);
+  const who=await verifiedDualStage(c.db,prepared.worldId,prior.subject,"scene-quality",options);
+  if(!quality||!continuity||!who||!quality.bytes.equals(continuity.bytes)||!quality.bytes.equals(who.bytes))
+    return not("All three roles must prove the same original settled paid bytes");
+  const bought:Bought={kind:"bought",bytes:quality.bytes,evidence:quality.evidence,replayed:true,settledFromRetained:false};
+  return singleLowReview(c,prepared,deps,version,subject,deadlineAt,{bought,prior});
+}
+
 /** One single-review question per immutable image. Later slices poll or replay this exact key.
  * No automatic second opinion or independent second role is purchased. */
 async function singleLowReview(c: Container, prepared: Prepared, deps: LocalPatchBoardReviewDeps, version: DualVisualReviewVersion,
-  subject: SubjectQuestionContext, deadlineAt?: number): Promise<Waiting | Reviewed> {
+  subject: SubjectQuestionContext, deadlineAt?: number, retained?: {bought:Bought;prior:DualReviewProof}): Promise<Waiting | Reviewed> {
   const { binding, hideId, entry, sourceNeighbors, combined, question, requestKey, bound, attempt, singleVersion, head, anchor } = await prepareSingleLowQuestion(c, prepared, version, subject);
-  if (singleVersion === SINGLE_MEDIUM_VISUAL_REVIEW_VERSION) await ensureSingleMediumReviewPolicy(c, prepared.game.id, deps.fence);
-  await inventorySelfRepairRequest(c, prepared.game.id, requestKey, deps.fence);
-  const gate = await askContinuityInBackground(c, { gameId: prepared.game.id, worldId: prepared.worldId, requestKey, question,
-    reserveMicroUsd: bound.microUsd, fence: deps.fence, ...(deadlineAt === undefined ? {} : { deadlineAt }),
-    binding: { hideId, variantId: entry.row.id, imageSha256: binding.imageSha256, geometrySha256: binding.geometrySha256,
-      identitySha256: binding.identitySha256, ...(binding.authoredReturn ? { authoredReviewBinding: authoredLocalPatchReviewBinding(binding)! } : {}) } });
-  if (gate.kind !== 'proceed') return { kind: 'waiting', outcome: { state: gate.kind === 'held' ? 'held' : 'pending', reason: gate.reason, replayed: false, costCents: 0 } };
-  const bought = await purchaseOnce({ ledger: prepared.budget, store: new LocalPatchRetainedPurchaseStore(c, prepared.game.id, prepared.budget) }, {
+  if(retained&&(singleVersion!==SINGLE_MEDIUM_VISUAL_REVIEW_VERSION||retained.prior.quality.requestKey!==requestKey
+    ||retained.prior.quality.fingerprint!==question.fingerprint))return{kind:"waiting",outcome:{state:"pending",
+      reason:"The retained question differs from the rebuilt immutable evidence",replayed:true,costCents:0}};
+  if(!retained){
+    if (singleVersion === SINGLE_MEDIUM_VISUAL_REVIEW_VERSION) await ensureSingleMediumReviewPolicy(c, prepared.game.id, deps.fence);
+    await inventorySelfRepairRequest(c, prepared.game.id, requestKey, deps.fence);
+    const gate = await askContinuityInBackground(c, { gameId: prepared.game.id, worldId: prepared.worldId, requestKey, question,
+      reserveMicroUsd: bound.microUsd, fence: deps.fence, ...(deadlineAt === undefined ? {} : { deadlineAt }),
+      binding: { hideId, variantId: entry.row.id, imageSha256: binding.imageSha256, geometrySha256: binding.geometrySha256,
+        identitySha256: binding.identitySha256, ...(binding.authoredReturn ? { authoredReviewBinding: authoredLocalPatchReviewBinding(binding)! } : {}) } });
+    if (gate.kind !== 'proceed') return { kind: 'waiting', outcome: { state: gate.kind === 'held' ? 'held' : 'pending', reason: gate.reason, replayed: false, costCents: 0 } };
+  }
+  const bought = retained?.bought ?? await purchaseOnce({ ledger: prepared.budget, store: new LocalPatchRetainedPurchaseStore(c, prepared.game.id, prepared.budget) }, {
     worldId: prepared.worldId, requestKey, operationFingerprint: question.fingerprint, scope: 'judge', reserveMicroUsd: bound.microUsd,
     buy: async () => { throw Error('SINGLE_REVIEW: background answer must only replay its retained purchase'); } });
   if (bought.kind !== 'bought') return { kind: 'waiting', outcome: { state: bought.kind === 'unresolved' ? 'held' : 'pending', reason: bought.reason, replayed: false, costCents: 0 } };
@@ -1156,7 +1190,8 @@ async function singleLowReview(c: Container, prepared: Prepared, deps: LocalPatc
   if (binding.authoredReturn && JSON.parse(bought.bytes.toString()).authoredReviewBinding !== authoredLocalPatchReviewBinding(binding))
     throw Error('SINGLE_REVIEW: retained answer differs from dispatched authored candidate');
   const base: DualStageBase = { requestKey, fingerprint: question.fingerprint, attempt, policy: question.policy, raw: wire.raw,
-    model: wire.model, finishReason: wire.finishReason, wireFault: wire.wireFault, costMicroUsd: bought.evidence.amountMicroUsd };
+    model: wire.model, finishReason: wire.finishReason, wireFault: wire.wireFault, costMicroUsd: bought.evidence.amountMicroUsd,
+    ...(singleVersion === SINGLE_MEDIUM_VISUAL_REVIEW_VERSION ? { envelopeReader: BOUND_SUBJECT_QUALITY_ENVELOPE_READER } : {}) };
   const qualityStage: QualityStage = { ...base, reader: CURRENT_QUALITY_READER, subjectBundle: combined.binding, ...(sourceNeighbors ? { sourceNeighbors } : {}), ...(head ? { headEvidence: head.evidence } : {}) };
   const continuity: ContinuityStage = { ...base, reader: CURRENT_CONTINUITY_READER[version] };
   const subjectStage: SubjectStage = { ...base, subjectPolicy: SUBJECT_POLICY_V2, reader: SUBJECT_READER_V2,
@@ -1174,7 +1209,7 @@ async function singleLowReview(c: Container, prepared: Prepared, deps: LocalPatc
   const readAnatomy = readContinuityStage(continuity, hideId, version), outer = readSingleVisualReview(wire.raw);
   // Missing evidence cannot grant acceptance. This stable paid key never purchases a second automatic reading.
   if (!outer || !verdict || !readSubject.ok || !readAnatomy?.ok)
-    return { kind: 'reviewed', bought, wire, verdicts: {}, proof, newCostCents: 0, evidence: null, diagnosis: null, salvaged: false };
+    return { kind: 'reviewed', bought, wire, verdicts: {}, proof, newCostCents: 0, evidence: null, diagnosis: null, salvaged: !!retained };
   const world = readSubject.disposition === 'pass' ? await acceptedWorldAppearances(c.db, prepared.game.id, hideId, subject.upgrade.ageYears) : null;
   const refusal = world ? subjectCollectionRefusal({ hideId, appearance: readSubject.appearance }, world.accepted, world.worldSize) : null;
   if (readSubject.disposition !== 'pass' || refusal) {
@@ -1184,5 +1219,5 @@ async function singleLowReview(c: Container, prepared: Prepared, deps: LocalPatc
   const anatomyVerdict = localPatchRuntimeContinuityVerdict(readAnatomy);
   if (anatomyVerdict.disposition === 'repair') verdicts = withAnatomy(verdicts, hideId, 'repair', readAnatomy, CURRENT_QUALITY_READER, prepared.scene.sceneVersion);
   else if (anatomyVerdict.disposition !== 'pass' || outer.doubt) verdicts = withAnatomy(verdicts, hideId, 'uncertain', readAnatomy, CURRENT_QUALITY_READER, prepared.scene.sceneVersion);
-  return { kind: 'reviewed', bought, wire, verdicts, proof, newCostCents: 0, evidence: null, diagnosis: null, salvaged: false };
+  return { kind: 'reviewed', bought, wire, verdicts, proof, newCostCents: 0, evidence: null, diagnosis: null, salvaged: !!retained };
 }

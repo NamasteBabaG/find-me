@@ -1,3 +1,4 @@
+import { resumeBoundEnvelopeReconciliation } from "./bound-envelope-reconciliation";
 import { applySourceCrownReturn } from "./source-crown-pixels";
 import { resumePropJoinRepair,applyPropJoinRepair } from "./prop-join-repair";
 import { sourceBodyBirthMarker } from "../../domain/generation/detectives-operational-policy";
@@ -41,7 +42,7 @@ import { PENDING_IMAGE_LEASE_MS } from "../../domain/generation/pending-image-le
 import { recoverPreparedLocalPatchReview } from "./local-patch-review-interruption-recovery";
 import { activateLocalPatchEmergencyBudget } from "./local-patch-budget-recovery";
 import { localPatchEvidenceRecovery, LOCAL_PATCH_EVIDENCE_RETRY_BACKOFF_MS } from "./local-patch-review-recovery";
-import { localPatchRetainedAnswerUndecided, localPatchContinuityPending } from "./local-patch-dual-evidence";
+import { localPatchRetainedAnswerUndecided, localPatchContinuityPending, localPatchBoundEnvelopeUndecided } from "./local-patch-dual-evidence";
 import { hasDualVisualReview } from "./visual-review-release";
 import { localPatchPainterRelease, painterReleasePolicy, type LocalPatchPainterRelease } from "./painter-release";
 import { advanceQualityBatches } from "./quality-batch";
@@ -325,6 +326,8 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
   // not.
   // A bounded free compositor correction can resume ONLY its authenticated
   // from-birth prop refusal. It grants no picture, opinion or budget.
+  if (job.currentStep === LOCAL_PATCH_RECOVERY_EXHAUSTED && await resumeBoundEnvelopeReconciliation(c, gameId))
+    job = await c.db.generationJob.findUniqueOrThrow({ where: { id: job.id } });
   if (job.currentStep === LOCAL_PATCH_RECOVERY_EXHAUSTED && await resumePropJoinRepair(c, gameId))
     job = await c.db.generationJob.findUniqueOrThrow({ where: { id: job.id } });
   // A job parked for a person is not a job to take. Every OTHER failure stays
@@ -589,12 +592,11 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
     // Free work first, all of it: an answer already paid for, whose question now
     // uses a corrected reader, is decided before anything is reserved or bought.
     // A world never waits for budget while a retained answer could decide it.
-    // An enrolled world decides a retained answer with its subject review on the
-    // ordinary route; the free reading refuses it after rebuilding the board's
-    // evidence, so it is not asked here (local-patch-slice-pacing/v1).
-    if (dual && !subjectUpgrade) for (const scene of game.scenes) {
+    // Separate-role enrolled answers keep their ordinary route. One settled
+    // MEDIUM document already carrying all roles may use its exact-bound reader.
+    if (dual) for (const scene of game.scenes) {
       if (!hasLocalPatchCapability(scene.sceneVersion, "integratedQuality")) continue;
-      for (let turn = 0; turn < 3 && rows.some(row => row.targetInstance.gameSceneId === scene.id && localPatchRetainedAnswerUndecided(row)); turn++) {
+      for (let turn = 0; turn < 3 && rows.some(row => row.targetInstance.gameSceneId === scene.id && localPatchRetainedAnswerUndecided(row) && (!subjectUpgrade || localPatchBoundEnvelopeUndecided(row))); turn++) {
         // Out of time is not out of options: yield the claim with the rest of the
         // free work runnable. The next tick starts here again, before anything
         // paid, and nothing is parked for a reason a later tick resolves.

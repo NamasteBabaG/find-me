@@ -506,10 +506,11 @@ export async function reviewLocalPatchBoard(c: Container, input: { gameId: strin
         ...((evidence?.diagnosis ?? (evaluated && reviewedIds.has(e.hide.id) ? evaluated.diagnosis : null))
           ? { evidenceDiagnosis: evidence?.diagnosis ?? evaluated!.diagnosis } : {}),
         // Appended, never replaced: a re-judged v1 refusal keeps its stage, fingerprints and failure in the record.
-        ...((request.assessmentMode === PLAYER_REVIEW_MODE || rejudged) && prior.boardReview ? { reviewHistory: [
+        ...((request.assessmentMode === PLAYER_REVIEW_MODE || rejudged || retainedOnly) && prior.boardReview ? { reviewHistory: [
           ...(Array.isArray(prior.reviewHistory) ? prior.reviewHistory : []),
           { boardReview: prior.boardReview, verdict: prior.verdict, qualityDisposition: prior.qualityDisposition, wireFault: prior.wireFault,
-            ...(rejudged ? { supersededBy: SUBJECT_REJUDGE_VERSION, lastError: current.lastError } : {}) },
+            ...(rejudged ? { supersededBy: SUBJECT_REJUDGE_VERSION, lastError: current.lastError } : {}),
+            ...(retainedOnly ? { supersededBy: evaluated!.proof.quality.envelopeReader, lastError: current.lastError } : {}) },
         ] } : {}),
         wireFault: keep.wireFault ?? (verdicts[e.hide.id] ? null : "schema"), judgedSha256: e.imageSha256,
         ...(strict ? { qualityDisposition: disposition, compositionVersion } : {}),

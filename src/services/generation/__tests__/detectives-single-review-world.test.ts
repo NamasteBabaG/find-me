@@ -1,3 +1,5 @@
+import { nextBoundEnvelopeReconciliation, resumeBoundEnvelopeReconciliation } from "../bound-envelope-reconciliation";
+import { BOUND_SUBJECT_QUALITY_ENVELOPE_READER } from "../../../domain/generation/bound-subject-quality-envelope";
 import * as singlePolicyModule from "../single-low-policy";
 import { planPublishedCrownRepair,stagePublishedCrownRepair,publishedCrownRepairOf,publishedCrownReviewOrder } from "../published-crown-repair";
 import { sourceCrownRowHash } from "../source-crown-pixels";
@@ -60,7 +62,7 @@ import { LEAN_RECOVERY_BACKOFF_MS, runLocalPatchWorldSlice } from "../local-patc
 import { DUAL_VISUAL_REVIEW_V3, pinVisualReviewRelease } from "../visual-review-release";
 import { localPatchHideEvidenceIds } from "../local-patch-judge";
 import { sha256Bytes } from "../fixed-sprite";
-import { subjectPlanOfHide, subjectUpgradeOf, SYSTEM_ENROLLMENT_OPERATOR } from "../subject-enrollment";
+import { subjectPlanOfHide, subjectPlanSha256, subjectUpgradeOf, SYSTEM_ENROLLMENT_OPERATOR } from "../subject-enrollment";
 import { LOCAL_PATCH_LEAN_RELEASE, pinLeanRelease } from "../lean-release";
 import { boardWizardBudgetOf, boardWizardWorldId } from "../board-conditioned-wizard";
 import { bill, paintedOk, seedApprovedGame } from "./local-patch-fixtures";
@@ -747,3 +749,88 @@ it("resumes v3 and v4 Explorer guided thirds through one fresh MEDIUM each and n
     expect(synchronous).not.toHaveBeenCalled(); expect(diagnose).not.toHaveBeenCalled(); expect(fetch).not.toHaveBeenCalled();
   } finally { vi.useRealTimers(); }
 }, 1500000);
+
+
+it.each(["pass","semantic-fail","doubt"] as const)("reconciles one settled MEDIUM metadata echo through the normal free route; decision=%s", async decision=>{
+  const gameId="explorer-bound-envelope-synthetic-"+decision;
+  await newDetectiveWorld(gameId,8,true,true);
+  const context=await resolveLocalPatchBoardsForGame(db,gameId,12),hides=context.boards.flatMap(b=>b.hides);
+  const provider=controlledSol(false,false,undefined,false,false,12),originalRetrieve=provider.fake.retrieve;
+  provider.fake.retrieve=async id=>{
+    const state=await originalRetrieve(id);if(state.status!=="completed")return state;
+    const outer=JSON.parse(state.reading.raw!),assessment=outer.assessment.version===SOURCE_NEIGHBOR_BUNDLE_VERSION?outer.assessment.assessment:outer.assessment;
+    const upgrade=(await subjectUpgradeOf(db,gameId))!,hideId=assessment.subject.hideId;
+    Object.assign(assessment,{photoSha256:upgrade.photoSha256,planSha256:subjectPlanSha256(subjectPlanOfHide(hideId,12)!),subjectPolicy:SUBJECT_POLICY_V2});
+    if(decision==="semantic-fail")Object.assign(assessment.quality.hides[0].verdict,{verdict:"fail",pictureWhole:"fail",severeSeam:"fail",
+      reason:"Synthetic doubled table edge at the left return",faults:[{check:"severeSeam",where:"Synthetic doubled table edge at the left return"}]});
+    if(decision==="doubt"){outer.doubt=true;outer.doubtReason="Synthetic unresolved body continuity observation";}
+    return {...state,reading:{...state.reading,raw:JSON.stringify(outer)}};
+  };
+  const forbidden=vi.fn(async()=>{throw Error("No synchronous question or diagnostic is permitted");});
+  const container={...c,backgroundReview:provider.fake,visualReview:{request:forbidden}} as Container;
+  const render=vi.fn<LocalPatchHideDeps["render"]>(async input=>{
+    expect(hides.some(h=>input.requestKey.startsWith(h.id+":"))).toBe(true);
+    return paintedOk(input.stylePng,bill("synthetic-echo-"+input.requestKey,50000));
+  });
+  const deps:LocalPatchHideDeps={readBoardArt:readArt,renderPolicySha256:localPatchRenderPolicySha256(LOCAL_PATCH_IMAGE_POLICY),render,judge:forbidden};
+  let row:Awaited<ReturnType<typeof db.targetVariantAsset.findFirst>>=null;
+  for(let turn=0;turn<50&&!row;turn++){
+    await runLocalPatchWorldSlice(container,deps,gameId,{maxHides:1,hardDeadlineAt:Date.now()+270000,diagnose:forbidden});
+    const rows=await db.targetVariantAsset.findMany({where:{variant:"A",targetInstance:{gameScene:{gameId}}}});
+    row=rows.find(r=>JSON.parse(r.judgeJson??"null")?.boardReview?.dual?.single===SINGLE_MEDIUM_VISUAL_REVIEW_VERSION)??null;
+  }
+  expect(row).not.toBeNull();expect((await db.game.findUniqueOrThrow({where:{id:gameId}})).status).toBe("TARGETS_GENERATING");
+  const prior=JSON.parse(row!.judgeJson!);
+  // A restart from the previous reader: the paid bytes already contain every
+  // role; only its old unreadable decision is restored in this synthetic DB.
+  for(const role of ["quality","continuity","subject"])delete prior.boardReview.dual[role].envelopeReader;
+  prior.verdict=null;prior.wireFault="schema";prior.qualityDisposition={state:"unresolved",faults:["integration-review-unreadable"]};
+  delete prior.reviewHistory;
+  const oldJson=JSON.stringify(prior),lastError="quality-unresolved: integration-review-unreadable";
+  await db.targetVariantAsset.update({where:{id:row!.id},data:{status:"FAILED",lastError,judgeJson:oldJson}});
+  await db.targetInstance.update({where:{id:row!.targetInstanceId},data:{status:"FAILED"}});
+  await db.generationJob.update({where:{id:"job_"+gameId},data:{status:"FAILED",currentStep:"local-patch:recovery-exhausted",
+    lastError:"local-patch: no automatic action remains within the authorized world budget; synthetic retained envelope"}});
+  const budget=boardWizardBudgetOf(container),worldId=boardWizardWorldId(gameId),ledgerBefore=await db.worldBudgetLedger.findUniqueOrThrow({where:{worldId}});
+  const retainedKey=retainedPurchaseKey(worldId,prior.boardReview.dual.quality.requestKey),kept=await db.fileBlob.findUniqueOrThrow({where:{key:retainedKey}});
+  const callsBefore=provider.creates.length,rendersBefore=render.mock.calls.length,jobBefore=await db.generationJob.findUniqueOrThrow({where:{id:"job_"+gameId}});
+  expect(await nextBoundEnvelopeReconciliation(container)).toBe(gameId);
+  for(const corrupt of ["identity","image","role","cost","low","echo","attempt"]){
+    const changed=JSON.parse(oldJson),p=changed.boardReview.dual;
+    if(corrupt==="identity")p.identitySha256="f".repeat(64);
+    if(corrupt==="image"){p.imageSha256="f".repeat(64);changed.judgedSha256=p.imageSha256;}
+    if(corrupt==="role")p.continuity.fingerprint="f".repeat(64);
+    if(corrupt==="cost")p.subject.costMicroUsd++;
+    if(corrupt==="low")p.quality.policy.effort="low";
+    if(corrupt==="echo")for(const role of ["quality","continuity","subject"]){const raw=JSON.parse(p[role].raw),a=raw.assessment.version===SOURCE_NEIGHBOR_BUNDLE_VERSION?raw.assessment.assessment:raw.assessment;a.photoSha256="f".repeat(64);p[role].raw=JSON.stringify(raw);}
+    await db.targetVariantAsset.update({where:{id:row!.id},data:{judgeJson:JSON.stringify(changed),attempts:row!.attempts+(corrupt==="attempt"?1:0)}});
+    expect(await nextBoundEnvelopeReconciliation(container),corrupt).toBeNull();
+    await db.targetVariantAsset.update({where:{id:row!.id},data:{judgeJson:oldJson,attempts:row!.attempts}});
+  }
+  await db.fileBlob.delete({where:{key:retainedKey}});expect(await nextBoundEnvelopeReconciliation(container)).toBeNull();await db.fileBlob.create({data:kept});
+  const order=await db.order.findUniqueOrThrow({where:{id:"order-"+gameId}});
+  await db.order.update({where:{id:order.id},data:{paymentStatus:"REFUNDED"}});expect(await nextBoundEnvelopeReconciliation(container)).toBeNull();
+  await db.order.update({where:{id:order.id},data:{paymentStatus:order.paymentStatus}});
+  expect(await db.generationJob.findUniqueOrThrow({where:{id:jobBefore.id}})).toEqual(jobBefore);
+  expect(await resumeBoundEnvelopeReconciliation(container,gameId)).toBe(true);
+  expect(await resumeBoundEnvelopeReconciliation(container,gameId)).toBe(false);
+  const queued=await db.generationJob.findUniqueOrThrow({where:{id:jobBefore.id}});
+  expect(queued).toMatchObject({status:"QUEUED",currentStep:"local-patch",attempts:jobBefore.attempts});
+  const target=await db.targetInstance.findUniqueOrThrow({where:{id:row!.targetInstanceId}});
+  const result=await reviewLocalPatchBoard(container,{gameId,sceneId:target.gameSceneId},{fence:async()=>{},readBoardArt:readArt},{decideRetained:true});
+  expect(result.decidedRetained).toBe(true);expect(result.costCents).toBe(0);expect(result.replayed).toBe(true);
+  const after=await db.targetVariantAsset.findUniqueOrThrow({where:{id:row!.id}}),receipt=JSON.parse(after.judgeJson!);
+  expect(after).toMatchObject({attempts:row!.attempts,assetId:row!.assetId,status:decision==="pass"?"GENERATED":"FAILED"});
+  expect(receipt.boardReview.dual.quality.envelopeReader).toBe(BOUND_SUBJECT_QUALITY_ENVELOPE_READER);
+  expect(receipt.boardReview.dual.quality.raw).toBe(prior.boardReview.dual.quality.raw);
+  expect(receipt.boardReview.dual.quality.fingerprint).toBe(prior.boardReview.dual.quality.fingerprint);
+  expect(receipt.reviewHistory).toHaveLength(1);expect(receipt.reviewHistory[0]).toMatchObject({boardReview:prior.boardReview,verdict:null,
+    wireFault:"schema",lastError,supersededBy:BOUND_SUBJECT_QUALITY_ENVELOPE_READER});
+  expect(await allowedDualPublication(db,publicationBinding(gameId,after))).toBe(decision==="pass");
+  expect(await db.worldBudgetLedger.findUniqueOrThrow({where:{worldId}})).toEqual(ledgerBefore);
+  expect(await db.fileBlob.findUniqueOrThrow({where:{key:retainedKey}})).toEqual(kept);
+  expect(await nextBoundEnvelopeReconciliation(container)).toBeNull();
+  expect(provider.creates).toHaveLength(callsBefore);expect(render).toHaveBeenCalledTimes(rendersBefore);
+  expect(forbidden).not.toHaveBeenCalled();expect(fetch).not.toHaveBeenCalled();
+  expect((await budget.audit(worldId)).capMicroUsd).toBe(4000000);
+},300000);

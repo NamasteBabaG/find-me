@@ -92,6 +92,7 @@ export const en = {
     description: "Turn one photo into a personal browser game: children search for their illustrated selves in adventure scenes, with hints and a digital gift option.",
   },
   common: {
+    loading: "Loading…",
     brand: "Where Am I?",
     createGame: "Create a game",
     signIn: "Sign in",
