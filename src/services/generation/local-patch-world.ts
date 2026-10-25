@@ -1,3 +1,4 @@
+import { applySourceCrownReturn } from "./source-crown-pixels";
 import { resumePropJoinRepair,applyPropJoinRepair } from "./prop-join-repair";
 import { sourceBodyBirthMarker } from "../../domain/generation/detectives-operational-policy";
 import { readSourceBodyRepairPin, sourceBodyPurchaseCandidate } from './source-body-repair-pin';
@@ -848,6 +849,8 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
       if (outcome.state === "generated") {
         const corrected = await applyPropJoinRepair(c, gameId, item.hide.id, { fence, readBoardArt: deps.readBoardArt });
         if (corrected) outcome = { ...outcome, assetId: corrected };
+        const crown=await applySourceCrownReturn(c,gameId,item.hide.id,{fence,readBoardArt:deps.readBoardArt});
+        if(crown)outcome={...outcome,assetId:crown};
       }
       outcomes.push(outcome);
       if (outcome.state === "held") {

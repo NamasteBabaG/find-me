@@ -1,3 +1,4 @@
+import { SOURCE_CROWN_COMPOSITION_VERSION, sourceCrownReturned, sourceCrownCorrectionSchema } from "../../domain/scene/source-crown-return";
 import { hasLocalPatchCapability } from "../../domain/scene/local-patch-family";
 import { createHash } from "node:crypto";
 import type { Prisma } from "@prisma/client";
@@ -24,7 +25,7 @@ import { foregroundForPinnedPrompt, foregroundPlanConflict } from "./local-patch
 const equal = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
 const object = (value: unknown): Record<string, unknown> => value !== null && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
 export type AuthoredLocalPatchReceipt = { compositionVersion?: unknown; authoredReturn?: unknown; authoredRecovery?: unknown;
-  propJoinCorrection?: unknown; selfRepair?: unknown; recoveryComposition?: unknown; foreground?: unknown; judgedSha256?: unknown; promptVersion?: unknown; boardReview?: unknown };
+  crownReturn?: unknown; propJoinCorrection?: unknown; selfRepair?: unknown; recoveryComposition?: unknown; foreground?: unknown; judgedSha256?: unknown; promptVersion?: unknown; boardReview?: unknown };
 
 /** Reconstruct from trusted pinned source data, never from a claimed receipt. */
 export function expectedAuthoredLocalPatchReturn(board: LocalPatchBoard, hide: LocalPatchHide, contentVersion: number,
@@ -110,7 +111,9 @@ export function authoredLocalPatchSourceNeighborContract(entry: SourcePlacementH
   if (!parent?.sourcePlacement || parent.sourcePlacement.basePlacementSha256 !== entry.basePlacementSha256 || !equal(parent, canonical))
     throw Error("AUTHORED_RECOVERY: source-neighbor parent differs from its authoritative entry");
   const recovered = receipt.authoredRecovery !== undefined ? readAuthoredLocalPatchRecovery(parent, receipt.authoredRecovery) : null;
-  const returned = recovered?.returnWindow ?? entry.effective.returnRect;
+  const crown=receipt.crownReturn!==undefined?sourceCrownReturned(parent,receipt.crownReturn):null;
+  if(receipt.crownReturn!==undefined&&(!crown||receipt.compositionVersion!==SOURCE_CROWN_COMPOSITION_VERSION||recovered))throw Error("CROWN_RETURN: invalid source-qualified return");
+  const returned = crown ?? recovered?.returnWindow ?? entry.effective.returnRect;
   if (recovered && (receipt.compositionVersion !== AUTHORED_RECOVERY_COMPOSITION_VERSION
     || !sourcePlacementRecoveryGeometryAllowed(entry, { crop: recovered.crop, child: recovered.protectedCore, returnRect: returned })))
     throw Error("AUTHORED_RECOVERY: source-neighbor recovery window is unsafe");
@@ -124,11 +127,13 @@ export function authoredLocalPatchReturnMatches(receipt: AuthoredLocalPatchRecei
   board: LocalPatchBoard, hide: LocalPatchHide, contentVersion: number, reviewed = false, placementContext?: TrustedSourcePlacementContext): boolean {
   const v4 = receipt?.compositionVersion === AUTHORED_PATCH_COMPOSITION_VERSION;
   const recovery = receipt?.compositionVersion === AUTHORED_RECOVERY_COMPOSITION_VERSION;
+  const crown=receipt?.compositionVersion===SOURCE_CROWN_COMPOSITION_VERSION;
   if (!v4 && !recovery && receipt?.authoredReturn === undefined && receipt?.authoredRecovery === undefined && !hide.returnRect) return true;
-  if ((!v4 && !recovery) || !hasLocalPatchCapability(contentVersion, "integratedQuality") || !hide.returnRect) return false;
+  if ((!v4 && !recovery && !crown) || !hasLocalPatchCapability(contentVersion, "integratedQuality") || !hide.returnRect) return false;
   try {
     const expected = expectedAuthoredLocalPatchReturn(board, hide, contentVersion, placementContext);
     if (!expected || !equal(receipt?.authoredReturn, expected)) return false;
+    if(crown&&!sourceCrownReturned(expected,receipt?.crownReturn)||!crown&&receipt?.crownReturn!==undefined)return false;
     if (recovery) {
       const derived = readAuthoredLocalPatchRecovery(expected, receipt?.authoredRecovery), state = object(receipt?.selfRepair);
       const decision = assertAuthoredLocalPatchRecoveryGeometry(expected, placementContext, state.decision), audit = object(receipt?.recoveryComposition);
@@ -152,6 +157,7 @@ export async function authoredLocalPatchRecoveryEvidenceMatches(db: Prisma.Trans
   board: LocalPatchBoard; hide: LocalPatchHide; sceneVersion: number; receipt: AuthoredLocalPatchReceipt;
   placementContext: TrustedSourcePlacementContext; promptVersion: string | null; beforePng?: Buffer }): Promise<boolean> {
   const { receipt, placementContext, board, hide } = input;
+  if(receipt.crownReturn!==undefined){const p=sourceCrownCorrectionSchema.safeParse(receipt.crownReturn);if(!p.success)return false;const row=await db.targetVariantAsset.findUnique({where:{id:p.data.rowId},select:{assetId:true}});return !!row?.assetId&&await (await import("./source-crown-pixels")).sourceCrownCompositionMatches(db,{gameId:input.gameId,hideId:hide.id,sceneVersion:input.sceneVersion,variantId:p.data.rowId,assetId:row.assetId,identitySha256:p.data.identitySha256,judgeJson:JSON.stringify(receipt)});}
   const body=sourceBodyForHide(placementContext,hide.id);
   if(body){const before=input.beforePng??await (await import('./local-patch-hide')).readShippedBoardArt(board.art,body.sourceSha256);
     return (await import('./source-body-repair-compose')).sourceBodyCompositionEvidenceMatches(db,{gameId:input.gameId,hideId:hide.id,receipt:receipt as unknown as Record<string,unknown>,geometry:body,beforePng:before});}
@@ -215,6 +221,8 @@ export async function authoredLocalPatchPublicationMatches(db: Prisma.Transactio
       || receipt?.authoredReturn !== undefined || receipt?.authoredRecovery !== undefined;
     if (!claims && !hide?.returnRect) return true;
     if (!board || !hide || !authoredLocalPatchReturnMatches(receipt, board, hide, input.sceneVersion, true, placementContext)) return false;
+    if(input.assetId?.startsWith("ast_crown_")&&receipt?.crownReturn===undefined)return false;
+    if(receipt?.crownReturn!==undefined&&!await (await import("./source-crown-pixels")).sourceCrownCompositionMatches(db,input))return false;
     if (input.assetId?.startsWith("ast_prop_") && receipt?.propJoinCorrection === undefined) return false;
     if (receipt?.propJoinCorrection !== undefined && !await (await import("./prop-join-repair")).propJoinPublicationMatches(db,input)) return false;
     if (receipt?.authoredRecovery === undefined && !sourceBodyForHide(placementContext,input.hideId)) return true;

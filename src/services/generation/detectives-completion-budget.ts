@@ -565,10 +565,13 @@ export async function resumeDetectivesLowEngineRecovery(c: Container, gameId: st
 export async function singleLowContinuationPublishable(db: Pick<Prisma.TransactionClient,"auditLog">, gameId: string, approval: WorldAutomaticReviewRecoveryV5): Promise<boolean> {
   const grant = await (await import("./single-low-policy")).singleLowReviewAuthorization(db, gameId);
   if (!grant || approval.worldId !== worldOf(gameId) || approval.grantSha256 !== grant.authorizationSha256) return false;
+  const medium = approval.policyId === "single-sol-medium-transport-recovery/v1";
+  if (medium && !await (await import("./single-medium-policy")).singleMediumReviewPolicyOf(db, gameId)) return false;
+  const single = medium ? "single-sol-medium/v1" : SINGLE_VISUAL_REVIEW_VERSION;
   const row = await db.auditLog.findUnique({where:{id:approval.approvalId}});
   let proof: Record<string,unknown>; try { proof=JSON.parse(row?.metaJson ?? "null"); } catch { return false; }
-  return !!row && row.actorType === "SYSTEM" && row.actorId === null && row.action === "single-sol-low-transport-recovery/v1"
-    && row.entityType === "Game" && row.entityId === gameId && proof?.single === SINGLE_VISUAL_REVIEW_VERSION
+  return !!row && row.actorType === "SYSTEM" && row.actorId === null && row.action === approval.policyId
+    && row.entityType === "Game" && row.entityId === gameId && proof?.single === single && proof.policyId === approval.policyId
     && proof.grantSha256 === grant.authorizationSha256 && proof.variantId === approval.variantId && proof.imageSha256 === approval.imageSha256
     && proof.requestKey === approval.requestKey && proof.operationFingerprint === approval.operationFingerprint
     && typeof proof.retainedPayloadSha256 === "string" && /^[a-f0-9]{64}$/.test(proof.retainedPayloadSha256) && sha256Bytes(Buffer.from(JSON.stringify(proof))) === approval.authorizationSha256;

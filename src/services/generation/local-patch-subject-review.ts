@@ -33,10 +33,14 @@ export class SubjectEvidenceUnavailable extends Error {
  * are all checked; the wire copy is a bounded PNG derived from those bytes.
  */
 export async function loadSubjectPhoto(c: Pick<Container, "db" | "storage">,
-  prepared: { game: { ownerId: string | null }; child: { originalPhotoAssetId: string | null; ageYears: number | null } },
+  prepared: { game: { id?:string; ownerId: string | null }; child: { originalPhotoAssetId: string | null; ageYears: number | null }; request?:{hides:readonly{hideId:string}[]} },
   upgrade: SubjectUpgradeReceipt): Promise<Buffer> {
   const { game, child } = prepared;
-  if (!child.originalPhotoAssetId) throw new SubjectEvidenceUnavailable("the original photograph is no longer kept");
+  if (!child.originalPhotoAssetId) {
+    const hideId=prepared.request?.hides[0]?.hideId;const anchor=game.id&&hideId?await (await import("./published-crown-repair")).publishedCrownSubjectAnchor(c,game.id,hideId,upgrade):null;
+    if(anchor)return anchor.bytes;
+    throw new SubjectEvidenceUnavailable("the original photograph is no longer kept");
+  }
   if (child.originalPhotoAssetId !== upgrade.photoAssetId || child.ageYears !== upgrade.ageYears || game.ownerId !== upgrade.ownerId)
     throw new SubjectEvidenceUnavailable("the child's photograph or age differs from the enrolled one");
   const photo = await c.db.asset.findUnique({ where: { id: upgrade.photoAssetId } });

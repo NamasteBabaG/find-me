@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { SINGLE_VISUAL_REVIEW_VERSION, readSingleVisualReview } from './single-visual-review';
+import { isSingleVisualReviewVersion, singleVisualReviewEffort, readSingleVisualReviewVersion, readSingleVisualReview } from './single-visual-review';
 
 /** One prospective, bounded third painting after a conclusive framing failure; never another image approval. */
 export const GUIDED_FRAME_RECOVERY_VERSION = 'single-low-guided-frame-recovery/v1' as const;
@@ -31,7 +31,8 @@ export function guidedFrameCandidate(row: GuidedFrameRow): boolean {
     || r.reviewState !== 'board-review-complete' || r.wireFault !== null || !hash(r.judgedSha256)) return false;
   const dual=object(object(r.boardReview)?.dual), q=object(dual?.quality), policy=object(q?.policy), verdict=object(r.verdict);
   const outer=typeof q?.raw === 'string' ? readSingleVisualReview(q.raw) : null, boundaries=object(verdict?.boundaryIntegrity);
-  return dual?.single === SINGLE_VISUAL_REVIEW_VERSION && policy?.effort === 'low' && policy.model === 'gpt-6.1-sol'
+  return isSingleVisualReviewVersion(dual?.single) && policy?.effort === singleVisualReviewEffort(dual.single)
+    && readSingleVisualReviewVersion(q?.raw as string) === dual.single && policy.model === 'gpt-6.1-sol'
     && typeof q?.requestKey === 'string' && !!outer && outer.doubt === false && verdict?.verdict === 'fail'
     && ['childComplete','pictureWhole','severeSeam','neighborsIntact'].some(k=>verdict[k] === 'fail')
     && ['left','top','right','bottom'].some(k=>object(boundaries?.[k])?.status === 'fail');

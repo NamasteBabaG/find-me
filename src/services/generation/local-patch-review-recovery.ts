@@ -1,4 +1,4 @@
-import { SINGLE_VISUAL_REVIEW_VERSION } from "../../domain/generation/single-visual-review";
+import { isSingleVisualReviewVersion } from "../../domain/generation/single-visual-review";
 import {
   LOCAL_PATCH_EVIDENCE_ROUND_CAP, LOCAL_PATCH_EVIDENCE_TRANSPORT_BACKOFF_MS, nextLocalPatchEvidenceStep,
   type EvidenceAttempt, type EvidenceFaultKind, type EvidenceRole, type EvidenceStep, type EvidenceStrategy,
@@ -65,7 +65,7 @@ export function localPatchEvidenceRecovery(row: { status: string; lastError?: st
       || receipt?.reviewState !== "board-review-complete" || !receipt.boardReview
       || !(receipt.wireFault || receipt.verdict === null)) return null;
     // A single-answer experiment never turns an unusable reply into a routine second paid review.
-    if (receipt.boardReview.dual?.single === SINGLE_VISUAL_REVIEW_VERSION) return { attempt: 1, nextAttempt: 2, retry: false,
+    if (isSingleVisualReviewVersion(receipt.boardReview.dual?.single)) return { attempt: 1, nextAttempt: 2, retry: false,
       waiting: false, exhausted: true, retryAt: Infinity, role: null, strategy: null, step: null };
     const stored = receipt.boardReview.evidenceReviewAttempt ?? 1;
     const history = safeAttempt(stored) ? localPatchEvidenceHistory(receipt, row.updatedAt) : [];

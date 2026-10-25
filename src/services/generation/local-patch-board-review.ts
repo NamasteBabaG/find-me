@@ -1,3 +1,6 @@
+import { publishedCrownRepairOf } from "./published-crown-repair";
+import { SOURCE_CROWN_COMPOSITION_VERSION, sourceCrownReturned } from "../../domain/scene/source-crown-return";
+import { identityApprovedForDisplay, identityGateReceiptOf, validateIdentityGateBill } from "./board-wizard-identity-gate";
 import { sourceBodyMarker } from '../../domain/scene/source-body-repair';
 import { nativeMaskTailPublicationAuthorized } from "./detectives-completion-budget";
 import { nativeMaskTailMarker } from "../../domain/generation/native-mask-tail";
@@ -112,12 +115,14 @@ export async function prepareLocalPatchBoardReview(c: Container, input: { gameId
   const scene = await c.db.gameScene.findUniqueOrThrow({ where: { id: input.sceneId },
     include: { game: { include: { childProfile: true } }, targets: { include: { variants: true } } } });
   const game = scene.game, child = game.childProfile;
+  const publishedCrown=["READY","DELIVERED"].includes(game.status)?await publishedCrownRepairOf(c.db,input.gameId,input.sceneId):null;
+  const crownReview=publishedCrown?.state.phase==="staged";
   const strict = isLocalPatchStrictVersion(scene.sceneVersion);
   const reviewVersion = options.playerReview ? PLAYER_REVIEW_VERSION : isLocalPatchAgeVersion(scene.sceneVersion) ? LOCAL_PATCH_AGE_BOARD_REVIEW_VERSION
     : strict ? LOCAL_PATCH_STRICT_BOARD_REVIEW_VERSION : LOCAL_PATCH_BOARD_REVIEW_VERSION;
   let settings: { model: string; effort: "low" | "medium"; maxOutputTokens: number; endpoint: string; timeoutMs: number } = localPatchBoardJudgeSettings(scene.sceneVersion);
   demand(game.id === input.gameId && game.styleVersion === "local-patch-world-v1"
-    && (game.status === "TARGETS_GENERATING" || options.recovery && isLocalPatchAgeVersion(scene.sceneVersion) && game.status === "GENERATION_FAILED")
+    && (game.status === "TARGETS_GENERATING" || crownReview || options.recovery && isLocalPatchAgeVersion(scene.sceneVersion) && game.status === "GENERATION_FAILED")
     && !game.deletedAt && game.ownerId && child && !child.deletedAt && child.ownerId === game.ownerId
     && isLocalPatchAdvisoryVersion(scene.sceneVersion), "A live catalog-7 owned game is required");
   const placementContext = await resolveLocalPatchBoardsForGame(c.db, game.id, scene.sceneVersion);
@@ -142,7 +147,8 @@ export async function prepareLocalPatchBoardReview(c: Container, input: { gameId
   const sheet = await c.storage.get(identity.storagePath);
   const references = await prepareLocalPatchIdentityReferences(sheet, scene.sceneVersion);
   const catalogSha256 = await identityStyleCatalogSha256(scene.sceneSlug, scene.sceneVersion);
-  await requireBoardWizardIdentityApproval(c, budget, { gameId: game.id, identityAssetId: identity.id,
+  if(crownReview){const receipt=await identityGateReceiptOf(c.db,identity.id);demand(receipt&&receipt.sheetSha256===sha256Bytes(sheet)&&receipt.provenance.style.catalogSha256===catalogSha256&&await identityApprovedForDisplay(c,child,scene.sceneVersion),"Crown repair requires the unchanged source-approved canonical identity and privacy purge proof");await validateIdentityGateBill(budget,game.id,receipt);}
+  else await requireBoardWizardIdentityApproval(c, budget, { gameId: game.id, identityAssetId: identity.id,
     sheetSha256: sha256Bytes(sheet), catalogSha256, photoAssetId: child.originalPhotoAssetId, ageYears: child.ageYears,
     crop: child.photoCropJson ? JSON.parse(child.photoCropJson) : null, contentVersion: scene.sceneVersion });
   const definition = sceneBySlug(scene.sceneSlug, scene.sceneVersion);
@@ -180,6 +186,7 @@ export async function prepareLocalPatchBoardReview(c: Container, input: { gameId
       receipt: completed, placementContext, promptVersion: row.promptVersion, beforePng: before }), "Authored recovery paid evidence or deterministic candidate changed");
     if (strict && completed.compositionVersion !== LOCAL_PATCH_COMPOSITION_VERSION
       && completed.compositionVersion !== AUTHORED_PATCH_COMPOSITION_VERSION
+      && completed.compositionVersion !== SOURCE_CROWN_COMPOSITION_VERSION
       && !(isCollectionVersion(scene.sceneVersion) && [SELF_REPAIR_COMPOSITION_VERSION, AUTHORED_RECOVERY_COMPOSITION_VERSION].includes(String(completed.compositionVersion))
         && selfRepairDecisionSchema.safeParse((completed.selfRepair as { decision?: unknown } | undefined)?.decision).success))
       return { ready: false as const, reason: "Retained image awaits the current head-safe compositor" };
@@ -300,7 +307,7 @@ export async function prepareLocalPatchBoardReview(c: Container, input: { gameId
         ]).png().toBuffer();
       }
       const receipt = JSON.parse(e.row.judgeJson!);
-      const returned = [SELF_REPAIR_COMPOSITION_VERSION, AUTHORED_RECOVERY_COMPOSITION_VERSION].includes(receipt.compositionVersion)
+      const returned = receipt.crownReturn!==undefined ? sourceCrownReturned(receipt.authoredReturn,receipt.crownReturn)! : [SELF_REPAIR_COMPOSITION_VERSION, AUTHORED_RECOVERY_COMPOSITION_VERSION].includes(receipt.compositionVersion)
         ? selfRepairDecisionSchema.parse(receipt.selfRepair.decision).returnWindow
         : localPatchReturnRegion(e.crop, maskForHide(e.hide), e.hide.returnRect).local;
       // The same window for the boundary strips and, under the object-joins question, its magnified joins.
@@ -482,7 +489,7 @@ export async function reviewLocalPatchBoard(c: Container, input: { gameId: strin
         continue;
       }
       const prior = JSON.parse(current.judgeJson ?? "{}");
-      const compositionVersion = prior.compositionVersion === AUTHORED_RECOVERY_COMPOSITION_VERSION ? AUTHORED_RECOVERY_COMPOSITION_VERSION
+      const compositionVersion = prior.compositionVersion === SOURCE_CROWN_COMPOSITION_VERSION ? SOURCE_CROWN_COMPOSITION_VERSION : prior.compositionVersion === AUTHORED_RECOVERY_COMPOSITION_VERSION ? AUTHORED_RECOVERY_COMPOSITION_VERSION
         : prior.compositionVersion === SELF_REPAIR_COMPOSITION_VERSION ? SELF_REPAIR_COMPOSITION_VERSION
         : prior.compositionVersion === AUTHORED_PATCH_COMPOSITION_VERSION ? AUTHORED_PATCH_COMPOSITION_VERSION : LOCAL_PATCH_COMPOSITION_VERSION;
       const disposition = dispositions[index]!;
@@ -510,7 +517,7 @@ export async function reviewLocalPatchBoard(c: Container, input: { gameId: strin
           fingerprint: evaluated?.proof.quality.fingerprint ?? fingerprint,
           requestKey: evaluated?.proof.quality.requestKey ?? requestKey, composedSha256: sha256Bytes(composed),
           ...(evaluated ? { dual: evaluated.proof } : {}),
-          ...([AUTHORED_PATCH_COMPOSITION_VERSION, AUTHORED_RECOVERY_COMPOSITION_VERSION].includes(compositionVersion) ? { authoredReturn: prior.authoredReturn } : {}),
+          ...([AUTHORED_PATCH_COMPOSITION_VERSION, AUTHORED_RECOVERY_COMPOSITION_VERSION, SOURCE_CROWN_COMPOSITION_VERSION].includes(compositionVersion) ? { authoredReturn: prior.authoredReturn } : {}),
           ...(compositionVersion === AUTHORED_RECOVERY_COMPOSITION_VERSION ? { authoredRecovery: prior.authoredRecovery } : {}),
           ...(request.assessmentMode === PLAYER_REVIEW_MODE ? { assessmentMode: PLAYER_REVIEW_MODE } : {}),
           ...(request.reviewScope ? { reviewScope: request.reviewScope, reviewedHideIds: request.hides.map(h => h.hideId), evidenceReviewAttempt,

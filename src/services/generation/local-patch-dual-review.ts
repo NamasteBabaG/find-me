@@ -1,4 +1,9 @@
-import { SINGLE_VISUAL_REVIEW_VERSION, readSingleVisualReview } from "../../domain/generation/single-visual-review";
+import { singleMediumEvidence, singleMediumPrompt, singleMediumAnatomyPrompt } from "./single-medium-evidence";
+import { publishedCrownSubjectAnchor } from "./published-crown-repair";
+import { singleReviewHeadEvidence } from "./single-review-head-evidence";
+import { targetHeadReturnPrompt } from "../../domain/generation/target-head-return";
+import { ensureSingleMediumReviewPolicy } from "./single-medium-policy";
+import { SINGLE_VISUAL_REVIEW_VERSION, SINGLE_MEDIUM_VISUAL_REVIEW_VERSION, readSingleVisualReview } from "../../domain/generation/single-visual-review";
 import { singleLowReviewAuthorization as detectivesSingleReviewAuthorization } from "./single-low-policy";
 import { hasLocalPatchCapability } from "../../domain/scene/local-patch-family";
 import sharp from "sharp";
@@ -496,9 +501,9 @@ export async function dualReviewQuestionCandidates(c: Pick<Container, "db" | "st
   if (singleAuthority && singleAuthority.sceneVersion !== prepared.scene.sceneVersion) throw Error("SINGLE_REVIEW: source family differs from review authority");
   if (upgrade && plan && singleAuthority) {
     const photoPng = await loadSubjectPhoto(c, prepared, upgrade);
-    const one = await prepareSingleLowQuestion(asked, version, { upgrade, plan, photoPng });
+    const one = await prepareSingleLowQuestion(c, asked, version, { upgrade, plan, photoPng });
     return [...found, { requestKey: one.requestKey, fingerprint: one.question.fingerprint, role: "quality" as const, strategy: STANDARD, form: "single" as const,
-      single: SINGLE_VISUAL_REVIEW_VERSION, reserveMicroUsd: one.bound.microUsd, continued: one.continued }];
+      single: one.singleVersion, reserveMicroUsd: one.bound.microUsd, continued: one.continued }];
   }
   return found;
 }
@@ -1065,37 +1070,78 @@ async function dualReview(c: Container, prepared: Prepared, deps: LocalPatchBoar
 }
 
 
-async function prepareSingleLowQuestion(prepared: Prepared, version: DualVisualReviewVersion, subject: SubjectQuestionContext) {
+/** Exact read-only admission plan for the same single question the runtime
+ * will dispatch. No policy grant, reservation, provider call or image change. */
+export async function prospectiveSingleVisualReviewQuestion(c: Pick<Container, "db" | "storage">, prepared: Prepared) {
+  const version = await dualVisualReviewVersion(c.db, prepared.game.id);
+  if (!version) throw Error("SINGLE_REVIEW: a pinned visual release is required for planning");
+  const asked = {...prepared, request: await dualQualityRequest(version, prepared.request)};
+  const upgrade = await subjectUpgradeOf(c.db, prepared.game.id), plan = subjectPlanOfHide(asked.request.hides[0]!.hideId, prepared.scene.sceneVersion);
+  if (!upgrade || !plan) throw Error("SINGLE_REVIEW: enrolled subject evidence required for planning");
+  const photoPng = await loadSubjectPhoto(c, asked, upgrade), one = await prepareSingleLowQuestion(c, asked, version, {upgrade, plan, photoPng});
+  return {requestKey:one.requestKey, fingerprint:one.question.fingerprint, singleVersion:one.singleVersion,
+    reserveMicroUsd:one.bound.microUsd, inputTokens:one.bound.inputTokens, outputTokens:one.bound.outputTokens};
+}
+
+async function prepareSingleLowQuestion(c: Pick<Container, "db" | "storage">, prepared: Prepared, version: DualVisualReviewVersion, subject: SubjectQuestionContext) {
   const binding = dualBinding(prepared, version), hideId = binding.hideId;
   const entry = prepared.entries.find(e => e.hide.id === hideId)!, receipt = JSON.parse(entry.row.judgeJson!);
-  const continued = (Array.isArray(receipt.evidenceAttempts) ? receipt.evidenceAttempts : []).filter((v: {single?:unknown;imageSha256?:unknown}) => v.single === SINGLE_VISUAL_REVIEW_VERSION && v.imageSha256 === binding.imageSha256).length;
-  const attempt = continued + 1, tier = continued ? 'default' as const : 'flex' as const;
+  const lowContinued = (Array.isArray(receipt.evidenceAttempts) ? receipt.evidenceAttempts : []).filter((v: {single?:unknown;imageSha256?:unknown}) => v.single === SINGLE_VISUAL_REVIEW_VERSION && v.imageSha256 === binding.imageSha256).length;
+  const legacyAttempt = lowContinued + 1, tier = lowContinued ? 'default' as const : 'flex' as const;
   const sourceNeighbors = sourceNeighborQualityEvidence(prepared.placementContext, hideId, binding.imageSha256, receipt);
   const quality = dualQualityQuestion(prepared.request, binding, 1, STANDARD, { tier });
   const combined = combinedQualitySubjectQuestion(quality, subject.plan, subject.photoPng, subject.upgrade, SUBJECT_POLICY_V2);
   if (!combined) throw Error('SINGLE_REVIEW: complete quality and identity evidence does not fit');
   const assessment = withSourceNeighborQualityQuestion(combined.question, sourceNeighbors, entry.reviewContextRect);
   const anatomy = await runtimeContinuityQuestion(prepared, binding, 1, version, STANDARD, 'responses-background', tier);
-  const question = prepareVisualReview({ ...assessment, combined: SINGLE_VISUAL_REVIEW_VERSION, effort: 'low',
+  const lowQuestion = prepareVisualReview({ ...assessment, combined: SINGLE_VISUAL_REVIEW_VERSION, effort: 'low',
     judge: 'gpt-6.1-sol', transport: 'responses-background', tier, images: [...assessment.images, ...anatomy.images], labels: [...assessment.labels, ...anatomy.labels],
     prompt: assessment.prompt + '\nONE REQUEST, ALL CHECKS: the assessment above and the final-image anatomy below are mandatory sections of ONE answer. Complete all inspections; never infer a pass from another check.\n'
       + anatomy.prompt + '\nFINAL OUTERMOST OUTPUT CONTRACT overrides the separate output envelopes above: {"version":"' + SINGLE_VISUAL_REVIEW_VERSION
       + '","assessment":' + (sourceNeighbors ? '<complete final assessment envelope above including quality, subject and sourceNeighbors>' : '<complete final quality and subject assessment envelope above>')
       + ',"continuity":<complete anatomy object with cases>,"doubt":false,"doubtReason":null}. '
-      + (continued ? '\nUNANSWERED TRANSPORT CONTINUATION '+attempt+': the earlier provider request ended without text or usage. This is the first usable assessment of these unchanged pixels, not a second opinion.' : '')
+      + (lowContinued ? '\nUNANSWERED TRANSPORT CONTINUATION '+legacyAttempt+': the earlier provider request ended without text or usage. This is the first usable assessment of these unchanged pixels, not a second opinion.' : '')
       + 'Use doubt=true only for a genuinely unresolved visible question and give a specific doubtReason (12-400 characters). Do not request a second opinion routinely. A clearly located defect is a repair decision, not uncertainty. Keep passing observations concise; retain every required field, fault, location and evidence ID.' });
+  // Any already submitted LOW request keeps its exact question and fingerprint.
+  // Increasing effort is prospective and never buys a second usable opinion.
+  const authority = await detectivesSingleReviewAuthorization(c.db, prepared.game.id);
+  const rounds = await backgroundRoundsOnImage(c.db, prepared.game.id, { hideId, variantId: entry.row.id,
+    imageSha256: binding.imageSha256, geometrySha256: binding.geometrySha256, identitySha256: binding.identitySha256,
+    ...(binding.authoredReturn ? { authoredReviewBinding: authoredLocalPatchReviewBinding(binding)! } : {}) });
+  const hasLow = rounds.some(round => round.fingerprint === lowQuestion.fingerprint)
+    || lowContinued > 0 || receipt.boardReview?.dual?.single === SINGLE_VISUAL_REVIEW_VERSION
+      && receipt.boardReview.dual.imageSha256 === binding.imageSha256;
+  const singleVersion = authority?.kind === 'from-birth' && !hasLow ? SINGLE_MEDIUM_VISUAL_REVIEW_VERSION : SINGLE_VISUAL_REVIEW_VERSION;
+  const continued = singleVersion === SINGLE_VISUAL_REVIEW_VERSION ? lowContinued
+    : (Array.isArray(receipt.evidenceAttempts) ? receipt.evidenceAttempts : []).filter((v: {single?:unknown;imageSha256?:unknown}) => v.single === singleVersion && v.imageSha256 === binding.imageSha256).length;
+  const attempt = continued + 1;
+  let mediumPrompt = (singleVersion === SINGLE_MEDIUM_VISUAL_REVIEW_VERSION ? singleMediumPrompt(lowQuestion.prompt.replace(anatomy.prompt,()=>singleMediumAnatomyPrompt(anatomy.prompt)),binding,hideId) : lowQuestion.prompt).replace('"version":"' + SINGLE_VISUAL_REVIEW_VERSION + '"', '"version":"' + singleVersion + '"');
+  if (singleVersion === SINGLE_MEDIUM_VISUAL_REVIEW_VERSION && continued)
+    mediumPrompt = mediumPrompt.replace('Use doubt=true only', '\nUNANSWERED TRANSPORT CONTINUATION '+attempt+': the earlier provider request ended without text or usage. This is the first usable assessment of these unchanged pixels, not a second opinion.Use doubt=true only');
+  const anchor = prepared.child.originalPhotoAssetId===null ? await publishedCrownSubjectAnchor(c,prepared.game.id,hideId,subject.upgrade) : null;
+  if(anchor){mediumPrompt+='\nPRIVACY-PRESERVING RECOMPOSITION SOURCE: the original photograph was normally deleted after delivery and is NOT supplied. The evidence labelled original-photo is instead the prior PHOTO-APPROVED target crop, source image '+anchor.anchor.sourceImageSha256+'. It is an unchanged-face comparison anchor, not a photo or an approval of this new image. For photoLikeness, require the same visible face that previously passed the enrolled photograph check. Independently require agreement with the canonical portrait, the stated age, face visibility and wardrobe. The deterministic correction preserves every pixel below crop-y='+anchor.anchor.unchangedBelowTop+'; only the source-qualified upper crown/feather band changes. Inspect the restored hair against RAW and canonical identity. Never copy the old cut crown. All quality, source-neighbor, anatomy, head and subject checks still require fresh positive evidence in this SAME MEDIUM answer. Anchor ancestry SHA256: '+sha256Bytes(Buffer.from(JSON.stringify(anchor.anchor)));}
+  const head = singleVersion === SINGLE_MEDIUM_VISUAL_REVIEW_VERSION ? await singleReviewHeadEvidence(c.db, {
+    gameId: prepared.game.id, hide: entry.hide, attempt: entry.row.attempts, receipt, shipping: entry.bytes,
+    geometrySha256: binding.geometrySha256, identitySha256: binding.identitySha256 }) : undefined;
+  const shared = singleVersion === SINGLE_MEDIUM_VISUAL_REVIEW_VERSION ? await singleMediumEvidence(assessment,anatomy,hideId) : undefined;
+  const question = singleVersion === SINGLE_VISUAL_REVIEW_VERSION ? lowQuestion : prepareVisualReview({ ...lowQuestion,
+    combined: singleVersion, effort: 'medium', tier: continued ? 'default' : 'flex',
+    prompt: mediumPrompt + '\nMEDIUM SHARED NATIVE EVIDENCE: the quality AFTER image contains the anatomy context at LEFT and its exact native head detail at RIGHT across the 24px white gutter. Inspect both panels for every anatomy requirement; neither is a new appearance. All four AFTER-only joins remain supplied as the RIGHT native panels of their labelled BEFORE/AFTER return comparisons. Anatomy must inspect RIGHT AFTER only; never borrow a head from LEFT BEFORE. No required pixels or inspections were removed.' + targetHeadReturnPrompt(head!.evidence), images: [...shared!.images, head!.raw, entry.bytes],
+    labels: [...shared!.labels.map(label=>anchor&&label.includes(hideId+':original-photo')?'EVIDENCE_ID='+hideId+':original-photo PRIOR PHOTO-APPROVED TARGET FACE ANCHOR, NOT the deleted photograph':label), 'EVIDENCE_ID='+hideId+':native-provider-raw 512x768 WHOLE RAW TARGET HEAD, crop-local axes',
+      'EVIDENCE_ID='+hideId+':native-shipping-crown 512x768 EXACT PLAYER CROP, same axes, inspect full crown at the return edge'] });
   const requestKey = 'self-repair:board:' + prepared.board.board + ':' + question.fingerprint;
   const bound = visualReviewMaxCharge(question);
   if (!bound.ok) throw Error('SINGLE_REVIEW: unbounded prepared evidence: ' + bound.reason);
   if (bound.microUsd > 250_000) throw Error('SINGLE_REVIEW: exact request exceeds its qualified maximum');
-  return { binding, hideId, entry, receipt, sourceNeighbors, combined, question, requestKey, bound, attempt, continued };
+  return { binding, hideId, entry, receipt, sourceNeighbors, combined, question, requestKey, bound, attempt, continued, singleVersion, head, anchor };
 }
 
-/** One LOW question per immutable image. Later slices poll or replay this exact key.
+/** One single-review question per immutable image. Later slices poll or replay this exact key.
  * No automatic second opinion or independent second role is purchased. */
 async function singleLowReview(c: Container, prepared: Prepared, deps: LocalPatchBoardReviewDeps, version: DualVisualReviewVersion,
   subject: SubjectQuestionContext, deadlineAt?: number): Promise<Waiting | Reviewed> {
-  const { binding, hideId, entry, sourceNeighbors, combined, question, requestKey, bound, attempt } = await prepareSingleLowQuestion(prepared, version, subject);
+  const { binding, hideId, entry, sourceNeighbors, combined, question, requestKey, bound, attempt, singleVersion, head, anchor } = await prepareSingleLowQuestion(c, prepared, version, subject);
+  if (singleVersion === SINGLE_MEDIUM_VISUAL_REVIEW_VERSION) await ensureSingleMediumReviewPolicy(c, prepared.game.id, deps.fence);
   await inventorySelfRepairRequest(c, prepared.game.id, requestKey, deps.fence);
   const gate = await askContinuityInBackground(c, { gameId: prepared.game.id, worldId: prepared.worldId, requestKey, question,
     reserveMicroUsd: bound.microUsd, fence: deps.fence, ...(deadlineAt === undefined ? {} : { deadlineAt }),
@@ -1111,12 +1157,13 @@ async function singleLowReview(c: Container, prepared: Prepared, deps: LocalPatc
     throw Error('SINGLE_REVIEW: retained answer differs from dispatched authored candidate');
   const base: DualStageBase = { requestKey, fingerprint: question.fingerprint, attempt, policy: question.policy, raw: wire.raw,
     model: wire.model, finishReason: wire.finishReason, wireFault: wire.wireFault, costMicroUsd: bought.evidence.amountMicroUsd };
-  const qualityStage: QualityStage = { ...base, reader: CURRENT_QUALITY_READER, subjectBundle: combined.binding, ...(sourceNeighbors ? { sourceNeighbors } : {}) };
+  const qualityStage: QualityStage = { ...base, reader: CURRENT_QUALITY_READER, subjectBundle: combined.binding, ...(sourceNeighbors ? { sourceNeighbors } : {}), ...(head ? { headEvidence: head.evidence } : {}) };
   const continuity: ContinuityStage = { ...base, reader: CURRENT_CONTINUITY_READER[version] };
   const subjectStage: SubjectStage = { ...base, subjectPolicy: SUBJECT_POLICY_V2, reader: SUBJECT_READER_V2,
     photoSha256: subject.upgrade.photoSha256, planSha256: subjectPlanSha256(subject.plan), combined: SUBJECT_QUALITY_BUNDLE_VERSION,
+    ...(anchor?{recompositionAnchor:anchor.anchor}:{}),
     ...(sourceNeighbors ? { sourceNeighbors } : {}) };
-  const proof: DualReviewProof = { version, single: SINGLE_VISUAL_REVIEW_VERSION, hideId,
+  const proof: DualReviewProof = { version, single: singleVersion, hideId,
     ...(prepared.scene.sceneVersion === 13 ? { sceneVersion: 13 as const } : {}),
     imageSha256: binding.imageSha256, geometrySha256: binding.geometrySha256, identitySha256: binding.identitySha256,
     ...(binding.authoredReturn ? { authoredReturn: binding.authoredReturn } : {}), ...(binding.authoredRecovery ? { authoredRecovery: binding.authoredRecovery } : {}),

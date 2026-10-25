@@ -1,5 +1,8 @@
-import { SINGLE_VISUAL_REVIEW_VERSION, readSingleVisualReview } from "../../domain/generation/single-visual-review";
-import { isSingleLowReviewPolicy } from "../../domain/generation/visual-review-policy";
+import { SOURCE_CROWN_COMPOSITION_VERSION } from "../../domain/scene/source-crown-return";
+import { singleReviewHeadEvidenceMatches } from "./single-review-head-evidence";
+import { singleMediumReviewPolicyOf } from "./single-medium-policy";
+import { SINGLE_MEDIUM_VISUAL_REVIEW_VERSION, isSingleVisualReviewVersion, singleVisualReviewEffort, readSingleVisualReviewVersion, readSingleVisualReview } from "../../domain/generation/single-visual-review";
+import { isSingleReviewPolicy } from "../../domain/generation/visual-review-policy";
 import { nativeMaskTailPublicationAuthorized } from "./detectives-completion-budget";
 import { singleLowReviewAuthorization as detectivesSingleReviewAuthorization } from "./single-low-policy";
 import { hasLocalPatchCapability } from "../../domain/scene/local-patch-family";
@@ -34,25 +37,29 @@ export async function allowedDualPublication(db: Prisma.TransactionClient, input
     const version = await dualVisualReviewVersion(db, input.gameId);
     const receipt = JSON.parse(input.judgeJson ?? "null"), review = receipt?.boardReview;
     const proof = review?.dual as DualReviewProof | undefined;
-    const single = proof?.single === SINGLE_VISUAL_REVIEW_VERSION;
+    const single = isSingleVisualReviewVersion(proof?.single);
     const authority = single ? await detectivesSingleReviewAuthorization(db, input.gameId) : null;
+    if (proof?.single === SINGLE_MEDIUM_VISUAL_REVIEW_VERSION && !await singleMediumReviewPolicyOf(db, input.gameId)) return false;
     if (single && (!authority || authority.identitySha256 !== input.identitySha256 || input.sceneVersion !== authority.sceneVersion
-      || !proof?.continuity || !proof.subject || !isSingleLowReviewPolicy(proof.quality.policy)
+      || !proof?.continuity || !proof.subject || !isSingleReviewPolicy(proof.quality.policy)
+      || proof.quality.policy.effort !== singleVisualReviewEffort(proof.single!) || readSingleVisualReviewVersion(proof.quality.raw) !== proof.single
       || ![proof.continuity, proof.subject].every(stage => stage.requestKey === proof.quality.requestKey && stage.fingerprint === proof.quality.fingerprint
         && stage.raw === proof.quality.raw && equal(stage.policy, proof.quality.policy) && stage.costMicroUsd === proof.quality.costMicroUsd)
       || readSingleVisualReview(proof.quality.raw)?.doubt !== false)) return false;
-    if (!single && proof && isSingleLowReviewPolicy(proof.quality.policy)) return false;
-    if (!version || proof?.sceneVersion !== (input.sceneVersion === 13 ? 13 : undefined) || !hasLocalPatchCapability(input.sceneVersion, "integratedQuality") || review?.version !== version || review.effort !== (single ? "low" : "high")
+    if (!single && proof && isSingleReviewPolicy(proof.quality.policy)) return false;
+    if (!version || proof?.sceneVersion !== (input.sceneVersion === 13 ? 13 : undefined) || !hasLocalPatchCapability(input.sceneVersion, "integratedQuality") || review?.version !== version || review.effort !== (single ? singleVisualReviewEffort(proof!.single!) : "high")
       || review.assessmentMode !== PLAYER_REVIEW_MODE || review.reviewScope !== "ready-only/v1"
       || !equal(review.reviewedHideIds, [input.hideId]) || receipt.reviewState !== "board-review-complete"
       || receipt.wireFault !== null || receipt.renderFault != null || receipt.judgedSha256 !== input.imageSha256
       || receipt.geometrySha256 !== input.geometrySha256 || proof?.version !== version
       || proof.hideId !== input.hideId || proof.imageSha256 !== input.imageSha256 || proof.geometrySha256 !== input.geometrySha256
       || proof.identitySha256 !== input.identitySha256 || !proof.quality || !proof.continuity) return false;
+    if(receipt.compositionVersion===SOURCE_CROWN_COMPOSITION_VERSION&&proof.single!==SINGLE_MEDIUM_VISUAL_REVIEW_VERSION)return false;
     if (!await authoredLocalPatchPublicationMatches(db, input)) return false;
+    if (proof.single === SINGLE_MEDIUM_VISUAL_REVIEW_VERSION && !await singleReviewHeadEvidenceMatches(db,input,proof.quality.headEvidence)) return false;
     if (!await sourceNeighborPublicationMatches(db, input, proof.quality)) return false;
     if (!equal(proof.authoredReturn, receipt.authoredReturn) || !equal(proof.authoredRecovery, receipt.authoredRecovery)) return false;
-    if (receipt.compositionVersion !== LOCAL_PATCH_COMPOSITION_VERSION && receipt.compositionVersion !== AUTHORED_PATCH_COMPOSITION_VERSION && receipt.compositionVersion !== AUTHORED_RECOVERY_COMPOSITION_VERSION) {
+    if (receipt.compositionVersion !== LOCAL_PATCH_COMPOSITION_VERSION && receipt.compositionVersion !== AUTHORED_PATCH_COMPOSITION_VERSION && receipt.compositionVersion !== AUTHORED_RECOVERY_COMPOSITION_VERSION && receipt.compositionVersion !== SOURCE_CROWN_COMPOSITION_VERSION) {
       if (receipt.compositionVersion !== SELF_REPAIR_COMPOSITION_VERSION || receipt.selfRepair?.version !== SELF_REPAIR_VERSION
         || receipt.selfRepair.phase !== "awaiting-review" || !selfRepairDecisionSchema.safeParse(receipt.selfRepair.decision).success
         || receipt.recoveryComposition?.outsideChangedPixels !== 0 || receipt.recoveryComposition?.protectedChangedPixels !== 0) return false;
@@ -86,6 +93,10 @@ export async function allowedDualPublication(db: Prisma.TransactionClient, input
 async function allowedSubject(db: Prisma.TransactionClient, worldId: string, upgrade: SubjectUpgradeReceipt, proof: DualReviewProof,
   input: LocalPatchPublicationBinding, lean = false, single = false): Promise<boolean> {
   const subject = proof.subject, plan = subjectPlanOfHide(input.hideId, input.sceneVersion);
+  const crown=JSON.parse(input.judgeJson??"null")?.crownReturn;
+  if(subject?.recompositionAnchor&&crown===undefined)return false;
+  if(crown!==undefined){const repair=await(await import("./published-crown-repair")).publishedCrownRepairOf(db,input.gameId);if(repair?.pin.selected.some(s=>s.rowId===input.variantId)&&!subject?.recompositionAnchor)return false;}
+  if(subject?.recompositionAnchor&&!await (await import("./published-crown-repair")).publishedCrownSubjectAnchorMatches(db,input.gameId,input.hideId,subject.recompositionAnchor,upgrade))return false;
   const v2 = subject?.subjectPolicy === SUBJECT_POLICY_V2 && subject.reader === SUBJECT_READER_V2;
   if (!subject || !plan || !(v2 || subject.subjectPolicy === SUBJECT_POLICY_VERSION && subject.reader === SUBJECT_READER)
     || subject.collectionRefusal !== undefined

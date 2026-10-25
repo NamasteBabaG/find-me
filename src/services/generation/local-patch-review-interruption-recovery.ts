@@ -1,4 +1,5 @@
-import { SINGLE_VISUAL_REVIEW_VERSION } from "../../domain/generation/single-visual-review";
+import { singleMediumReviewPolicyOf } from "./single-medium-policy";
+import { SINGLE_MEDIUM_VISUAL_REVIEW_VERSION, isSingleVisualReviewVersion, type SingleVisualReviewVersion } from "../../domain/generation/single-visual-review";
 import { singleLowReviewAuthorization as detectivesSingleReviewAuthorization, hasSingleLowCapacity as hasDetectivesLowCapacity } from "./single-low-policy";
 import { detectiveAutomaticRecoveryQualified } from "./detective-automatic-recovery";
 import { hasLocalPatchCapability } from "../../domain/scene/local-patch-family";
@@ -28,7 +29,7 @@ export const REVIEW_INTERRUPTION_POLICY_V2 = "local-patch-review-interruption/v2
 /** A world pinned to local-patch-lean-review-recovery/v1, once its v1 and v2 records are spent. */
 export { REVIEW_INTERRUPTION_POLICY_V3 };
 type Prepared = Extract<Awaited<ReturnType<typeof prepareLocalPatchBoardReview>>, { ready: true }>;
-type Question = { role: EvidenceRole; strategy: EvidenceStrategy; single?: typeof SINGLE_VISUAL_REVIEW_VERSION; reserveMicroUsd?: number; continued?: number };
+type Question = { role: EvidenceRole; strategy: EvidenceStrategy; single?: SingleVisualReviewVersion; reserveMicroUsd?: number; continued?: number };
 /** A background response the provider itself ended `failed`, with no text and no usage (first seen 19 October, Flex). */
 export const PROVIDER_FAILED_SHAPE = "background-provider-failed/v1" as const;
 
@@ -142,7 +143,7 @@ export async function recoverPreparedLocalPatchReviews(c: Container, prepared: P
       && !(prior.version === REVIEW_APPROVAL_V4 && capacity && prior.grantSha256 === capacity.authorizationSha256)
       && !(prior.version === REVIEW_APPROVAL_V5 && singleAuthorized && prior.grantSha256 === singleGrant.authorizationSha256))
       return refuse(`${question.requestKey} already carries a ${prior.version} approval that this continuation does not finish`);
-    const release = question.single === SINGLE_VISUAL_REVIEW_VERSION
+    const release = isSingleVisualReviewVersion(question.single)
       ? singleAuthorized && (!prior || prior.version === REVIEW_APPROVAL_V5) && (prior || (counts[REVIEW_APPROVAL_V5] ?? 0) < 5) ? "v5" : null
       : prior?.version === REVIEW_APPROVAL_V1 ? "v1" : prior?.version === REVIEW_APPROVAL_V2 ? "v2" : prior?.version === REVIEW_APPROVAL_V3 ? "v3" : prior ? "v4"
       : freeV1 > 0 ? (freeV1--, "v1") : freeV2 > 0 ? (freeV2--, "v2") : freeV3 > 0 ? (freeV3--, "v3") : freeV4 > 0 ? (freeV4--, "v4") : null;
@@ -171,7 +172,7 @@ export async function recoverPreparedLocalPatchReviews(c: Container, prepared: P
   return refuse(`${questions.map(q => q.requestKey).join(", ")}: the image changed while its continuation was recorded`);
 }
 
-export type InterruptedQuestion = Question & { readonly requestKey: string; readonly fingerprint: string; readonly single?: typeof SINGLE_VISUAL_REVIEW_VERSION; readonly reserveMicroUsd?: number; readonly continued?: number };
+export type InterruptedQuestion = Question & { readonly requestKey: string; readonly fingerprint: string; readonly single?: SingleVisualReviewVersion; readonly reserveMicroUsd?: number; readonly continued?: number };
 type Authorized = { question: InterruptedQuestion; policyId: string; approvalId: string; proof: Record<string, unknown>;
   reserveMicroUsd: number; shape: "timeout" | "provider-failed"; wireFault: "timeout" | "http" };
 type Planned = { authorized: Authorized; recovery: WorldAutomaticReviewRecovery | WorldAutomaticReviewRecoveryV2 | WorldAutomaticReviewRecoveryV3 | WorldAutomaticReviewRecoveryV4 | WorldAutomaticReviewRecoveryV5 };
@@ -219,7 +220,8 @@ async function writeApproval(c: Container, prepared: Prepared, { recovery }: Pla
  * interruption of a kind, or past a bound, that is never continued automatically, and exactly why. */
 async function checkInterruption(c: Container, prepared: Prepared, question: InterruptedQuestion, release: "v1" | "v2" | "v3" | "v4" | "v5",
   admitProviderFailed: boolean, roundCandidates: readonly InterruptedQuestion[]): Promise<Planned | { refused: string } | null> {
-  const policyId = release === "v1" ? REVIEW_INTERRUPTION_POLICY : release === "v2" ? REVIEW_INTERRUPTION_POLICY_V2 : release === "v3" ? REVIEW_INTERRUPTION_POLICY_V3 : release === "v4" ? CAPACITY_REVIEW_POLICY : "single-sol-low-transport-recovery/v1";
+  const singlePolicyId = question.single === SINGLE_MEDIUM_VISUAL_REVIEW_VERSION ? "single-sol-medium-transport-recovery/v1" as const : "single-sol-low-transport-recovery/v1" as const;
+  const policyId = release === "v1" ? REVIEW_INTERRUPTION_POLICY : release === "v2" ? REVIEW_INTERRUPTION_POLICY_V2 : release === "v3" ? REVIEW_INTERRUPTION_POLICY_V3 : release === "v4" ? CAPACITY_REVIEW_POLICY : singlePolicyId;
   const { game, scene, request, worldId, budget } = prepared, { requestKey, fingerprint } = question;
   if (!hasLocalPatchCapability(scene.sceneVersion, "integratedQuality") || prepared.extraPlan || request.reviewScope !== "ready-only/v1"
     || request.hides.length !== 1 || !interruptedLocalPatchReviewRequest(requestKey, fingerprint)) return null;
@@ -233,8 +235,10 @@ async function checkInterruption(c: Container, prepared: Prepared, question: Int
   const audit = await budget.audit(worldId);
   if (audit.overCapMicroUsd || audit.conflictRequestKeys.length || audit.overrunRequestKeys.length) return null;
   const single = release === "v5" ? await detectivesSingleReviewAuthorization(c.db, game.id) : null;
-  if (release === "v5" && (!single || question.single !== SINGLE_VISUAL_REVIEW_VERSION || question.role !== "quality"
+  if (release === "v5" && (!single || !isSingleVisualReviewVersion(question.single) || question.role !== "quality"
     || question.continued !== 0 || !question.reserveMicroUsd || question.reserveMicroUsd > 250_000)) return null;
+  if (question.single === SINGLE_MEDIUM_VISUAL_REVIEW_VERSION
+    && !await singleMediumReviewPolicyOf(c.db, game.id)) return null;
   const held = await budget.readRequest(worldId, requestKey);
   if (!held || held.state !== "unknown" || held.origin !== "reserved" || held.scope !== "judge"
     || held.operationFingerprint !== fingerprint || !(release === "v5" ? held.reserveMicroUsd === question.reserveMicroUsd : dualReviewReserves(question.role).includes(held.reserveMicroUsd)) || held.conflicts.length) return null;
@@ -278,7 +282,7 @@ async function checkInterruption(c: Container, prepared: Prepared, question: Int
     // Only a v3 proof names what the provider's own record said; every v1 and v2 proof is built exactly as before.
     ...((release === "v3" || release === "v4") && failureKind ? { failureKind, ...(errorCode ? { errorCode } : {}) } : {}),
     ...(capacity ? { grantSha256: capacity.authorizationSha256 } : {}),
-    ...(single ? { single: SINGLE_VISUAL_REVIEW_VERSION, grantSha256: single.authorizationSha256 } : {}),
+    ...(single ? { single: question.single, grantSha256: single.authorizationSha256 } : {}),
     ...(startedFlexRound ? { startedFlexRound } : {}) };
   const proofHash = sha256Bytes(Buffer.from(JSON.stringify(proof)));
   const approvalId = release === "v1" ? `auto-review-${proofHash}` : `auto-review-${release}-${proofHash}`;
@@ -294,7 +298,7 @@ async function checkInterruption(c: Container, prepared: Prepared, question: Int
       authorizedAt: prior?.version === "world-automatic-review-recovery/v3" ? prior.authorizedAt : selected.row.updatedAt.toISOString() }
     : release === "v4" ? { version: "world-automatic-review-recovery/v4", ...base, policyId: CAPACITY_REVIEW_POLICY, grantSha256: capacity!.authorizationSha256,
       authorizedAt: prior?.version === "world-automatic-review-recovery/v4" ? prior.authorizedAt : selected.row.updatedAt.toISOString() }
-    : { version: "world-automatic-review-recovery/v5", ...base, policyId: "single-sol-low-transport-recovery/v1", grantSha256: single!.authorizationSha256,
+    : { version: "world-automatic-review-recovery/v5", ...base, policyId: singlePolicyId, grantSha256: single!.authorizationSha256,
       variantId: selected.row.id, imageSha256: selected.imageSha256,
       authorizedAt: prior?.version === "world-automatic-review-recovery/v5" ? prior.authorizedAt : selected.row.updatedAt.toISOString() };
   return { authorized: { question, policyId, approvalId, proof, reserveMicroUsd: held.reserveMicroUsd, shape, wireFault }, recovery };

@@ -1,3 +1,4 @@
+import { nextPublishedCrownRepair,tickPublishedCrownRepair } from "./published-crown-repair";
 import { nextPropJoinRepair } from "./prop-join-repair";
 import { nextIdentitySourceRevision, tickIdentitySourceRevision } from "./identity-source-revision-queue";
 import { resumeIdentityReasonHold } from "./identity-reason-recovery";
@@ -113,6 +114,8 @@ export async function nextPendingGame(c: Container): Promise<string | null> {
  */
 export async function tickGeneration(c: Container, gameId: string | null, budgetMs: number, hardMs = 270_000): Promise<TickResult> {
   const now = Date.now();
+  const crownRepair=await nextPublishedCrownRepair(c,gameId);
+  if(crownRepair)return tickPublishedCrownRepair(c,crownRepair,now+hardMs);
   const referenceRepair = await nextIdentitySourceRevision(c, gameId, now);
   if (referenceRepair) {
     const result = await tickIdentitySourceRevision(c, referenceRepair, now + hardMs, now);

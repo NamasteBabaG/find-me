@@ -1,3 +1,4 @@
+import { CrownReturnRepairForm } from "./CrownReturnRepairForm";
 import { gameShape } from "@/services/world-catalog.service";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -111,6 +112,7 @@ export default async function AdminOrderPage({ params, searchParams }: { params:
       {detectivesExtension === "blocked" ? <Notice kind="danger">{t.adminIdentityRevision.detectivesBudgetBlocked}</Notice> : null}
       <DetectivesCompletionExtensionForm gameId={gameId} />
       <DetectivesCompletionBudgetForm gameId={gameId} />
+      <CrownReturnRepairForm gameId={gameId} />
       <IdentitySourceRevisionForm gameId={gameId} />
       <LeanCapacityRecoveryForm gameId={gameId} />
       <LocalPatchPartialReleaseForm gameId={gameId} />

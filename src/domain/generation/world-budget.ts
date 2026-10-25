@@ -127,7 +127,7 @@ export const WORLD_AUTOMATIC_REVIEW_RECOVERY_V4_LIMIT = 32;
 export interface WorldAutomaticReviewRecoveryV5 extends WorldReservationInput {
   version: "world-automatic-review-recovery/v5";
   worldId: string; approvalId: string; unknownReasons: readonly string[];
-  policyId: "single-sol-low-transport-recovery/v1";
+  policyId: "single-sol-low-transport-recovery/v1" | "single-sol-medium-transport-recovery/v1";
   grantSha256: string; variantId: string; imageSha256: string; authorizationSha256: string; authorizedAt: string;
 }
 export const WORLD_AUTOMATIC_REVIEW_RECOVERY_V5_LIMIT = 5;
@@ -342,7 +342,7 @@ export function validateUnknownContinuationApproval(value: WorldContinuationReco
     || !interruptedLocalPatchReviewRequest(value.requestKey, value.operationFingerprint)
     || typeof value.grantSha256 !== "string" || !/^[a-f0-9]{64}$/.test(value.grantSha256)))
     fail("invalid_input", "Capacity recovery requires a bounded exact grant and independent review interruption");
-  if (value.version === "world-automatic-review-recovery/v5" && (value.policyId !== "single-sol-low-transport-recovery/v1"
+  if (value.version === "world-automatic-review-recovery/v5" && (!["single-sol-low-transport-recovery/v1", "single-sol-medium-transport-recovery/v1"].includes(value.policyId)
     || value.scope !== "judge" || !Number.isSafeInteger(value.reserveMicroUsd) || value.reserveMicroUsd < 1 || value.reserveMicroUsd > 250_000
     || !interruptedLocalPatchReviewRequest(value.requestKey, value.operationFingerprint)
     || !/^[a-f0-9]{64}$/.test(value.grantSha256) || !/^[a-f0-9]{64}$/.test(value.imageSha256)
@@ -393,7 +393,7 @@ export function validateWorldUnknownContinuationApprovals(snapshot: WorldBudgetS
     if (approval.version === "world-automatic-review-recovery/v5") {
       const image = approval.variantId + ":" + approval.imageSha256;
       if (singleImages.has(image) || singleImages.size >= WORLD_AUTOMATIC_REVIEW_RECOVERY_V5_LIMIT)
-        fail("invalid_snapshot", "Only one unanswered LOW retry per image and five per authorized world");
+        fail("invalid_snapshot", "Only one unanswered single-review retry per image and five per authorized world");
       singleImages.add(image);
     }
     validateUnknownContinuationApproval(approval);

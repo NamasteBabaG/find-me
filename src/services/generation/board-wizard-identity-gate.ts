@@ -436,7 +436,7 @@ export async function identityGateReceiptOf(db: Pick<Prisma.TransactionClient, "
   return receipt;
 }
 
-async function validateIdentityGateBill(budget: WorldBudget, gameId: string, receipt: IdentityGateReceipt) {
+export async function validateIdentityGateBill(budget: WorldBudget, gameId: string, receipt: IdentityGateReceipt) {
   if (receipt.rejudge) {
     const original = await budget.readRequest(worldId(gameId), receipt.rejudge.originalRequestKey);
     demand(original?.state === "settled" && original.operationFingerprint === receipt.rejudge.originalFingerprint

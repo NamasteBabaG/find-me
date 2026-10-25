@@ -1,5 +1,6 @@
-import { readSingleVisualReview } from "../../domain/generation/single-visual-review";
-import { SINGLE_LOW_REVIEW_POLICIES, isSingleLowReviewPolicy } from "../../domain/generation/visual-review-policy";
+import { targetHeadReturnDecision, type TargetHeadEvidence } from "../../domain/generation/target-head-return";
+import { SINGLE_MEDIUM_VISUAL_REVIEW_VERSION, readSingleVisualReviewVersion, readSingleVisualReview, type SingleVisualReviewVersion } from "../../domain/generation/single-visual-review";
+import { SINGLE_LOW_REVIEW_POLICIES, SINGLE_MEDIUM_REVIEW_POLICIES, isSingleReviewPolicy } from "../../domain/generation/visual-review-policy";
 import type { Prisma } from "@prisma/client";
 import type { AuthoredLocalPatchReturnContract, AuthoredLocalPatchRecoveryContract } from "../../domain/scene/local-patch-return-region";
 import type { VisualReviewPolicy } from "../../domain/generation/visual-review-policy";
@@ -43,11 +44,11 @@ export function sourceNeighborQualityEvidence(context: TrustedSourcePlacementCon
 /** One immutable raw document is retained. Unwrap the new envelope explicitly,
  * then let the original quality and subject readers decide their own documents. */
 export function readSourceNeighborQualityStage(stage: { raw: string | null; sourceNeighbors?: SourceNeighborQualityEvidence; policy?: VisualReviewPolicy }) {
-  const raw = stage.policy && isSingleLowReviewPolicy(stage.policy) ? readSingleVisualReview(stage.raw)?.assessment ?? null : stage.raw;
+  const raw = stage.policy && isSingleReviewPolicy(stage.policy) ? readSingleVisualReview(stage.raw)?.assessment ?? null : stage.raw;
   return stage.sourceNeighbors ? readSourceNeighborQualityBundle(raw, { contract: stage.sourceNeighbors.contract, binding: stage.sourceNeighbors.binding }) : null;
 }
 function sourceNeighborAssessmentRaw(stage: { raw: string | null; sourceNeighbors?: SourceNeighborQualityEvidence; policy?: VisualReviewPolicy }): string | null {
-  if (!stage.sourceNeighbors) return stage.policy && isSingleLowReviewPolicy(stage.policy) ? readSingleVisualReview(stage.raw)?.assessment ?? null : stage.raw;
+  if (!stage.sourceNeighbors) return stage.policy && isSingleReviewPolicy(stage.policy) ? readSingleVisualReview(stage.raw)?.assessment ?? null : stage.raw;
   const reading = readSourceNeighborQualityStage(stage);
   return reading?.ok && reading.sourceNeighbors.disposition !== "unresolved" ? reading.assessment.raw : null;
 }
@@ -90,13 +91,14 @@ export type DualStageBase = { requestKey: string; fingerprint: string; attempt: 
   readFault?: ContinuityReadFault | null };
 /** Each role names the reader that decided it. Absent on stages written before readers were named. */
 export type ContinuityStage = DualStageBase & { reader?: ContinuityReader; reading?: ContinuityReReading };
-export type QualityStage = DualStageBase & { reader?: QualityReader; reading?: QualityReReading; subjectBundle?: SubjectQualityBundleBinding; sourceNeighbors?: SourceNeighborQualityEvidence };
+export type QualityStage = DualStageBase & { reader?: QualityReader; reading?: QualityReReading; subjectBundle?: SubjectQualityBundleBinding; sourceNeighbors?: SourceNeighborQualityEvidence; headEvidence?: TargetHeadEvidence };
 /** An enrolled world's subject review (subject-policy.ts): an Opus HIGH answer about the
  * same pixels against the owned photograph and the canonical face, bound to both and to the plan.
  * A v1 stage is read by subject-read/v1 for good; a v2 stage (local-patch-subject/v2) by v2. */
 export type SubjectStage = DualStageBase & { subjectPolicy: typeof SUBJECT_POLICY_VERSION | typeof SUBJECT_POLICY_V2;
   reader: typeof SUBJECT_READER | typeof SUBJECT_READER_V2;
   photoSha256: string; planSha256: string;
+  recompositionAnchor?: import("./published-crown-repair").CrownSubjectAnchor;
   /** Check codes a refusal named, for the next painting's fixed repair line; never answer text. */
   failedChecks?: (SubjectCheck | SubjectRepairCodeV2)[]; combined?: typeof SUBJECT_QUALITY_BUNDLE_VERSION;
   sourceNeighbors?: SourceNeighborQualityEvidence;
@@ -107,7 +109,7 @@ export type DualReviewProof = { version: DualVisualReviewVersion; hideId: string
   /** New Detective proof only; absent on every historical proof and v12 binding. */
   sceneVersion?: 13;
   /** These fields project one retained paid document; they are not independent calls. */
-  single?: "single-sol-low/v1";
+  single?: SingleVisualReviewVersion;
   imageSha256: string; geometrySha256: string; identitySha256: string;
   /** Only v4 authored windows; also part of both immutable paid questions. */
   authoredReturn?: AuthoredLocalPatchReturnContract;
@@ -154,6 +156,16 @@ export function readQualityStage(stage: QualityStage, hideId: string, sceneVersi
     verdict = parseLocalPatchVerdict({ ...wire, neighborsIntact: "fail", verdict: "fail",
       reason: "Source comparison found a duplicated, fragmented or damaged source neighbor",
       faults: [...locations, ...verdict.faults].slice(0, 16) }, sceneVersion, reader);
+  }
+  if (readSingleVisualReviewVersion(stage.raw) === SINGLE_MEDIUM_VISUAL_REVIEW_VERSION) {
+    const head = targetHeadReturnDecision(stage.raw, stage.headEvidence);
+    if (head.disposition === "unresolved") return null;
+    if (verdict && head.disposition === "repair") {
+      const wire = Object.fromEntries(Object.entries(verdict).filter(([key]) =>
+        !["claimedVerdict", "verdictOverridden", "downgraded", "contradicted", "unclassified"].includes(key)));
+      verdict = parseLocalPatchVerdict({ ...wire, verdict:"fail",childComplete:"fail",pictureWhole:"fail",reason:head.reason,
+        faults:[{check:"childComplete",where:head.reason},...verdict.faults].slice(0,16) },sceneVersion,reader);
+    }
   }
   const reading = stage.reading;
   if (reading && (reading.version !== "quality-reading/v1" || reading.previousReader !== (stage.reader ?? QUALITY_READER_STRICT)
@@ -205,7 +217,7 @@ export function continuityStageReader(stage: Pick<ContinuityStage, "reader" | "r
 export function readContinuityStage(stage: ContinuityStage, hideId: string, version: DualVisualReviewVersion): ContinuityReading | null {
   const reader = continuityStageReader(stage, version);
   if (!reader || !visualStageReadable(stage)) return null;
-  const raw = isSingleLowReviewPolicy(stage.policy) ? readSingleVisualReview(stage.raw)?.continuity ?? null : stage.raw;
+  const raw = isSingleReviewPolicy(stage.policy) ? readSingleVisualReview(stage.raw)?.continuity ?? null : stage.raw;
   const read = readLocalPatchBodyContinuity(raw, [`${hideId}:people`], reader);
   const reading = stage.reading;
   if (reading) {
@@ -276,7 +288,7 @@ export async function verifiedDualStage(db: Prisma.TransactionClient, worldId: s
   const allowed = [visualReviewPolicy(role, "high"), ...(options.allowBackground && role === "head-continuity"
     ? [visualReviewPolicy(role, "high", undefined, "responses-background")] : []),
     ...(options.allowLean ? LEAN_REVIEW_POLICIES.filter(policy => policy.role === role) : []),
-    ...(options.allowSingle ? SINGLE_LOW_REVIEW_POLICIES : [])];
+    ...(options.allowSingle ? [...SINGLE_LOW_REVIEW_POLICIES, ...SINGLE_MEDIUM_REVIEW_POLICIES] : [])];
   if (!allowed.some(policy => equal(stage.policy, policy)) || !visualStageReadable(stage)
     || !Number.isSafeInteger(stage.attempt) || stage.attempt < 1
     || !/^self-repair:board:[a-z]+:[a-f0-9]{64}$/.test(stage.requestKey)

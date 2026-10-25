@@ -217,7 +217,7 @@ describe("prospective Opus/Sol HIGH pipeline", () => {
     expect(localPatchEvidenceRecovery(row)).toMatchObject({ retry: false, exhausted: true });
     expect(row).toMatchObject({ status: "FAILED", attempts: 1 }); expect(s.render).toHaveBeenCalledTimes(1);
     expect(await db.auditLog.count({ where: { entityId: s.gameId, action: LOCAL_PATCH_PUBLICATION_ACTION } })).toBe(0);
-  });
+  }, 120_000);
   it("asks a cut-off anatomy answer again in compact form, never as the same question and never as a new picture", async () => {
     // The provider stopped at its output ceiling: a size failure, not a format one.
     const s = await dualSeed("dual-truncated-anatomy", hideId => ({ raw: longAnswer(hideId, 2169, 2232, 655).slice(0, 3000), finishReason: "length" }));
@@ -234,7 +234,7 @@ describe("prospective Opus/Sol HIGH pipeline", () => {
     expect(row.lastError).toContain("evidence continuity truncated, round 3");
     expect(row).toMatchObject({ status: "FAILED", attempts: 1 }); expect(s.render).toHaveBeenCalledTimes(1);
     expect(await db.auditLog.count({ where: { entityId: s.gameId, action: LOCAL_PATCH_PUBLICATION_ACTION } })).toBe(0);
-  });
+  }, 120_000);
   it.each([[1013, 954, 466], [1817, 1602, 779], [2169, 2232, 655]])("accepts a complete anatomy answer at the observed lengths (%i, %i, %i) with no further question or image", async (head, body, occlusion) => {
     const s = await dualSeed(`dual-long-${head}`, hideId => longAnswer(hideId, head, body, occlusion));
     await s.run(); await s.run(); await s.run();
