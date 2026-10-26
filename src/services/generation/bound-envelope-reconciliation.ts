@@ -30,8 +30,11 @@ async function eligible(c:Container,gameId:string) {
   if(env().APP_ENV!=="qa"||c.storage?.id!=="db")return null;
   const original=await originalWorld(c.db,gameId);if(!original)return null;
   const job=await c.db.generationJob.findUnique({where:{id:"job_"+gameId}});
+  // The typed exhausted step covers both spent repair/evidence cycles and
+  // budget exhaustion. Its display wording is not authority for a free read.
+  // Every paid-answer, identity, image, budget and once-only fence below still applies.
   if(!job||job.status!=="FAILED"||job.currentStep!==EXHAUSTED
-    ||!job.lastError?.startsWith("local-patch: no automatic action remains within the authorized world budget;"))return null;
+    ||!job.lastError?.startsWith("local-patch: "))return null;
   const budget=await boardWizardBudgetOf(c).audit(gameId+":board-wizard");
   // UNKNOWN money remains fully reserved. Free reconciliation grants no capacity.
   if(budget.capMicroUsd!==4000000||budget.overCapMicroUsd||budget.conflictRequestKeys.length||budget.overrunRequestKeys.length)return null;

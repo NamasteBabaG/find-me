@@ -1,3 +1,4 @@
+import { localPatchRestDecision } from "../../../domain/scene/local-patch-progress";
 import { nextBoundEnvelopeReconciliation, resumeBoundEnvelopeReconciliation } from "../bound-envelope-reconciliation";
 import { BOUND_SUBJECT_QUALITY_ENVELOPE_READER } from "../../../domain/generation/bound-subject-quality-envelope";
 import * as singlePolicyModule from "../single-low-policy";
@@ -789,11 +790,21 @@ it.each(["pass","semantic-fail","doubt"] as const)("reconciles one settled MEDIU
   const oldJson=JSON.stringify(prior),lastError="quality-unresolved: integration-review-unreadable";
   await db.targetVariantAsset.update({where:{id:row!.id},data:{status:"FAILED",lastError,judgeJson:oldJson}});
   await db.targetInstance.update({where:{id:row!.targetInstanceId},data:{status:"FAILED"}});
-  await db.generationJob.update({where:{id:"job_"+gameId},data:{status:"FAILED",currentStep:"local-patch:recovery-exhausted",
-    lastError:"local-patch: no automatic action remains within the authorized world budget; synthetic retained envelope"}});
+  // Use the real mixed-rest engine decision, not a synthetic budget sentence.
+  const rest=localPatchRestDecision([{hideId:hides[1]!.id,rest:"spent"},{hideId:prior.hide,rest:"evidence"}]);
+  if(rest?.action!=="park")throw Error("Synthetic mixed-rest fixture must park");
+  await db.generationJob.update({where:{id:"job_"+gameId},data:{status:"FAILED",currentStep:"local-patch:recovery-exhausted",lastError:rest.reason}});
   const budget=boardWizardBudgetOf(container),worldId=boardWizardWorldId(gameId),ledgerBefore=await db.worldBudgetLedger.findUniqueOrThrow({where:{worldId}});
   const retainedKey=retainedPurchaseKey(worldId,prior.boardReview.dual.quality.requestKey),kept=await db.fileBlob.findUniqueOrThrow({where:{key:retainedKey}});
   const callsBefore=provider.creates.length,rendersBefore=render.mock.calls.length,jobBefore=await db.generationJob.findUniqueOrThrow({where:{id:"job_"+gameId}});
+  // A different typed hold or a nonfailed job cannot gain a free wake.
+  await db.generationJob.update({where:{id:jobBefore.id},data:{currentStep:"local-patch:needs-release"}});
+  expect(await nextBoundEnvelopeReconciliation(container)).toBeNull();
+  await db.generationJob.update({where:{id:jobBefore.id},data:{currentStep:jobBefore.currentStep,status:"QUEUED"}});
+  expect(await nextBoundEnvelopeReconciliation(container)).toBeNull();
+  await db.generationJob.update({where:{id:jobBefore.id},data:{status:jobBefore.status,lastError:"Unrelated operator hold"}});
+  expect(await nextBoundEnvelopeReconciliation(container)).toBeNull();
+  await db.generationJob.update({where:{id:jobBefore.id},data:{lastError:jobBefore.lastError,updatedAt:jobBefore.updatedAt}});
   expect(await nextBoundEnvelopeReconciliation(container)).toBe(gameId);
   for(const corrupt of ["identity","image","role","cost","low","echo","attempt"]){
     const changed=JSON.parse(oldJson),p=changed.boardReview.dual;
