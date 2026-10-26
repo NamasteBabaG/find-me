@@ -149,13 +149,19 @@ async function crownFence(db:Prisma.TransactionClient,p:Pin){
  * allowance is largest. Completed bills release only their real unused bound.
  * A question already pending always drains first; never reserve both at once. */
 export async function publishedCrownReviewOrder(c:Container,p:Pin){
- const pending=new Set((await boardWizardBudgetOf(c).audit(p.gameId+":board-wizard")).pendingRequestKeys);
- const planned=[];
+ const remaining:Pin["selected"]=[];
  for(const s of p.selected){
   const row=await c.db.targetVariantAsset.findUniqueOrThrow({where:{id:s.rowId}});
   const input:LocalPatchPublicationBinding={gameId:p.gameId,sceneVersion:13,hideId:s.hideId,variantId:row.id,attempts:row.attempts,identityAssetId:p.identityAssetId,identitySha256:p.identitySha256,assetId:row.assetId!,imageSha256:s.candidateImageSha256,geometrySha256:localPatchPublicationGeometryHash(row),judgeJson:row.judgeJson};
-  if(await hasLocalPatchPublicationPolicy(c,input))continue;
-  const ready=await prepareLocalPatchBoardReview(c,{gameId:p.gameId,sceneId:s.sceneId},{},{playerReview:true,includePlayerCandidates:true,skipApprovedEvidence:true});
+  if(!await hasLocalPatchPublicationPolicy(c,input))remaining.push(s);
+ }
+ // With one correction left there is no reservation ordering to compute.
+ // Its one ordinary review below still rebuilds the exact question and applies
+ // its full charge bound. null is a scheduling placeholder, never a reserve.
+ if(remaining.length<2)return remaining.map(selection=>({selection,requestKey:null,reserveMicroUsd:null,pending:false}));
+ const pending=new Set((await boardWizardBudgetOf(c).audit(p.gameId+":board-wizard")).pendingRequestKeys),planned=[];
+ for(const s of remaining){
+  const ready=await prepareLocalPatchBoardReview(c,{gameId:p.gameId,sceneId:s.sceneId},{},{playerReview:true,includePlayerCandidates:true,skipApprovedEvidence:true,onlyHideId:s.hideId});
   if(!ready.ready){planned.push({selection:s,requestKey:null,reserveMicroUsd:0,pending:false});continue;}
   const exact=await(await import("./local-patch-dual-review")).prospectiveSingleVisualReviewQuestion(c,ready);
   demand(exact.singleVersion==="single-sol-medium/v1","the corrected pixels require one prospective MEDIUM question");
@@ -173,7 +179,7 @@ export async function tickPublishedCrownRepair(c:Container,gameId:string,deadlin
    assetId:row.assetId!,imageSha256:s.candidateImageSha256,geometrySha256:localPatchPublicationGeometryHash(row),judgeJson:row.judgeJson};
   if(await hasLocalPatchPublicationPolicy(c,input))continue;
   if(row.status==='FAILED'){await stateWrite(c.db,p,'blocked',row.lastError??'Fresh MEDIUM review refused the corrected composition');return{gameId,status:live.game.status,pending:false,attention:'Corrected crown composition did not pass its fresh automatic review'};}
-  let reviewed;try{reviewed=await reviewLocalPatchBoard(c,{gameId,sceneId:s.sceneId,deadlineAt},{fence:tx=>crownFence(tx,p)});}catch(error){if(!(error instanceof WorldBudgetError)||!['cap_exceeded','world_held'].includes(error.code))throw error;await stateWrite(c.db,p,'blocked','The exact MEDIUM request cannot fit the remaining original four-dollar budget; no request was sent');return{gameId,status:live.game.status,pending:false,attention:'Crown repair cannot buy its next exact question within the existing cap'};}
+  let reviewed;try{reviewed=await reviewLocalPatchBoard(c,{gameId,sceneId:s.sceneId,deadlineAt},{fence:tx=>crownFence(tx,p)},{onlyHideId:s.hideId});}catch(error){if(!(error instanceof WorldBudgetError)||!['cap_exceeded','world_held'].includes(error.code))throw error;await stateWrite(c.db,p,'blocked','The exact MEDIUM request cannot fit the remaining original four-dollar budget; no request was sent');return{gameId,status:live.game.status,pending:false,attention:'Crown repair cannot buy its next exact question within the existing cap'};}
   if(reviewed.state==='pending'&&['Retained image awaits the current head-safe compositor','No ready appearance awaits review','Usable patches are not ready'].includes(reviewed.reason??'')){await stateWrite(c.db,p,'blocked',reviewed.reason);return{gameId,status:live.game.status,pending:false,attention:reviewed.reason??'Crown candidate is not eligible for automatic review'};}
   if(reviewed.state==='blocked'||reviewed.state==='retry'||reviewed.state==='held'){await stateWrite(c.db,p,'blocked',reviewed.reason);return{gameId,status:live.game.status,pending:false,attention:reviewed.reason??'Crown repair cannot continue within its original authority'};}
   // Sequential admission keeps the actual remaining cap authoritative; no

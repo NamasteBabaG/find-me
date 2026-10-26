@@ -384,13 +384,15 @@ export async function reviewLocalPatchBoard(c: Container, input: { gameId: strin
   deps: LocalPatchBoardReviewDeps, options: {
     /** Decide a retained dual answer under its question's current reader: no
      * reservation, provider or spend switch is involved, because nothing is bought. */
-    decideRetained?: boolean } = {}): Promise<LocalPatchBoardReviewOutcome> {
+    decideRetained?: boolean;
+    /** An internal repair may review only its immutable selected appearance. */
+    onlyHideId?: string } = {}): Promise<LocalPatchBoardReviewOutcome> {
   const { identityRevisionPending } = await import("./identity-source-revision-state");
   demand(!await identityRevisionPending(c.db, input.gameId), "reference revision blocks new board review purchases");
   const dual = await hasDualVisualReview(c.db, input.gameId);
   if (options.decideRetained && !dual) return { state: "pending", reason: "Only dual review answers have a corrected reading", replayed: true, costCents: 0 };
   const calibrated = dual || playerReviewEnabled();
-  const preparation = { includePlayerCandidates: calibrated, skipApprovedEvidence: true, ...(options.decideRetained ? { decideRetained: true } : {}) };
+  const preparation = { includePlayerCandidates: calibrated, skipApprovedEvidence: true, ...(options.onlyHideId ? { onlyHideId: options.onlyHideId } : {}), ...(options.decideRetained ? { decideRetained: true } : {}) };
   let prepared = await prepareLocalPatchBoardReview(c, input, deps, { ...preparation, ...(dual ? { playerReview: true } : {}) });
   if (!dual && prepared.ready && calibrated && hasLocalPatchCapability(prepared.scene.sceneVersion, "integratedQuality") && !prepared.extraPlan) {
     const suppliedIds = new Set(prepared.request.hides.map(h => h.hideId));
