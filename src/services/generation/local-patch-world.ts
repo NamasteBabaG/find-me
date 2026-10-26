@@ -1,3 +1,6 @@
+import { readWholeSourceContextPin, wholeSourceContextCandidate } from "./whole-source-context-pin";
+import { wholeSourceContextExhausted } from "../../domain/generation/whole-source-context-purchase";
+import { wholeSourceContextImagePolicy } from "../../infra/generation/openai-local-patch";
 import { resumeBoundEnvelopeReconciliation } from "./bound-envelope-reconciliation";
 import { applySourceCrownReturn } from "./source-crown-pixels";
 import { resumePropJoinRepair,applyPropJoinRepair } from "./prop-join-repair";
@@ -566,6 +569,9 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
     && row.status === "FAILED" && row.attempts === LOCAL_PATCH_NORMAL_ATTEMPTS && leanSubjectOnlyRefusal(row.judgeJson, subjectUpgrade!.ageYears, game.scenes[0]!.sceneVersion);
   const guideGrant = automatic && !extraPlan ? await detectivesSingleReviewAuthorization(c.db, gameId) : null;
   const guideCapacity = !!guideGrant && await hasDetectivesLowCapacity(c, gameId);
+  const contextPin=automatic&&!extraPlan?await readWholeSourceContextPin(c.db,gameId):null;
+  const contextPainting=(row:typeof rows[number]|undefined)=>!!row&&!!contextPin&&wholeSourceContextCandidate(contextPin,row);
+  const contextExhausted=(row:typeof rows[number]|undefined)=>!!row&&wholeSourceContextExhausted(row);
   const bodyPin=guideCapacity?await readSourceBodyRepairPin(c.db,gameId):null;
   const bodyPainting=(row:typeof rows[number]|undefined)=>!!row&&!!bodyPin&&sourceBodyPurchaseCandidate(bodyPin,row);
   const bodyExhausted=(row:typeof rows[number]|undefined)=>!!row&&row.status==='FAILED'&&!!sourceBodyMarker(row)&&row.attempts===sourceBodyMarker(row)!.authorizedAttempt;
@@ -754,7 +760,7 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
   const repairCheckpoints = new Map(rows.map(row => [row.id, JSON.stringify(selfRepairOf(row) ?? null)]));
   const automaticWork = automatic && !extraPlan ? work.filter(item => {
     const row = stateOf(item.sceneId, item.hide.targetId);
-    return needsSelfRepair(row) && !sourceBodyBirthMarker(row!) && !bodyPainting(row) && !bodyExhausted(row) && !(row && (guidedFrameExhausted(row) || nativeMaskTailExhausted(row))) && !leanThirdPainting(row) && !guidedThirdPainting(row) && !(hasLocalPatchCapability(game.scenes.find(scene => scene.id === item.sceneId)?.sceneVersion, "integratedQuality")
+    return needsSelfRepair(row) && !contextPainting(row) && !contextExhausted(row) && !sourceBodyBirthMarker(row!) && !bodyPainting(row) && !bodyExhausted(row) && !(row && (guidedFrameExhausted(row) || nativeMaskTailExhausted(row))) && !leanThirdPainting(row) && !guidedThirdPainting(row) && !(hasLocalPatchCapability(game.scenes.find(scene => scene.id === item.sceneId)?.sceneVersion, "integratedQuality")
       && (localPatchEvidenceRecovery(row!) || playerReviewEnabled() && needsPlayerReview(row!)))
       // Re-asked under v2 about the same pixels before any repair (subject-rejudge/v1).
       && !rejudgePending(row!);
@@ -775,10 +781,12 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
       || (row.status === "PENDING" && row.attempts === 4));
   }) : (progress
     // Every unsettled appearance is a candidate; the progress order, not the tier, decides who goes first.
-    ? work.filter(item => bodyPainting(stateOf(item.sceneId,item.hide.targetId)) || nativeFourthPainting(stateOf(item.sceneId, item.hide.targetId)) || guidedThirdPainting(stateOf(item.sceneId, item.hide.targetId)) || !settledHide(stateOf(item.sceneId, item.hide.targetId)))
+    ? work.filter(item => contextPainting(stateOf(item.sceneId,item.hide.targetId)) || bodyPainting(stateOf(item.sceneId,item.hide.targetId)) || nativeFourthPainting(stateOf(item.sceneId, item.hide.targetId)) || guidedThirdPainting(stateOf(item.sceneId, item.hide.targetId)) || !settledHide(stateOf(item.sceneId, item.hide.targetId)))
     : plan.indices.map(index => work[index]!)).filter(item => {
     if (automaticWork.includes(item)) return false;
     const candidate = stateOf(item.sceneId, item.hide.targetId);
+    if(contextPainting(candidate))return true;
+    if(contextExhausted(candidate))return false;
     if (automatic && hasLocalPatchCapability(game.scenes.find(scene => scene.id === item.sceneId)?.sceneVersion, "integratedQuality") && candidate && localPatchEvidenceRecovery(candidate)) return false;
     if (playerReviewEnabled() && candidate && needsPlayerReview(candidate)) return false;
     if (candidate && rejudgePending(candidate)) return false;
@@ -838,10 +846,11 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
       if (options.hardDeadlineAt !== undefined && options.hardDeadlineAt - Date.now() < minHideMs) break;
       let outcome: LocalPatchHideOutcome;
       try { outcome = await runLocalPatchHide(c, { ...deps, fence }, { gameId, board: item.board, hide: item.hide,
-        finalRepair: bodyPainting(stateOf(item.sceneId,item.hide.targetId)) || !!extraPlan || plan.finalRepair || leanThirdPainting(stateOf(item.sceneId, item.hide.targetId)) || guidedThirdPainting(stateOf(item.sceneId, item.hide.targetId)) || nativeFourthPainting(stateOf(item.sceneId, item.hide.targetId)),
+        finalRepair: contextPainting(stateOf(item.sceneId,item.hide.targetId)) || bodyPainting(stateOf(item.sceneId,item.hide.targetId)) || !!extraPlan || plan.finalRepair || leanThirdPainting(stateOf(item.sceneId, item.hide.targetId)) || guidedThirdPainting(stateOf(item.sceneId, item.hide.targetId)) || nativeFourthPainting(stateOf(item.sceneId, item.hide.targetId)),
         ...(guidedThirdPainting(stateOf(item.sceneId, item.hide.targetId)) ? { guidedFrame: true } : {}),
         ...(nativeFourthPainting(stateOf(item.sceneId, item.hide.targetId)) ? { nativeMaskTail: true } : {}),
         ...(bodyPainting(stateOf(item.sceneId,item.hide.targetId))?{sourceBodyRepair:true}:{}),
+        ...(contextPainting(stateOf(item.sceneId,item.hide.targetId))?{wholeSourceContext:true}:{}),
         ...(extraPlan ? { extraAttemptAuthorizationId: extraPlan.authorizationId } : {}),
         ...(options.hardDeadlineAt === undefined ? {} : { deadlineAt: options.hardDeadlineAt }) }); }
       catch (error) {
@@ -1045,7 +1054,7 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
         evidence: recovery ? { retry: recovery.retry, waiting: recovery.waiting, exhausted: recovery.exhausted,
           ...(diagnosis ? { kind: `${diagnosis.role} ${diagnosis.kind}` } : {}) } : null,
         reviewOwed: !!row && (rejudgePending(row) || playerReviewEnabled() && needsPlayerReview(row)),
-        repairSpent: progress && !!row && !bodyPainting(row) && !nativeFourthPainting(row) && (bodyExhausted(row) || !!sourceBodyBirthMarker(row) && row.attempts>=LOCAL_PATCH_MAX_ATTEMPTS || guidedFrameExhausted(row) || nativeMaskTailExhausted(row) || needsSelfRepair(row) && selfRepairProgress(selfRepairOf(row), row.attempts).exhausted) });
+        repairSpent: contextExhausted(row) || progress && !!row && !contextPainting(row) && !bodyPainting(row) && !nativeFourthPainting(row) && (bodyExhausted(row) || !!sourceBodyBirthMarker(row) && row.attempts>=LOCAL_PATCH_MAX_ATTEMPTS || guidedFrameExhausted(row) || nativeMaskTailExhausted(row) || needsSelfRepair(row) && selfRepairProgress(selfRepairOf(row), row.attempts).exhausted) });
     });
     const rest = pendingReviews ? null : localPatchRestDecision(rests);
     if (rest?.action === "wait") {
@@ -1091,8 +1100,10 @@ export function localPatchPainterDeps(_c: Container, contentVersion = 6, release
   return {
     apiKey,
     renderPolicySha256: localPatchRenderPolicySha256(policy),
-    render: async input => buyLocalPatch(apiKey, input, { policy: input.subjectPhotoPng
-      ? input.subjectQuality === "low" ? painterReleasePolicy("local-patch-painter/low-v1", 12) : localPatchImagePolicyForVersion(contentVersion) : policy }),
+    render: async input => {
+      const base = input.subjectPhotoPng ? input.subjectQuality === "low" ? painterReleasePolicy("local-patch-painter/low-v1", 12) : localPatchImagePolicyForVersion(contentVersion) : policy;
+      return buyLocalPatch(apiKey,input,{policy:input.wholeSourceContext?wholeSourceContextImagePolicy(base):base});
+    },
   };
 }
 

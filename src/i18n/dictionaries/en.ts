@@ -6,6 +6,14 @@ import { worldPurchaseEn, worldSelectorEn, friendsEn } from "./world-features";
 
 export const en = {
   adminIdentityRevision: {
+    sourceContextTitle: "Complete source context repair",
+    sourceContextDescription: "One diagnosed fourth painting of the remaining Great Wall appearance, with complete neighbouring heads in the input. The original return region, all 26 accepted appearances and all 27 required hides stay fixed. The new image receives one combined MEDIUM assessment.",
+    sourceContextBudget: "The game cap stays $4, including all previous charges and unknown reservations. Current remaining allowance: ${remaining}.",
+    sourceContextButton: "Queue one source context repair",
+    sourceContextQueued: "The bounded repair is queued for the normal automatic worker. This does not approve the image or publish the game.",
+    sourceContextComplete: "The complete game passed its automatic checks, including the repaired appearance.",
+    sourceContextRefused: "The bounded repair did not pass its mandatory checks. Diagnosis and all existing work were preserved; no fifth painting is authorized.",
+    sourceContextBlocked: "The plan or world changed, so the action was not staged. No new image was dispatched by this action.",
     detectivesTailTitle: "Finite completion for this Detective world",
     detectivesTailDescription: "After explicit owner authorization: extend this same QA world from $8 to $10 total. Preserve all charges and unknown reservations. Each of the at most four remaining appearances receives one diagnosed prospective painting and one combined Sol 6.1 LOW assessment; publication still requires all27 passes.",
     detectivesTailConfirm: "The owner authorized $10 cumulative for this same world and its finite automatic tail. This does not approve art or publish the game.",

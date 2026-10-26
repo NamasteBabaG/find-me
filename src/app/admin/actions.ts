@@ -285,3 +285,15 @@ export async function stageCrownReturnRepairAction(fd:FormData):Promise<void>{
  let staged=false;try{await(await import("@/services/generation/published-crown-repair")).stagePublishedCrownRepair(getContainer(),{gameId,operatorId:actor.id,expectedPlanSha256:planSha256});staged=true;}catch{/* bounded admin notice; no private evidence in the URL */}
  revalidatePath(destination);redirect(`${destination}?crownReturn=${staged?"staged":"blocked"}`);
 }
+
+
+export async function stageWholeSourceContextAction(fd:FormData):Promise<void>{
+  const actor=await admin(),gameId=str(fd,"gameId"),planSha256=str(fd,"planSha256");
+  if(!/^[A-Za-z0-9_-]{1,160}$/.test(gameId))redirect("/admin/orders");
+  const destination=`/admin/orders/${encodeURIComponent(gameId)}`,h=await headers();let sameOrigin=false;
+  try{sameOrigin=new URL(h.get("origin")??"").host===(h.get("x-forwarded-host")??h.get("host"))&&h.get("sec-fetch-site")!=="cross-site";}catch{/* refuse */}
+  if(env().APP_ENV!=="qa"||!sameOrigin||fd.getAll("gameId").length!==1||fd.getAll("planSha256").length!==1||!/^[a-f0-9]{64}$/.test(planSha256))redirect(`${destination}?sourceContext=blocked`);
+  let staged=false;
+  try{await(await import("@/services/generation/whole-source-context-repair")).stageWholeSourceContextRepair(getContainer(),{gameId,operatorId:actor.id,expectedPlanSha256:planSha256});staged=true;}catch{/* no private evidence in errors or redirects */}
+  revalidatePath(destination);redirect(`${destination}?sourceContext=${staged?"staged":"blocked"}`);
+}

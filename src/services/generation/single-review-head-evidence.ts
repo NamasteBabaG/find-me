@@ -1,3 +1,7 @@
+import { wholeSourceContextMarkerSchema } from "../../domain/generation/whole-source-context-purchase";
+import { readWholeSourceContextPin, wholeSourceContextMarkerFor, wholeSourceContextPublicationAuthorized } from "./whole-source-context-pin";
+import { extractWholeSourceContextShipping } from "./whole-source-context-pixels";
+import { sourcePlacementForHide } from "./source-placement-release";
 import { resolveLocalPatchBoardsForGame } from "./source-placement-release";
 import sharp from 'sharp';
 import type { Prisma } from '@prisma/client';
@@ -29,7 +33,17 @@ export async function readSettledTargetRaw(db:Prisma.TransactionClient,gameId:st
  const wire=JSON.parse(kept.bytes.toString());
  if(wire.version!=='local-patch-render/v1'||wire.rejected!==null||typeof wire.bytesBase64!=='string')throw Error('HEAD_RETURN: retained painting is unreadable');
  const original=Buffer.from(wire.bytesBase64,'base64');if(original.toString('base64')!==wire.bytesBase64)throw Error('HEAD_RETURN: invalid retained painting bytes');
- const normalized=await sharp(original,{limitInputPixels:8294400}).resize(512,768,{fit:'fill'}).png().toBuffer();
+ let normalized:Buffer;
+ if(wire.wholeSourceContext!==undefined||key==='greatwall-v12-2:peeking:render:4'){
+  const marker=wholeSourceContextMarkerSchema.parse(wire.wholeSourceContext?.marker),pin=await readWholeSourceContextPin(db,gameId);
+  if(!pin||key!==pin.selected.requestKey||JSON.stringify(marker)!==JSON.stringify(wholeSourceContextMarkerFor(pin))
+    ||JSON.stringify(wire.wholeSourceContext?.plan)!==JSON.stringify(pin.selected.plan)
+    ||!await wholeSourceContextPublicationAuthorized(db,{gameId,variantId:pin.selected.rowId,hideId:pin.selected.hideId,attempts:4,sceneVersion:12,judgeJson:JSON.stringify({wholeSourceContext:marker})}))
+   throw Error('HEAD_RETURN: exact native context authority and retained mapping required');
+  const context=await resolveLocalPatchBoardsForGame(db,gameId,12),hide=context.boards.flatMap(b=>b.hides).find(h=>h.id===pin.selected.hideId),companion=hide&&sourcePlacementForHide(context,hide.id);
+  if(!hide||!companion?.sourceNeighbors)throw Error('HEAD_RETURN: trusted original native context required');
+  normalized=await extractWholeSourceContextShipping(original,pin.selected.plan,companion.sourceNeighbors.contract,maskForHide(hide));
+ }else normalized=await sharp(original,{limitInputPixels:8294400}).resize(512,768,{fit:'fill'}).png().toBuffer();
  return{kept,wire,original,normalized};
 }
 export async function singleReviewHeadEvidence(db:Prisma.TransactionClient,input:{gameId:string;hide:LocalPatchHide;attempt:number;

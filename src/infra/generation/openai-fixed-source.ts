@@ -31,7 +31,7 @@ export type FixedSourceQuality = "low" | "medium";
  * All are multiples of 16, inside the documented 1:3..3:1 ratio, and within the
  * 655,360..8,294,400 pixel range.
  */
-export const FIXED_SOURCE_SIZES = ["768x1152", "1024x1024", "1024x1536", "1024x2160", "1280x2160", "3840x2160"] as const;
+export const FIXED_SOURCE_SIZES = ["768x1024", "768x1152", "1024x1024", "1024x1536", "1024x2160", "1280x2160", "3840x2160"] as const;
 export type FixedSourceSize = (typeof FIXED_SOURCE_SIZES)[number];
 /** The image models this route may buy. Omitted means gpt-image-2, so every frozen
  * fingerprint stays where it is; gpt-image-1-mini is cost experiment E2's, and it

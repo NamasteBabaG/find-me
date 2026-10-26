@@ -1,6 +1,7 @@
 import { publishedCrownRepairOf } from "./published-crown-repair";
 import { SOURCE_CROWN_COMPOSITION_VERSION, sourceCrownReturned } from "../../domain/scene/source-crown-return";
 import { identityApprovedForDisplay, identityGateReceiptOf, validateIdentityGateBill } from "./board-wizard-identity-gate";
+import { wholeSourceContextPublicationAuthorized } from "./whole-source-context-pin";
 import { sourceBodyMarker } from '../../domain/scene/source-body-repair';
 import { nativeMaskTailPublicationAuthorized } from "./detectives-completion-budget";
 import { nativeMaskTailMarker } from "../../domain/generation/native-mask-tail";
@@ -207,9 +208,10 @@ export async function prepareLocalPatchBoardReview(c: Container, input: { gameId
   if (!entries.length) return { ready: false as const, reason: "No ready appearance awaits review" };
   const nativeFourth = !extraPlan && entries.some(entry => entry.row.attempts > LOCAL_PATCH_MAX_ATTEMPTS);
   if (nativeFourth) for (const entry of entries.filter(e => e.row.attempts > LOCAL_PATCH_MAX_ATTEMPTS)) {
-    demand(scene.sceneVersion === 13 && (entry.row.attempts === 4 || !!sourceBodyMarker(entry.row)) && await nativeMaskTailPublicationAuthorized(c.db, {
-      gameId: game.id, variantId: entry.row.id, hideId: entry.hide.id, attempts: entry.row.attempts, sceneVersion: scene.sceneVersion, judgeJson: entry.row.judgeJson,
-    }), "A fourth-attempt review requires its original scoped authority or exact finite native-mask grant");
+    const scope = { gameId: game.id, variantId: entry.row.id, hideId: entry.hide.id, attempts: entry.row.attempts, sceneVersion: scene.sceneVersion, judgeJson: entry.row.judgeJson };
+    demand(scene.sceneVersion === 12 ? await wholeSourceContextPublicationAuthorized(c.db,scope)
+      : scene.sceneVersion === 13 && (entry.row.attempts === 4 || !!sourceBodyMarker(entry.row)) && await nativeMaskTailPublicationAuthorized(c.db,scope),
+      "A fourth-attempt review requires its exact immutable finite source authority");
   }
   if (extraPlan) await requireLocalPatchExtraReview(c, { gameId: game.id, sceneId: scene.id, authorizationId: extraPlan.authorizationId });
   // A new candidate does not retire the original approvals of unchanged

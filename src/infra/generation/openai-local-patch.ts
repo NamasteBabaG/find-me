@@ -1,3 +1,6 @@
+import { assertWholeSourceContextPlan, WHOLE_SOURCE_CONTEXT_VERSION, type WholeSourceContextPlan } from "../../domain/scene/whole-source-context";
+import type { SourceNeighborContract } from "../../domain/scene/local-patch-source-neighbors";
+import type { PatchRectangle } from "../../domain/scene/local-patch-return-region";
 import { SOURCE_BODY_REPAIR_VERSION } from '../../domain/scene/source-body-repair';
 import { GUIDED_FRAME_RECOVERY_VERSION } from '../../domain/generation/guided-frame-recovery';
 import { hasLocalPatchCapability } from "../../domain/scene/local-patch-family";
@@ -89,6 +92,16 @@ export const localPatchRenderPolicySha256 = (policy: FixedSourcePolicy = LOCAL_P
     background: policy.background, rateCard: policy.rateCard, timeoutMs: policy.timeoutMs,
   })).digest("hex");
 
+/** Explicit native context; historical policies and fingerprints stay unchanged. */
+export function wholeSourceContextImagePolicy(base: FixedSourcePolicy): FixedSourcePolicy {
+  if ((base.quality !== "low" && base.quality !== "medium") || base.size !== "768x1152" || base.background !== "opaque"
+    || (base.model && base.model !== "gpt-image-2")
+    || localPatchRenderPolicySha256(base) !== localPatchRenderPolicySha256(base.quality === "low" ? LOCAL_PATCH_LOW_IMAGE_POLICY : LOCAL_PATCH_IMAGE_POLICY))
+    throw Error("WHOLE_SOURCE_CONTEXT: original image policy must be preserved");
+  return Object.freeze({ ...base, size: "768x1024", reserveMicroUsd: 150_000 });
+}
+export type WholeSourceContextTransport = Readonly<{ plan: WholeSourceContextPlan; contract: SourceNeighborContract; child: PatchRectangle }>;
+
 export type LocalPatchRenderInput = {
   readonly worldId: string;
   readonly requestKey: string;
@@ -105,7 +118,8 @@ export type LocalPatchRenderInput = {
   readonly boardPeoplePng?: Buffer;
   readonly maskPng: Buffer;
   readonly placementGuidePng?: Buffer;
-  readonly placementGuideVersion?: typeof GUIDED_FRAME_RECOVERY_VERSION | typeof SOURCE_BODY_REPAIR_VERSION;
+  readonly placementGuideVersion?: typeof GUIDED_FRAME_RECOVERY_VERSION | typeof SOURCE_BODY_REPAIR_VERSION | typeof WHOLE_SOURCE_CONTEXT_VERSION;
+  readonly wholeSourceContext?: WholeSourceContextTransport;
   /**
    * What is left of the caller's request, when it has a deadline.
    *
@@ -189,7 +203,22 @@ export async function buyLocalPatch(apiKey: string, input: LocalPatchRenderInput
   readonly policy?: FixedSourcePolicy;
   readonly fetchOnce?: typeof fetch;
 } = {}): Promise<LocalPatchPurchase> {
+  if (input.wholeSourceContext) {
+    const owned = structuredClone(input.wholeSourceContext);
+    assertWholeSourceContextPlan(owned.plan, owned.contract, owned.child);
+    input = { ...input, wholeSourceContext: owned, stylePng: Buffer.from(input.stylePng), identityPng: Buffer.from(input.identityPng),
+      maskPng: Buffer.from(input.maskPng), ...(input.subjectPhotoPng ? { subjectPhotoPng: Buffer.from(input.subjectPhotoPng) } : {}),
+      ...(input.placementGuidePng ? { placementGuidePng: Buffer.from(input.placementGuidePng) } : {}) };
+  }
   const chosen = options.policy ?? LOCAL_PATCH_IMAGE_POLICY;
+  if (input.wholeSourceContext) {
+    const expected = wholeSourceContextImagePolicy(input.subjectQuality === "low" ? LOCAL_PATCH_LOW_IMAGE_POLICY : LOCAL_PATCH_IMAGE_POLICY);
+    if (localPatchRenderPolicySha256(chosen) !== localPatchRenderPolicySha256(expected) || chosen.reserveMicroUsd !== expected.reserveMicroUsd
+      || input.placementGuideVersion !== WHOLE_SOURCE_CONTEXT_VERSION || !input.placementGuidePng)
+      throw Error("WHOLE_SOURCE_CONTEXT: native output and placement policy required");
+  } else if (chosen.size === "768x1024" || input.placementGuideVersion === WHOLE_SOURCE_CONTEXT_VERSION) {
+    throw Error("WHOLE_SOURCE_CONTEXT: new raster requires its exact source mapping");
+  }
   const policy: FixedSourcePolicy = input.timeoutMs === undefined ? chosen
     : { ...chosen, timeoutMs: Math.max(1_000, Math.min(chosen.timeoutMs, input.timeoutMs)) };
   // The crop goes as the reference at its own size - references are capped at
@@ -199,12 +228,20 @@ export async function buyLocalPatch(apiKey: string, input: LocalPatchRenderInput
     throw new Error("LOCAL_PATCH_PAINTER: unsupported reference mode");
   }
   const photoReference = input.referenceMode === LOCAL_PATCH_PHOTO_REFERENCE_MODE;
-  if (photoReference && (!input.subjectPhotoPng || !input.subjectQuality || chosen.quality !== input.subjectQuality || chosen.size !== "768x1152"
+  if (photoReference && (!input.subjectPhotoPng || !input.subjectQuality || chosen.quality !== input.subjectQuality || chosen.size !== (input.wholeSourceContext ? "768x1024" : "768x1152")
     || chosen.model && chosen.model !== "gpt-image-2")) throw new Error("LOCAL_PATCH_PAINTER: subject redraw requires its photograph and declared quality policy");
   if (!photoReference && (input.subjectPhotoPng || input.subjectQuality)) throw new Error("LOCAL_PATCH_PAINTER: photograph requires its explicit reference mode");
   if ((input.placementGuidePng !== undefined || input.placementGuideVersion !== undefined)
-    && (!photoReference || ![GUIDED_FRAME_RECOVERY_VERSION,SOURCE_BODY_REPAIR_VERSION].includes(input.placementGuideVersion as typeof GUIDED_FRAME_RECOVERY_VERSION) || !Buffer.isBuffer(input.placementGuidePng)))
+    && (!photoReference || ![GUIDED_FRAME_RECOVERY_VERSION,SOURCE_BODY_REPAIR_VERSION,WHOLE_SOURCE_CONTEXT_VERSION].includes(input.placementGuideVersion as typeof GUIDED_FRAME_RECOVERY_VERSION) || !Buffer.isBuffer(input.placementGuidePng)))
     throw new Error('LOCAL_PATCH_PAINTER: layout guide requires its explicit version and photograph mode');
+  if (input.wholeSourceContext) {
+    if (!photoReference) throw Error("WHOLE_SOURCE_CONTEXT: enrolled subject references required");
+    for (const png of [input.stylePng, input.maskPng, input.placementGuidePng!]) {
+      const meta = await sharp(png, { limitInputPixels: 8294400, failOn: "warning" }).metadata();
+      if (meta.format !== "png" || meta.width !== 768 || meta.height !== 1024 || (meta.pages ?? 1) !== 1)
+        throw Error("WHOLE_SOURCE_CONTEXT: native source, mask and guide must agree");
+    }
+  }
   const portraitOnly = input.referenceMode === LOCAL_PATCH_PORTRAIT_ONLY_REFERENCE_MODE || photoReference;
   if (portraitOnly && (input.boardPeoplePng || input.canonicalIdentityPng)) {
     throw new Error("LOCAL_PATCH_PAINTER: portrait-only mode forbids additional face or body references");

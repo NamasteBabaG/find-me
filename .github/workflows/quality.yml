@@ -14,7 +14,9 @@ jobs:
     runs-on: ubuntu-latest
     # The controlled lean-world file has its own runner; every other test,
     # validators and the private-asset build audit stay in this job.
-    timeout-minutes: 90
+    # The core job also runs both native-context all-27 continuation fixtures.
+    # Keep the complete suite and every assertion; allow measured runner margin.
+    timeout-minutes: 100
     env:
       APP_COMMIT: ${{ github.sha }}
       NEXT_TELEMETRY_DISABLED: 1

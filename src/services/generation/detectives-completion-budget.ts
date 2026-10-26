@@ -710,6 +710,7 @@ export async function requireDetectivesNativeMaskTail(c:Container,gameId:string,
 export async function nativeMaskTailPublicationAuthorized(db:Pick<Prisma.TransactionClient,"auditLog">,input:{gameId:string;variantId:string;hideId:string;attempts:number;sceneVersion:number;judgeJson:string|null}) {
   try {
     const value=JSON.parse(input.judgeJson??"null"),marker=nativeMaskTailMarker({judgeJson:input.judgeJson});
+    if(value?.wholeSourceContext!==undefined||input.sceneVersion===12&&input.attempts>3)return (await import("./whole-source-context-pin")).wholeSourceContextPublicationAuthorized(db,input);
     if(value?.sourceBodyBirth!==undefined)return (await import("./detectives-operational-policy")).sourceBodyBirthPublicationAuthorized(db,input);
     if(value?.sourceBodyRepair!==undefined)return (await import('./source-body-repair-pin')).sourceBodyPublicationAuthorized(db,input);
     if(input.sceneVersion!==13)return value?.nativeMaskTail===undefined;

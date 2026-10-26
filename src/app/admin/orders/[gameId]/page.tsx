@@ -1,3 +1,5 @@
+import { Suspense } from "react";
+import { WholeSourceContextForm } from "./WholeSourceContextForm";
 import { CrownReturnRepairForm } from "./CrownReturnRepairForm";
 import { gameShape } from "@/services/world-catalog.service";
 import Link from "next/link";
@@ -44,9 +46,9 @@ function judgeLabel(judge: { verdict: string; reason: string; claimedVerdict?: s
   return "? השופט לא הכריע";
 }
 
-export default async function AdminOrderPage({ params, searchParams }: { params: Promise<{ gameId: string }>; searchParams: Promise<{ v?: string; repair?: string; paidRepair?: string; partialRelease?: string; delivery?: string; refund?: string; leanRecovery?: string; referenceRepair?: string; capacityRecovery?: string; detectivesBudget?: string; detectivesExtension?: string }> }) {
+export default async function AdminOrderPage({ params, searchParams }: { params: Promise<{ gameId: string }>; searchParams: Promise<{ v?: string; sourceContext?: string; repair?: string; paidRepair?: string; partialRelease?: string; delivery?: string; refund?: string; leanRecovery?: string; referenceRepair?: string; capacityRecovery?: string; detectivesBudget?: string; detectivesExtension?: string }> }) {
   await requireAdmin();
-  const [{ gameId }, { v, repair, paidRepair, partialRelease, delivery, refund, leanRecovery, referenceRepair, capacityRecovery, detectivesBudget, detectivesExtension }, { t }] = await Promise.all([params, searchParams, getI18n()]);
+  const [{ gameId }, { v, sourceContext, repair, paidRepair, partialRelease, delivery, refund, leanRecovery, referenceRepair, capacityRecovery, detectivesBudget, detectivesExtension }, { t }] = await Promise.all([params, searchParams, getI18n()]);
   const variant: "A" | "B" = v === "B" ? "B" : "A";
   const c = getContainer();
   const detail = await orderDetailForAdmin(c, gameId);
@@ -113,6 +115,7 @@ export default async function AdminOrderPage({ params, searchParams }: { params:
       <DetectivesCompletionExtensionForm gameId={gameId} />
       <DetectivesCompletionBudgetForm gameId={gameId} />
       <CrownReturnRepairForm gameId={gameId} />
+      <Suspense fallback={null}><WholeSourceContextForm gameId={gameId} outcome={sourceContext}/></Suspense>
       <IdentitySourceRevisionForm gameId={gameId} />
       <LeanCapacityRecoveryForm gameId={gameId} />
       <LocalPatchPartialReleaseForm gameId={gameId} />
