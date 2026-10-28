@@ -173,7 +173,8 @@ describe("the painter a new draft is pinned to", () => {
 
   it("keeps the LOW pin on v12 while the qualified Detective family uses its own MEDIUM policy", () => {
     expect(sceneVersionForDraft("local-patch-world-v1")).toBe(12);
-    expect(DETECTIVE_RELEASES.map(release => release.sceneVersion)).toEqual([13]);
+    expect(DETECTIVE_RELEASES.map(release => release.sceneVersion)).toEqual([13,13]);
+    expect(DETECTIVE_RELEASES.map(release=>release.worldSlug)).toEqual(["journey","kingdom"]);
     expect(world.localPatchPainterDeps(c, 13, null)?.renderPolicySha256).toBe(MEDIUM_SHA);
     expect(() => world.localPatchPainterDeps(c, 13, LOCAL_PATCH_LOW_PAINTER)).toThrow("content version 12 only");
     expect(fetch).not.toHaveBeenCalled();

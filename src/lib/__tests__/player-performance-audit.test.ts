@@ -10,7 +10,7 @@ const auditScript = path.resolve(__dirname, "../../../scripts/audit-player-perfo
 const temporaryRoot = realpathSync(tmpdir());
 const fixturePrefix = "findme-player-performance-audit-";
 const fixtures: string[] = [];
-const manifests = ["content/adventures/wizard-refresh-art.json", "content/adventures/wizard-kingdom-art.json"];
+const manifests = ["content/adventures/wizard-refresh-art.json", "content/adventures/wizard-kingdom-art.json", "content/detectives/source-v1.json", "content/detectives/kingdom/source-v1.json"];
 const chunks = { shared: "static/chunks/shared.js", player: "static/chunks/play.js", css: "static/css/player.css" };
 const sha256 = (bytes: Buffer) => createHash("sha256").update(bytes).digest("hex");
 
@@ -44,7 +44,7 @@ async function fixture() {
   writeFixtureFile(root, `.next/${chunks.player}`, "globalThis.syntheticPlayer = true;\n");
   writeFixtureFile(root, `.next/${chunks.css}`, ".synthetic-player { display: block; }\n");
   writeBuildManifest(root);
-  // Eighteen distinct safe public paths, each holding the same synthetic 1px
+  // Thirty-six distinct safe public paths, each holding the same synthetic 1px
   // WebP. No large scene pixels, real manifests, env files or DB are loaded.
   const image = await sharp(Buffer.from([20, 40, 60]), { raw: { width: 1, height: 1, channels: 3 } }).webp({ lossless: true }).toBuffer();
   const paths: string[] = [];
@@ -55,7 +55,7 @@ async function fixture() {
       paths.push(relative);
       return { path: relative, sha256: sha256(image) };
     });
-    writeFixtureFile(root, manifest, JSON.stringify(rows));
+    writeFixtureFile(root, manifest, JSON.stringify(world < 2 ? rows : { boards:rows.map(row=>({...row,width:1,height:1})) }));
   }
   return { root, image, paths };
 }
@@ -77,7 +77,7 @@ interface Report {
 }
 
 describe("player production performance audit", () => {
-  it("accepts a completed player build, deduplicates shared bundles and inspects all eighteen frozen WebPs", async () => {
+  it("accepts a completed player build, deduplicates shared bundles and inspects all thirty-six frozen WebPs across both levels", async () => {
     const data = await fixture();
     const result = audit(data.root);
     expect(result.error).toBeUndefined();
@@ -88,12 +88,23 @@ describe("player production performance audit", () => {
     expect(report.initial.js.files).toBe(2);
     expect(report.initial.css.files).toBe(1);
     expect(report.bundles.map(bundle => bundle.path).sort()).toEqual(Object.values(chunks).sort());
-    expect(report.worlds).toHaveLength(2);
+    expect(report.worlds).toHaveLength(4);
     for (const world of report.worlds) {
       expect(world.boards).toHaveLength(9);
       expect(world.encodedBytes).toBe(data.image.length * 9);
       for (const board of world.boards) expect(board).toMatchObject({ width: 1, height: 1, encodedBytes: data.image.length, decodedRgbaBytes: 4 });
     }
+  });
+
+  it("rejects an incomplete Detective source family instead of silently omitting it", async()=>{
+    const data=await fixture();writeFixtureFile(data.root,manifests[3]!,JSON.stringify({boards:[]}));
+    const result=audit(data.root);expect(result.status).toBe(1);expect(result.stderr).toContain("nine frozen public boards");
+  });
+  it("rejects a Detective manifest whose declared dimensions differ from the actual raster",async()=>{
+    const data=await fixture(),file=manifests[3]!;
+    const manifest=JSON.parse(readFileSync(path.join(data.root,file),'utf8'));manifest.boards[0].width=2;
+    writeFixtureFile(data.root,file,JSON.stringify(manifest));const result=audit(data.root);
+    expect(result.status).toBe(1);expect(result.stderr).toContain("Frozen board dimensions changed");
   });
 
   it("blocks an initial JavaScript chunk whose compressed bytes exceed the player budget", async () => {

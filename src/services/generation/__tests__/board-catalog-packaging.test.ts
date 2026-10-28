@@ -153,11 +153,14 @@ describe("active-catalog-only server traces", () => {
     await writeFile(path.join(f.root, refreshedManifest), JSON.stringify(collectionArt));
     const kingdomManifest = "content/adventures/wizard-kingdom-art.json";
     await writeFile(path.join(f.root, kingdomManifest), JSON.stringify(collectionArt));
+    const detectiveManifests=["content/detectives/source-v1.json","content/detectives/kingdom/source-v1.json"];
+    await mkdir(path.join(f.root,"content/detectives/kingdom"),{recursive:true});
+    for(const file of detectiveManifests)await writeFile(path.join(f.root,file),JSON.stringify({boards:collectionArt}));
     const undeclaredPublic = "public/scenes/sydney/old-thumbnail.webp";
     await writeFile(path.join(f.root, undeclaredPublic), "not a declared painter input");
     const tracePaths = [...tlsPaths, "content/board-conditioned-qa/catalog.json", ...assets, stale, privateFile,
       localPatchManifest, ...localPatchBoards.map(board => `public${board.base}`), undeclaredPublic,
-      collectionManifest, refreshedManifest, kingdomManifest, ...collectionArt.map(board => board.path)];
+      collectionManifest, refreshedManifest, kingdomManifest, ...detectiveManifests, ...collectionArt.map(board => board.path)];
     await writeFile(`${entry}.nft.json`, JSON.stringify({ version: 1, files: tracePaths.map(file => path.relative(path.dirname(entry), path.join(f.root, file))) }));
     const run = (script: string) => spawnSync(process.execPath, [path.join(project, "scripts", script)], { cwd: f.root, encoding: "utf8", windowsHide: true });
     const before = run("audit-board-catalog-tracing.mjs"); expect(before.status).toBe(1);
@@ -167,6 +170,7 @@ describe("active-catalog-only server traces", () => {
     const result = JSON.parse(after.stdout); expect(result.jobs.catalogFiles).toBe(37); expect(result.jobs.staleCatalogFiles).toEqual([]); expect(result.jobs.privateFiles).toEqual([]);
     expect(result.jobs.localPatchFiles).toBe(10);
     expect(result.jobs.collectionFiles).toBe(3);
+    expect(result.jobs.detectiveFiles).toBe(2);
     expect(result.jobs.publicCdnFiles).toBe(0);
     expect(result.jobs.databaseCaTraced).toBe(true);
     expect(result.jobs.databaseSchemaTraced).toBe(true);

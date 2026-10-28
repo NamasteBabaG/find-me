@@ -34,6 +34,7 @@ Rich native review contexts exposed the existing 5 MiB per-image admission bound
 - Next production build passed locally with mock providers and generation disabled. Privacy/tracing audit passed for 74 route closures with `privateLeaks=[]`; player performance audit passed.
 - Transport-failure recovery and guided third-image recovery passed as complete all-27 Kingdom worlds. The clean, transport and guided scenarios all retained the original four-dollar cap, source-neighbor contracts, finite attempt limits and combined MEDIUM review.
 - The player weight audit now checks both Detective source manifests alongside both active Explorer families: Kingdom Detectives is 62.07 MiB per nine-board world, within the existing 128 MiB inventory budget. Initial player JS is 256,345 gzip bytes; CSS is 42,984 gzip bytes. These are build measurements, not device FPS or measured live network transfer.
-- The final full suite is still running before closing this milestone.
+- The broad run exposed five stale-fixture expectations in the packaging, performance and painter-policy tests. Their synthetic inputs now include both Detective manifests and both scene13 worlds. All 38 tests in those three files passed after the fixture update, including two new refusal checks for incomplete families and false raster dimensions. Runtime source code was unchanged by this correction.
+- The remainder of the broad full suite is still running before closing this milestone.
 
 These checks establish local contract integration. They do not establish real-child likeness, real provider quality/latency, remote PostgreSQL behavior, completed CI, a QA deployment or production readiness. No paid provider request or external deployment occurred.
