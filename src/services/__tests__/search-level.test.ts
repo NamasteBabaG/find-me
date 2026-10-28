@@ -1,3 +1,4 @@
+import { detectiveSourceScopeOf, detectiveScopeId, pinDetectiveSourceScope } from "../generation/source-family-scope";
 import { boardConditioningHash } from "../generation/board-conditioned-source";
 import { DETECTIVES_OPERATIONAL_RELEASE } from "../../domain/generation/detectives-operational-policy";
 import { pinDetectivesOperationalPolicy, detectivesOperationalPolicyOf, detectivesOperationalId } from "../generation/detectives-operational-policy";
@@ -5,7 +6,7 @@ import { resolveLocalPatchBoardsForGame, sourceBodyBirthForHide } from "../gener
 import { mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { PrismaClient } from "@prisma/client";
+import { PrismaClient, type Prisma } from "@prisma/client";
 import sharp from "sharp";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { applyTestSchema } from "@/lib/test-schema";
@@ -434,20 +435,94 @@ it("rolls back already-created draft/base pins when the final family write fails
 });
 
 
-describe('prospective single LOW from normal draft creation',()=>{
- it('pins a fresh Detective at normal four-dollar capacity with corrected source windows',async()=>{c.detectivesOperationalRelease=DETECTIVES_OPERATIONAL_RELEASE;const d=await named({ageYears:7,searchLevel:'detectives'});expect(await detectivesOperationalPolicyOf(db,d.gameId)).toMatchObject({model:'gpt-6.1-sol',effort:'low',worldCapMicroUsd:4000000,automaticBudgetExtension:false});expect(await attachPhoto(c,d.gameId,{buffer:photo,mimeType:"image/png",crop:null})).toEqual({ok:true});expect(await selectPackage(c,d.gameId,"ONE_WORLD")).toEqual({ok:true});const context=await resolveLocalPatchBoardsForGame(db,d.gameId,13);for(const board of ['paris','giza']){const b=context.boards.find(b=>b.board===board)!,h=b.hides.find(h=>h.id.endsWith(board==='paris'?'hide-1':'hide-2'))!;expect(sourceBodyBirthForHide(context,h.id)).not.toBeNull();expect(h.returnRect!.width).toBe(board==='paris'?226:232);}expect(await db.order.count({where:{gameId:d.gameId}})).toBe(0);expect(await db.worldBudgetLedger.count({where:{worldId:d.gameId+':board-wizard'}})).toBe(0);});
- it('uses the same policy for family world purchase and still refuses Kingdom13',async()=>{c.detectivesOperationalRelease=DETECTIVES_OPERATIONAL_RELEASE;const f=await family();const d=await beginWorldPurchase(c,{...f,worldSlug:'journey',searchLevel:'detectives'});expect(d.ok).toBe(true);if(!d.ok)return;expect(await detectivesOperationalPolicyOf(db,d.gameId)).toMatchObject({worldCapMicroUsd:4000000,effort:'low'});expect((await game(d.gameId)).scenes).toHaveLength(9);const denied=await beginWorldPurchase(c,{...await family(),worldSlug:'kingdom',searchLevel:'detectives'});expect(denied.ok).toBe(false);});
- it('keeps earlier drafts pinned and refuses late or forged single LOW policy',async()=>{const old=await photographed({ageYears:7,searchLevel:'detectives'});c.detectivesOperationalRelease=DETECTIVES_OPERATIONAL_RELEASE;expect(await detectivesOperationalPolicyOf(db,old.gameId)).toBeNull();await expect(db.$transaction(tx=>pinDetectivesOperationalPolicy(tx,old.gameId,DETECTIVES_OPERATIONAL_RELEASE,c.storage.id))).rejects.toThrow('before its photo');const fresh=await named({ageYears:7,searchLevel:'detectives'});const p=await db.auditLog.findUniqueOrThrow({where:{id:detectivesOperationalId(fresh.gameId)}});await db.auditLog.update({where:{id:p.id},data:{actorType:'ADMIN'}});await expect(detectivesOperationalPolicyOf(db,fresh.gameId)).rejects.toThrow();expect(await db.order.count({where:{gameId:fresh.gameId}})).toBe(0);});
-});
-
-it('refuses self-consistent forged from-birth source, cap and world receipts',async()=>{
- c.detectivesOperationalRelease=DETECTIVES_OPERATIONAL_RELEASE;const draft=await named({ageYears:7,searchLevel:'detectives'}),row=await db.auditLog.findUniqueOrThrow({where:{id:detectivesOperationalId(draft.gameId)}});
- for(const change of [{sourceFamilySha256:'f'.repeat(64)},{sourcePlacementManifestSha256:'f'.repeat(64)},{sourceBodyManifestSha256:'f'.repeat(64)},{worldId:'foreign:board-wizard'},{worldCapMicroUsd:10000000}]){
-  const {authorizationSha256:_ignored,...body}={...JSON.parse(row.metaJson!),...change};
-  await db.auditLog.update({where:{id:row.id},data:{metaJson:JSON.stringify({...body,authorizationSha256:boardConditioningHash(body)})}});
-  await expect(detectivesOperationalPolicyOf(db,draft.gameId)).rejects.toThrow();
-  await db.auditLog.update({where:{id:row.id},data:{metaJson:row.metaJson}});
- }
- expect(await detectivesOperationalPolicyOf(db,draft.gameId)).not.toBeNull();
- expect(await db.worldBudgetLedger.count({where:{worldId:draft.gameId+':board-wizard'}})).toBe(0);
+describe('prospective Detective world selection and atomic binding',()=>{
+  const enable = () => {c.detectivesOperationalRelease=DETECTIVES_OPERATIONAL_RELEASE;f.releases=[JOURNEY_AT_13,INVALID_KINGDOM_AT_13];};
+  async function selected(world='kingdom') {
+    enable();const draft=await photographed({ageYears:7,searchLevel:'detectives'});
+    expect(await selectPackage(c,draft.gameId,'ONE_WORLD')).toEqual({ok:true});
+    expect(await selectWorlds(c,draft.gameId,[world])).toEqual({ok:true});return draft;
+  }
+  it('pins both allowed source families before photo, and buys nothing until checkout',async()=>{
+    enable();const draft=await named({ageYears:7,searchLevel:'detectives'});
+    const scope=await detectiveSourceScopeOf(db,draft.gameId);
+    expect(scope?.families.map(f=>f.worldSlug)).toEqual(['journey','kingdom']);
+    expect(scope).toMatchObject({operationalRelease:DETECTIVES_OPERATIONAL_RELEASE,storageId:'db'});
+    expect(await sourcePlacementReleaseOf(db,draft.gameId)).toBeNull();
+    expect(await detectivesOperationalPolicyOf(db,draft.gameId)).toBeNull();
+    await expect(resolveLocalPatchBoardsForGame(db,draft.gameId,13)).rejects.toThrow('exact family pin');
+    expect(await db.order.count({where:{gameId:draft.gameId}})).toBe(0);
+    expect(await db.worldBudgetLedger.count({where:{worldId:draft.gameId+':board-wizard'}})).toBe(0);
+    expect(await db.asset.count({where:{type:"IDENTITY_SHEET",ownerId:(await game(draft.gameId)).ownerId}})).toBe(0);
+  });
+  it.each(['journey','kingdom'])('seals only the selected %s family, preserving 27 hides and the four-dollar policy',async world=>{
+    const draft=await selected(world);const before=await db.auditLog.findUniqueOrThrow({where:{id:detectiveScopeId(draft.gameId)}});
+    const result=await startCheckout(c,checkout(draft));expect(result.ok).toBe(true);
+    const pin=await sourcePlacementReleaseOf(db,draft.gameId);
+    expect(pin).toMatchObject({version:'local-patch-source-family/v2',worldSlug:world,familyId:world+'-detectives/v1',baseSceneVersion:13});
+    expect(pin?.coverage).toHaveLength(27);
+    const context=await resolveLocalPatchBoardsForGame(db,draft.gameId,13);
+    expect(context.boards).toHaveLength(9);expect(context.boards.flatMap(b=>b.hides)).toHaveLength(27);
+    expect(context.boards.every(b=>b.art.includes('public/scenes/'+world+'-'))).toBe(true);
+    expect(await detectivesOperationalPolicyOf(db,draft.gameId)).toMatchObject({worldCapMicroUsd:4000000,effort:'low',automaticBudgetExtension:false});
+    if(world==='journey')expect(sourceBodyBirthForHide(context,'paris-detectives-hide-1')).not.toBeNull();
+    else expect(context.boards.flatMap(b=>b.hides).every(h=>sourceBodyBirthForHide(context,h.id)===null)).toBe(true);
+    expect((await db.auditLog.findUniqueOrThrow({where:{id:before.id}})).metaJson).toBe(before.metaJson);
+    expect(await db.order.count({where:{gameId:draft.gameId}})).toBe(1);
+    expect(await db.worldBudgetLedger.count({where:{worldId:draft.gameId+':board-wizard'}})).toBe(0);
+  });
+  it('uses the same prospective scope and selected family for an additional family world',async()=>{
+    enable();const parent=await family(),draft=await beginWorldPurchase(c,{...parent,worldSlug:'kingdom',searchLevel:'detectives'});
+    expect(draft.ok).toBe(true);if(!draft.ok)return;
+    expect((await detectiveSourceScopeOf(db,draft.gameId))?.families).toHaveLength(2);
+    expect(await attachPhoto(c,draft.gameId,{buffer:photo,mimeType:'image/png',crop:null})).toEqual({ok:true});
+    const owner=await db.user.findUniqueOrThrow({where:{id:parent.ownerId}});
+    expect((await startCheckout(c,{...checkout({...draft,draftToken:draft.draftToken!}),email:owner.email,access:{draftToken:draft.draftToken,userId:parent.ownerId}})).ok).toBe(true);
+    expect(await sourcePlacementReleaseOf(db,draft.gameId)).toMatchObject({worldSlug:'kingdom',version:'local-patch-source-family/v2'});
+  });
+  it('keeps earlier Journey pins exact and refuses to add prospective scope after a photo',async()=>{
+    const draft=await photographed({ageYears:7,searchLevel:'detectives'}),before=await db.auditLog.findUniqueOrThrow({where:{id:sourceFamilyAuditId(draft.gameId)}});
+    enable();await expect(db.$transaction(tx=>pinDetectiveSourceScope(tx,draft.gameId,DETECTIVES_OPERATIONAL_RELEASE,c.storage.id))).rejects.toThrow('before the photo');
+    expect(await selectPackage(c,draft.gameId,'ONE_WORLD')).toEqual({ok:true});
+    expect(await selectWorlds(c,draft.gameId,['kingdom'])).toMatchObject({ok:false,code:'SEARCH_LEVEL_UNAVAILABLE'});
+    expect((await db.auditLog.findUniqueOrThrow({where:{id:before.id}})).metaJson).toBe(before.metaJson);
+    await expect(db.$transaction(tx=>pinDetectivesOperationalPolicy(tx,draft.gameId,DETECTIVES_OPERATIONAL_RELEASE,c.storage.id))).rejects.toThrow('pre-authorized checkout scope');
+  });
+  it('rejects a foreign or edited pre-photo scope before creating an order',async()=>{
+    const draft=await selected(),row=await db.auditLog.findUniqueOrThrow({where:{id:detectiveScopeId(draft.gameId)}});
+    await db.auditLog.update({where:{id:row.id},data:{actorType:'ADMIN'}});
+    await expect(startCheckout(c,checkout(draft))).rejects.toThrow('foreign policy');
+    await db.auditLog.update({where:{id:row.id},data:{actorType:'SYSTEM',metaJson:row.metaJson!.replace('"scopeSha256":"','"scopeSha256":"f')}});
+    await expect(startCheckout(c,checkout(draft))).rejects.toThrow();
+    expect(await orders(draft.gameId)).toEqual([]);
+  });
+  it('rolls back the selected family and operational policy if the atomic order insert fails',async()=>{
+    const draft=await selected();const run=db.$transaction.bind(db) as (...args:unknown[])=>Promise<unknown>;let writes=0;vi.spyOn(db,'$transaction').mockImplementation((async (work:unknown,options:unknown)=>run(async(tx:Prisma.TransactionClient)=>{if(++writes===2)vi.spyOn(tx.order,'create').mockRejectedValueOnce(Error('synthetic order failure'));return (work as (tx:Prisma.TransactionClient)=>Promise<unknown>)(tx);},options)) as typeof db.$transaction);
+    await expect(startCheckout(c,checkout(draft))).rejects.toThrow('synthetic order failure');
+    expect(await sourcePlacementReleaseOf(db,draft.gameId)).toBeNull();expect(await detectivesOperationalPolicyOf(db,draft.gameId)).toBeNull();
+    expect(await detectiveSourceScopeOf(db,draft.gameId)).not.toBeNull();expect(await orders(draft.gameId)).toEqual([]);
+  });
+  it('resumes the same order and immutable family instead of resealing or duplicating',async()=>{
+    const draft=await selected(),input=checkout(draft);expect((await startCheckout(c,input)).ok).toBe(true);
+    const row=await db.auditLog.findUniqueOrThrow({where:{id:sourceFamilyAuditId(draft.gameId)}});
+    expect((await startCheckout(c,input)).ok).toBe(true);
+    expect(await db.order.count({where:{gameId:draft.gameId}})).toBe(1);
+    expect((await db.auditLog.findUniqueOrThrow({where:{id:row.id}})).metaJson).toBe(row.metaJson);
+  });
+  it('refuses forged binding fields and self-consistent cap/world receipts',async()=>{
+    const draft=await selected();expect((await startCheckout(c,checkout(draft))).ok).toBe(true);
+    const binding=await db.auditLog.findUniqueOrThrow({where:{id:sourceFamilyAuditId(draft.gameId)}});
+    for(const patch of [{worldSlug:'journey'},{familyId:'journey-detectives/v1'},{scopeSha256:'f'.repeat(64)},{identityStyleSha256:'f'.repeat(64)}]){
+      await db.auditLog.update({where:{id:binding.id},data:{metaJson:JSON.stringify({...JSON.parse(binding.metaJson!),...patch})}});
+      await expect(sourcePlacementReleaseOf(db,draft.gameId)).rejects.toThrow();
+    }
+    await db.auditLog.update({where:{id:binding.id},data:{metaJson:binding.metaJson}});
+    const row=await db.auditLog.findUniqueOrThrow({where:{id:detectivesOperationalId(draft.gameId)}});
+    for(const change of [{sourceFamilySha256:'f'.repeat(64)},{sourcePlacementManifestSha256:'f'.repeat(64)},{sourceBodyManifestSha256:'f'.repeat(64)},{worldId:'foreign:board-wizard'},{worldCapMicroUsd:10000000}]){
+      const {authorizationSha256:_ignored,...body}={...JSON.parse(row.metaJson!),...change};
+      await db.auditLog.update({where:{id:row.id},data:{metaJson:JSON.stringify({...body,authorizationSha256:boardConditioningHash(body)})}});
+      await expect(detectivesOperationalPolicyOf(db,draft.gameId)).rejects.toThrow();
+    }
+    await db.auditLog.update({where:{id:row.id},data:{metaJson:row.metaJson}});
+    expect(await detectivesOperationalPolicyOf(db,draft.gameId)).not.toBeNull();
+  });
 });

@@ -49,6 +49,7 @@ import { localPatchFiveSceneRelease, localPatchStrictSceneRelease, localPatchAge
 import { WORLD_LOCAL_PATCH_HIDES } from "../../src/domain/scene/local-patch-hides";
 import { INTEGRATED_COLLECTION_BOARDS } from "../adventures/wizard-integrated-release";
 import { DETECTIVE_PATCH_BOARDS } from "../detectives/runtime-release";
+import { KINGDOM_DETECTIVE_PATCH_BOARDS } from "../detectives/kingdom/runtime-release";
 import { detectiveSceneRelease } from "../detectives/scene-release";
 
 /**
@@ -101,7 +102,9 @@ const integratedVersions = RAW_SCENES.filter(raw => INTEGRATED_COLLECTION_BOARDS
   .map(raw => collectionSceneRelease(raw, INTEGRATED_COLLECTION_VERSION));
 export const DETECTIVE_SCENES: readonly SceneDefinition[] = RAW_SCENES.filter(raw => DETECTIVE_PATCH_BOARDS.some(board => board.board === (raw as {slug:string}).slug))
   .map(raw => { const checked=validateSceneDefinition(detectiveSceneRelease(raw)); if(!checked.ok || !checked.scene) throw Error(`Invalid Detective scene: ${checked.errors.join(", ")}`); return checked.scene; });
-const HISTORICAL_SCENES: readonly SceneDefinition[] = [...DETECTIVE_SCENES,...preRefresh, ...prePlacement, ...preForeground, ...preContract, ...localPatchVersions, ...fiveHideVersions, ...strictHideVersions, ...ageHideVersions, ...collectionVersions, ...refreshedVersions, ...integratedVersions].map(raw => {
+export const KINGDOM_DETECTIVE_SCENES: readonly SceneDefinition[] = RAW_SCENES.filter(raw => KINGDOM_DETECTIVE_PATCH_BOARDS.some(board => board.board === (raw as {slug:string}).slug))
+  .map(raw => { const checked=validateSceneDefinition(detectiveSceneRelease(raw)); if(!checked.ok || !checked.scene) throw Error(`Invalid Kingdom Detective scene: ${checked.errors.join(", ")}`); return checked.scene; });
+const HISTORICAL_SCENES: readonly SceneDefinition[] = [...DETECTIVE_SCENES,...KINGDOM_DETECTIVE_SCENES,...preRefresh, ...prePlacement, ...preForeground, ...preContract, ...localPatchVersions, ...fiveHideVersions, ...strictHideVersions, ...ageHideVersions, ...collectionVersions, ...refreshedVersions, ...integratedVersions].map(raw => {
   const parsed = validateSceneDefinition(raw);
   if (!parsed.ok || !parsed.scene) throw new Error(`Invalid archived scene ${(raw as { slug: string }).slug}: ${parsed.errors.join(", ")}`);
   return parsed.scene;

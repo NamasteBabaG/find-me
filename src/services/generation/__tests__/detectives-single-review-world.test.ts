@@ -1,3 +1,5 @@
+import { KINGDOM_DETECTIVE_PATCH_BOARDS } from "../../../../content/detectives/kingdom/runtime-release";
+import { pinDetectiveSourceScope, sealDetectiveSourceFamily } from "../source-family-scope";
 import { planWholeSourceContextRepair, stageWholeSourceContextRepair, nextWholeSourceContextWake, resumeWholeSourceContextRepair } from "../whole-source-context-repair";
 import { readWholeSourceContextPin, wholeSourceContextPinId, wholeSourceContextWakeId, wholeSourceContextRowHash, wholeSourceContextMarkerFor, fenceWholeSourceContextPurchase } from "../whole-source-context-pin";
 import { wholeSourceContextMarker } from "../../../domain/generation/whole-source-context-purchase";
@@ -102,24 +104,32 @@ afterAll(async () => {
   if (path.dirname(directory) === realpathSync(tmpdir()) && path.basename(directory).startsWith("findme-detective-world-")) rmSync(directory, { recursive: true });
 });
 
-async function newDetectiveWorld(gameId: string, ageYears=8, born=false, explorer=false) {
+async function newDetectiveWorld(gameId: string, ageYears=8, born=false, explorer=false, kingdom=false) {
   const version = explorer ? 12 : 13, level = explorer ? "explorers" : "detectives";
   const journey = new Set(boardsOfWorlds(["journey"]));
-  const boards = explorer ? localPatchBoardsForVersion(12).filter(board => journey.has(board.board)) : DETECTIVE_PATCH_BOARDS;
+  const boards = explorer ? localPatchBoardsForVersion(12).filter(board => journey.has(board.board)) : kingdom ? KINGDOM_DETECTIVE_PATCH_BOARDS : DETECTIVE_PATCH_BOARDS;
   const seeded = await seedApprovedGame(c, db, { gameId, approved: false, styleVersion: "local-patch-world-v1", status: "DRAFT", withJob: false,
     scenes: boards.map(board => ({ slug: board.board, version })) });
   await db.game.update({ where: { id: gameId }, data: { searchLevel: level } });
   await db.childProfile.update({where:{id:"chl-"+gameId},data:{ageYears}});
   fixture.testers.push(seeded.email); c.adminEmails!.push(seeded.email);
   if(born)await db.childProfile.update({where:{id:"chl-"+gameId},data:{originalPhotoAssetId:null}});
+  const profile = await db.childProfile.findUniqueOrThrow({where:{id:"chl-"+gameId}});
+  if(kingdom) await db.childProfile.update({where:{id:profile.id},data:{identityAssetId:null,avatarAssetId:null}});
   await db.$transaction(async tx => {
     await pinVisualReviewRelease(tx, gameId, DUAL_VISUAL_REVIEW_V3);
     await pinLeanRelease(tx, gameId, LOCAL_PATCH_LEAN_RELEASE);
     await pinIdentitySourceRelease(tx, gameId);
-    await pinLocalPatchSourceFamily(tx, gameId, { sceneVersion: version, searchLevel: level });
+    if(kingdom){
+      await pinDetectiveSourceScope(tx,gameId,DETECTIVES_OPERATIONAL_RELEASE,c.storage.id);
+      await tx.game.update({where:{id:gameId},data:{status:"PACKAGE_SELECTED"}});
+      await tx.childProfile.update({where:{id:profile.id},data:{originalPhotoAssetId:"ast-photo-"+gameId}});
+      await sealDetectiveSourceFamily(tx,gameId);
+    } else await pinLocalPatchSourceFamily(tx, gameId, { sceneVersion: version, searchLevel: level });
     if(born && explorer) await pinExplorersOperationalPolicy(tx,gameId,EXPLORERS_OPERATIONAL_RELEASE,c.storage.id);
-    else if(born)await pinDetectivesOperationalPolicy(tx,gameId,DETECTIVES_OPERATIONAL_RELEASE,c.storage.id);
+    else if(born && !kingdom)await pinDetectivesOperationalPolicy(tx,gameId,DETECTIVES_OPERATIONAL_RELEASE,c.storage.id);
   });
+  if(kingdom) await db.childProfile.update({where:{id:profile.id},data:{identityAssetId:profile.identityAssetId,avatarAssetId:profile.avatarAssetId}});
   if(born)await db.childProfile.update({where:{id:"chl-"+gameId},data:{originalPhotoAssetId:"ast-photo-"+gameId}});
   await db.game.update({ where: { id: gameId }, data: { status: "TARGETS_GENERATING" } });
   await db.generationJob.create({ data: { id: "job_" + gameId, gameId, status: "QUEUED" } });
@@ -129,7 +139,7 @@ async function newDetectiveWorld(gameId: string, ageYears=8, born=false, explore
   await db.asset.create({ data: { id: avatarId, ownerId: seeded.userId, type: "AVATAR", visibility: "GAME", status: "READY", storagePath: "game/" + avatarId + ".png", mimeType: "image/png", bytes: avatar.length, width: 256, height: 256, provider: "openai" } });
   await db.childProfile.update({ where: { id: "chl-" + gameId }, data: { avatarAssetId: avatarId } });
   await c.storage.put("private/photo-" + gameId + ".jpg", seeded.sheet, "image/png");
-  const atlas = await buildBoardWizardIdentityStyle(undefined, "board-matched-identity/v6", "journey", undefined, explorer ? undefined : { sceneVersion: 13 });
+  const atlas = await buildBoardWizardIdentityStyle(undefined, "board-matched-identity/v6", kingdom ? "kingdom" : "journey", undefined, explorer ? undefined : { sceneVersion: 13 });
   const checks = { identity: "pass", age: "pass", paintedStyle: "pass", sheetLayout: "pass", sourceFaceVisible: "pass", facialVolume: "pass", viewConsistency: "pass" };
   const identity = await reviewBoardWizardIdentity({ db, apiKey: "synthetic-never-live", budget: boardWizardBudgetOf(c), beforeDispatch: async () => {}, write: work => db.$transaction(work),
     reviewer: { review: async () => ({ httpOk: true, requestId: "req_identity_" + gameId, body: { model: "gpt-6.1-sol", usage: { prompt_tokens: 1500, completion_tokens: 150 },
@@ -208,9 +218,9 @@ function controlledSol(interrupted = false, guided = false, guidedHideId?: strin
   return { fake, creates };
 }
 
-it.each([{mode:"clean",interrupted:false,guided:false},{mode:"transport",interrupted:true,guided:false},{mode:"guided",interrupted:false,guided:true},{mode:"tail",interrupted:false,guided:true},{mode:"body",interrupted:false,guided:true}].map(v=>({...v,born:false})).concat([{mode:"born-clean",interrupted:false,guided:false,born:true},{mode:"born-guided",interrupted:false,guided:true,born:true},{mode:"born-transport",interrupted:true,guided:false,born:true},{mode:"born-crown",interrupted:false,guided:false,born:true}]))("completes27 hides with bounded LOW review and no extra planner; mode=$mode", async ({mode,interrupted,guided,born}) => {
+it.each([{mode:"clean",interrupted:false,guided:false},{mode:"transport",interrupted:true,guided:false},{mode:"guided",interrupted:false,guided:true},{mode:"tail",interrupted:false,guided:true},{mode:"body",interrupted:false,guided:true}].map(v=>({...v,born:false})).concat([{mode:"born-clean",interrupted:false,guided:false,born:true},{mode:"born-guided",interrupted:false,guided:true,born:true},{mode:"born-transport",interrupted:true,guided:false,born:true},{mode:"born-crown",interrupted:false,guided:false,born:true},{mode:"kingdom-clean",interrupted:false,guided:false,born:true},{mode:"kingdom-transport",interrupted:true,guided:false,born:true},{mode:"kingdom-guided",interrupted:false,guided:true,born:true}]))("completes27 hides with bounded LOW review and no extra planner; mode=$mode", async ({mode,interrupted,guided,born}) => {
   vi.useFakeTimers({ toFake: ["Date"] });
-  const crown=mode==="born-crown",body=mode==="body";const gameId = "detective-single-world-synthetic-" + mode; await newDetectiveWorld(gameId,body||born?7:8,born);
+  const kingdom=mode.startsWith("kingdom-"),crown=mode==="born-crown",body=mode==="body";const gameId = "detective-single-world-synthetic-" + mode; await newDetectiveWorld(gameId,body||born?7:8,born,false,kingdom);
   const context = await resolveLocalPatchBoardsForGame(db, gameId, 13), hides = context.boards.flatMap(board => board.hides);
   expect(context.boards).toHaveLength(9); expect(hides).toHaveLength(27);
   // Simulate the actual older deployment: genuine LOW purchases under the
@@ -361,9 +371,9 @@ it.each([{mode:"clean",interrupted:false,guided:false},{mode:"transport",interru
   expect(await allowedDualPublication(db, binding)).toBe(false);
   await db.auditLog.create({ data: authority });
   expect(await allowedDualPublication(db, binding)).toBe(true);
-  const oversized = config.scenes.find(scene => scene.slug === "paris")!.targets.find(target => target.id === "hide-2")!.sprite;
+  const oversized = config.scenes.find(scene => scene.slug === (kingdom?"castlegate":"paris"))!.targets.find(target => target.id === "hide-2")!.sprite;
   expect(oversized.kind).toBe("image");
-  if (oversized.kind === "image") { expect(oversized.rect!.h * 2160).toBe(768); expect(oversized.hitRect!.h * 2160).toBeGreaterThan(540 * 0.8); }
+  if (oversized.kind === "image") { expect(oversized.rect!.h * (kingdom?1882:2160)).toBe(768); if(!kingdom) expect(oversized.hitRect!.h * 2160).toBeGreaterThan(540 * 0.8); }
   if(mode==="born-clean")expect(bornPendingChecked).toBe(true);
   const audit = await boardWizardBudgetOf(c).audit(worldId);
   expect(audit).toMatchObject({ capMicroUsd: born?4_000_000:tail ? 10_000_000 : 8_000_000, held: false, pendingRequestKeys: [] });
@@ -375,7 +385,7 @@ it.each([{mode:"clean",interrupted:false,guided:false},{mode:"transport",interru
     expect(await boardWizardBudgetOf(c).readContinuationApproval(worldId, audit.unknownRequestKeys[0]!)).toMatchObject({ version: "world-automatic-review-recovery/v5", imageSha256: expect.any(String) });
   } else expect(audit.reservedMicroUsd).toBe(0);
   expect(audit.committedMicroUsd).toBeLessThanOrEqual(audit.capMicroUsd);
-  if(born){expect(await db.auditLog.count({where:{entityType:"Game",entityId:gameId,actorType:"ADMIN"}})).toBe(0);expect(await detectivesOperationalPolicyOf(db,gameId)).toMatchObject({worldCapMicroUsd:4000000,model:"gpt-6.1-sol",effort:"low",automaticBudgetExtension:false});const bodyRows=rows.filter(r=>sourceBodyBirthMarker(r));expect(bodyRows).toHaveLength(2);for(const r of bodyRows){expect(r.attempts).toBe(1);expect(JSON.parse(r.judgeJson!).sourceBodyComposition.outsideChangedPixels).toBe(0);}}
+  if(born){expect(await db.auditLog.count({where:{entityType:"Game",entityId:gameId,actorType:"ADMIN"}})).toBe(0);expect(await detectivesOperationalPolicyOf(db,gameId)).toMatchObject({worldCapMicroUsd:4000000,model:"gpt-6.1-sol",effort:"low",automaticBudgetExtension:false});const bodyRows=rows.filter(r=>sourceBodyBirthMarker(r));expect(bodyRows).toHaveLength(kingdom?0:2);for(const r of bodyRows){expect(r.attempts).toBe(1);expect(JSON.parse(r.judgeJson!).sourceBodyComposition.outsideChangedPixels).toBe(0);}}
   const child = await db.childProfile.findUniqueOrThrow({ where: { id: "chl-" + gameId } });
   const photo = await db.asset.findUniqueOrThrow({ where: { id: "ast-photo-" + gameId } });
   expect(child.originalPhotoAssetId).toBeNull(); expect(photo.status).toBe("DELETED"); expect(await db.fileBlob.findUnique({ where: { key: photo.storagePath } })).toBeNull();

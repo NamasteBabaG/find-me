@@ -1,0 +1,4850 @@
+{
+  "version": "kingdom-detectives-runtime/v1",
+  "sceneVersion": 13,
+  "worldSlug": "kingdom",
+  "sourceRelease": "kingdom-detectives-source/v1",
+  "boards": [
+    {
+      "board": "castlegate",
+      "source": {
+        "path": "public/scenes/kingdom-castlegate-detectives-v1/base.webp",
+        "sha256": "8239c9d24e8550a8b3a147b813e77ad41c4c491f66d9d6bb6ee07889f15397de",
+        "width": 3344,
+        "height": 1882
+      },
+      "definition": {
+        "board": "castlegate",
+        "art": "public/scenes/kingdom-castlegate-detectives-v1/base.webp",
+        "ground": "sunlit dry castle courtyard paving, shallow steps and flower planters",
+        "sittable": true,
+        "wardrobe": "Age-appropriate practical fantasy clothing from this board. Preserve the reference child face, hair and age. Matte hand-painted fabric and skin; no glow or photographic smoothing.",
+        "hides": [
+          {
+            "id": "castlegate-detectives-hide-1",
+            "left": 560,
+            "top": 1114,
+            "pose": "kneeling",
+            "targetId": "hide-1",
+            "wardrobe": "Muted slate-blue tunic, ochre belt, brown soft trousers and practical brown child boots.",
+            "mask": {
+              "left": 108,
+              "top": 298,
+              "width": 292,
+              "height": 370
+            },
+            "returnRect": {
+              "left": 84,
+              "top": 274,
+              "width": 340,
+              "height": 418
+            },
+            "hint": {
+              "en": "Look beside the fountain, carrying a wooden bucket.",
+              "he": "חפשו ליד המזרקה, עם דלי העץ."
+            },
+            "placement": {
+              "depth": "near",
+              "standingHeightPx": 476,
+              "support": "Replace the dark-haired blue-clad kneeling bucket carrier completely, keeping the bucket, fountain and water intact. Both knees/shins rest on the paving.",
+              "lighting": "Warm late-afternoon courtyard light, soft foliage shadows, matte painted faces; no face spotlight.",
+              "occlusion": "Preserve all neighboring faces, hands, shared props, rails and foreground occluders. Replace only the selected source child.",
+              "comparators": "Keep the original source child body scale and supported pose. Match adjacent people at the same depth; preserve reference face, hair and age."
+            }
+          },
+          {
+            "id": "castlegate-detectives-hide-2",
+            "left": 1246,
+            "top": 508,
+            "pose": "crouching",
+            "targetId": "hide-2",
+            "wardrobe": "Dusty blue short jacket, cream shirt, dark olive child trousers and soft brown boots.",
+            "mask": {
+              "left": 176,
+              "top": 218,
+              "width": 160,
+              "height": 330
+            },
+            "returnRect": {
+              "left": 56,
+              "top": 194,
+              "width": 414,
+              "height": 378
+            },
+            "hint": {
+              "en": "Look among the friends around the friendly dog.",
+              "he": "חפשו בין החברים שסביב הכלב הידידותי."
+            },
+            "placement": {
+              "depth": "middle",
+              "standingHeightPx": 436,
+              "support": "Replace the blond blue-clad child bending beside the dog, including hair, head, torso and hands; keep the dog, neighboring child hands and flowers intact.",
+              "lighting": "Warm late-afternoon courtyard light, soft foliage shadows, matte painted faces; no face spotlight.",
+              "occlusion": "Preserve all neighboring faces, hands, shared props, rails and foreground occluders. Replace only the selected source child.",
+              "comparators": "Keep the original source child body scale and supported pose. Match adjacent people at the same depth; preserve reference face, hair and age."
+            }
+          },
+          {
+            "id": "castlegate-detectives-hide-3",
+            "left": 2484,
+            "top": 1114,
+            "pose": "walking",
+            "targetId": "hide-3",
+            "wardrobe": "Muted cobalt-blue tunic with brass belt, slate trousers and brown child boots.",
+            "mask": {
+              "left": 136,
+              "top": 336,
+              "width": 240,
+              "height": 368
+            },
+            "returnRect": {
+              "left": 112,
+              "top": 208,
+              "width": 378,
+              "height": 520
+            },
+            "hint": {
+              "en": "Look beside the rolling wooden hoop.",
+              "he": "חפשו ליד חישוק העץ המתגלגל."
+            },
+            "placement": {
+              "depth": "near",
+              "standingHeightPx": 444,
+              "support": "Replace the blue-clad child rolling the hoop; keep the hoop and opposite child connected and unchanged. Both shoes contact the paving naturally.",
+              "lighting": "Warm late-afternoon courtyard light, soft foliage shadows, matte painted faces; no face spotlight.",
+              "occlusion": "Preserve all neighboring faces, hands, shared props, rails and foreground occluders. Replace only the selected source child.",
+              "comparators": "Keep the original source child body scale and supported pose. Match adjacent people at the same depth; preserve reference face, hair and age."
+            }
+          }
+        ]
+      },
+      "adventure": {
+        "boardSlug": "castlegate",
+        "worldSlug": "kingdom",
+        "name": {
+          "en": "Castle Gate",
+          "he": "שער הטירה"
+        },
+        "direction": {
+          "orientation": "landscape",
+          "aspect": "16:9",
+          "spread": "activity-across-width-and-height",
+          "perspective": "shallow",
+          "scaleTreatment": "similar-size-people",
+          "illustration": "storybook-hand-drawn",
+          "identityPrecedence": "reference-face-hair-age",
+          "locationCues": [
+            {
+              "en": "Ornate open castle gates",
+              "he": "שערי טירה מעוטרים"
+            },
+            {
+              "en": "Courtyard errands and games",
+              "he": "משימות ומשחקים בחצר"
+            }
+          ],
+          "microStories": [
+            {
+              "en": "Look beside the fountain, carrying a wooden bucket.",
+              "he": "חפשו ליד המזרקה, עם דלי העץ."
+            },
+            {
+              "en": "Look among the friends around the friendly dog.",
+              "he": "חפשו בין החברים שסביב הכלב הידידותי."
+            },
+            {
+              "en": "Look beside the rolling wooden hoop.",
+              "he": "חפשו ליד חישוק העץ המתגלגל."
+            }
+          ]
+        },
+        "plannedHides": 3,
+        "collectionUi": "guided-v1",
+        "status": "ready",
+        "sceneVersion": 13,
+        "art": {
+          "base": "/scenes/kingdom-castlegate-detectives-v1/base.webp",
+          "sha256": "8239c9d24e8550a8b3a147b813e77ad41c4c491f66d9d6bb6ee07889f15397de",
+          "width": 3344,
+          "height": 1882
+        },
+        "personalZones": [
+          {
+            "x": 0.1674641148325359,
+            "y": 0.59192348565356,
+            "w": 0.15311004784688995,
+            "h": 0.40807651434643993
+          },
+          {
+            "x": 0.37260765550239233,
+            "y": 0.26992561105207225,
+            "w": 0.15311004784688995,
+            "h": 0.40807651434643993
+          },
+          {
+            "x": 0.742822966507177,
+            "y": 0.59192348565356,
+            "w": 0.15311004784688995,
+            "h": 0.40807651434643993
+          }
+        ],
+        "discoveries": [
+          {
+            "id": "castle-bell",
+            "name": {
+              "en": "Bronze bell",
+              "he": "פעמון ברונזה"
+            },
+            "hint": {
+              "en": "Look for: Bronze bell.",
+              "he": "חפשו באיור: פעמון ברונזה."
+            },
+            "category": "object",
+            "description": {
+              "kind": "story",
+              "text": {
+                "en": "A small detail in this illustrated story: Bronze bell.",
+                "he": "פרט קטן מתוך הסיפור שבאיור: פעמון ברונזה."
+              }
+            },
+            "visibleRect": {
+              "x": 0.0215311004784689,
+              "y": 0,
+              "w": 0.04844497607655503,
+              "h": 0.08820403825717323
+            },
+            "hitRect": {
+              "x": 0.031220095693779905,
+              "y": 0.017640807651434647,
+              "w": 0.029066985645933015,
+              "h": 0.05292242295430393
+            },
+            "cardCrop": {
+              "x": 0.0215311004784689,
+              "y": 0,
+              "w": 0.04844497607655503,
+              "h": 0.08820403825717323
+            }
+          },
+          {
+            "id": "castle-pigeon",
+            "name": {
+              "en": "Courtyard pigeon",
+              "he": "יונה בחצר"
+            },
+            "hint": {
+              "en": "Look for: Courtyard pigeon.",
+              "he": "חפשו באיור: יונה בחצר."
+            },
+            "category": "animal",
+            "description": {
+              "kind": "story",
+              "text": {
+                "en": "A small detail in this illustrated story: Courtyard pigeon.",
+                "he": "פרט קטן מתוך הסיפור שבאיור: יונה בחצר."
+              }
+            },
+            "visibleRect": {
+              "x": 0.060406698564593304,
+              "y": 0.8065887353878852,
+              "w": 0.0735645933014354,
+              "h": 0.08926673751328375
+            },
+            "hitRect": {
+              "x": 0.07511961722488038,
+              "y": 0.8244420828905419,
+              "w": 0.04413875598086124,
+              "h": 0.053560042507970244
+            },
+            "cardCrop": {
+              "x": 0.060406698564593304,
+              "y": 0.8065887353878852,
+              "w": 0.0735645933014354,
+              "h": 0.08926673751328375
+            }
+          },
+          {
+            "id": "castle-banner",
+            "name": {
+              "en": "Lion banner",
+              "he": "דגל אריה"
+            },
+            "hint": {
+              "en": "Look for: Lion banner.",
+              "he": "חפשו באיור: דגל אריה."
+            },
+            "category": "object",
+            "description": {
+              "kind": "story",
+              "text": {
+                "en": "A small detail in this illustrated story: Lion banner.",
+                "he": "פרט קטן מתוך הסיפור שבאיור: דגל אריה."
+              }
+            },
+            "visibleRect": {
+              "x": 0.019138755980861243,
+              "y": 0.13496280552603612,
+              "w": 0.046052631578947366,
+              "h": 0.09883103081827843
+            },
+            "hitRect": {
+              "x": 0.028349282296650718,
+              "y": 0.1547290116896918,
+              "w": 0.02763157894736842,
+              "h": 0.059298618490967056
+            },
+            "cardCrop": {
+              "x": 0.019138755980861243,
+              "y": 0.13496280552603612,
+              "w": 0.046052631578947366,
+              "h": 0.09883103081827843
+            }
+          },
+          {
+            "id": "castle-horse",
+            "name": {
+              "en": "White horse",
+              "he": "סוס לבן"
+            },
+            "hint": {
+              "en": "Look for: White horse.",
+              "he": "חפשו באיור: סוס לבן."
+            },
+            "category": "animal",
+            "description": {
+              "kind": "story",
+              "text": {
+                "en": "A small detail in this illustrated story: White horse.",
+                "he": "פרט קטן מתוך הסיפור שבאיור: סוס לבן."
+              }
+            },
+            "visibleRect": {
+              "x": 0.8319377990430622,
+              "y": 0.2858660998937301,
+              "w": 0.0735645933014354,
+              "h": 0.19234856535600425
+            },
+            "hitRect": {
+              "x": 0.8466507177033492,
+              "y": 0.3243358129649309,
+              "w": 0.04413875598086124,
+              "h": 0.11540913921360255
+            },
+            "cardCrop": {
+              "x": 0.8319377990430622,
+              "y": 0.2858660998937301,
+              "w": 0.0735645933014354,
+              "h": 0.19234856535600425
+            }
+          },
+          {
+            "id": "castle-chest",
+            "name": {
+              "en": "Travel chest",
+              "he": "תיבת מסע"
+            },
+            "hint": {
+              "en": "Look for: Travel chest.",
+              "he": "חפשו באיור: תיבת מסע."
+            },
+            "category": "object",
+            "description": {
+              "kind": "story",
+              "text": {
+                "en": "A small detail in this illustrated story: Travel chest.",
+                "he": "פרט קטן מתוך הסיפור שבאיור: תיבת מסע."
+              }
+            },
+            "visibleRect": {
+              "x": 0.0867224880382775,
+              "y": 0.4952178533475027,
+              "w": 0.0861244019138756,
+              "h": 0.08926673751328375
+            },
+            "hitRect": {
+              "x": 0.10394736842105264,
+              "y": 0.5130712008501594,
+              "w": 0.05167464114832535,
+              "h": 0.053560042507970244
+            },
+            "cardCrop": {
+              "x": 0.0867224880382775,
+              "y": 0.4952178533475027,
+              "w": 0.0861244019138756,
+              "h": 0.08926673751328375
+            }
+          },
+          {
+            "id": "castle-flowers",
+            "name": {
+              "en": "Blue and yellow flowers",
+              "he": "פרחים כחולים וצהובים"
+            },
+            "hint": {
+              "en": "Look for: Blue and yellow flowers.",
+              "he": "חפשו באיור: פרחים כחולים וצהובים."
+            },
+            "category": "plant",
+            "description": {
+              "kind": "story",
+              "text": {
+                "en": "A small detail in this illustrated story: Blue and yellow flowers.",
+                "he": "פרט קטן מתוך הסיפור שבאיור: פרחים כחולים וצהובים."
+              }
+            },
+            "visibleRect": {
+              "x": 0.5394736842105263,
+              "y": 0.45589798087141337,
+              "w": 0.08014354066985646,
+              "h": 0.04675876726886291
+            },
+            "hitRect": {
+              "x": 0.5555023923444976,
+              "y": 0.46524973432518596,
+              "w": 0.04808612440191387,
+              "h": 0.028055260361317745
+            },
+            "cardCrop": {
+              "x": 0.5394736842105263,
+              "y": 0.45589798087141337,
+              "w": 0.08014354066985646,
+              "h": 0.04675876726886291
+            }
+          }
+        ],
+        "postcard": {
+          "id": "castlegate-detectives-postcard",
+          "title": {
+            "en": "A memory from Castle Gate",
+            "he": "מזכרת: שער הטירה"
+          },
+          "targetId": "hide-1",
+          "crop": {
+            "x": 0.1674641148325359,
+            "y": 0.59192348565356,
+            "w": 0.15311004784688995,
+            "h": 0.40807651434643993
+          }
+        }
+      },
+      "sourceNeighbors": [
+        {
+          "boardId": "castlegate",
+          "hideId": "castlegate-detectives-hide-1",
+          "neighbors": [
+            {
+              "sourceId": "source-child",
+              "head": {
+                "left": 714,
+                "top": 1422,
+                "width": 106,
+                "height": 116
+              }
+            },
+            {
+              "sourceId": "neighbor-1",
+              "head": {
+                "left": 542,
+                "top": 1272,
+                "width": 102,
+                "height": 116
+              }
+            },
+            {
+              "sourceId": "neighbor-2",
+              "head": {
+                "left": 670,
+                "top": 1240,
+                "width": 74,
+                "height": 86
+              }
+            },
+            {
+              "sourceId": "neighbor-3",
+              "head": {
+                "left": 892,
+                "top": 1210,
+                "width": 106,
+                "height": 110
+              }
+            }
+          ]
+        },
+        {
+          "boardId": "castlegate",
+          "hideId": "castlegate-detectives-hide-2",
+          "neighbors": [
+            {
+              "sourceId": "source-child",
+              "head": {
+                "left": 1448,
+                "top": 734,
+                "width": 108,
+                "height": 118
+              }
+            },
+            {
+              "sourceId": "neighbor-1",
+              "head": {
+                "left": 1318,
+                "top": 822,
+                "width": 110,
+                "height": 118
+              }
+            },
+            {
+              "sourceId": "neighbor-2",
+              "head": {
+                "left": 1582,
+                "top": 856,
+                "width": 118,
+                "height": 124
+              }
+            },
+            {
+              "sourceId": "neighbor-3",
+              "head": {
+                "left": 1738,
+                "top": 828,
+                "width": 118,
+                "height": 130
+              }
+            }
+          ]
+        },
+        {
+          "boardId": "castlegate",
+          "hideId": "castlegate-detectives-hide-3",
+          "neighbors": [
+            {
+              "sourceId": "source-child",
+              "head": {
+                "left": 2670,
+                "top": 1450,
+                "width": 130,
+                "height": 132
+              }
+            },
+            {
+              "sourceId": "neighbor-1",
+              "head": {
+                "left": 2346,
+                "top": 1468,
+                "width": 120,
+                "height": 132
+              }
+            },
+            {
+              "sourceId": "neighbor-2",
+              "head": {
+                "left": 2828,
+                "top": 1338,
+                "width": 130,
+                "height": 144
+              }
+            },
+            {
+              "sourceId": "neighbor-3",
+              "head": {
+                "left": 3178,
+                "top": 1526,
+                "width": 110,
+                "height": 122
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "board": "fairyforest",
+      "source": {
+        "path": "public/scenes/kingdom-fairyforest-detectives-v1/base.webp",
+        "sha256": "8ff866ee5b65e0763bda3b3c907c07b278242cd9cdbd8773e362956f2a2b4788",
+        "width": 3344,
+        "height": 1882
+      },
+      "definition": {
+        "board": "fairyforest",
+        "art": "public/scenes/kingdom-fairyforest-detectives-v1/base.webp",
+        "ground": "mossy shallow forest paths, low wooden bridges and dry picnic stones",
+        "sittable": true,
+        "wardrobe": "Age-appropriate practical fantasy clothing from this board. Preserve the reference child face, hair and age. Matte hand-painted fabric and skin; no glow or photographic smoothing.",
+        "hides": [
+          {
+            "id": "fairyforest-detectives-hide-1",
+            "left": 1258,
+            "top": 0,
+            "pose": "peeking",
+            "targetId": "hide-1",
+            "wardrobe": "Cream linen shirt, olive woodland vest and muted blue trousers.",
+            "mask": {
+              "left": 122,
+              "top": 224,
+              "width": 210,
+              "height": 302
+            },
+            "returnRect": {
+              "left": 98,
+              "top": 200,
+              "width": 258,
+              "height": 350
+            },
+            "hint": {
+              "en": "Look inside the leaf glider beside the mushroom home.",
+              "he": "חפשו בתוך דאון העלה ליד בית הפטרייה."
+            },
+            "placement": {
+              "depth": "deep",
+              "standingHeightPx": 360,
+              "support": "Lean over the upper leaf glider rail; retain leaf wings, rail and supported seated body.",
+              "lighting": "Filtered green woodland daylight with warm door lanterns, soft cool foliage shadows and no portrait glow.",
+              "occlusion": "Preserve all neighboring faces, hands, shared props, rails and foreground occluders. Replace only the selected source child.",
+              "comparators": "Keep the original source child body scale and supported pose. Match adjacent people at the same depth; preserve reference face, hair and age."
+            }
+          },
+          {
+            "id": "fairyforest-detectives-hide-2",
+            "left": 0,
+            "top": 1114,
+            "pose": "crouching",
+            "targetId": "hide-2",
+            "wardrobe": "Cream rolled-sleeve shirt, moss waistcoat, blue trousers and brown boots.",
+            "mask": {
+              "left": 48,
+              "top": 228,
+              "width": 290,
+              "height": 354
+            },
+            "returnRect": {
+              "left": 24,
+              "top": 204,
+              "width": 418,
+              "height": 402
+            },
+            "hint": {
+              "en": "Look beside the lower leaf glider.",
+              "he": "חפשו לצד דאון העלים התחתון."
+            },
+            "placement": {
+              "depth": "near",
+              "standingHeightPx": 470,
+              "support": "Bend over the lower-left leaf glider on the stone path. Preserve leaf spars, shared tools and neighboring children.",
+              "lighting": "Filtered green woodland daylight with warm door lanterns, soft cool foliage shadows and no portrait glow.",
+              "occlusion": "Preserve all neighboring faces, hands, shared props, rails and foreground occluders. Replace only the selected source child.",
+              "comparators": "Keep the original source child body scale and supported pose. Match adjacent people at the same depth; preserve reference face, hair and age."
+            }
+          },
+          {
+            "id": "fairyforest-detectives-hide-3",
+            "left": 2832,
+            "top": 470,
+            "pose": "standing",
+            "targetId": "hide-3",
+            "wardrobe": "Lavender dress, olive woodland bodice, embroidered sash and brown boots.",
+            "mask": {
+              "left": 188,
+              "top": 156,
+              "width": 294,
+              "height": 380
+            },
+            "returnRect": {
+              "left": 164,
+              "top": 132,
+              "width": 342,
+              "height": 518
+            },
+            "hint": {
+              "en": "Look at the hanging flower lantern on the right.",
+              "he": "חפשו ליד עששית הפרח התלויה מימין."
+            },
+            "placement": {
+              "depth": "middle",
+              "standingHeightPx": 426,
+              "support": "Reach to hang the right flower lantern. Preserve branch, lantern and neighboring hands; feet stay on the path.",
+              "lighting": "Filtered green woodland daylight with warm door lanterns, soft cool foliage shadows and no portrait glow.",
+              "occlusion": "Preserve all neighboring faces, hands, shared props, rails and foreground occluders. Replace only the selected source child.",
+              "comparators": "Keep the original source child body scale and supported pose. Match adjacent people at the same depth; preserve reference face, hair and age."
+            }
+          }
+        ]
+      },
+      "adventure": {
+        "boardSlug": "fairyforest",
+        "worldSlug": "kingdom",
+        "name": {
+          "en": "Fairy Forest",
+          "he": "יער הפיות"
+        },
+        "direction": {
+          "orientation": "landscape",
+          "aspect": "16:9",
+          "spread": "activity-across-width-and-height",
+          "perspective": "shallow",
+          "scaleTreatment": "similar-size-people",
+          "illustration": "storybook-hand-drawn",
+          "identityPrecedence": "reference-face-hair-age",
+          "locationCues": [
+            {
+              "en": "Living tree homes",
+              "he": "בתי עצים חיים"
+            },
+            {
+              "en": "Leaf boats and woodland helpers",
+              "he": "סירות עלים ועוזרי היער"
+            }
+          ],
+          "microStories": [
+            {
+              "en": "Look inside the leaf glider beside the mushroom home.",
+              "he": "חפשו בתוך דאון העלה ליד בית הפטרייה."
+            },
+            {
+              "en": "Look beside the lower leaf glider.",
+              "he": "חפשו לצד דאון העלים התחתון."
+            },
+            {
+              "en": "Look at the hanging flower lantern on the right.",
+              "he": "חפשו ליד עששית הפרח התלויה מימין."
+            }
+          ]
+        },
+        "plannedHides": 3,
+        "collectionUi": "guided-v1",
+        "status": "ready",
+        "sceneVersion": 13,
+        "art": {
+          "base": "/scenes/kingdom-fairyforest-detectives-v1/base.webp",
+          "sha256": "8ff866ee5b65e0763bda3b3c907c07b278242cd9cdbd8773e362956f2a2b4788",
+          "width": 3344,
+          "height": 1882
+        },
+        "personalZones": [
+          {
+            "x": 0.3761961722488038,
+            "y": 0,
+            "w": 0.15311004784688995,
+            "h": 0.40807651434643993
+          },
+          {
+            "x": 0,
+            "y": 0.59192348565356,
+            "w": 0.15311004784688995,
+            "h": 0.40807651434643993
+          },
+          {
+            "x": 0.84688995215311,
+            "y": 0.24973432518597238,
+            "w": 0.15311004784688995,
+            "h": 0.40807651434643993
+          }
+        ],
+        "discoveries": [
+          {
+            "id": "fairyforest-owl",
+            "name": {
+              "en": "Woodland owl",
+              "he": "ינשוף היער"
+            },
+            "hint": {
+              "en": "Look for: Woodland owl.",
+              "he": "חפשו באיור: ינשוף היער."
+            },
+            "category": "animal",
+            "description": {
+              "kind": "story",
+              "text": {
+                "en": "A small detail in this illustrated story: Woodland owl.",
+                "he": "פרט קטן מתוך הסיפור שבאיור: ינשוף היער."
+              }
+            },
+            "visibleRect": {
+              "x": 0.2661483253588517,
+              "y": 0.07970244420828905,
+              "w": 0.046052631578947366,
+              "h": 0.1073326248671626
+            },
+            "hitRect": {
+              "x": 0.27535885167464114,
+              "y": 0.10116896918172158,
+              "w": 0.02763157894736842,
+              "h": 0.06439957492029755
+            },
+            "cardCrop": {
+              "x": 0.2661483253588517,
+              "y": 0.07970244420828905,
+              "w": 0.046052631578947366,
+              "h": 0.1073326248671626
+            }
+          },
+          {
+            "id": "fairyforest-fox",
+            "name": {
+              "en": "Resting fox",
+              "he": "שועל נח"
+            },
+            "hint": {
+              "en": "Look for: Resting fox.",
+              "he": "חפשו באיור: שועל נח."
+            },
+            "category": "animal",
+            "description": {
+              "kind": "story",
+              "text": {
+                "en": "A small detail in this illustrated story: Resting fox.",
+                "he": "פרט קטן מתוך הסיפור שבאיור: שועל נח."
+              }
+            },
+            "visibleRect": {
+              "x": 0.09748803827751196,
+              "y": 0.436769394261424,
+              "w": 0.0867224880382775,
+              "h": 0.08820403825717323
+            },
+            "hitRect": {
+              "x": 0.11483253588516747,
+              "y": 0.4544102019128587,
+              "w": 0.05203349282296651,
+              "h": 0.05292242295430393
+            },
+            "cardCrop": {
+              "x": 0.09748803827751196,
+              "y": 0.436769394261424,
+              "w": 0.0867224880382775,
+              "h": 0.08820403825717323
+            }
+          },
+          {
+            "id": "fairyforest-hedgehog",
+            "name": {
+              "en": "Hedgehog",
+              "he": "קיפוד"
+            },
+            "hint": {
+              "en": "Look for: Hedgehog.",
+              "he": "חפשו באיור: קיפוד."
+            },
+            "category": "animal",
+            "description": {
+              "kind": "story",
+              "text": {
+                "en": "A small detail in this illustrated story: Hedgehog.",
+                "he": "פרט קטן מתוך הסיפור שבאיור: קיפוד."
+              }
+            },
+            "visibleRect": {
+              "x": 0.39712918660287083,
+              "y": 0.9234856535600425,
+              "w": 0.05143540669856459,
+              "h": 0.06057385759829968
+            },
+            "hitRect": {
+              "x": 0.40741626794258373,
+              "y": 0.9356004250797024,
+              "w": 0.030861244019138756,
+              "h": 0.0363443145589798
+            },
+            "cardCrop": {
+              "x": 0.39712918660287083,
+              "y": 0.9234856535600425,
+              "w": 0.05143540669856459,
+              "h": 0.06057385759829968
+            }
+          },
+          {
+            "id": "fairyforest-cello",
+            "name": {
+              "en": "Cello",
+              "he": "צ׳לו"
+            },
+            "hint": {
+              "en": "Look for: Cello.",
+              "he": "חפשו באיור: צ׳לו."
+            },
+            "category": "object",
+            "description": {
+              "kind": "story",
+              "text": {
+                "en": "A small detail in this illustrated story: Cello.",
+                "he": "פרט קטן מתוך הסיפור שבאיור: צ׳לו."
+              }
+            },
+            "visibleRect": {
+              "x": 0.7308612440191388,
+              "y": 0.09670563230605739,
+              "w": 0.04366028708133971,
+              "h": 0.13177470775770456
+            },
+            "hitRect": {
+              "x": 0.7395933014354067,
+              "y": 0.12306057385759829,
+              "w": 0.026196172248803825,
+              "h": 0.07906482465462274
+            },
+            "cardCrop": {
+              "x": 0.7308612440191388,
+              "y": 0.09670563230605739,
+              "w": 0.04366028708133971,
+              "h": 0.13177470775770456
+            }
+          },
+          {
+            "id": "fairyforest-cloth",
+            "name": {
+              "en": "Butterfly cloth",
+              "he": "אריג פרפר"
+            },
+            "hint": {
+              "en": "Look for: Butterfly cloth.",
+              "he": "חפשו באיור: אריג פרפר."
+            },
+            "category": "object",
+            "description": {
+              "kind": "story",
+              "text": {
+                "en": "A small detail in this illustrated story: Butterfly cloth.",
+                "he": "פרט קטן מתוך הסיפור שבאיור: אריג פרפר."
+              }
+            },
+            "visibleRect": {
+              "x": 0.8636363636363636,
+              "y": 0.008501594048884165,
+              "w": 0.06220095693779904,
+              "h": 0.17003188097768332
+            },
+            "hitRect": {
+              "x": 0.8760765550239235,
+              "y": 0.04250797024442083,
+              "w": 0.03732057416267943,
+              "h": 0.10201912858660998
+            },
+            "cardCrop": {
+              "x": 0.8636363636363636,
+              "y": 0.008501594048884165,
+              "w": 0.06220095693779904,
+              "h": 0.17003188097768332
+            }
+          },
+          {
+            "id": "fairyforest-mail",
+            "name": {
+              "en": "Owl mailbag",
+              "he": "תיק הדואר של הינשוף"
+            },
+            "hint": {
+              "en": "Look for: Owl mailbag.",
+              "he": "חפשו באיור: תיק הדואר של הינשוף."
+            },
+            "category": "object",
+            "description": {
+              "kind": "story",
+              "text": {
+                "en": "A small detail in this illustrated story: Owl mailbag.",
+                "he": "פרט קטן מתוך הסיפור שבאיור: תיק הדואר של הינשוף."
+              }
+            },
+            "visibleRect": {
+              "x": 0.7930622009569378,
+              "y": 0.5642933049946866,
+              "w": 0.031698564593301434,
+              "h": 0.07226354941551541
+            },
+            "hitRect": {
+              "x": 0.799401913875598,
+              "y": 0.5787460148777896,
+              "w": 0.01901913875598086,
+              "h": 0.04335812964930924
+            },
+            "cardCrop": {
+              "x": 0.7930622009569378,
+              "y": 0.5642933049946866,
+              "w": 0.031698564593301434,
+              "h": 0.07226354941551541
+            }
+          }
+        ],
+        "postcard": {
+          "id": "fairyforest-detectives-postcard",
+          "title": {
+            "en": "A memory from Fairy Forest",
+            "he": "מזכרת: יער הפיות"
+          },
+          "targetId": "hide-1",
+          "crop": {
+            "x": 0.3761961722488038,
+            "y": 0,
+            "w": 0.15311004784688995,
+            "h": 0.40807651434643993
+          }
+        }
+      },
+      "sourceNeighbors": [
+        {
+          "boardId": "fairyforest",
+          "hideId": "fairyforest-detectives-hide-1",
+          "neighbors": [
+            {
+              "sourceId": "source-child",
+              "head": {
+                "left": 1422,
+                "top": 230,
+                "width": 136,
+                "height": 116
+              }
+            },
+            {
+              "sourceId": "neighbor-1",
+              "head": {
+                "left": 1618,
+                "top": 322,
+                "width": 130,
+                "height": 132
+              }
+            },
+            {
+              "sourceId": "neighbor-2",
+              "head": {
+                "left": 1204,
+                "top": 290,
+                "width": 134,
+                "height": 120
+              }
+            }
+          ]
+        },
+        {
+          "boardId": "fairyforest",
+          "hideId": "fairyforest-detectives-hide-2",
+          "neighbors": [
+            {
+              "sourceId": "source-child",
+              "head": {
+                "left": 152,
+                "top": 1352,
+                "width": 132,
+                "height": 138
+              }
+            },
+            {
+              "sourceId": "neighbor-1",
+              "head": {
+                "left": 294,
+                "top": 1412,
+                "width": 132,
+                "height": 146
+              }
+            },
+            {
+              "sourceId": "neighbor-2",
+              "head": {
+                "left": 496,
+                "top": 1484,
+                "width": 108,
+                "height": 116
+              }
+            }
+          ]
+        },
+        {
+          "boardId": "fairyforest",
+          "hideId": "fairyforest-detectives-hide-3",
+          "neighbors": [
+            {
+              "sourceId": "source-child",
+              "head": {
+                "left": 3140,
+                "top": 630,
+                "width": 128,
+                "height": 128
+              }
+            },
+            {
+              "sourceId": "neighbor-1",
+              "head": {
+                "left": 2800,
+                "top": 674,
+                "width": 132,
+                "height": 132
+              }
+            },
+            {
+              "sourceId": "neighbor-2",
+              "head": {
+                "left": 3136,
+                "top": 978,
+                "width": 130,
+                "height": 126
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "board": "dragoncave",
+      "source": {
+        "path": "public/scenes/kingdom-dragoncave-detectives-v1/base.webp",
+        "sha256": "8cab3039d72a220e944dba8562472d127f1721c072d00e275c12b997b7ebae04",
+        "width": 3344,
+        "height": 1882
+      },
+      "definition": {
+        "board": "dragoncave",
+        "art": "public/scenes/kingdom-dragoncave-detectives-v1/base.webp",
+        "ground": "layered dry cave stone ledges and safe wooden dragon-care platforms",
+        "sittable": true,
+        "wardrobe": "Age-appropriate practical fantasy clothing from this board. Preserve the reference child face, hair and age. Matte hand-painted fabric and skin; no glow or photographic smoothing.",
+        "hides": [
+          {
+            "id": "dragoncave-detectives-hide-1",
+            "left": 322,
+            "top": 380,
+            "pose": "sitting-cross-legged",
+            "targetId": "hide-1",
+            "wardrobe": "Ochre child tunic over muted brown trousers and small leather boots, simple sleeves suitable for dragon care.",
+            "mask": {
+              "left": 122,
+              "top": 268,
+              "width": 230,
+              "height": 256
+            },
+            "returnRect": {
+              "left": 50,
+              "top": 222,
+              "width": 412,
+              "height": 326
+            },
+            "hint": {
+              "en": "Look beside the little green dragon.",
+              "he": "חפשו ליד הדרקון הירוק הקטן."
+            },
+            "placement": {
+              "depth": "middle",
+              "standingHeightPx": 424,
+              "support": "Replace only the blond mustard-clad child sitting beside the small green dragon. Preserve both nearby children, adult caregiver, dragon paws and the care activity; keep an open three-quarter face.",
+              "lighting": "Dim blue cave shadows with localized amber lantern light only; retain the dark exposure, no daylight or brightened portrait.",
+              "occlusion": "Preserve all neighboring faces, hands, shared props, rails and foreground occluders. Replace only the selected source child.",
+              "comparators": "Keep the original source child body scale and supported pose. Match adjacent people at the same depth; preserve reference face, hair and age."
+            }
+          },
+          {
+            "id": "dragoncave-detectives-hide-2",
+            "left": 1584,
+            "top": 1114,
+            "pose": "kneeling",
+            "targetId": "hide-2",
+            "wardrobe": "Muted ochre field jacket, dark blue child trousers and small brown boots; no armor or adult body.",
+            "mask": {
+              "left": 206,
+              "top": 412,
+              "width": 262,
+              "height": 244
+            },
+            "returnRect": {
+              "left": 26,
+              "top": 388,
+              "width": 466,
+              "height": 292
+            },
+            "hint": {
+              "en": "Look where the cave map is being studied.",
+              "he": "חפשו במקום שבו בודקים את מפת המערה."
+            },
+            "placement": {
+              "depth": "near",
+              "standingHeightPx": 472,
+              "support": "Replace the dark-haired ochre-clad child to the right of the large cave map, supported on knees on the ledge. Preserve the map, the left reader as one connected person and all pointing hands.",
+              "lighting": "Dim blue cave shadows with localized amber lantern light only; retain the dark exposure, no daylight or brightened portrait.",
+              "occlusion": "Preserve all neighboring faces, hands, shared props, rails and foreground occluders. Replace only the selected source child.",
+              "comparators": "Keep the original source child body scale and supported pose. Match adjacent people at the same depth; preserve reference face, hair and age."
+            }
+          },
+          {
+            "id": "dragoncave-detectives-hide-3",
+            "left": 2254,
+            "top": 782,
+            "pose": "walking",
+            "targetId": "hide-3",
+            "wardrobe": "Muted olive knee-length child tunic, brown fitted trousers, small child boots and a modest soft backpack.",
+            "mask": {
+              "left": 206,
+              "top": 242,
+              "width": 212,
+              "height": 278
+            },
+            "returnRect": {
+              "left": 78,
+              "top": 218,
+              "width": 364,
+              "height": 326
+            },
+            "hint": {
+              "en": "Look on the rope bridge near the dragon keeper.",
+              "he": "חפשו על גשר החבלים ליד מטפל הדרקונים."
+            },
+            "placement": {
+              "depth": "middle",
+              "standingHeightPx": 412,
+              "support": "Replace the olive-clad child walking on the lower right bridge, including head, hair and feet. Preserve the red-clad companion, rope knots, rails and neighboring keeper.",
+              "lighting": "Dim blue cave shadows with localized amber lantern light only; retain the dark exposure, no daylight or brightened portrait.",
+              "occlusion": "Preserve all neighboring faces, hands, shared props, rails and foreground occluders. Replace only the selected source child.",
+              "comparators": "Keep the original source child body scale and supported pose. Match adjacent people at the same depth; preserve reference face, hair and age."
+            }
+          }
+        ]
+      },
+      "adventure": {
+        "boardSlug": "dragoncave",
+        "worldSlug": "kingdom",
+        "name": {
+          "en": "Dragon Cave",
+          "he": "מערת הדרקון"
+        },
+        "direction": {
+          "orientation": "landscape",
+          "aspect": "16:9",
+          "spread": "activity-across-width-and-height",
+          "perspective": "shallow",
+          "scaleTreatment": "similar-size-people",
+          "illustration": "storybook-hand-drawn",
+          "identityPrecedence": "reference-face-hair-age",
+          "locationCues": [
+            {
+              "en": "Lantern-lit dragon nursery",
+              "he": "פעוטון דרקונים לאור עששיות"
+            },
+            {
+              "en": "Rope bridges and care stations",
+              "he": "גשרי חבלים ועמדות טיפול"
+            }
+          ],
+          "microStories": [
+            {
+              "en": "Look beside the little green dragon.",
+              "he": "חפשו ליד הדרקון הירוק הקטן."
+            },
+            {
+              "en": "Look where the cave map is being studied.",
+              "he": "חפשו במקום שבו בודקים את מפת המערה."
+            },
+            {
+              "en": "Look on the rope bridge near the dragon keeper.",
+              "he": "חפשו על גשר החבלים ליד מטפל הדרקונים."
+            }
+          ]
+        },
+        "plannedHides": 3,
+        "collectionUi": "guided-v1",
+        "status": "ready",
+        "sceneVersion": 13,
+        "art": {
+          "base": "/scenes/kingdom-dragoncave-detectives-v1/base.webp",
+          "sha256": "8cab3039d72a220e944dba8562472d127f1721c072d00e275c12b997b7ebae04",
+          "width": 3344,
+          "height": 1882
+        },
+        "personalZones": [
+          {
+            "x": 0.09629186602870814,
+            "y": 0.20191285866099895,
+            "w": 0.15311004784688995,
+            "h": 0.40807651434643993
+          },
+          {
+            "x": 0.47368421052631576,
+            "y": 0.59192348565356,
+            "w": 0.15311004784688995,
+            "h": 0.40807651434643993
+          },
+          {
+            "x": 0.6740430622009569,
+            "y": 0.4155154091392136,
+            "w": 0.15311004784688995,
+            "h": 0.40807651434643993
+          }
+        ],
+        "discoveries": [
+          {
+            "id": "cave-windsock",
+            "name": {
+              "en": "Striped windsock",
+              "he": "שרוול רוח מפוספס"
+            },
+            "hint": {
+              "en": "Look for: Striped windsock.",
+              "he": "חפשו באיור: שרוול רוח מפוספס."
+            },
+            "category": "object",
+            "description": {
+              "kind": "story",
+              "text": {
+                "en": "A small detail in this illustrated story: Striped windsock.",
+                "he": "פרט קטן מתוך הסיפור שבאיור: שרוול רוח מפוספס."
+              }
+            },
+            "visibleRect": {
+              "x": 0.1076555023923445,
+              "y": 0.01487778958554729,
+              "w": 0.11004784688995216,
+              "h": 0.0818278427205101
+            },
+            "hitRect": {
+              "x": 0.12966507177033493,
+              "y": 0.031243358129649308,
+              "w": 0.06602870813397128,
+              "h": 0.04909670563230605
+            },
+            "cardCrop": {
+              "x": 0.1076555023923445,
+              "y": 0.01487778958554729,
+              "w": 0.11004784688995216,
+              "h": 0.0818278427205101
+            }
+          },
+          {
+            "id": "cave-red-dragon",
+            "name": {
+              "en": "Red dragon",
+              "he": "דרקון אדום"
+            },
+            "hint": {
+              "en": "Look for: Red dragon.",
+              "he": "חפשו באיור: דרקון אדום."
+            },
+            "category": "animal",
+            "description": {
+              "kind": "story",
+              "text": {
+                "en": "A small detail in this illustrated story: Red dragon.",
+                "he": "פרט קטן מתוך הסיפור שבאיור: דרקון אדום."
+              }
+            },
+            "visibleRect": {
+              "x": 0.33672248803827753,
+              "y": 0.07226354941551541,
+              "w": 0.11244019138755981,
+              "h": 0.14558979808714134
+            },
+            "hitRect": {
+              "x": 0.3592105263157895,
+              "y": 0.10138150903294368,
+              "w": 0.06746411483253588,
+              "h": 0.08735387885228481
+            },
+            "cardCrop": {
+              "x": 0.33672248803827753,
+              "y": 0.07226354941551541,
+              "w": 0.11244019138755981,
+              "h": 0.14558979808714134
+            }
+          },
+          {
+            "id": "cave-blue-dragon",
+            "name": {
+              "en": "Flying blue dragon",
+              "he": "דרקון כחול מעופף"
+            },
+            "hint": {
+              "en": "Look for: Flying blue dragon.",
+              "he": "חפשו באיור: דרקון כחול מעופף."
+            },
+            "category": "animal",
+            "description": {
+              "kind": "story",
+              "text": {
+                "en": "A small detail in this illustrated story: Flying blue dragon.",
+                "he": "פרט קטן מתוך הסיפור שבאיור: דרקון כחול מעופף."
+              }
+            },
+            "visibleRect": {
+              "x": 0.4946172248803828,
+              "y": 0.28374070138150903,
+              "w": 0.16267942583732056,
+              "h": 0.1392136025504782
+            },
+            "hitRect": {
+              "x": 0.5271531100478469,
+              "y": 0.31158342189160465,
+              "w": 0.09760765550239234,
+              "h": 0.08352816153028693
+            },
+            "cardCrop": {
+              "x": 0.4946172248803828,
+              "y": 0.28374070138150903,
+              "w": 0.16267942583732056,
+              "h": 0.1392136025504782
+            }
+          },
+          {
+            "id": "cave-sleeping-dragon",
+            "name": {
+              "en": "Sleeping blue dragon",
+              "he": "דרקון כחול ישן"
+            },
+            "hint": {
+              "en": "Look for: Sleeping blue dragon.",
+              "he": "חפשו באיור: דרקון כחול ישן."
+            },
+            "category": "animal",
+            "description": {
+              "kind": "story",
+              "text": {
+                "en": "A small detail in this illustrated story: Sleeping blue dragon.",
+                "he": "פרט קטן מתוך הסיפור שבאיור: דרקון כחול ישן."
+              }
+            },
+            "visibleRect": {
+              "x": 0.8139952153110048,
+              "y": 0.052072263549415514,
+              "w": 0.1291866028708134,
+              "h": 0.11902231668437832
+            },
+            "hitRect": {
+              "x": 0.8398325358851675,
+              "y": 0.07587672688629118,
+              "w": 0.07751196172248803,
+              "h": 0.07141339001062699
+            },
+            "cardCrop": {
+              "x": 0.8139952153110048,
+              "y": 0.052072263549415514,
+              "w": 0.1291866028708134,
+              "h": 0.11902231668437832
+            }
+          },
+          {
+            "id": "cave-lantern",
+            "name": {
+              "en": "Hanging lantern",
+              "he": "עששית תלויה"
+            },
+            "hint": {
+              "en": "Look for: Hanging lantern.",
+              "he": "חפשו באיור: עששית תלויה."
+            },
+            "category": "object",
+            "description": {
+              "kind": "story",
+              "text": {
+                "en": "A small detail in this illustrated story: Hanging lantern.",
+                "he": "פרט קטן מתוך הסיפור שבאיור: עששית תלויה."
+              }
+            },
+            "visibleRect": {
+              "x": 0.465311004784689,
+              "y": 0.06269925611052073,
+              "w": 0.02631578947368421,
+              "h": 0.08607863974495218
+            },
+            "hitRect": {
+              "x": 0.4705741626794258,
+              "y": 0.07991498405951117,
+              "w": 0.015789473684210527,
+              "h": 0.05164718384697131
+            },
+            "cardCrop": {
+              "x": 0.465311004784689,
+              "y": 0.06269925611052073,
+              "w": 0.02631578947368421,
+              "h": 0.08607863974495218
+            }
+          },
+          {
+            "id": "cave-purple-dragon",
+            "name": {
+              "en": "Purple dragon",
+              "he": "דרקון סגול"
+            },
+            "hint": {
+              "en": "Look for: Purple dragon.",
+              "he": "חפשו באיור: דרקון סגול."
+            },
+            "category": "animal",
+            "description": {
+              "kind": "story",
+              "text": {
+                "en": "A small detail in this illustrated story: Purple dragon.",
+                "he": "פרט קטן מתוך הסיפור שבאיור: דרקון סגול."
+              }
+            },
+            "visibleRect": {
+              "x": 0.10227272727272728,
+              "y": 0.8023379383634431,
+              "w": 0.20334928229665072,
+              "h": 0.12964930924548354
+            },
+            "hitRect": {
+              "x": 0.14294258373205743,
+              "y": 0.8282678002125399,
+              "w": 0.12200956937799043,
+              "h": 0.07778958554729012
+            },
+            "cardCrop": {
+              "x": 0.10227272727272728,
+              "y": 0.8023379383634431,
+              "w": 0.20334928229665072,
+              "h": 0.12964930924548354
+            }
+          }
+        ],
+        "postcard": {
+          "id": "dragoncave-detectives-postcard",
+          "title": {
+            "en": "A memory from Dragon Cave",
+            "he": "מזכרת: מערת הדרקון"
+          },
+          "targetId": "hide-1",
+          "crop": {
+            "x": 0.09629186602870814,
+            "y": 0.20191285866099895,
+            "w": 0.15311004784688995,
+            "h": 0.40807651434643993
+          }
+        }
+      },
+      "sourceNeighbors": [
+        {
+          "boardId": "dragoncave",
+          "hideId": "dragoncave-detectives-hide-1",
+          "neighbors": [
+            {
+              "sourceId": "source-child",
+              "head": {
+                "left": 500,
+                "top": 648,
+                "width": 104,
+                "height": 114
+              }
+            },
+            {
+              "sourceId": "neighbor-1",
+              "head": {
+                "left": 388,
+                "top": 622,
+                "width": 96,
+                "height": 110
+              }
+            },
+            {
+              "sourceId": "neighbor-2",
+              "head": {
+                "left": 662,
+                "top": 618,
+                "width": 106,
+                "height": 114
+              }
+            },
+            {
+              "sourceId": "neighbor-3",
+              "head": {
+                "left": 118,
+                "top": 534,
+                "width": 128,
+                "height": 150
+              }
+            }
+          ]
+        },
+        {
+          "boardId": "dragoncave",
+          "hideId": "dragoncave-detectives-hide-2",
+          "neighbors": [
+            {
+              "sourceId": "source-child",
+              "head": {
+                "left": 1822,
+                "top": 1526,
+                "width": 134,
+                "height": 144
+              }
+            },
+            {
+              "sourceId": "neighbor-1",
+              "head": {
+                "left": 1626,
+                "top": 1522,
+                "width": 146,
+                "height": 146
+              }
+            },
+            {
+              "sourceId": "neighbor-2",
+              "head": {
+                "left": 2312,
+                "top": 1402,
+                "width": 138,
+                "height": 144
+              }
+            }
+          ]
+        },
+        {
+          "boardId": "dragoncave",
+          "hideId": "dragoncave-detectives-hide-3",
+          "neighbors": [
+            {
+              "sourceId": "source-child",
+              "head": {
+                "left": 2480,
+                "top": 1024,
+                "width": 128,
+                "height": 118
+              }
+            },
+            {
+              "sourceId": "neighbor-1",
+              "head": {
+                "left": 2348,
+                "top": 1050,
+                "width": 116,
+                "height": 102
+              }
+            },
+            {
+              "sourceId": "neighbor-2",
+              "head": {
+                "left": 2928,
+                "top": 908,
+                "width": 134,
+                "height": 146
+              }
+            },
+            {
+              "sourceId": "neighbor-3",
+              "head": {
+                "left": 3076,
+                "top": 1020,
+                "width": 122,
+                "height": 128
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "board": "icepalace",
+      "source": {
+        "path": "public/scenes/kingdom-icepalace-detectives-v1/base.webp",
+        "sha256": "63c936d973803b001146f5448b006cafb030d50d8d6a436ef9043e91399e0b41",
+        "width": 3344,
+        "height": 1882
+      },
+      "definition": {
+        "board": "icepalace",
+        "art": "public/scenes/kingdom-icepalace-detectives-v1/base.webp",
+        "ground": "solid icy palace courtyard and shallow ice steps, small child skates with real ice contact",
+        "sittable": true,
+        "wardrobe": "Age-appropriate practical fantasy clothing from this board. Preserve the reference child face, hair and age. Matte hand-painted fabric and skin; no glow or photographic smoothing.",
+        "hides": [
+          {
+            "id": "icepalace-detectives-hide-1",
+            "left": 334,
+            "top": 460,
+            "pose": "standing",
+            "targetId": "hide-1",
+            "wardrobe": "Muted sage insulated child coat, burgundy knitted cap, brown scarf, winter trousers and child skates.",
+            "mask": {
+              "left": 136,
+              "top": 236,
+              "width": 234,
+              "height": 300
+            },
+            "returnRect": {
+              "left": 32,
+              "top": 138,
+              "width": 478,
+              "height": 428
+            },
+            "hint": {
+              "en": "Look beside the snowman and the small ice bear.",
+              "he": "חפשו ליד איש השלג ודוב הקרח הקטן."
+            },
+            "placement": {
+              "depth": "middle",
+              "standingHeightPx": 428,
+              "support": "Replace the red-hatted green-coated child beside the snowman, preserving the hat as scene-appropriate headwear over recognizable canonical hair. Preserve snowman, orange nose, other children and carved ice bear.",
+              "lighting": "Cool blue ice reflections balanced by small warm lanterns, matte winter faces and no spotlight.",
+              "occlusion": "Preserve all neighboring faces, hands, shared props, rails and foreground occluders. Replace only the selected source child.",
+              "comparators": "Keep the original source child body scale and supported pose. Match adjacent people at the same depth; preserve reference face, hair and age."
+            }
+          },
+          {
+            "id": "icepalace-detectives-hide-2",
+            "left": 1580,
+            "top": 568,
+            "pose": "crouching",
+            "targetId": "hide-2",
+            "wardrobe": "Dull olive winter jacket, dark blue child trousers, warm brown scarf and small silver-bladed skates.",
+            "mask": {
+              "left": 72,
+              "top": 204,
+              "width": 366,
+              "height": 360
+            },
+            "returnRect": {
+              "left": 48,
+              "top": 54,
+              "width": 422,
+              "height": 534
+            },
+            "hint": {
+              "en": "Look among the friends learning to skate.",
+              "he": "חפשו בין החברים שלומדים להחליק."
+            },
+            "placement": {
+              "depth": "middle",
+              "standingHeightPx": 448,
+              "support": "Replace the olive-coated child balancing on skates at the center, with arms naturally spread and recognizable open three-quarter face. Preserve nearby skaters, tracks and both hand connections.",
+              "lighting": "Cool blue ice reflections balanced by small warm lanterns, matte winter faces and no spotlight.",
+              "occlusion": "Preserve all neighboring faces, hands, shared props, rails and foreground occluders. Replace only the selected source child.",
+              "comparators": "Keep the original source child body scale and supported pose. Match adjacent people at the same depth; preserve reference face, hair and age."
+            }
+          },
+          {
+            "id": "icepalace-detectives-hide-3",
+            "left": 2560,
+            "top": 1088,
+            "pose": "sitting-cross-legged",
+            "targetId": "hide-3",
+            "wardrobe": "Muted red padded child coat, burgundy knitted cap, dark wool trousers, scarf and small insulated boots.",
+            "mask": {
+              "left": 84,
+              "top": 186,
+              "width": 346,
+              "height": 384
+            },
+            "returnRect": {
+              "left": 60,
+              "top": 162,
+              "width": 394,
+              "height": 432
+            },
+            "hint": {
+              "en": "Look beside the blue snowflake cloth.",
+              "he": "חפשו ליד הבד הכחול עם פתיתי השלג."
+            },
+            "placement": {
+              "depth": "near",
+              "standingHeightPx": 484,
+              "support": "Replace the burgundy-hatted red-coated child holding the left side of the snowflake cloth, seated securely on the ice bench. Preserve the partner, cloth motif, lantern and bench edges.",
+              "lighting": "Cool blue ice reflections balanced by small warm lanterns, matte winter faces and no spotlight.",
+              "occlusion": "Preserve all neighboring faces, hands, shared props, rails and foreground occluders. Replace only the selected source child.",
+              "comparators": "Keep the original source child body scale and supported pose. Match adjacent people at the same depth; preserve reference face, hair and age."
+            }
+          }
+        ]
+      },
+      "adventure": {
+        "boardSlug": "icepalace",
+        "worldSlug": "kingdom",
+        "name": {
+          "en": "Ice Palace",
+          "he": "ארמון הקרח"
+        },
+        "direction": {
+          "orientation": "landscape",
+          "aspect": "16:9",
+          "spread": "activity-across-width-and-height",
+          "perspective": "shallow",
+          "scaleTreatment": "similar-size-people",
+          "illustration": "storybook-hand-drawn",
+          "identityPrecedence": "reference-face-hair-age",
+          "locationCues": [
+            {
+              "en": "Carved ice palace arches",
+              "he": "קשתות ארמון מגולפות בקרח"
+            },
+            {
+              "en": "Skating and winter crafts",
+              "he": "החלקה ויצירות חורף"
+            }
+          ],
+          "microStories": [
+            {
+              "en": "Look beside the snowman and the small ice bear.",
+              "he": "חפשו ליד איש השלג ודוב הקרח הקטן."
+            },
+            {
+              "en": "Look among the friends learning to skate.",
+              "he": "חפשו בין החברים שלומדים להחליק."
+            },
+            {
+              "en": "Look beside the blue snowflake cloth.",
+              "he": "חפשו ליד הבד הכחול עם פתיתי השלג."
+            }
+          ]
+        },
+        "plannedHides": 3,
+        "collectionUi": "guided-v1",
+        "status": "ready",
+        "sceneVersion": 13,
+        "art": {
+          "base": "/scenes/kingdom-icepalace-detectives-v1/base.webp",
+          "sha256": "63c936d973803b001146f5448b006cafb030d50d8d6a436ef9043e91399e0b41",
+          "width": 3344,
+          "height": 1882
+        },
+        "personalZones": [
+          {
+            "x": 0.09988038277511961,
+            "y": 0.24442082890541977,
+            "w": 0.15311004784688995,
+            "h": 0.40807651434643993
+          },
+          {
+            "x": 0.47248803827751196,
+            "y": 0.3018065887353879,
+            "w": 0.15311004784688995,
+            "h": 0.40807651434643993
+          },
+          {
+            "x": 0.7655502392344498,
+            "y": 0.5781083953241233,
+            "w": 0.15311004784688995,
+            "h": 0.40807651434643993
+          }
+        ],
+        "discoveries": [
+          {
+            "id": "ice-crown",
+            "name": {
+              "en": "Golden crown",
+              "he": "כתר זהוב"
+            },
+            "hint": {
+              "en": "Look for: Golden crown.",
+              "he": "חפשו באיור: כתר זהוב."
+            },
+            "category": "object",
+            "description": {
+              "kind": "story",
+              "text": {
+                "en": "A small detail in this illustrated story: Golden crown.",
+                "he": "פרט קטן מתוך הסיפור שבאיור: כתר זהוב."
+              }
+            },
+            "visibleRect": {
+              "x": 0.14114832535885166,
+              "y": 0.02763018065887354,
+              "w": 0.045454545454545456,
+              "h": 0.05100956429330499
+            },
+            "hitRect": {
+              "x": 0.15023923444976076,
+              "y": 0.03783209351753454,
+              "w": 0.027272727272727275,
+              "h": 0.030605738575982994
+            },
+            "cardCrop": {
+              "x": 0.14114832535885166,
+              "y": 0.02763018065887354,
+              "w": 0.045454545454545456,
+              "h": 0.05100956429330499
+            }
+          },
+          {
+            "id": "ice-fox",
+            "name": {
+              "en": "White fox",
+              "he": "שועל לבן"
+            },
+            "hint": {
+              "en": "Look for: White fox.",
+              "he": "חפשו באיור: שועל לבן."
+            },
+            "category": "animal",
+            "description": {
+              "kind": "story",
+              "text": {
+                "en": "A small detail in this illustrated story: White fox.",
+                "he": "פרט קטן מתוך הסיפור שבאיור: שועל לבן."
+              }
+            },
+            "visibleRect": {
+              "x": 0.3253588516746411,
+              "y": 0.8501594048884166,
+              "w": 0.14533492822966507,
+              "h": 0.14027630180658873
+            },
+            "hitRect": {
+              "x": 0.3544258373205742,
+              "y": 0.8782146652497343,
+              "w": 0.08720095693779903,
+              "h": 0.08416578108395324
+            },
+            "cardCrop": {
+              "x": 0.3253588516746411,
+              "y": 0.8501594048884166,
+              "w": 0.14533492822966507,
+              "h": 0.14027630180658873
+            }
+          },
+          {
+            "id": "ice-musical-cello",
+            "name": {
+              "en": "Cello",
+              "he": "צ׳לו"
+            },
+            "hint": {
+              "en": "Look for: Cello.",
+              "he": "חפשו באיור: צ׳לו."
+            },
+            "category": "object",
+            "description": {
+              "kind": "story",
+              "text": {
+                "en": "A small detail in this illustrated story: Cello.",
+                "he": "פרט קטן מתוך הסיפור שבאיור: צ׳לו."
+              }
+            },
+            "visibleRect": {
+              "x": 0.5699760765550239,
+              "y": 0.1392136025504782,
+              "w": 0.041866028708133975,
+              "h": 0.14452709883103082
+            },
+            "hitRect": {
+              "x": 0.5783492822966507,
+              "y": 0.16811902231668438,
+              "w": 0.025119617224880382,
+              "h": 0.08671625929861848
+            },
+            "cardCrop": {
+              "x": 0.5699760765550239,
+              "y": 0.1392136025504782,
+              "w": 0.041866028708133975,
+              "h": 0.14452709883103082
+            }
+          },
+          {
+            "id": "ice-carving",
+            "name": {
+              "en": "Carved ice bear",
+              "he": "דוב מגולף בקרח"
+            },
+            "hint": {
+              "en": "Look for: Carved ice bear.",
+              "he": "חפשו באיור: דוב מגולף בקרח."
+            },
+            "category": "object",
+            "description": {
+              "kind": "story",
+              "text": {
+                "en": "A small detail in this illustrated story: Carved ice bear.",
+                "he": "פרט קטן מתוך הסיפור שבאיור: דוב מגולף בקרח."
+              }
+            },
+            "visibleRect": {
+              "x": 0.28169856459330145,
+              "y": 0.5642933049946866,
+              "w": 0.08373205741626795,
+              "h": 0.14133900106269925
+            },
+            "hitRect": {
+              "x": 0.298444976076555,
+              "y": 0.5925611052072264,
+              "w": 0.050239234449760764,
+              "h": 0.08480340063761956
+            },
+            "cardCrop": {
+              "x": 0.28169856459330145,
+              "y": 0.5642933049946866,
+              "w": 0.08373205741626795,
+              "h": 0.14133900106269925
+            }
+          },
+          {
+            "id": "ice-star",
+            "name": {
+              "en": "Hanging star",
+              "he": "כוכב תלוי"
+            },
+            "hint": {
+              "en": "Look for: Hanging star.",
+              "he": "חפשו באיור: כוכב תלוי."
+            },
+            "category": "object",
+            "description": {
+              "kind": "story",
+              "text": {
+                "en": "A small detail in this illustrated story: Hanging star.",
+                "he": "פרט קטן מתוך הסיפור שבאיור: כוכב תלוי."
+              }
+            },
+            "visibleRect": {
+              "x": 0.5011961722488039,
+              "y": 0.004250797024442083,
+              "w": 0.02930622009569378,
+              "h": 0.0563230605738576
+            },
+            "hitRect": {
+              "x": 0.5070574162679425,
+              "y": 0.015515409139213603,
+              "w": 0.017583732057416267,
+              "h": 0.03379383634431456
+            },
+            "cardCrop": {
+              "x": 0.5011961722488039,
+              "y": 0.004250797024442083,
+              "w": 0.02930622009569378,
+              "h": 0.0563230605738576
+            }
+          },
+          {
+            "id": "ice-lantern",
+            "name": {
+              "en": "Small palace lantern",
+              "he": "עששית ארמון קטנה"
+            },
+            "hint": {
+              "en": "Look for: Small palace lantern.",
+              "he": "חפשו באיור: עששית ארמון קטנה."
+            },
+            "category": "object",
+            "description": {
+              "kind": "story",
+              "text": {
+                "en": "A small detail in this illustrated story: Small palace lantern.",
+                "he": "פרט קטן מתוך הסיפור שבאיור: עששית ארמון קטנה."
+              }
+            },
+            "visibleRect": {
+              "x": 0.2565789473684211,
+              "y": 0.434643995749203,
+              "w": 0.03409090909090909,
+              "h": 0.09032943676939426
+            },
+            "hitRect": {
+              "x": 0.26339712918660285,
+              "y": 0.4527098831030818,
+              "w": 0.02045454545454545,
+              "h": 0.05419766206163656
+            },
+            "cardCrop": {
+              "x": 0.2565789473684211,
+              "y": 0.434643995749203,
+              "w": 0.03409090909090909,
+              "h": 0.09032943676939426
+            }
+          }
+        ],
+        "postcard": {
+          "id": "icepalace-detectives-postcard",
+          "title": {
+            "en": "A memory from Ice Palace",
+            "he": "מזכרת: ארמון הקרח"
+          },
+          "targetId": "hide-1",
+          "crop": {
+            "x": 0.09988038277511961,
+            "y": 0.24442082890541977,
+            "w": 0.15311004784688995,
+            "h": 0.40807651434643993
+          }
+        }
+      },
+      "sourceNeighbors": [
+        {
+          "boardId": "icepalace",
+          "hideId": "icepalace-detectives-hide-1",
+          "neighbors": [
+            {
+              "sourceId": "source-child",
+              "head": {
+                "left": 500,
+                "top": 698,
+                "width": 114,
+                "height": 128
+              }
+            },
+            {
+              "sourceId": "neighbor-1",
+              "head": {
+                "left": 412,
+                "top": 614,
+                "width": 118,
+                "height": 122
+              }
+            },
+            {
+              "sourceId": "neighbor-2",
+              "head": {
+                "left": 726,
+                "top": 746,
+                "width": 102,
+                "height": 118
+              }
+            },
+            {
+              "sourceId": "neighbor-3",
+              "head": {
+                "left": 382,
+                "top": 882,
+                "width": 126,
+                "height": 128
+              }
+            }
+          ]
+        },
+        {
+          "boardId": "icepalace",
+          "hideId": "icepalace-detectives-hide-2",
+          "neighbors": [
+            {
+              "sourceId": "source-child",
+              "head": {
+                "left": 1822,
+                "top": 772,
+                "width": 126,
+                "height": 130
+              }
+            },
+            {
+              "sourceId": "neighbor-1",
+              "head": {
+                "left": 1480,
+                "top": 668,
+                "width": 138,
+                "height": 124
+              }
+            },
+            {
+              "sourceId": "neighbor-2",
+              "head": {
+                "left": 2070,
+                "top": 744,
+                "width": 126,
+                "height": 128
+              }
+            },
+            {
+              "sourceId": "neighbor-3",
+              "head": {
+                "left": 1922,
+                "top": 638,
+                "width": 112,
+                "height": 122
+              }
+            }
+          ]
+        },
+        {
+          "boardId": "icepalace",
+          "hideId": "icepalace-detectives-hide-3",
+          "neighbors": [
+            {
+              "sourceId": "source-child",
+              "head": {
+                "left": 2704,
+                "top": 1282,
+                "width": 172,
+                "height": 162
+              }
+            },
+            {
+              "sourceId": "neighbor-1",
+              "head": {
+                "left": 3034,
+                "top": 1296,
+                "width": 152,
+                "height": 148
+              }
+            },
+            {
+              "sourceId": "neighbor-2",
+              "head": {
+                "left": 2834,
+                "top": 982,
+                "width": 144,
+                "height": 160
+              }
+            },
+            {
+              "sourceId": "neighbor-3",
+              "head": {
+                "left": 3180,
+                "top": 1240,
+                "width": 114,
+                "height": 116
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "board": "underwater",
+      "source": {
+        "path": "public/scenes/kingdom-underwater-detectives-v1/base.webp",
+        "sha256": "0a26960579ce6e604bd123b95e6adf3baaff2aee3f63c4dfa8c7584aa16294a0",
+        "width": 3344,
+        "height": 1882
+      },
+      "definition": {
+        "board": "underwater",
+        "art": "public/scenes/kingdom-underwater-detectives-v1/base.webp",
+        "ground": "solid pink shell walkways and shallow coral steps in a magical underwater town",
+        "sittable": true,
+        "wardrobe": "Age-appropriate practical fantasy clothing from this board. Preserve the reference child face, hair and age. Matte hand-painted fabric and skin; no glow or photographic smoothing.",
+        "hides": [
+          {
+            "id": "underwater-detectives-hide-1",
+            "left": 0,
+            "top": 632,
+            "pose": "crouching",
+            "targetId": "hide-1",
+            "wardrobe": "Muted golden diving jacket, teal child trousers, small breathing pack and transparent round helmet with full crown and canonical hair visible inside.",
+            "mask": {
+              "left": 100,
+              "top": 252,
+              "width": 304,
+              "height": 264
+            },
+            "returnRect": {
+              "left": 76,
+              "top": 228,
+              "width": 352,
+              "height": 312
+            },
+            "hint": {
+              "en": "Look beside the glowing pearl inside the shell.",
+              "he": "חפשו ליד הפנינה הזוהרת שבצדף."
+            },
+            "placement": {
+              "depth": "middle",
+              "standingHeightPx": 430,
+              "support": "Replace the yellow-sleeved child leaning toward the pearl, entirely including the original helmet occupant. Keep the helmet transparent and its air hose physically connected. Preserve pearl, shell, other children and coral.",
+              "lighting": "Soft turquoise underwater light, warm shell lamps and transparent glass helmet reflections; keep the face clear inside the helmet.",
+              "occlusion": "Preserve all neighboring faces, hands, shared props, rails and foreground occluders. Replace only the selected source child.",
+              "comparators": "Keep the original source child body scale and supported pose. Match adjacent people at the same depth; preserve reference face, hair and age."
+            }
+          },
+          {
+            "id": "underwater-detectives-hide-2",
+            "left": 1508,
+            "top": 800,
+            "pose": "standing",
+            "targetId": "hide-2",
+            "wardrobe": "Muted sage diving jacket, dark teal child trousers, compact orange air pack and clear round helmet; practical child boots.",
+            "mask": {
+              "left": 112,
+              "top": 240,
+              "width": 276,
+              "height": 282
+            },
+            "returnRect": {
+              "left": 88,
+              "top": 216,
+              "width": 324,
+              "height": 452
+            },
+            "hint": {
+              "en": "Look at the sea post office beside the octopus.",
+              "he": "חפשו בדואר הימי ליד התמנון."
+            },
+            "placement": {
+              "depth": "middle",
+              "standingHeightPx": 436,
+              "support": "Replace the child on the right handing a letter to the octopus. Preserve octopus arms, letters, basket, nearby child and shell ledge. Keep helmet rim, full hair and face coherent with breathing pack.",
+              "lighting": "Soft turquoise underwater light, warm shell lamps and transparent glass helmet reflections; keep the face clear inside the helmet.",
+              "occlusion": "Preserve all neighboring faces, hands, shared props, rails and foreground occluders. Replace only the selected source child.",
+              "comparators": "Keep the original source child body scale and supported pose. Match adjacent people at the same depth; preserve reference face, hair and age."
+            }
+          },
+          {
+            "id": "underwater-detectives-hide-3",
+            "left": 2784,
+            "top": 598,
+            "pose": "standing",
+            "targetId": "hide-3",
+            "wardrobe": "Muted olive diving coat, dark blue child trousers, mustard air pack, clear glass helmet and brown child boots.",
+            "mask": {
+              "left": 100,
+              "top": 238,
+              "width": 254,
+              "height": 292
+            },
+            "returnRect": {
+              "left": 76,
+              "top": 214,
+              "width": 354,
+              "height": 340
+            },
+            "hint": {
+              "en": "Look inside the glowing shell workshop.",
+              "he": "חפשו בתוך סדנת הצדף המוארת."
+            },
+            "placement": {
+              "depth": "middle",
+              "standingHeightPx": 414,
+              "support": "Replace the left child under the large lower pink shop shell, holding the small glowing shell tool. Preserve the partner, elder, table and lamps. Keep the transparent helmet, air tubes and hair inside physically correct.",
+              "lighting": "Soft turquoise underwater light, warm shell lamps and transparent glass helmet reflections; keep the face clear inside the helmet.",
+              "occlusion": "Preserve all neighboring faces, hands, shared props, rails and foreground occluders. Replace only the selected source child.",
+              "comparators": "Keep the original source child body scale and supported pose. Match adjacent people at the same depth; preserve reference face, hair and age."
+            }
+          }
+        ]
+      },
+      "adventure": {
+        "boardSlug": "underwater",
+        "worldSlug": "kingdom",
+        "name": {
+          "en": "Underwater Kingdom",
+          "he": "הממלכה התת־ימית"
+        },
+        "direction": {
+          "orientation": "landscape",
+          "aspect": "16:9",
+          "spread": "activity-across-width-and-height",
+          "perspective": "shallow",
+          "scaleTreatment": "similar-size-people",
+          "illustration": "storybook-hand-drawn",
+          "identityPrecedence": "reference-face-hair-age",
+          "locationCues": [
+            {
+              "en": "Shell homes and coral streets",
+              "he": "בתי צדפים ורחובות אלמוגים"
+            },
+            {
+              "en": "Seahorse transport and sea errands",
+              "he": "תחבורה בסוסוני ים ומשימות ימיות"
+            }
+          ],
+          "microStories": [
+            {
+              "en": "Look beside the glowing pearl inside the shell.",
+              "he": "חפשו ליד הפנינה הזוהרת שבצדף."
+            },
+            {
+              "en": "Look at the sea post office beside the octopus.",
+              "he": "חפשו בדואר הימי ליד התמנון."
+            },
+            {
+              "en": "Look inside the glowing shell workshop.",
+              "he": "חפשו בתוך סדנת הצדף המוארת."
+            }
+          ]
+        },
+        "plannedHides": 3,
+        "collectionUi": "guided-v1",
+        "status": "ready",
+        "sceneVersion": 13,
+        "art": {
+          "base": "/scenes/kingdom-underwater-detectives-v1/base.webp",
+          "sha256": "0a26960579ce6e604bd123b95e6adf3baaff2aee3f63c4dfa8c7584aa16294a0",
+          "width": 3344,
+          "height": 1882
+        },
+        "personalZones": [
+          {
+            "x": 0,
+            "y": 0.33581296493092455,
+            "w": 0.15311004784688995,
+            "h": 0.40807651434643993
+          },
+          {
+            "x": 0.45095693779904306,
+            "y": 0.4250797024442083,
+            "w": 0.15311004784688995,
+            "h": 0.40807651434643993
+          },
+          {
+            "x": 0.8325358851674641,
+            "y": 0.3177470775770457,
+            "w": 0.15311004784688995,
+            "h": 0.40807651434643993
+          }
+        ],
+        "discoveries": [
+          {
+            "id": "sea-crab",
+            "name": {
+              "en": "Red crab",
+              "he": "סרטן אדום"
+            },
+            "hint": {
+              "en": "Look for: Red crab.",
+              "he": "חפשו באיור: סרטן אדום."
+            },
+            "category": "animal",
+            "description": {
+              "kind": "story",
+              "text": {
+                "en": "A small detail in this illustrated story: Red crab.",
+                "he": "פרט קטן מתוך הסיפור שבאיור: סרטן אדום."
+              }
+            },
+            "visibleRect": {
+              "x": 0.5747607655502392,
+              "y": 0.14558979808714134,
+              "w": 0.053229665071770335,
+              "h": 0.0924548352816153
+            },
+            "hitRect": {
+              "x": 0.5854066985645933,
+              "y": 0.1640807651434644,
+              "w": 0.0319377990430622,
+              "h": 0.05547290116896918
+            },
+            "cardCrop": {
+              "x": 0.5747607655502392,
+              "y": 0.14558979808714134,
+              "w": 0.053229665071770335,
+              "h": 0.0924548352816153
+            }
+          },
+          {
+            "id": "sea-ray",
+            "name": {
+              "en": "Blue spotted ray",
+              "he": "מנטה כחולה מנוקדת"
+            },
+            "hint": {
+              "en": "Look for: Blue spotted ray.",
+              "he": "חפשו באיור: מנטה כחולה מנוקדת."
+            },
+            "category": "animal",
+            "description": {
+              "kind": "story",
+              "text": {
+                "en": "A small detail in this illustrated story: Blue spotted ray.",
+                "he": "פרט קטן מתוך הסיפור שבאיור: מנטה כחולה מנוקדת."
+              }
+            },
+            "visibleRect": {
+              "x": 0.6447368421052632,
+              "y": 0.6004250797024442,
+              "w": 0.15789473684210525,
+              "h": 0.0818278427205101
+            },
+            "hitRect": {
+              "x": 0.6763157894736842,
+              "y": 0.6167906482465462,
+              "w": 0.09473684210526316,
+              "h": 0.04909670563230605
+            },
+            "cardCrop": {
+              "x": 0.6447368421052632,
+              "y": 0.6004250797024442,
+              "w": 0.15789473684210525,
+              "h": 0.0818278427205101
+            }
+          },
+          {
+            "id": "sea-left-ray",
+            "name": {
+              "en": "Spotted ray",
+              "he": "טריגון מנוקד"
+            },
+            "hint": {
+              "en": "Look for: Spotted ray.",
+              "he": "חפשו באיור: טריגון מנוקד."
+            },
+            "category": "animal",
+            "description": {
+              "kind": "story",
+              "text": {
+                "en": "A small detail in this illustrated story: Spotted ray.",
+                "he": "פרט קטן מתוך הסיפור שבאיור: טריגון מנוקד."
+              }
+            },
+            "visibleRect": {
+              "x": 0,
+              "y": 0.7810839532412327,
+              "w": 0.13636363636363635,
+              "h": 0.17003188097768332
+            },
+            "hitRect": {
+              "x": 0.027272727272727275,
+              "y": 0.8150903294367694,
+              "w": 0.0818181818181818,
+              "h": 0.10201912858660998
+            },
+            "cardCrop": {
+              "x": 0,
+              "y": 0.7810839532412327,
+              "w": 0.13636363636363635,
+              "h": 0.17003188097768332
+            }
+          },
+          {
+            "id": "sea-lift",
+            "name": {
+              "en": "Glass lift",
+              "he": "מעלית זכוכית"
+            },
+            "hint": {
+              "en": "Look for: Glass lift.",
+              "he": "חפשו באיור: מעלית זכוכית."
+            },
+            "category": "object",
+            "description": {
+              "kind": "story",
+              "text": {
+                "en": "A small detail in this illustrated story: Glass lift.",
+                "he": "פרט קטן מתוך הסיפור שבאיור: מעלית זכוכית."
+              }
+            },
+            "visibleRect": {
+              "x": 0.6854066985645934,
+              "y": 0.019128586609989374,
+              "w": 0.09748803827751196,
+              "h": 0.34962805526036134
+            },
+            "hitRect": {
+              "x": 0.7049043062200956,
+              "y": 0.08905419766206163,
+              "w": 0.05849282296650717,
+              "h": 0.20977683315621679
+            },
+            "cardCrop": {
+              "x": 0.6854066985645934,
+              "y": 0.019128586609989374,
+              "w": 0.09748803827751196,
+              "h": 0.34962805526036134
+            }
+          },
+          {
+            "id": "sea-fish-school",
+            "name": {
+              "en": "School of yellow fish",
+              "he": "להקת דגים צהובים"
+            },
+            "hint": {
+              "en": "Look for: School of yellow fish.",
+              "he": "חפשו באיור: להקת דגים צהובים."
+            },
+            "category": "animal",
+            "description": {
+              "kind": "story",
+              "text": {
+                "en": "A small detail in this illustrated story: School of yellow fish.",
+                "he": "פרט קטן מתוך הסיפור שבאיור: להקת דגים צהובים."
+              }
+            },
+            "visibleRect": {
+              "x": 0.36363636363636365,
+              "y": 0.01487778958554729,
+              "w": 0.17404306220095694,
+              "h": 0.07863974495217853
+            },
+            "hitRect": {
+              "x": 0.39844497607655505,
+              "y": 0.030605738575982998,
+              "w": 0.10442583732057416,
+              "h": 0.04718384697130712
+            },
+            "cardCrop": {
+              "x": 0.36363636363636365,
+              "y": 0.01487778958554729,
+              "w": 0.17404306220095694,
+              "h": 0.07863974495217853
+            }
+          },
+          {
+            "id": "sea-jellyfish",
+            "name": {
+              "en": "Purple jellyfish",
+              "he": "מדוזה סגולה"
+            },
+            "hint": {
+              "en": "Look for: Purple jellyfish.",
+              "he": "חפשו באיור: מדוזה סגולה."
+            },
+            "category": "animal",
+            "description": {
+              "kind": "story",
+              "text": {
+                "en": "A small detail in this illustrated story: Purple jellyfish.",
+                "he": "פרט קטן מתוך הסיפור שבאיור: מדוזה סגולה."
+              }
+            },
+            "visibleRect": {
+              "x": 0.7954545454545454,
+              "y": 0.7587672688629118,
+              "w": 0.045454545454545456,
+              "h": 0.11052072263549416
+            },
+            "hitRect": {
+              "x": 0.8045454545454546,
+              "y": 0.7808714133900105,
+              "w": 0.027272727272727275,
+              "h": 0.06631243358129649
+            },
+            "cardCrop": {
+              "x": 0.7954545454545454,
+              "y": 0.7587672688629118,
+              "w": 0.045454545454545456,
+              "h": 0.11052072263549416
+            }
+          }
+        ],
+        "postcard": {
+          "id": "underwater-detectives-postcard",
+          "title": {
+            "en": "A memory from Underwater Kingdom",
+            "he": "מזכרת: הממלכה התת־ימית"
+          },
+          "targetId": "hide-1",
+          "crop": {
+            "x": 0,
+            "y": 0.33581296493092455,
+            "w": 0.15311004784688995,
+            "h": 0.40807651434643993
+          }
+        }
+      },
+      "sourceNeighbors": [
+        {
+          "boardId": "underwater",
+          "hideId": "underwater-detectives-hide-1",
+          "neighbors": [
+            {
+              "sourceId": "source-child",
+              "head": {
+                "left": 182,
+                "top": 888,
+                "width": 130,
+                "height": 132
+              }
+            },
+            {
+              "sourceId": "neighbor-1",
+              "head": {
+                "left": 482,
+                "top": 948,
+                "width": 132,
+                "height": 140
+              }
+            },
+            {
+              "sourceId": "neighbor-2",
+              "head": {
+                "left": 642,
+                "top": 1006,
+                "width": 124,
+                "height": 128
+              }
+            },
+            {
+              "sourceId": "neighbor-3",
+              "head": {
+                "left": 252,
+                "top": 492,
+                "width": 120,
+                "height": 122
+              }
+            }
+          ]
+        },
+        {
+          "boardId": "underwater",
+          "hideId": "underwater-detectives-hide-2",
+          "neighbors": [
+            {
+              "sourceId": "source-child",
+              "head": {
+                "left": 1674,
+                "top": 1042,
+                "width": 120,
+                "height": 132
+              }
+            },
+            {
+              "sourceId": "neighbor-1",
+              "head": {
+                "left": 1932,
+                "top": 1092,
+                "width": 124,
+                "height": 124
+              }
+            },
+            {
+              "sourceId": "neighbor-2",
+              "head": {
+                "left": 1098,
+                "top": 1046,
+                "width": 132,
+                "height": 138
+              }
+            },
+            {
+              "sourceId": "neighbor-3",
+              "head": {
+                "left": 1686,
+                "top": 1314,
+                "width": 142,
+                "height": 138
+              }
+            }
+          ]
+        },
+        {
+          "boardId": "underwater",
+          "hideId": "underwater-detectives-hide-3",
+          "neighbors": [
+            {
+              "sourceId": "source-child",
+              "head": {
+                "left": 2944,
+                "top": 842,
+                "width": 126,
+                "height": 132
+              }
+            },
+            {
+              "sourceId": "neighbor-1",
+              "head": {
+                "left": 3094,
+                "top": 936,
+                "width": 104,
+                "height": 116
+              }
+            },
+            {
+              "sourceId": "neighbor-2",
+              "head": {
+                "left": 2740,
+                "top": 924,
+                "width": 106,
+                "height": 112
+              }
+            },
+            {
+              "sourceId": "neighbor-3",
+              "head": {
+                "left": 3214,
+                "top": 842,
+                "width": 120,
+                "height": 142
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "board": "cloudcity",
+      "source": {
+        "path": "public/scenes/kingdom-cloudcity-detectives-v1/base.webp",
+        "sha256": "68457bc37a4c2a673ea6a089826e90e93cc6bc572d21973362d988155beff136",
+        "width": 3344,
+        "height": 1882
+      },
+      "definition": {
+        "board": "cloudcity",
+        "art": "public/scenes/kingdom-cloudcity-detectives-v1/base.webp",
+        "ground": "solid cloud terraces and gently arched rainbow walkways with real supported foot contact",
+        "sittable": true,
+        "wardrobe": "Age-appropriate practical fantasy clothing from this board. Preserve the reference child face, hair and age. Matte hand-painted fabric and skin; no glow or photographic smoothing.",
+        "hides": [
+          {
+            "id": "cloudcity-detectives-hide-1",
+            "left": 124,
+            "top": 854,
+            "pose": "standing",
+            "targetId": "hide-1",
+            "wardrobe": "Muted purple travel tunic, blue trousers, brown satchel and soft boots.",
+            "mask": {
+              "left": 90,
+              "top": 228,
+              "width": 238,
+              "height": 310
+            },
+            "returnRect": {
+              "left": 66,
+              "top": 204,
+              "width": 286,
+              "height": 358
+            },
+            "hint": {
+              "en": "Look beside the pinwheel on the left cloud steps.",
+              "he": "חפשו ליד השבשבת במדרגות העננים משמאל."
+            },
+            "placement": {
+              "depth": "middle",
+              "standingHeightPx": 370,
+              "support": "Hold the left pinwheel; preserve pinwheel, rail and supported feet.",
+              "lighting": "Soft high-altitude daylight with pastel cloud reflections and small warm brass lamps, not overexposed faces.",
+              "occlusion": "Preserve all neighboring faces, hands, shared props, rails and foreground occluders. Replace only the selected source child.",
+              "comparators": "Keep the original source child body scale and supported pose. Match adjacent people at the same depth; preserve reference face, hair and age."
+            }
+          },
+          {
+            "id": "cloudcity-detectives-hide-2",
+            "left": 1456,
+            "top": 504,
+            "pose": "walking",
+            "targetId": "hide-2",
+            "wardrobe": "Cream travel shirt, teal waistcoat, blue trousers and soft straw hat.",
+            "mask": {
+              "left": 94,
+              "top": 316,
+              "width": 222,
+              "height": 332
+            },
+            "returnRect": {
+              "left": 70,
+              "top": 292,
+              "width": 270,
+              "height": 380
+            },
+            "hint": {
+              "en": "Look for the children carrying a rolled carpet.",
+              "he": "חפשו ליד הילדים שנושאים שטיח מגולגל."
+            },
+            "placement": {
+              "depth": "middle",
+              "standingHeightPx": 390,
+              "support": "Carry the left end of the rolled carpet; preserve other carrier, carpet and shared hand contact.",
+              "lighting": "Soft high-altitude daylight with pastel cloud reflections and small warm brass lamps, not overexposed faces.",
+              "occlusion": "Preserve all neighboring faces, hands, shared props, rails and foreground occluders. Replace only the selected source child.",
+              "comparators": "Keep the original source child body scale and supported pose. Match adjacent people at the same depth; preserve reference face, hair and age."
+            }
+          },
+          {
+            "id": "cloudcity-detectives-hide-3",
+            "left": 2832,
+            "top": 590,
+            "pose": "standing",
+            "targetId": "hide-3",
+            "wardrobe": "Muted teal travel tunic, cream sleeves, brown satchel and slate trousers.",
+            "mask": {
+              "left": 204,
+              "top": 212,
+              "width": 204,
+              "height": 316
+            },
+            "returnRect": {
+              "left": 180,
+              "top": 188,
+              "width": 252,
+              "height": 364
+            },
+            "hint": {
+              "en": "Look beside the wizard and the transparent magic orbs.",
+              "he": "חפשו ליד המכשף וכדורי הקסם השקופים."
+            },
+            "placement": {
+              "depth": "middle",
+              "standingHeightPx": 370,
+              "support": "Handle the right transparent orb; preserve orb, wizard, neighboring child and pavilion rail.",
+              "lighting": "Soft high-altitude daylight with pastel cloud reflections and small warm brass lamps, not overexposed faces.",
+              "occlusion": "Preserve all neighboring faces, hands, shared props, rails and foreground occluders. Replace only the selected source child.",
+              "comparators": "Keep the original source child body scale and supported pose. Match adjacent people at the same depth; preserve reference face, hair and age."
+            }
+          }
+        ]
+      },
+      "adventure": {
+        "boardSlug": "cloudcity",
+        "worldSlug": "kingdom",
+        "name": {
+          "en": "Cloud City",
+          "he": "עיר העננים"
+        },
+        "direction": {
+          "orientation": "landscape",
+          "aspect": "16:9",
+          "spread": "activity-across-width-and-height",
+          "perspective": "shallow",
+          "scaleTreatment": "similar-size-people",
+          "illustration": "storybook-hand-drawn",
+          "identityPrecedence": "reference-face-hair-age",
+          "locationCues": [
+            {
+              "en": "Cloud tram and rainbow paths",
+              "he": "רכבת עננים ושבילי קשת"
+            },
+            {
+              "en": "Air mail and floating gardens",
+              "he": "דואר אווירי וגנים מרחפים"
+            }
+          ],
+          "microStories": [
+            {
+              "en": "Look beside the pinwheel on the left cloud steps.",
+              "he": "חפשו ליד השבשבת במדרגות העננים משמאל."
+            },
+            {
+              "en": "Look for the children carrying a rolled carpet.",
+              "he": "חפשו ליד הילדים שנושאים שטיח מגולגל."
+            },
+            {
+              "en": "Look beside the wizard and the transparent magic orbs.",
+              "he": "חפשו ליד המכשף וכדורי הקסם השקופים."
+            }
+          ]
+        },
+        "plannedHides": 3,
+        "collectionUi": "guided-v1",
+        "status": "ready",
+        "sceneVersion": 13,
+        "art": {
+          "base": "/scenes/kingdom-cloudcity-detectives-v1/base.webp",
+          "sha256": "68457bc37a4c2a673ea6a089826e90e93cc6bc572d21973362d988155beff136",
+          "width": 3344,
+          "height": 1882
+        },
+        "personalZones": [
+          {
+            "x": 0.03708133971291866,
+            "y": 0.4537725823591923,
+            "w": 0.15311004784688995,
+            "h": 0.40807651434643993
+          },
+          {
+            "x": 0.4354066985645933,
+            "y": 0.2678002125398512,
+            "w": 0.15311004784688995,
+            "h": 0.40807651434643993
+          },
+          {
+            "x": 0.84688995215311,
+            "y": 0.3134962805526036,
+            "w": 0.15311004784688995,
+            "h": 0.40807651434643993
+          }
+        ],
+        "discoveries": [
+          {
+            "id": "cloudcity-birds",
+            "name": {
+              "en": "Cloud birds",
+              "he": "ציפורי העננים"
+            },
+            "hint": {
+              "en": "Look for: Cloud birds.",
+              "he": "חפשו באיור: ציפורי העננים."
+            },
+            "category": "animal",
+            "description": {
+              "kind": "story",
+              "text": {
+                "en": "A small detail in this illustrated story: Cloud birds.",
+                "he": "פרט קטן מתוך הסיפור שבאיור: ציפורי העננים."
+              }
+            },
+            "visibleRect": {
+              "x": 0.5592105263157895,
+              "y": 0.022316684378320937,
+              "w": 0.1638755980861244,
+              "h": 0.1689691817215728
+            },
+            "hitRect": {
+              "x": 0.5919856459330143,
+              "y": 0.05611052072263549,
+              "w": 0.09832535885167465,
+              "h": 0.10138150903294367
+            },
+            "cardCrop": {
+              "x": 0.5592105263157895,
+              "y": 0.022316684378320937,
+              "w": 0.1638755980861244,
+              "h": 0.1689691817215728
+            }
+          },
+          {
+            "id": "cloudcity-unicorn",
+            "name": {
+              "en": "Unicorn",
+              "he": "חד קרן"
+            },
+            "hint": {
+              "en": "Look for: Unicorn.",
+              "he": "חפשו באיור: חד קרן."
+            },
+            "category": "animal",
+            "description": {
+              "kind": "story",
+              "text": {
+                "en": "A small detail in this illustrated story: Unicorn.",
+                "he": "פרט קטן מתוך הסיפור שבאיור: חד קרן."
+              }
+            },
+            "visibleRect": {
+              "x": 0.3827751196172249,
+              "y": 0.71413390010627,
+              "w": 0.0729665071770335,
+              "h": 0.18278427205100956
+            },
+            "hitRect": {
+              "x": 0.3973684210526316,
+              "y": 0.7506907545164718,
+              "w": 0.0437799043062201,
+              "h": 0.10967056323060574
+            },
+            "cardCrop": {
+              "x": 0.3827751196172249,
+              "y": 0.71413390010627,
+              "w": 0.0729665071770335,
+              "h": 0.18278427205100956
+            }
+          },
+          {
+            "id": "cloudcity-face",
+            "name": {
+              "en": "Smiling cloud",
+              "he": "ענן מחייך"
+            },
+            "hint": {
+              "en": "Look for: Smiling cloud.",
+              "he": "חפשו באיור: ענן מחייך."
+            },
+            "category": "character",
+            "description": {
+              "kind": "story",
+              "text": {
+                "en": "A small detail in this illustrated story: Smiling cloud.",
+                "he": "פרט קטן מתוך הסיפור שבאיור: ענן מחייך."
+              }
+            },
+            "visibleRect": {
+              "x": 0.743421052631579,
+              "y": 0.8533475026567482,
+              "w": 0.0687799043062201,
+              "h": 0.09139213602550478
+            },
+            "hitRect": {
+              "x": 0.757177033492823,
+              "y": 0.8716259298618492,
+              "w": 0.04126794258373206,
+              "h": 0.05483528161530287
+            },
+            "cardCrop": {
+              "x": 0.743421052631579,
+              "y": 0.8533475026567482,
+              "w": 0.0687799043062201,
+              "h": 0.09139213602550478
+            }
+          },
+          {
+            "id": "cloudcity-basket",
+            "name": {
+              "en": "Flower basket",
+              "he": "סל פרחים"
+            },
+            "hint": {
+              "en": "Look for: Flower basket.",
+              "he": "חפשו באיור: סל פרחים."
+            },
+            "category": "plant",
+            "description": {
+              "kind": "story",
+              "text": {
+                "en": "A small detail in this illustrated story: Flower basket.",
+                "he": "פרט קטן מתוך הסיפור שבאיור: סל פרחים."
+              }
+            },
+            "visibleRect": {
+              "x": 0.19796650717703348,
+              "y": 0.179596174282678,
+              "w": 0.06399521531100479,
+              "h": 0.08076514346439957
+            },
+            "hitRect": {
+              "x": 0.21076555023923443,
+              "y": 0.1957492029755579,
+              "w": 0.038397129186602874,
+              "h": 0.048459086078639746
+            },
+            "cardCrop": {
+              "x": 0.19796650717703348,
+              "y": 0.179596174282678,
+              "w": 0.06399521531100479,
+              "h": 0.08076514346439957
+            }
+          },
+          {
+            "id": "cloudcity-pinwheel",
+            "name": {
+              "en": "High pinwheel",
+              "he": "שבשבת גבוהה"
+            },
+            "hint": {
+              "en": "Look for: High pinwheel.",
+              "he": "חפשו באיור: שבשבת גבוהה."
+            },
+            "category": "object",
+            "description": {
+              "kind": "story",
+              "text": {
+                "en": "A small detail in this illustrated story: High pinwheel.",
+                "he": "פרט קטן מתוך הסיפור שבאיור: שבשבת גבוהה."
+              }
+            },
+            "visibleRect": {
+              "x": 0.7607655502392344,
+              "y": 0.36769394261424015,
+              "w": 0.037679425837320576,
+              "h": 0.06801275239107332
+            },
+            "hitRect": {
+              "x": 0.7683014354066985,
+              "y": 0.38129649309245484,
+              "w": 0.022607655502392344,
+              "h": 0.040807651434643995
+            },
+            "cardCrop": {
+              "x": 0.7607655502392344,
+              "y": 0.36769394261424015,
+              "w": 0.037679425837320576,
+              "h": 0.06801275239107332
+            }
+          },
+          {
+            "id": "cloudcity-rainbow",
+            "name": {
+              "en": "Rainbow path",
+              "he": "שביל קשת"
+            },
+            "hint": {
+              "en": "Look for: Rainbow path.",
+              "he": "חפשו באיור: שביל קשת."
+            },
+            "category": "object",
+            "description": {
+              "kind": "story",
+              "text": {
+                "en": "A small detail in this illustrated story: Rainbow path.",
+                "he": "פרט קטן מתוך הסיפור שבאיור: שביל קשת."
+              }
+            },
+            "visibleRect": {
+              "x": 0.5029904306220095,
+              "y": 0.7268862911795961,
+              "w": 0.12858851674641147,
+              "h": 0.10626992561105207
+            },
+            "hitRect": {
+              "x": 0.5287081339712919,
+              "y": 0.7481402763018066,
+              "w": 0.07715311004784689,
+              "h": 0.06376195536663125
+            },
+            "cardCrop": {
+              "x": 0.5029904306220095,
+              "y": 0.7268862911795961,
+              "w": 0.12858851674641147,
+              "h": 0.10626992561105207
+            }
+          }
+        ],
+        "postcard": {
+          "id": "cloudcity-detectives-postcard",
+          "title": {
+            "en": "A memory from Cloud City",
+            "he": "מזכרת: עיר העננים"
+          },
+          "targetId": "hide-1",
+          "crop": {
+            "x": 0.03708133971291866,
+            "y": 0.4537725823591923,
+            "w": 0.15311004784688995,
+            "h": 0.40807651434643993
+          }
+        }
+      },
+      "sourceNeighbors": [
+        {
+          "boardId": "cloudcity",
+          "hideId": "cloudcity-detectives-hide-1",
+          "neighbors": [
+            {
+              "sourceId": "source-child",
+              "head": {
+                "left": 278,
+                "top": 1088,
+                "width": 116,
+                "height": 122
+              }
+            },
+            {
+              "sourceId": "neighbor-1",
+              "head": {
+                "left": 500,
+                "top": 1180,
+                "width": 122,
+                "height": 136
+              }
+            }
+          ]
+        },
+        {
+          "boardId": "cloudcity",
+          "hideId": "cloudcity-detectives-hide-2",
+          "neighbors": [
+            {
+              "sourceId": "source-child",
+              "head": {
+                "left": 1612,
+                "top": 830,
+                "width": 120,
+                "height": 126
+              }
+            },
+            {
+              "sourceId": "neighbor-1",
+              "head": {
+                "left": 1944,
+                "top": 902,
+                "width": 108,
+                "height": 114
+              }
+            },
+            {
+              "sourceId": "neighbor-2",
+              "head": {
+                "left": 1704,
+                "top": 632,
+                "width": 106,
+                "height": 106
+              }
+            },
+            {
+              "sourceId": "neighbor-3",
+              "head": {
+                "left": 1568,
+                "top": 698,
+                "width": 84,
+                "height": 92
+              }
+            }
+          ]
+        },
+        {
+          "boardId": "cloudcity",
+          "hideId": "cloudcity-detectives-hide-3",
+          "neighbors": [
+            {
+              "sourceId": "source-child",
+              "head": {
+                "left": 3080,
+                "top": 802,
+                "width": 124,
+                "height": 130
+              }
+            },
+            {
+              "sourceId": "neighbor-1",
+              "head": {
+                "left": 2754,
+                "top": 644,
+                "width": 150,
+                "height": 176
+              }
+            },
+            {
+              "sourceId": "neighbor-2",
+              "head": {
+                "left": 2900,
+                "top": 772,
+                "width": 106,
+                "height": 120
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "board": "sweetworkshop",
+      "source": {
+        "path": "public/scenes/kingdom-sweetworkshop-detectives-v1/base.webp",
+        "sha256": "fd3e5da18f9cabe47104b3905ba2701e93faa050790fe1993f7e4ee5f6a08c7a",
+        "width": 3344,
+        "height": 1882
+      },
+      "definition": {
+        "board": "sweetworkshop",
+        "art": "public/scenes/kingdom-sweetworkshop-detectives-v1/base.webp",
+        "ground": "clean solid tiled workshop floor beside low child-height bakery counters",
+        "sittable": true,
+        "wardrobe": "Age-appropriate practical fantasy clothing from this board. Preserve the reference child face, hair and age. Matte hand-painted fabric and skin; no glow or photographic smoothing.",
+        "hides": [
+          {
+            "id": "sweetworkshop-detectives-hide-1",
+            "left": 960,
+            "top": 576,
+            "pose": "peeking",
+            "targetId": "hide-1",
+            "wardrobe": "Blue cotton baker apron over a cream rolled-sleeve shirt.",
+            "mask": {
+              "left": 64,
+              "top": 280,
+              "width": 280,
+              "height": 254
+            },
+            "returnRect": {
+              "left": 40,
+              "top": 200,
+              "width": 452,
+              "height": 358
+            },
+            "hint": {
+              "en": "Look at the child decorating the small cake.",
+              "he": "חפשו ליד קישוט העוגה הקטנה."
+            },
+            "placement": {
+              "depth": "middle",
+              "standingHeightPx": 380,
+              "support": "Decorate the cake from behind the counter; preserve cake, cherries, utensils and worktop contact.",
+              "lighting": "Warm bakery window light and green copper-lamp reflections, natural matte faces rather than glossy doll skin.",
+              "occlusion": "Preserve all neighboring faces, hands, shared props, rails and foreground occluders. Replace only the selected source child.",
+              "comparators": "Keep the original source child body scale and supported pose. Match adjacent people at the same depth; preserve reference face, hair and age."
+            }
+          },
+          {
+            "id": "sweetworkshop-detectives-hide-2",
+            "left": 732,
+            "top": 1114,
+            "pose": "peeking",
+            "targetId": "hide-2",
+            "wardrobe": "Blue baker apron, cream blouse, purple sash and pink cloth headband.",
+            "mask": {
+              "left": 144,
+              "top": 308,
+              "width": 320,
+              "height": 338
+            },
+            "returnRect": {
+              "left": 6,
+              "top": 284,
+              "width": 482,
+              "height": 386
+            },
+            "hint": {
+              "en": "Look at the cake makers near the bottom.",
+              "he": "חפשו ליד מכיני העוגות בתחתית האיור."
+            },
+            "placement": {
+              "depth": "near",
+              "standingHeightPx": 490,
+              "support": "Bend over the lower cake; preserve shared icing tools, cake, worktop and neighboring baker.",
+              "lighting": "Warm bakery window light and green copper-lamp reflections, natural matte faces rather than glossy doll skin.",
+              "occlusion": "Preserve all neighboring faces, hands, shared props, rails and foreground occluders. Replace only the selected source child.",
+              "comparators": "Keep the original source child body scale and supported pose. Match adjacent people at the same depth; preserve reference face, hair and age."
+            }
+          },
+          {
+            "id": "sweetworkshop-detectives-hide-3",
+            "left": 1234,
+            "top": 0,
+            "pose": "standing",
+            "targetId": "hide-3",
+            "wardrobe": "Blue baker apron, cream rolled-sleeve shirt and brown trousers.",
+            "mask": {
+              "left": 136,
+              "top": 104,
+              "width": 214,
+              "height": 368
+            },
+            "returnRect": {
+              "left": 0,
+              "top": 80,
+              "width": 480,
+              "height": 416
+            },
+            "hint": {
+              "en": "Look beside the stack of gifts upstairs.",
+              "he": "חפשו ליד ערימת המתנות בקומה העליונה."
+            },
+            "placement": {
+              "depth": "deep",
+              "standingHeightPx": 400,
+              "support": "Carry the upper stack of gift boxes. Keep the boxes, counter and neighboring bakers unchanged; shoes contact the balcony floor.",
+              "lighting": "Warm bakery window light and green copper-lamp reflections, natural matte faces rather than glossy doll skin.",
+              "occlusion": "Preserve all neighboring faces, hands, shared props, rails and foreground occluders. Replace only the selected source child.",
+              "comparators": "Keep the original source child body scale and supported pose. Match adjacent people at the same depth; preserve reference face, hair and age."
+            }
+          }
+        ]
+      },
+      "adventure": {
+        "boardSlug": "sweetworkshop",
+        "worldSlug": "kingdom",
+        "name": {
+          "en": "Sweet Workshop",
+          "he": "סדנת המתוקים"
+        },
+        "direction": {
+          "orientation": "landscape",
+          "aspect": "16:9",
+          "spread": "activity-across-width-and-height",
+          "perspective": "shallow",
+          "scaleTreatment": "similar-size-people",
+          "illustration": "storybook-hand-drawn",
+          "identityPrecedence": "reference-face-hair-age",
+          "locationCues": [
+            {
+              "en": "Chocolate rivers and copper machines",
+              "he": "נהרות שוקולד ומכונות נחושת"
+            },
+            {
+              "en": "Baking and wrapping together",
+              "he": "אופים ואורזים יחד"
+            }
+          ],
+          "microStories": [
+            {
+              "en": "Look at the child decorating the small cake.",
+              "he": "חפשו ליד קישוט העוגה הקטנה."
+            },
+            {
+              "en": "Look at the cake makers near the bottom.",
+              "he": "חפשו ליד מכיני העוגות בתחתית האיור."
+            },
+            {
+              "en": "Look beside the stack of gifts upstairs.",
+              "he": "חפשו ליד ערימת המתנות בקומה העליונה."
+            }
+          ]
+        },
+        "plannedHides": 3,
+        "collectionUi": "guided-v1",
+        "status": "ready",
+        "sceneVersion": 13,
+        "art": {
+          "base": "/scenes/kingdom-sweetworkshop-detectives-v1/base.webp",
+          "sha256": "fd3e5da18f9cabe47104b3905ba2701e93faa050790fe1993f7e4ee5f6a08c7a",
+          "width": 3344,
+          "height": 1882
+        },
+        "personalZones": [
+          {
+            "x": 0.28708133971291866,
+            "y": 0.30605738575983,
+            "w": 0.15311004784688995,
+            "h": 0.40807651434643993
+          },
+          {
+            "x": 0.21889952153110048,
+            "y": 0.59192348565356,
+            "w": 0.15311004784688995,
+            "h": 0.40807651434643993
+          },
+          {
+            "x": 0.36901913875598086,
+            "y": 0,
+            "w": 0.15311004784688995,
+            "h": 0.40807651434643993
+          }
+        ],
+        "discoveries": [
+          {
+            "id": "sweetworkshop-river",
+            "name": {
+              "en": "Chocolate river",
+              "he": "נהר שוקולד"
+            },
+            "hint": {
+              "en": "Look for: Chocolate river.",
+              "he": "חפשו באיור: נהר שוקולד."
+            },
+            "category": "object",
+            "description": {
+              "kind": "story",
+              "text": {
+                "en": "A small detail in this illustrated story: Chocolate river.",
+                "he": "פרט קטן מתוך הסיפור שבאיור: נהר שוקולד."
+              }
+            },
+            "visibleRect": {
+              "x": 0,
+              "y": 0.8395324123273114,
+              "w": 0.08552631578947369,
+              "h": 0.16046758767268862
+            },
+            "hitRect": {
+              "x": 0.017105263157894738,
+              "y": 0.8716259298618492,
+              "w": 0.05131578947368421,
+              "h": 0.09628055260361316
+            },
+            "cardCrop": {
+              "x": 0,
+              "y": 0.8395324123273114,
+              "w": 0.08552631578947369,
+              "h": 0.16046758767268862
+            }
+          },
+          {
+            "id": "sweetworkshop-present",
+            "name": {
+              "en": "Red-ribbon gift",
+              "he": "מתנה עם סרט אדום"
+            },
+            "hint": {
+              "en": "Look for: Red-ribbon gift.",
+              "he": "חפשו באיור: מתנה עם סרט אדום."
+            },
+            "category": "object",
+            "description": {
+              "kind": "story",
+              "text": {
+                "en": "A small detail in this illustrated story: Red-ribbon gift.",
+                "he": "פרט קטן מתוך הסיפור שבאיור: מתנה עם סרט אדום."
+              }
+            },
+            "visibleRect": {
+              "x": 0.8755980861244019,
+              "y": 0.842720510095643,
+              "w": 0.08373205741626795,
+              "h": 0.1339001062699256
+            },
+            "hitRect": {
+              "x": 0.8923444976076556,
+              "y": 0.8695005313496281,
+              "w": 0.050239234449760764,
+              "h": 0.08034006376195536
+            },
+            "cardCrop": {
+              "x": 0.8755980861244019,
+              "y": 0.842720510095643,
+              "w": 0.08373205741626795,
+              "h": 0.1339001062699256
+            }
+          },
+          {
+            "id": "sweetworkshop-rope",
+            "name": {
+              "en": "Twisted candy rope",
+              "he": "חבל ממתק קלוע"
+            },
+            "hint": {
+              "en": "Look for: Twisted candy rope.",
+              "he": "חפשו באיור: חבל ממתק קלוע."
+            },
+            "category": "object",
+            "description": {
+              "kind": "story",
+              "text": {
+                "en": "A small detail in this illustrated story: Twisted candy rope.",
+                "he": "פרט קטן מתוך הסיפור שבאיור: חבל ממתק קלוע."
+              }
+            },
+            "visibleRect": {
+              "x": 0.09868421052631579,
+              "y": 0.4261424017003188,
+              "w": 0.16626794258373206,
+              "h": 0.09564293304994687
+            },
+            "hitRect": {
+              "x": 0.1319377990430622,
+              "y": 0.4452709883103082,
+              "w": 0.09976076555023923,
+              "h": 0.057385759829968117
+            },
+            "cardCrop": {
+              "x": 0.09868421052631579,
+              "y": 0.4261424017003188,
+              "w": 0.16626794258373206,
+              "h": 0.09564293304994687
+            }
+          },
+          {
+            "id": "sweetworkshop-lamp",
+            "name": {
+              "en": "Green hanging lamp",
+              "he": "מנורה ירוקה תלויה"
+            },
+            "hint": {
+              "en": "Look for: Green hanging lamp.",
+              "he": "חפשו באיור: מנורה ירוקה תלויה."
+            },
+            "category": "object",
+            "description": {
+              "kind": "story",
+              "text": {
+                "en": "A small detail in this illustrated story: Green hanging lamp.",
+                "he": "פרט קטן מתוך הסיפור שבאיור: מנורה ירוקה תלויה."
+              }
+            },
+            "visibleRect": {
+              "x": 0.3145933014354067,
+              "y": 0.0010626992561105207,
+              "w": 0.045454545454545456,
+              "h": 0.10095642933049948
+            },
+            "hitRect": {
+              "x": 0.3236842105263158,
+              "y": 0.021253985122210415,
+              "w": 0.027272727272727275,
+              "h": 0.06057385759829968
+            },
+            "cardCrop": {
+              "x": 0.3145933014354067,
+              "y": 0.0010626992561105207,
+              "w": 0.045454545454545456,
+              "h": 0.10095642933049948
+            }
+          },
+          {
+            "id": "sweetworkshop-tank",
+            "name": {
+              "en": "Copper chocolate tank",
+              "he": "מכל שוקולד מנחושת"
+            },
+            "hint": {
+              "en": "Look for: Copper chocolate tank.",
+              "he": "חפשו באיור: מכל שוקולד מנחושת."
+            },
+            "category": "object",
+            "description": {
+              "kind": "story",
+              "text": {
+                "en": "A small detail in this illustrated story: Copper chocolate tank.",
+                "he": "פרט קטן מתוך הסיפור שבאיור: מכל שוקולד מנחושת."
+              }
+            },
+            "visibleRect": {
+              "x": 0.011363636363636364,
+              "y": 0.09776833156216791,
+              "w": 0.09808612440191387,
+              "h": 0.17534537725823593
+            },
+            "hitRect": {
+              "x": 0.03098086124401914,
+              "y": 0.13283740701381508,
+              "w": 0.05885167464114832,
+              "h": 0.10520722635494155
+            },
+            "cardCrop": {
+              "x": 0.011363636363636364,
+              "y": 0.09776833156216791,
+              "w": 0.09808612440191387,
+              "h": 0.17534537725823593
+            }
+          },
+          {
+            "id": "sweetworkshop-creature",
+            "name": {
+              "en": "White candy creature",
+              "he": "יצור ממתק לבן"
+            },
+            "hint": {
+              "en": "Look for: White candy creature.",
+              "he": "חפשו באיור: יצור ממתק לבן."
+            },
+            "category": "character",
+            "description": {
+              "kind": "story",
+              "text": {
+                "en": "A small detail in this illustrated story: White candy creature.",
+                "he": "פרט קטן מתוך הסיפור שבאיור: יצור ממתק לבן."
+              }
+            },
+            "visibleRect": {
+              "x": 0.5580143540669856,
+              "y": 0.6482465462274176,
+              "w": 0.02452153110047847,
+              "h": 0.05100956429330499
+            },
+            "hitRect": {
+              "x": 0.5629186602870814,
+              "y": 0.6584484590860786,
+              "w": 0.01471291866028708,
+              "h": 0.030605738575982994
+            },
+            "cardCrop": {
+              "x": 0.5580143540669856,
+              "y": 0.6482465462274176,
+              "w": 0.02452153110047847,
+              "h": 0.05100956429330499
+            }
+          }
+        ],
+        "postcard": {
+          "id": "sweetworkshop-detectives-postcard",
+          "title": {
+            "en": "A memory from Sweet Workshop",
+            "he": "מזכרת: סדנת המתוקים"
+          },
+          "targetId": "hide-1",
+          "crop": {
+            "x": 0.28708133971291866,
+            "y": 0.30605738575983,
+            "w": 0.15311004784688995,
+            "h": 0.40807651434643993
+          }
+        }
+      },
+      "sourceNeighbors": [
+        {
+          "boardId": "sweetworkshop",
+          "hideId": "sweetworkshop-detectives-hide-1",
+          "neighbors": [
+            {
+              "sourceId": "source-child",
+              "head": {
+                "left": 1078,
+                "top": 856,
+                "width": 142,
+                "height": 138
+              }
+            },
+            {
+              "sourceId": "neighbor-1",
+              "head": {
+                "left": 1052,
+                "top": 792,
+                "width": 102,
+                "height": 116
+              }
+            },
+            {
+              "sourceId": "neighbor-2",
+              "head": {
+                "left": 1320,
+                "top": 882,
+                "width": 116,
+                "height": 132
+              }
+            }
+          ]
+        },
+        {
+          "boardId": "sweetworkshop",
+          "hideId": "sweetworkshop-detectives-hide-2",
+          "neighbors": [
+            {
+              "sourceId": "source-child",
+              "head": {
+                "left": 956,
+                "top": 1422,
+                "width": 148,
+                "height": 172
+              }
+            },
+            {
+              "sourceId": "neighbor-1",
+              "head": {
+                "left": 754,
+                "top": 1470,
+                "width": 136,
+                "height": 154
+              }
+            }
+          ]
+        },
+        {
+          "boardId": "sweetworkshop",
+          "hideId": "sweetworkshop-detectives-hide-3",
+          "neighbors": [
+            {
+              "sourceId": "source-child",
+              "head": {
+                "left": 1390,
+                "top": 114,
+                "width": 108,
+                "height": 112
+              }
+            },
+            {
+              "sourceId": "neighbor-1",
+              "head": {
+                "left": 1590,
+                "top": 282,
+                "width": 108,
+                "height": 124
+              }
+            },
+            {
+              "sourceId": "neighbor-2",
+              "head": {
+                "left": 1250,
+                "top": 198,
+                "width": 108,
+                "height": 124
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "board": "giantlibrary",
+      "source": {
+        "path": "public/scenes/kingdom-giantlibrary-detectives-v1/base.webp",
+        "sha256": "2ac1b1f2ac460036802a33c4d95f54c288b2b7a149d7bfe2d4822886450c50a5",
+        "width": 3344,
+        "height": 1882
+      },
+      "definition": {
+        "board": "giantlibrary",
+        "art": "public/scenes/kingdom-giantlibrary-detectives-v1/base.webp",
+        "ground": "broad solid wooden book stairs, shallow library balconies and safe reading seats",
+        "sittable": true,
+        "wardrobe": "Age-appropriate practical fantasy clothing from this board. Preserve the reference child face, hair and age. Matte hand-painted fabric and skin; no glow or photographic smoothing.",
+        "hides": [
+          {
+            "id": "giantlibrary-detectives-hide-1",
+            "left": 700,
+            "top": 524,
+            "pose": "standing",
+            "targetId": "hide-1",
+            "wardrobe": "Muted green school waistcoat, cream shirt, dark blue trousers and small brown satchel.",
+            "mask": {
+              "left": 104,
+              "top": 210,
+              "width": 208,
+              "height": 412
+            },
+            "returnRect": {
+              "left": 80,
+              "top": 186,
+              "width": 302,
+              "height": 460
+            },
+            "hint": {
+              "en": "Look beside the wizard reading a large book.",
+              "he": "חפשו ליד המכשף שקורא בספר גדול."
+            },
+            "placement": {
+              "depth": "middle",
+              "standingHeightPx": 440,
+              "support": "Stand beside the left wizard on the wooden stairs; preserve wizard, open book, floating books and rail.",
+              "lighting": "Warm golden reading lamps and soft window light, preserve inked facial details, no glowing portrait highlights.",
+              "occlusion": "Preserve all neighboring faces, hands, shared props, rails and foreground occluders. Replace only the selected source child.",
+              "comparators": "Keep the original source child body scale and supported pose. Match adjacent people at the same depth; preserve reference face, hair and age."
+            }
+          },
+          {
+            "id": "giantlibrary-detectives-hide-2",
+            "left": 1710,
+            "top": 592,
+            "pose": "peeking",
+            "targetId": "hide-2",
+            "wardrobe": "Cream school shirt, muted blue vest and brown book satchel.",
+            "mask": {
+              "left": 148,
+              "top": 358,
+              "width": 222,
+              "height": 210
+            },
+            "returnRect": {
+              "left": 124,
+              "top": 334,
+              "width": 270,
+              "height": 258
+            },
+            "hint": {
+              "en": "Look at the reader on the middle book stairs.",
+              "he": "חפשו ליד הקוראים במדרגות הספרים שבמרכז."
+            },
+            "placement": {
+              "depth": "middle",
+              "standingHeightPx": 370,
+              "support": "Lean across an open book on the middle stair landing; preserve book, rail, nearby readers and the supported pose.",
+              "lighting": "Warm golden reading lamps and soft window light, preserve inked facial details, no glowing portrait highlights.",
+              "occlusion": "Preserve all neighboring faces, hands, shared props, rails and foreground occluders. Replace only the selected source child.",
+              "comparators": "Keep the original source child body scale and supported pose. Match adjacent people at the same depth; preserve reference face, hair and age."
+            }
+          },
+          {
+            "id": "giantlibrary-detectives-hide-3",
+            "left": 2304,
+            "top": 1114,
+            "pose": "peeking",
+            "targetId": "hide-3",
+            "wardrobe": "Cream rolled-sleeve shirt, dark blue waistcoat and brown bookbinder apron.",
+            "mask": {
+              "left": 98,
+              "top": 142,
+              "width": 314,
+              "height": 332
+            },
+            "returnRect": {
+              "left": 74,
+              "top": 118,
+              "width": 362,
+              "height": 380
+            },
+            "hint": {
+              "en": "Look at the bookbinders on the lower right.",
+              "he": "חפשו ליד כורכי הספרים מימין למטה."
+            },
+            "placement": {
+              "depth": "near",
+              "standingHeightPx": 500,
+              "support": "Bind a book at the lower-right workbench; preserve tools, open chest, books and adjacent apprentice.",
+              "lighting": "Warm golden reading lamps and soft window light, preserve inked facial details, no glowing portrait highlights.",
+              "occlusion": "Preserve all neighboring faces, hands, shared props, rails and foreground occluders. Replace only the selected source child.",
+              "comparators": "Keep the original source child body scale and supported pose. Match adjacent people at the same depth; preserve reference face, hair and age."
+            }
+          }
+        ]
+      },
+      "adventure": {
+        "boardSlug": "giantlibrary",
+        "worldSlug": "kingdom",
+        "name": {
+          "en": "Giant Library",
+          "he": "הספרייה הענקית"
+        },
+        "direction": {
+          "orientation": "landscape",
+          "aspect": "16:9",
+          "spread": "activity-across-width-and-height",
+          "perspective": "shallow",
+          "scaleTreatment": "similar-size-people",
+          "illustration": "storybook-hand-drawn",
+          "identityPrecedence": "reference-face-hair-age",
+          "locationCues": [
+            {
+              "en": "Endless books and glowing paper birds",
+              "he": "ספרים בלי סוף וציפורי נייר זוהרות"
+            },
+            {
+              "en": "Reading and discovering together",
+              "he": "קוראים ומגלים יחד"
+            }
+          ],
+          "microStories": [
+            {
+              "en": "Look beside the wizard reading a large book.",
+              "he": "חפשו ליד המכשף שקורא בספר גדול."
+            },
+            {
+              "en": "Look at the reader on the middle book stairs.",
+              "he": "חפשו ליד הקוראים במדרגות הספרים שבמרכז."
+            },
+            {
+              "en": "Look at the bookbinders on the lower right.",
+              "he": "חפשו ליד כורכי הספרים מימין למטה."
+            }
+          ]
+        },
+        "plannedHides": 3,
+        "collectionUi": "guided-v1",
+        "status": "ready",
+        "sceneVersion": 13,
+        "art": {
+          "base": "/scenes/kingdom-giantlibrary-detectives-v1/base.webp",
+          "sha256": "2ac1b1f2ac460036802a33c4d95f54c288b2b7a149d7bfe2d4822886450c50a5",
+          "width": 3344,
+          "height": 1882
+        },
+        "personalZones": [
+          {
+            "x": 0.20933014354066987,
+            "y": 0.2784272051009564,
+            "w": 0.15311004784688995,
+            "h": 0.40807651434643993
+          },
+          {
+            "x": 0.5113636363636364,
+            "y": 0.3145589798087141,
+            "w": 0.15311004784688995,
+            "h": 0.40807651434643993
+          },
+          {
+            "x": 0.6889952153110048,
+            "y": 0.59192348565356,
+            "w": 0.15311004784688995,
+            "h": 0.40807651434643993
+          }
+        ],
+        "discoveries": [
+          {
+            "id": "giantlibrary-dog",
+            "name": {
+              "en": "Library dog",
+              "he": "כלב הספרייה"
+            },
+            "hint": {
+              "en": "Look for: Library dog.",
+              "he": "חפשו באיור: כלב הספרייה."
+            },
+            "category": "animal",
+            "description": {
+              "kind": "story",
+              "text": {
+                "en": "A small detail in this illustrated story: Library dog.",
+                "he": "פרט קטן מתוך הסיפור שבאיור: כלב הספרייה."
+              }
+            },
+            "visibleRect": {
+              "x": 0.10526315789473684,
+              "y": 0.8235919234856536,
+              "w": 0.16148325358851676,
+              "h": 0.11902231668437832
+            },
+            "hitRect": {
+              "x": 0.1375598086124402,
+              "y": 0.8473963868225292,
+              "w": 0.09688995215311005,
+              "h": 0.07141339001062699
+            },
+            "cardCrop": {
+              "x": 0.10526315789473684,
+              "y": 0.8235919234856536,
+              "w": 0.16148325358851676,
+              "h": 0.11902231668437832
+            }
+          },
+          {
+            "id": "giantlibrary-globe",
+            "name": {
+              "en": "Brass globe",
+              "he": "גלובוס פליז"
+            },
+            "hint": {
+              "en": "Look for: Brass globe.",
+              "he": "חפשו באיור: גלובוס פליז."
+            },
+            "category": "object",
+            "description": {
+              "kind": "story",
+              "text": {
+                "en": "A small detail in this illustrated story: Brass globe.",
+                "he": "פרט קטן מתוך הסיפור שבאיור: גלובוס פליז."
+              }
+            },
+            "visibleRect": {
+              "x": 0.7703349282296651,
+              "y": 0.14133900106269925,
+              "w": 0.061004784688995214,
+              "h": 0.0871413390010627
+            },
+            "hitRect": {
+              "x": 0.7825358851674642,
+              "y": 0.15876726886291181,
+              "w": 0.03660287081339713,
+              "h": 0.05228480340063762
+            },
+            "cardCrop": {
+              "x": 0.7703349282296651,
+              "y": 0.14133900106269925,
+              "w": 0.061004784688995214,
+              "h": 0.0871413390010627
+            }
+          },
+          {
+            "id": "giantlibrary-window",
+            "name": {
+              "en": "Arched window",
+              "he": "חלון קשתי"
+            },
+            "hint": {
+              "en": "Look for: Arched window.",
+              "he": "חפשו באיור: חלון קשתי."
+            },
+            "category": "object",
+            "description": {
+              "kind": "story",
+              "text": {
+                "en": "A small detail in this illustrated story: Arched window.",
+                "he": "פרט קטן מתוך הסיפור שבאיור: חלון קשתי."
+              }
+            },
+            "visibleRect": {
+              "x": 0.7003588516746412,
+              "y": 0,
+              "w": 0.045454545454545456,
+              "h": 0.1944739638682253
+            },
+            "hitRect": {
+              "x": 0.7094497607655502,
+              "y": 0.03889479277364506,
+              "w": 0.027272727272727275,
+              "h": 0.11668437832093517
+            },
+            "cardCrop": {
+              "x": 0.7003588516746412,
+              "y": 0,
+              "w": 0.045454545454545456,
+              "h": 0.1944739638682253
+            }
+          },
+          {
+            "id": "giantlibrary-lantern",
+            "name": {
+              "en": "High lantern",
+              "he": "עששית גבוהה"
+            },
+            "hint": {
+              "en": "Look for: High lantern.",
+              "he": "חפשו באיור: עששית גבוהה."
+            },
+            "category": "object",
+            "description": {
+              "kind": "story",
+              "text": {
+                "en": "A small detail in this illustrated story: High lantern.",
+                "he": "פרט קטן מתוך הסיפור שבאיור: עששית גבוהה."
+              }
+            },
+            "visibleRect": {
+              "x": 0.07476076555023924,
+              "y": 0,
+              "w": 0.022727272727272728,
+              "h": 0.09351753453772582
+            },
+            "hitRect": {
+              "x": 0.07930622009569378,
+              "y": 0.018703506907545166,
+              "w": 0.013636363636363637,
+              "h": 0.05611052072263549
+            },
+            "cardCrop": {
+              "x": 0.07476076555023924,
+              "y": 0,
+              "w": 0.022727272727272728,
+              "h": 0.09351753453772582
+            }
+          },
+          {
+            "id": "giantlibrary-ladder",
+            "name": {
+              "en": "Library ladder",
+              "he": "סולם הספרייה"
+            },
+            "hint": {
+              "en": "Look for: Library ladder.",
+              "he": "חפשו באיור: סולם הספרייה."
+            },
+            "category": "object",
+            "description": {
+              "kind": "story",
+              "text": {
+                "en": "A small detail in this illustrated story: Library ladder.",
+                "he": "פרט קטן מתוך הסיפור שבאיור: סולם הספרייה."
+              }
+            },
+            "visibleRect": {
+              "x": 0.8755980861244019,
+              "y": 0.09670563230605739,
+              "w": 0.08732057416267942,
+              "h": 0.49946865037194477
+            },
+            "hitRect": {
+              "x": 0.8930622009569378,
+              "y": 0.19659936238044634,
+              "w": 0.05239234449760765,
+              "h": 0.29968119022316686
+            },
+            "cardCrop": {
+              "x": 0.8755980861244019,
+              "y": 0.09670563230605739,
+              "w": 0.08732057416267942,
+              "h": 0.49946865037194477
+            }
+          },
+          {
+            "id": "giantlibrary-banner",
+            "name": {
+              "en": "Star banner",
+              "he": "דגל כוכבים"
+            },
+            "hint": {
+              "en": "Look for: Star banner.",
+              "he": "חפשו באיור: דגל כוכבים."
+            },
+            "category": "object",
+            "description": {
+              "kind": "story",
+              "text": {
+                "en": "A small detail in this illustrated story: Star banner.",
+                "he": "פרט קטן מתוך הסיפור שבאיור: דגל כוכבים."
+              }
+            },
+            "visibleRect": {
+              "x": 0.34748803827751196,
+              "y": 0,
+              "w": 0.028708133971291867,
+              "h": 0.14133900106269925
+            },
+            "hitRect": {
+              "x": 0.35322966507177034,
+              "y": 0.028267800212539853,
+              "w": 0.01722488038277512,
+              "h": 0.08480340063761956
+            },
+            "cardCrop": {
+              "x": 0.34748803827751196,
+              "y": 0,
+              "w": 0.028708133971291867,
+              "h": 0.14133900106269925
+            }
+          }
+        ],
+        "postcard": {
+          "id": "giantlibrary-detectives-postcard",
+          "title": {
+            "en": "A memory from Giant Library",
+            "he": "מזכרת: הספרייה הענקית"
+          },
+          "targetId": "hide-1",
+          "crop": {
+            "x": 0.20933014354066987,
+            "y": 0.2784272051009564,
+            "w": 0.15311004784688995,
+            "h": 0.40807651434643993
+          }
+        }
+      },
+      "sourceNeighbors": [
+        {
+          "boardId": "giantlibrary",
+          "hideId": "giantlibrary-detectives-hide-1",
+          "neighbors": [
+            {
+              "sourceId": "source-child",
+              "head": {
+                "left": 842,
+                "top": 740,
+                "width": 118,
+                "height": 132
+              }
+            },
+            {
+              "sourceId": "neighbor-1",
+              "head": {
+                "left": 612,
+                "top": 694,
+                "width": 136,
+                "height": 166
+              }
+            },
+            {
+              "sourceId": "neighbor-2",
+              "head": {
+                "left": 958,
+                "top": 848,
+                "width": 108,
+                "height": 122
+              }
+            }
+          ]
+        },
+        {
+          "boardId": "giantlibrary",
+          "hideId": "giantlibrary-detectives-hide-2",
+          "neighbors": [
+            {
+              "sourceId": "source-child",
+              "head": {
+                "left": 1904,
+                "top": 950,
+                "width": 90,
+                "height": 96
+              }
+            },
+            {
+              "sourceId": "neighbor-1",
+              "head": {
+                "left": 1782,
+                "top": 754,
+                "width": 106,
+                "height": 108
+              }
+            },
+            {
+              "sourceId": "neighbor-2",
+              "head": {
+                "left": 1876,
+                "top": 804,
+                "width": 104,
+                "height": 108
+              }
+            },
+            {
+              "sourceId": "neighbor-3",
+              "head": {
+                "left": 1570,
+                "top": 878,
+                "width": 106,
+                "height": 120
+              }
+            }
+          ]
+        },
+        {
+          "boardId": "giantlibrary",
+          "hideId": "giantlibrary-detectives-hide-3",
+          "neighbors": [
+            {
+              "sourceId": "source-child",
+              "head": {
+                "left": 2516,
+                "top": 1274,
+                "width": 140,
+                "height": 150
+              }
+            },
+            {
+              "sourceId": "neighbor-1",
+              "head": {
+                "left": 2746,
+                "top": 1356,
+                "width": 116,
+                "height": 126
+              }
+            },
+            {
+              "sourceId": "neighbor-2",
+              "head": {
+                "left": 1974,
+                "top": 1214,
+                "width": 142,
+                "height": 154
+              }
+            },
+            {
+              "sourceId": "neighbor-3",
+              "head": {
+                "left": 2192,
+                "top": 1324,
+                "width": 118,
+                "height": 130
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "board": "nightcarnival",
+      "source": {
+        "path": "public/scenes/kingdom-nightcarnival-detectives-v1/base.webp",
+        "sha256": "3be217dd23a9b2d18095735772b14f4249b340646e139ed87c61d5c9027d0bb1",
+        "width": 3344,
+        "height": 1882
+      },
+      "definition": {
+        "board": "nightcarnival",
+        "art": "public/scenes/kingdom-nightcarnival-detectives-v1/base.webp",
+        "ground": "dry carnival cobbles, shallow wooden platforms and safe carousel seats",
+        "sittable": true,
+        "wardrobe": "Age-appropriate practical fantasy clothing from this board. Preserve the reference child face, hair and age. Matte hand-painted fabric and skin; no glow or photographic smoothing.",
+        "hides": [
+          {
+            "id": "nightcarnival-detectives-hide-1",
+            "left": 530,
+            "top": 516,
+            "pose": "peeking",
+            "targetId": "hide-1",
+            "wardrobe": "Muted mauve child jacket, dark trousers and small brown boots.",
+            "mask": {
+              "left": 202,
+              "top": 272,
+              "width": 160,
+              "height": 230
+            },
+            "returnRect": {
+              "left": 126,
+              "top": 240,
+              "width": 260,
+              "height": 286
+            },
+            "hint": {
+              "en": "Look among the children watching the shadow theatre.",
+              "he": "חפשו בין הילדים שצופים בתיאטרון הצלליות."
+            },
+            "placement": {
+              "depth": "middle",
+              "standingHeightPx": 414,
+              "support": "Replace the mauve-clad child to the right of the puppet audience, preserving both neighboring audience children, puppet screen and wooden rail. Keep the full face visible above the rail and lower body naturally occluded.",
+              "lighting": "Dark blue evening ambience with amber lantern pools and restrained warm face light; no daylight or portrait spotlight.",
+              "occlusion": "Preserve all neighboring faces, hands, shared props, rails and foreground occluders. Replace only the selected source child.",
+              "comparators": "Keep the original source child body scale and supported pose. Match adjacent people at the same depth; preserve reference face, hair and age."
+            }
+          },
+          {
+            "id": "nightcarnival-detectives-hide-2",
+            "left": 1538,
+            "top": 8,
+            "pose": "sitting-cross-legged",
+            "targetId": "hide-2",
+            "wardrobe": "Muted teal short child jacket, dark navy trousers and small brown shoes; no tall hat that obscures hair.",
+            "mask": {
+              "left": 176,
+              "top": 256,
+              "width": 160,
+              "height": 252
+            },
+            "returnRect": {
+              "left": 152,
+              "top": 232,
+              "width": 208,
+              "height": 300
+            },
+            "hint": {
+              "en": "Look on the carousel beside the winged horse.",
+              "he": "חפשו בקרוסלה ליד הסוס המכונף."
+            },
+            "placement": {
+              "depth": "deep",
+              "standingHeightPx": 410,
+              "support": "Replace the teal-clad child seated on the gold carousel animal. Preserve its pole, saddle, mane, neighboring rider and child hand grip. Keep a complete readable head without cropping hair or balloon interference.",
+              "lighting": "Dark blue evening ambience with amber lantern pools and restrained warm face light; no daylight or portrait spotlight.",
+              "occlusion": "Preserve all neighboring faces, hands, shared props, rails and foreground occluders. Replace only the selected source child.",
+              "comparators": "Keep the original source child body scale and supported pose. Match adjacent people at the same depth; preserve reference face, hair and age."
+            }
+          },
+          {
+            "id": "nightcarnival-detectives-hide-3",
+            "left": 2348,
+            "top": 644,
+            "pose": "standing",
+            "targetId": "hide-3",
+            "wardrobe": "Muted purple child tunic, dark trousers and brown shoes; ordinary child proportions in the warm lantern light.",
+            "mask": {
+              "left": 172,
+              "top": 236,
+              "width": 288,
+              "height": 296
+            },
+            "returnRect": {
+              "left": 36,
+              "top": 212,
+              "width": 448,
+              "height": 344
+            },
+            "hint": {
+              "en": "Look beside the glowing paper butterflies.",
+              "he": "חפשו ליד פרפרי הנייר הזוהרים."
+            },
+            "placement": {
+              "depth": "middle",
+              "standingHeightPx": 432,
+              "support": "Replace the purple-clad child presenting paper butterflies at the magic box, preserving the blue-clad helper, magician, butterfly shapes and box. Keep age-correct hands and a full recognizable three-quarter face.",
+              "lighting": "Dark blue evening ambience with amber lantern pools and restrained warm face light; no daylight or portrait spotlight.",
+              "occlusion": "Preserve all neighboring faces, hands, shared props, rails and foreground occluders. Replace only the selected source child.",
+              "comparators": "Keep the original source child body scale and supported pose. Match adjacent people at the same depth; preserve reference face, hair and age."
+            }
+          }
+        ]
+      },
+      "adventure": {
+        "boardSlug": "nightcarnival",
+        "worldSlug": "kingdom",
+        "name": {
+          "en": "Night Carnival",
+          "he": "קרנבל הלילה"
+        },
+        "direction": {
+          "orientation": "landscape",
+          "aspect": "16:9",
+          "spread": "activity-across-width-and-height",
+          "perspective": "shallow",
+          "scaleTreatment": "similar-size-people",
+          "illustration": "storybook-hand-drawn",
+          "identityPrecedence": "reference-face-hair-age",
+          "locationCues": [
+            {
+              "en": "Lantern animals and shadow theatre",
+              "he": "חיות עששית ותיאטרון צלליות"
+            },
+            {
+              "en": "Carousel music and mask games",
+              "he": "מוזיקת קרוסלה ומשחקי מסכות"
+            }
+          ],
+          "microStories": [
+            {
+              "en": "Look among the children watching the shadow theatre.",
+              "he": "חפשו בין הילדים שצופים בתיאטרון הצלליות."
+            },
+            {
+              "en": "Look on the carousel beside the winged horse.",
+              "he": "חפשו בקרוסלה ליד הסוס המכונף."
+            },
+            {
+              "en": "Look beside the glowing paper butterflies.",
+              "he": "חפשו ליד פרפרי הנייר הזוהרים."
+            }
+          ]
+        },
+        "plannedHides": 3,
+        "collectionUi": "guided-v1",
+        "status": "ready",
+        "sceneVersion": 13,
+        "art": {
+          "base": "/scenes/kingdom-nightcarnival-detectives-v1/base.webp",
+          "sha256": "3be217dd23a9b2d18095735772b14f4249b340646e139ed87c61d5c9027d0bb1",
+          "width": 3344,
+          "height": 1882
+        },
+        "personalZones": [
+          {
+            "x": 0.15849282296650719,
+            "y": 0.27417640807651433,
+            "w": 0.15311004784688995,
+            "h": 0.40807651434643993
+          },
+          {
+            "x": 0.4599282296650718,
+            "y": 0.004250797024442083,
+            "w": 0.15311004784688995,
+            "h": 0.40807651434643993
+          },
+          {
+            "x": 0.7021531100478469,
+            "y": 0.3421891604675877,
+            "w": 0.15311004784688995,
+            "h": 0.40807651434643993
+          }
+        ],
+        "discoveries": [
+          {
+            "id": "night-hanging-star",
+            "name": {
+              "en": "Star lantern",
+              "he": "עששית כוכב"
+            },
+            "hint": {
+              "en": "Look for: Star lantern.",
+              "he": "חפשו באיור: עששית כוכב."
+            },
+            "category": "object",
+            "description": {
+              "kind": "story",
+              "text": {
+                "en": "A small detail in this illustrated story: Star lantern.",
+                "he": "פרט קטן מתוך הסיפור שבאיור: עששית כוכב."
+              }
+            },
+            "visibleRect": {
+              "x": 0.6770334928229665,
+              "y": 0.1806588735387885,
+              "w": 0.028110047846889953,
+              "h": 0.05419766206163656
+            },
+            "hitRect": {
+              "x": 0.6826555023923445,
+              "y": 0.19149840595111584,
+              "w": 0.01686602870813397,
+              "h": 0.03251859723698193
+            },
+            "cardCrop": {
+              "x": 0.6770334928229665,
+              "y": 0.1806588735387885,
+              "w": 0.028110047846889953,
+              "h": 0.05419766206163656
+            }
+          },
+          {
+            "id": "night-moon-lantern",
+            "name": {
+              "en": "Moon lantern",
+              "he": "עששית ירח"
+            },
+            "hint": {
+              "en": "Look for: Moon lantern.",
+              "he": "חפשו באיור: עששית ירח."
+            },
+            "category": "object",
+            "description": {
+              "kind": "story",
+              "text": {
+                "en": "A small detail in this illustrated story: Moon lantern.",
+                "he": "פרט קטן מתוך הסיפור שבאיור: עששית ירח."
+              }
+            },
+            "visibleRect": {
+              "x": 0.3672248803827751,
+              "y": 0.09670563230605739,
+              "w": 0.037679425837320576,
+              "h": 0.07438894792773645
+            },
+            "hitRect": {
+              "x": 0.37476076555023924,
+              "y": 0.11158342189160468,
+              "w": 0.022607655502392344,
+              "h": 0.044633368756641874
+            },
+            "cardCrop": {
+              "x": 0.3672248803827751,
+              "y": 0.09670563230605739,
+              "w": 0.037679425837320576,
+              "h": 0.07438894792773645
+            }
+          },
+          {
+            "id": "night-moon-boat",
+            "name": {
+              "en": "Moon boat",
+              "he": "סירת ירח"
+            },
+            "hint": {
+              "en": "Look for: Moon boat.",
+              "he": "חפשו באיור: סירת ירח."
+            },
+            "category": "object",
+            "description": {
+              "kind": "story",
+              "text": {
+                "en": "A small detail in this illustrated story: Moon boat.",
+                "he": "פרט קטן מתוך הסיפור שבאיור: סירת ירח."
+              }
+            },
+            "visibleRect": {
+              "x": 0.17404306220095694,
+              "y": 0.11158342189160468,
+              "w": 0.10526315789473684,
+              "h": 0.1381509032943677
+            },
+            "hitRect": {
+              "x": 0.1950956937799043,
+              "y": 0.1392136025504782,
+              "w": 0.06315789473684211,
+              "h": 0.08289054197662062
+            },
+            "cardCrop": {
+              "x": 0.17404306220095694,
+              "y": 0.11158342189160468,
+              "w": 0.10526315789473684,
+              "h": 0.1381509032943677
+            }
+          },
+          {
+            "id": "night-rabbit",
+            "name": {
+              "en": "Carnival rabbit",
+              "he": "ארנב בקרנבל"
+            },
+            "hint": {
+              "en": "Look for: Carnival rabbit.",
+              "he": "חפשו באיור: ארנב בקרנבל."
+            },
+            "category": "animal",
+            "description": {
+              "kind": "story",
+              "text": {
+                "en": "A small detail in this illustrated story: Carnival rabbit.",
+                "he": "פרט קטן מתוך הסיפור שבאיור: ארנב בקרנבל."
+              }
+            },
+            "visibleRect": {
+              "x": 0.8911483253588517,
+              "y": 0.7874601487778958,
+              "w": 0.04066985645933014,
+              "h": 0.10520722635494155
+            },
+            "hitRect": {
+              "x": 0.8992822966507177,
+              "y": 0.8085015940488841,
+              "w": 0.024401913875598084,
+              "h": 0.06312433581296494
+            },
+            "cardCrop": {
+              "x": 0.8911483253588517,
+              "y": 0.7874601487778958,
+              "w": 0.04066985645933014,
+              "h": 0.10520722635494155
+            }
+          },
+          {
+            "id": "night-owl",
+            "name": {
+              "en": "Carved owl",
+              "he": "ינשוף מגולף"
+            },
+            "hint": {
+              "en": "Look for: Carved owl.",
+              "he": "חפשו באיור: ינשוף מגולף."
+            },
+            "category": "object",
+            "description": {
+              "kind": "story",
+              "text": {
+                "en": "A small detail in this illustrated story: Carved owl.",
+                "he": "פרט קטן מתוך הסיפור שבאיור: ינשוף מגולף."
+              }
+            },
+            "visibleRect": {
+              "x": 0.9294258373205742,
+              "y": 0.7991498405951116,
+              "w": 0.038875598086124404,
+              "h": 0.10095642933049948
+            },
+            "hitRect": {
+              "x": 0.937200956937799,
+              "y": 0.8193411264612115,
+              "w": 0.02332535885167464,
+              "h": 0.06057385759829968
+            },
+            "cardCrop": {
+              "x": 0.9294258373205742,
+              "y": 0.7991498405951116,
+              "w": 0.038875598086124404,
+              "h": 0.10095642933049948
+            }
+          },
+          {
+            "id": "night-star-lamp",
+            "name": {
+              "en": "Star-shaped lantern",
+              "he": "עששית כוכב"
+            },
+            "hint": {
+              "en": "Look for: Star-shaped lantern.",
+              "he": "חפשו באיור: עששית כוכב."
+            },
+            "category": "object",
+            "description": {
+              "kind": "story",
+              "text": {
+                "en": "A small detail in this illustrated story: Star-shaped lantern.",
+                "he": "פרט קטן מתוך הסיפור שבאיור: עששית כוכב."
+              }
+            },
+            "visibleRect": {
+              "x": 0.9449760765550239,
+              "y": 0.25398512221041447,
+              "w": 0.03289473684210526,
+              "h": 0.05419766206163656
+            },
+            "hitRect": {
+              "x": 0.9515550239234449,
+              "y": 0.26482465462274174,
+              "w": 0.019736842105263157,
+              "h": 0.03251859723698193
+            },
+            "cardCrop": {
+              "x": 0.9449760765550239,
+              "y": 0.25398512221041447,
+              "w": 0.03289473684210526,
+              "h": 0.05419766206163656
+            }
+          }
+        ],
+        "postcard": {
+          "id": "nightcarnival-detectives-postcard",
+          "title": {
+            "en": "A memory from Night Carnival",
+            "he": "מזכרת: קרנבל הלילה"
+          },
+          "targetId": "hide-1",
+          "crop": {
+            "x": 0.15849282296650719,
+            "y": 0.27417640807651433,
+            "w": 0.15311004784688995,
+            "h": 0.40807651434643993
+          }
+        }
+      },
+      "sourceNeighbors": [
+        {
+          "boardId": "nightcarnival",
+          "hideId": "nightcarnival-detectives-hide-1",
+          "neighbors": [
+            {
+              "sourceId": "source-child",
+              "head": {
+                "left": 756,
+                "top": 788,
+                "width": 110,
+                "height": 126
+              }
+            },
+            {
+              "sourceId": "neighbor-1",
+              "head": {
+                "left": 672,
+                "top": 772,
+                "width": 96,
+                "height": 110
+              }
+            },
+            {
+              "sourceId": "neighbor-2",
+              "head": {
+                "left": 440,
+                "top": 850,
+                "width": 122,
+                "height": 126
+              }
+            },
+            {
+              "sourceId": "neighbor-3",
+              "head": {
+                "left": 304,
+                "top": 828,
+                "width": 108,
+                "height": 116
+              }
+            }
+          ]
+        },
+        {
+          "boardId": "nightcarnival",
+          "hideId": "nightcarnival-detectives-hide-2",
+          "neighbors": [
+            {
+              "sourceId": "source-child",
+              "head": {
+                "left": 1732,
+                "top": 264,
+                "width": 106,
+                "height": 114
+              }
+            },
+            {
+              "sourceId": "neighbor-1",
+              "head": {
+                "left": 1528,
+                "top": 274,
+                "width": 116,
+                "height": 124
+              }
+            },
+            {
+              "sourceId": "neighbor-2",
+              "head": {
+                "left": 2042,
+                "top": 382,
+                "width": 114,
+                "height": 122
+              }
+            }
+          ]
+        },
+        {
+          "boardId": "nightcarnival",
+          "hideId": "nightcarnival-detectives-hide-3",
+          "neighbors": [
+            {
+              "sourceId": "source-child",
+              "head": {
+                "left": 2592,
+                "top": 886,
+                "width": 142,
+                "height": 142
+              }
+            },
+            {
+              "sourceId": "neighbor-1",
+              "head": {
+                "left": 2400,
+                "top": 906,
+                "width": 126,
+                "height": 122
+              }
+            },
+            {
+              "sourceId": "neighbor-2",
+              "head": {
+                "left": 2868,
+                "top": 858,
+                "width": 160,
+                "height": 150
+              }
+            },
+            {
+              "sourceId": "neighbor-3",
+              "head": {
+                "left": 2936,
+                "top": 1144,
+                "width": 136,
+                "height": 154
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

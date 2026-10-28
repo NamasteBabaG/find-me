@@ -1,7 +1,6 @@
 import { INTEGRATED_COLLECTION_BOARDS, INTEGRATED_WIZARD_CATALOG } from "../../../content/adventures/wizard-integrated-release";
 import { DETECTIVES_SCENE_VERSION, INTEGRATED_COLLECTION_VERSION } from "../../domain/scene/local-patch-versions";
-import { DETECTIVE_SOURCE_BOARDS, DETECTIVE_SOURCE_RELEASE } from "../../../content/detectives/source-release";
-import { DETECTIVE_IDENTITY_STYLE_SOURCES, DETECTIVE_IDENTITY_STYLE_CATALOG_SHA256 } from "../../../content/detectives/identity-style-release";
+import { detectiveFamilyForBoard, detectiveFamilyForWorld, type DetectiveWorld } from "../../../content/detectives/families";
 import { cropOf } from "../../domain/scene/local-patch-hides";
 import { localPatchBoardForVersion } from "../../domain/scene/local-patch-catalog";
 import { readBoardConditionedCatalog } from "./board-conditioned-catalog";
@@ -14,8 +13,9 @@ export async function identityStyleCatalogSha256(boardSlug: string, sceneVersion
     throw Error("IDENTITY_STYLE_CATALOG: unknown pinned board/version");
   }
   if (sceneVersion === DETECTIVES_SCENE_VERSION) {
-    if (!detectiveIdentityStyleSources().some(row => row.boardId === boardSlug)) throw Error("IDENTITY_STYLE_CATALOG: unknown Detective source");
-    return DETECTIVE_IDENTITY_STYLE_CATALOG_SHA256;
+    const family = detectiveFamilyForBoard(boardSlug);
+    if (!detectiveIdentityStyleSources(family.worldSlug).some(row => row.boardId === boardSlug)) throw Error("IDENTITY_STYLE_CATALOG: unknown Detective source");
+    return family.styleSha256;
   }
   const selected = INTEGRATED_WIZARD_CATALOG.boards.find(plan => plan.boardSlug === boardSlug);
   if (sceneVersion !== INTEGRATED_COLLECTION_VERSION || selected?.worldSlug !== "kingdom"
@@ -38,11 +38,11 @@ export async function identityStyleCatalogSha256(boardSlug: string, sceneVersion
 
 /** Independently reconstruct the installed recipe before a new Detective atlas.
  * Source metadata alone cannot redirect this to another family or private file. */
-export function detectiveIdentityStyleSources() {
-  const sources = DETECTIVE_IDENTITY_STYLE_SOURCES;
+export function detectiveIdentityStyleSources(world: DetectiveWorld = "journey") {
+  const family = detectiveFamilyForWorld(world), sources = family.styles;
   if (sources.length !== 9 || new Set(sources.map(row => row.boardId)).size !== 9) throw Error("IDENTITY_STYLE_CATALOG: nine Detective sources required");
   for (const [index, source] of sources.entries()) {
-    const board = DETECTIVE_SOURCE_BOARDS[index], crop = source.crop;
+    const board = family.sources[index], crop = source.crop;
     if (!board || source.boardId !== board.board || source.art !== board.path || source.sha256 !== board.sha256
       || source.width !== board.width || source.height !== board.height
       || ![crop.left, crop.top, crop.width, crop.height].every(Number.isSafeInteger)
@@ -50,8 +50,8 @@ export function detectiveIdentityStyleSources() {
       || crop.left + crop.width > source.width || crop.top + crop.height > source.height)
       throw Error("IDENTITY_STYLE_CATALOG: Detective original-person source changed");
   }
-  const hash = sha256Bytes(Buffer.from(JSON.stringify({ version: "journey-detectives-identity-style/v1",
-    sceneVersion: DETECTIVES_SCENE_VERSION, worldSlug: "journey", sourceRelease: DETECTIVE_SOURCE_RELEASE, sources })));
-  if (hash !== DETECTIVE_IDENTITY_STYLE_CATALOG_SHA256) throw Error("IDENTITY_STYLE_CATALOG: Detective recipe digest changed");
+  const hash = sha256Bytes(Buffer.from(JSON.stringify({ version: `${world}-detectives-identity-style/v1`,
+    sceneVersion: DETECTIVES_SCENE_VERSION, worldSlug: world, sourceRelease: family.sourceRelease, sources })));
+  if (hash !== family.styleSha256) throw Error("IDENTITY_STYLE_CATALOG: Detective recipe digest changed");
   return sources;
 }

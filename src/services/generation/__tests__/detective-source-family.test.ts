@@ -118,7 +118,7 @@ describe("authoritative13 source context", () => {
     if (fault === "foreign-board") f.state.game.scenes[0]!.sceneSlug = "castlegate";
     if (fault === "omitted") f.state.game.scenes.pop();
     if (fault === "duplicate") f.state.game.scenes[8] = { ...f.state.game.scenes[0]! };
-    await expect(resolveLocalPatchBoardsForGame(f.tx, f.state.game.id, 13)).rejects.toThrow("exact whole Journey");
+    await expect(resolveLocalPatchBoardsForGame(f.tx, f.state.game.id, 13)).rejects.toThrow("exact whole pinned family");
   });
   it("keeps matching pins readable after sales withdrawal but refuses cross-family level/scene selection", async () => {
     const f = await enrolled(); configuration.LOCAL_PATCH_IDENTITY_SOURCE = "legacy";

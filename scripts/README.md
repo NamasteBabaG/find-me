@@ -8,6 +8,7 @@ private input pictures exist. scripts/ is never imported by production src/.
 
 | Kind | Entry points | Side effects |
 | --- | --- | --- |
+| Kingdom Detective packaging | prepare-kingdom-detectives.mjs <native-source-directory> | Offline hash-verified child-free native illustrations to exact 2x lossless WebP plus source/runtime/style data. Uses content/detectives/kingdom/authoring-v1.json. Never generates identity or changes an existing paid recipe. |
 | Local verification | validate-scenes.ts, validate-adventures.ts, build trace audits | Read-only validation; no paid providers |
 | Retained collection preparation | prepare-retained-collection-repair.ts | Offline, write-once private candidates and admin input from two existing paid raw images; no DB, provider or publication. Accepts a private JSON spec and output directory. Requires explicit native return/core/face rectangles and original raw hashes. Final approval belongs to the normal fenced QA repair worker. |
 | Local album pilot | pilot-test-board.ts, pilot-game.ts | Draws the marked 16:9 dummy board and creates the pilot game in a LOCAL file: database only (refuses anything else); public demo art, no photo, no provider, no money. See docs/ADVENTURE_PILOT_2026-09-14.md |

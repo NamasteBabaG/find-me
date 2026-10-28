@@ -32,8 +32,10 @@ const initial = { js: total("js"), css: total("css") };
 if (initial.js.gzipBytes > budgets.initialJsGzipBytes) problems.push("initial player JS gzip budget exceeded");
 if (initial.css.gzipBytes > budgets.initialCssGzipBytes) problems.push("initial player CSS gzip budget exceeded");
 const worlds = [];
-for (const manifest of ["content/adventures/wizard-refresh-art.json", "content/adventures/wizard-kingdom-art.json"]) {
-  const rows = JSON.parse(readFileSync(manifest, "utf8"));
+for (const manifest of ["content/adventures/wizard-refresh-art.json", "content/adventures/wizard-kingdom-art.json",
+  "content/detectives/source-v1.json", "content/detectives/kingdom/source-v1.json"]) {
+  const data = JSON.parse(readFileSync(manifest, "utf8"));
+  const rows = Array.isArray(data) ? data : data.boards;
   if (rows.length !== 9) throw Error("Expected nine frozen public boards per active world");
   const boards = [];
   for (const row of rows) {
@@ -42,6 +44,7 @@ for (const manifest of ["content/adventures/wizard-refresh-art.json", "content/a
     if (createHash("sha256").update(bytes).digest("hex") !== row.sha256) throw Error("Frozen public board changed");
     const metadata = await sharp(bytes).metadata();
     if (!metadata.width || !metadata.height) throw Error("Board dimensions unavailable");
+    if ((row.width !== undefined && row.width !== metadata.width) || (row.height !== undefined && row.height !== metadata.height)) throw Error("Frozen board dimensions changed");
     const rgbaBytes = metadata.width * metadata.height * 4;
     if (bytes.length > budgets.boardEncodedBytes) problems.push(`board transfer budget exceeded: ${row.path}`);
     if (rgbaBytes > budgets.boardDecodedRgbaBytes) problems.push(`board decoded-pixel budget exceeded: ${row.path}`);

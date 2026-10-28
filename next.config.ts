@@ -8,6 +8,9 @@ const tracingExcludedDirectories = ["work", "storage", "assets", "output", "tmp"
 const refreshedCollectionArtPath = "content/adventures/wizard-refresh-art.json";
 const collectionArtPath = "content/adventures/wizard-art.json";
 const kingdomCollectionArtPath = "content/adventures/wizard-kingdom-art.json";
+const kingdomDetectiveArtPath = "content/detectives/kingdom/source-v1.json";
+const kingdomDetectiveArt = JSON.parse(readFileSync(kingdomDetectiveArtPath, "utf8")) as { boards: { path: string; sha256: string }[] };
+if (kingdomDetectiveArt.boards.length !== 9 || new Set(kingdomDetectiveArt.boards.map(row=>row.path)).size !== 9 || kingdomDetectiveArt.boards.some(row=>!/^public\/scenes\/kingdom-[a-z0-9-]+-detectives-v1\/base\.webp$/.test(row.path) || !/^[a-f0-9]{64}$/.test(row.sha256))) throw Error("Nine hash-bound Kingdom Detective sources required");
 const detectiveArtPath = "content/detectives/source-v1.json";
 const detectiveArt = JSON.parse(readFileSync(detectiveArtPath, "utf8")) as { boards: { path: string; sha256: string }[] };
 if (detectiveArt.boards.length !== 9 || new Set(detectiveArt.boards.map(row => row.path)).size !== 9
@@ -84,7 +87,7 @@ const nextConfig: NextConfig = {
   outputFileTracingIncludes: {
     // Public Supabase CA. Prisma's generated Postgres schema resolves the
     // strict-TLS URL sslcert=../supabase-root-ca.crt from prisma/generated.
-    "/*": ["prisma/supabase-root-ca.crt", ...databaseSchemaTrace, activeBoardCatalogPath, ...activeBoardAssetPaths, localPatchArtPath, ...localPatchArtPaths, collectionArtPath, refreshedCollectionArtPath, kingdomCollectionArtPath, detectiveArtPath].map(file => `./${file}`),
+    "/*": ["prisma/supabase-root-ca.crt", ...databaseSchemaTrace, activeBoardCatalogPath, ...activeBoardAssetPaths, localPatchArtPath, ...localPatchArtPaths, collectionArtPath, refreshedCollectionArtPath, kingdomCollectionArtPath, detectiveArtPath, kingdomDetectiveArtPath].map(file => `./${file}`),
   },
   outputFileTracingExcludes: {
     // Local-only preview routes and Prisma's dotenv fallback otherwise cause

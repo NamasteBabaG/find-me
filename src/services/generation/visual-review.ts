@@ -35,7 +35,7 @@ export function prepareVisualReview(question: VisualReviewQuestion): PreparedVis
   const policy = question.combined ? (singleVisualReviewEffort(question.combined) === "medium" ? singleMediumReviewPolicy(question.tier) : singleLowReviewPolicy(question.tier)) : visualReviewPolicy(question.role, question.effort, question.judge, question.transport, question.tier);
   if (!question.prompt.trim() || question.images.length < 1 || question.images.length > 30
     || question.labels.length !== question.images.length || question.labels.some(l => !l.trim())
-    || question.images.some(b => !b.length || b.length > 5 * 1024 * 1024)) throw Error("Invalid visual review evidence");
+    || question.images.some(b => !b.length || b.length > 5 * 1024 * 1024)) throw Error(`Invalid visual review evidence: ${question.images.length} images, ${question.labels.length} labels; bytes=${question.images.map(b=>b.length).join(',')}`);
   const images = question.images.map(b => Buffer.from(b)), labels = [...question.labels];
   const fingerprint = sha(JSON.stringify({ policy, prompt: question.prompt, labels, images: images.map(sha) }));
   return { ...question, images, labels, policy, fingerprint };

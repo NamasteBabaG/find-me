@@ -8,7 +8,7 @@ import staged from "./source-v1.json";
 import {DETECTIVE_SOURCE_BOARDS} from "./source-release";
 import {DETECTIVE_ADVENTURE_CATALOG,DETECTIVE_PATCH_BOARDS,DETECTIVE_SOURCE_NEIGHBORS} from "./runtime-release";
 import {DETECTIVE_IDENTITY_STYLE_CATALOG_SHA256,DETECTIVE_IDENTITY_STYLE_SOURCES} from "./identity-style-release";
-import {DETECTIVE_RELEASES,JOURNEY_DETECTIVE_RUNTIME_RELEASE} from "../worlds/detective-releases";
+import {DETECTIVE_RELEASES,JOURNEY_DETECTIVE_RUNTIME_RELEASE,KINGDOM_DETECTIVE_RUNTIME_RELEASE} from "../worlds/detective-releases";
 import {INTEGRATED_COLLECTION_BOARDS,INTEGRATED_WIZARD_CATALOG} from "../adventures/wizard-integrated-release";
 import {findScene,DETECTIVE_SCENES} from "../scenes";
 import {detectiveSceneRelease} from "./scene-release";
@@ -26,7 +26,7 @@ describe("prospective Detective content is source-bound and complete",()=>{
  it("preserves the immutable staged snapshot alongside the separately qualified runtime entry",async()=>{
   const bytes=await readFile(path.join(process.cwd(),"content/detectives/source-v1.json"));
   expect(createHash("sha256").update(bytes).digest("hex")).toBe("1f93f66b543d71d4b97196ec202c499d7a81f0bed233e188887e1b12b4771d02");
-  expect(staged.runtimeReady).toBe(false);expect(DETECTIVE_RELEASES).toEqual([JOURNEY_DETECTIVE_RUNTIME_RELEASE]);
+  expect(staged.runtimeReady).toBe(false);expect(DETECTIVE_RELEASES).toEqual([JOURNEY_DETECTIVE_RUNTIME_RELEASE,KINGDOM_DETECTIVE_RUNTIME_RELEASE]);
   expect(JOURNEY_DETECTIVE_RUNTIME_RELEASE).toEqual({worldSlug:"journey",styleVersion:"local-patch-world-v1",sceneVersion:13});
  });
  it("verifies all9 actual Detective masters and measured identity contexts",async()=>{
@@ -149,10 +149,10 @@ describe("prospective Detective content is source-bound and complete",()=>{
   })};
   expect(()=>attachAdventureBook(config,returnOnly,slugs)).toThrow("adventure:unsafe-layout:hide-1");
  });
- it("never supplies Detective content for unknown/Kingdom boards or changes old default/v12 selections",()=>{
+ it("selects the explicit new Kingdom family, rejects unknown versions and preserves default/v12 selections",()=>{
   const legacy=findScene("newyork")!;expect(legacy.version).toBe(4);expect(findScene("newyork",12)?.art.base).not.toMatch(/detectives/);
-  expect(findScene("castlegate",13)).toBeUndefined();expect(findScene("newyork",999)).toBeUndefined();
-  expect(()=>detectiveSceneRelease(findScene("castlegate"))).toThrow(/unknown family/);
+  expect(findScene("castlegate",13)?.art.base).toContain("kingdom-castlegate-detectives-v1");expect(findScene("newyork",999)).toBeUndefined();
+  expect(()=>detectiveSceneRelease(findScene("beyondstars"))).toThrow(/unknown/);
   expect(INTEGRATED_COLLECTION_BOARDS.every(b=>!b.art.includes("detectives"))).toBe(true);
   expect(INTEGRATED_WIZARD_CATALOG.boards.every(b=>b.status==="ready" && b.sceneVersion===12)).toBe(true);
  });

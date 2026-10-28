@@ -1,0 +1,119 @@
+[
+  {
+    "boardId": "castlegate",
+    "art": "public/scenes/kingdom-castlegate-detectives-v1/base.webp",
+    "sha256": "8239c9d24e8550a8b3a147b813e77ad41c4c491f66d9d6bb6ee07889f15397de",
+    "width": 3344,
+    "height": 1882,
+    "crop": {
+      "left": 560,
+      "top": 1114,
+      "width": 512,
+      "height": 768
+    }
+  },
+  {
+    "boardId": "fairyforest",
+    "art": "public/scenes/kingdom-fairyforest-detectives-v1/base.webp",
+    "sha256": "8ff866ee5b65e0763bda3b3c907c07b278242cd9cdbd8773e362956f2a2b4788",
+    "width": 3344,
+    "height": 1882,
+    "crop": {
+      "left": 1258,
+      "top": 0,
+      "width": 512,
+      "height": 768
+    }
+  },
+  {
+    "boardId": "dragoncave",
+    "art": "public/scenes/kingdom-dragoncave-detectives-v1/base.webp",
+    "sha256": "8cab3039d72a220e944dba8562472d127f1721c072d00e275c12b997b7ebae04",
+    "width": 3344,
+    "height": 1882,
+    "crop": {
+      "left": 322,
+      "top": 380,
+      "width": 512,
+      "height": 768
+    }
+  },
+  {
+    "boardId": "icepalace",
+    "art": "public/scenes/kingdom-icepalace-detectives-v1/base.webp",
+    "sha256": "63c936d973803b001146f5448b006cafb030d50d8d6a436ef9043e91399e0b41",
+    "width": 3344,
+    "height": 1882,
+    "crop": {
+      "left": 334,
+      "top": 460,
+      "width": 512,
+      "height": 768
+    }
+  },
+  {
+    "boardId": "underwater",
+    "art": "public/scenes/kingdom-underwater-detectives-v1/base.webp",
+    "sha256": "0a26960579ce6e604bd123b95e6adf3baaff2aee3f63c4dfa8c7584aa16294a0",
+    "width": 3344,
+    "height": 1882,
+    "crop": {
+      "left": 0,
+      "top": 632,
+      "width": 512,
+      "height": 768
+    }
+  },
+  {
+    "boardId": "cloudcity",
+    "art": "public/scenes/kingdom-cloudcity-detectives-v1/base.webp",
+    "sha256": "68457bc37a4c2a673ea6a089826e90e93cc6bc572d21973362d988155beff136",
+    "width": 3344,
+    "height": 1882,
+    "crop": {
+      "left": 124,
+      "top": 854,
+      "width": 512,
+      "height": 768
+    }
+  },
+  {
+    "boardId": "sweetworkshop",
+    "art": "public/scenes/kingdom-sweetworkshop-detectives-v1/base.webp",
+    "sha256": "fd3e5da18f9cabe47104b3905ba2701e93faa050790fe1993f7e4ee5f6a08c7a",
+    "width": 3344,
+    "height": 1882,
+    "crop": {
+      "left": 960,
+      "top": 576,
+      "width": 512,
+      "height": 768
+    }
+  },
+  {
+    "boardId": "giantlibrary",
+    "art": "public/scenes/kingdom-giantlibrary-detectives-v1/base.webp",
+    "sha256": "2ac1b1f2ac460036802a33c4d95f54c288b2b7a149d7bfe2d4822886450c50a5",
+    "width": 3344,
+    "height": 1882,
+    "crop": {
+      "left": 700,
+      "top": 524,
+      "width": 512,
+      "height": 768
+    }
+  },
+  {
+    "boardId": "nightcarnival",
+    "art": "public/scenes/kingdom-nightcarnival-detectives-v1/base.webp",
+    "sha256": "3be217dd23a9b2d18095735772b14f4249b340646e139ed87c61d5c9027d0bb1",
+    "width": 3344,
+    "height": 1882,
+    "crop": {
+      "left": 530,
+      "top": 516,
+      "width": 512,
+      "height": 768
+    }
+  }
+]

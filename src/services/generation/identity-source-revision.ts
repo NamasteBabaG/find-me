@@ -84,7 +84,7 @@ async function configuredSource(c: Container, s: Awaited<ReturnType<typeof sourc
   demand(c.avatars.id === "openai" && c.avatars.createCharacter && env().OPENAI_API_KEY?.trim(), "configured existing QA image/review providers required");
   await assertGenerationSpendAllowed(c, s.game.ownerId!);
   const world = worldsOwned(s.game.scenes.map(scene => scene.sceneSlug))[0]!;
-  const atlas = await buildBoardWizardIdentityStyle(undefined, "board-matched-identity/v6", world.slug === "kingdom" ? "kingdom" : "journey");
+  const atlas = await buildBoardWizardIdentityStyle(undefined, "board-matched-identity/v6", world.slug === "kingdom" ? "kingdom" : "journey", undefined, s.game.scenes[0]?.sceneVersion === 13 ? {sceneVersion:13} : undefined);
   demand(atlas.catalogSha256 === s.provenance.style.catalogSha256 && atlas.atlasSha256 === s.provenance.style.atlasSha256, "retained board style changed");
   return atlas;
 }

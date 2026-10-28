@@ -4,6 +4,9 @@ import { FULL_SOURCE_STRICT_RESPONSE_FORMAT } from "../../infra/generation/ident
 import { localPatchFamilyForVersion } from "../../domain/scene/local-patch-family";
 import { DETECTIVES_SCENE_VERSION } from "../../domain/scene/local-patch-versions";
 import { DETECTIVE_IDENTITY_STYLE_CATALOG_SHA256 } from "../../../content/detectives/identity-style-release";
+import { KINGDOM_DETECTIVE_IDENTITY_STYLE_CATALOG_SHA256 } from "../../../content/detectives/kingdom/identity-style-release";
+import { sourcePlacementReleaseOf } from './source-placement-release';
+const detectiveStyleHashes: readonly string[] = [DETECTIVE_IDENTITY_STYLE_CATALOG_SHA256, KINGDOM_DETECTIVE_IDENTITY_STYLE_CATALOG_SHA256];
 import { childBodyDirection } from "../../domain/child-body";
 import sharp from "sharp";
 import { z } from "zod";
@@ -193,7 +196,11 @@ export async function reviewBoardWizardIdentity(deps: {
   const fullSource = provenance.style.version === "board-matched-identity/v6";
   demand(!fullSource || localPatchFamilyForVersion(input.contentVersion)?.capabilities.fullSourceIdentity, "Full-source identity is qualified only for v12 or the separately pinned Detective family");
   demand(input.contentVersion !== DETECTIVES_SCENE_VERSION || fullSource
-    && provenance.style.catalogSha256 === DETECTIVE_IDENTITY_STYLE_CATALOG_SHA256, "Detective identity requires its full-source style catalog");
+    && detectiveStyleHashes.includes(provenance.style.catalogSha256), "Detective identity requires its full-source style catalog");
+  if (input.contentVersion === DETECTIVES_SCENE_VERSION && provenance.style.catalogSha256 === KINGDOM_DETECTIVE_IDENTITY_STYLE_CATALOG_SHA256) {
+    const family=await sourcePlacementReleaseOf(deps.db,input.gameId);
+    demand(family?.baseSceneVersion===13 && family.worldSlug==='kingdom' && family.identityStyleSha256===provenance.style.catalogSha256,'Kingdom identity requires its sealed source family');
+  }
   const croppedPhoto = await prepareCharacterPhoto(input.photo, provenance.crop as CropBox | null, 512);
   const images: Buffer[] = await Promise.all([croppedPhoto, input.sheet, input.atlas].map((png, i) => sharp(png, { limitInputPixels: 25_000_000 })
     .rotate().resize(i === 0 ? 512 : 1024, i === 0 ? 512 : 1024, { fit: "inside" }).flatten({ background: "#808080" }).png().toBuffer()));
@@ -507,7 +514,7 @@ export function identityReceiptReadyForPublication(value: unknown, contentVersio
   // v12 accepts its integrated style (v4) and the same style with the reference's own hair (v5).
   const style = receipt.provenance.style.version;
   if (contentVersion === DETECTIVES_SCENE_VERSION && (!isFullSourceGate(receipt.version)
-    || receipt.provenance.style.catalogSha256 !== DETECTIVE_IDENTITY_STYLE_CATALOG_SHA256)) return false;
+    || !detectiveStyleHashes.includes(receipt.provenance.style.catalogSha256))) return false;
   if (isFullSourceGate(receipt.version)) return !!localPatchFamilyForVersion(contentVersion)?.capabilities.fullSourceIdentity && style === "board-matched-identity/v6"
     && receipt.approved && fullSourceChecksSchema.safeParse(receipt.checks).success
     && Object.values(receipt.checks!).every(check => check === "pass")

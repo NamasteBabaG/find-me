@@ -1,4 +1,4 @@
-import { DETECTIVE_PATCH_BOARDS } from "../../../content/detectives/runtime-release";
+import { ALL_DETECTIVE_PATCH_BOARDS as DETECTIVE_PATCH_BOARDS } from "../../../content/detectives/families";
 import { REFRESHED_COLLECTION_BOARDS } from "../../../content/adventures/wizard-refresh-release";
 import { INTEGRATED_COLLECTION_BOARDS } from "../../../content/adventures/wizard-integrated-release";
 import { isCollectionVersion, REFRESHED_COLLECTION_VERSION, INTEGRATED_COLLECTION_VERSION, DETECTIVES_SCENE_VERSION } from "./local-patch-versions";

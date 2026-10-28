@@ -1,3 +1,4 @@
+import { KINGDOM_DETECTIVE_ADVENTURE_CATALOG } from "../content/detectives/kingdom/runtime-release";
 import path from "node:path";
 import { ADVENTURE_PILOT, ADVENTURE_TEST_BOARD } from "../content/adventures";
 import { ADVENTURE_THREE_BOARDS } from "../content/adventures/three-boards";
@@ -10,8 +11,9 @@ import { DETECTIVE_ADVENTURE_CATALOG } from "../content/detectives/runtime-relea
 import { validateAdventureAssets } from "../src/services/adventure-content.service";
 
 const publicRoot = path.join(process.cwd(), "public");
-void Promise.all([validateAdventureAssets(ADVENTURE_PILOT, publicRoot), validateAdventureAssets(ADVENTURE_TEST_BOARD, publicRoot), validateAdventureAssets(ADVENTURE_THREE_BOARDS, publicRoot),validateAdventureAssets(ADVENTURE_EXPANDED_BOARDS,publicRoot),validateAdventureAssets(ADVENTURE_DENSITY_BOARDS,publicRoot),validateAdventureAssets(WIZARD_ADVENTURE_CATALOG,publicRoot),validateAdventureAssets(REFRESHED_WIZARD_CATALOG,publicRoot),validateAdventureAssets(INTEGRATED_WIZARD_CATALOG,publicRoot),validateAdventureAssets(DETECTIVE_ADVENTURE_CATALOG,publicRoot)])
-  .then(([pilot, test, three,expanded,density,wizard,refreshed,integrated,detectives]) => {
+void Promise.all([validateAdventureAssets(ADVENTURE_PILOT, publicRoot), validateAdventureAssets(ADVENTURE_TEST_BOARD, publicRoot), validateAdventureAssets(ADVENTURE_THREE_BOARDS, publicRoot),validateAdventureAssets(ADVENTURE_EXPANDED_BOARDS,publicRoot),validateAdventureAssets(ADVENTURE_DENSITY_BOARDS,publicRoot),validateAdventureAssets(WIZARD_ADVENTURE_CATALOG,publicRoot),validateAdventureAssets(REFRESHED_WIZARD_CATALOG,publicRoot),validateAdventureAssets(INTEGRATED_WIZARD_CATALOG,publicRoot),validateAdventureAssets(DETECTIVE_ADVENTURE_CATALOG,publicRoot),validateAdventureAssets(KINGDOM_DETECTIVE_ADVENTURE_CATALOG,publicRoot)])
+  .then(([pilot, test, three,expanded,density,wizard,refreshed,integrated,detectives,kingdomDetectives]) => {
+    console.log(`Kingdom Detectives: ${kingdomDetectives.ready} boards, 27 hides, 54 discoveries; exact 2x native raster, no native-4K claim.`);
     console.log(`Detectives scene13: ${detectives.ready} actual native masters,27 prospective hides,54 mapped discoveries; runtime/output qualification and sales admission remain separate.`);
     console.log(`Adventure content: ${pilot.planned} planned, ${pilot.ready} ready. Planned boards are NOT playable or purchasable.`);
     console.log(`Test board: ${test.ready} ready dummy board (art bytes, hash and size verified). It is for the local pilot only, never sold.`);

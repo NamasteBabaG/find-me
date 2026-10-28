@@ -1,0 +1,1785 @@
+{
+  "version": "kingdom-detectives-source/v1",
+  "worldSlug": "kingdom",
+  "runtimeReady": false,
+  "boards": [
+    {
+      "board": "castlegate",
+      "path": "public/scenes/kingdom-castlegate-detectives-v1/base.webp",
+      "sha256": "8239c9d24e8550a8b3a147b813e77ad41c4c491f66d9d6bb6ee07889f15397de",
+      "width": 3344,
+      "height": 1882,
+      "definition": {
+        "board": "castlegate",
+        "art": "public/scenes/kingdom-castlegate-detectives-v1/base.webp",
+        "ground": "sunlit dry castle courtyard paving, shallow steps and flower planters",
+        "sittable": true,
+        "wardrobe": "Age-appropriate practical fantasy clothing from this board. Preserve the reference child face, hair and age. Matte hand-painted fabric and skin; no glow or photographic smoothing.",
+        "hides": [
+          {
+            "id": "castlegate-detectives-hide-1",
+            "left": 560,
+            "top": 1114,
+            "pose": "kneeling",
+            "targetId": "hide-1",
+            "wardrobe": "Muted slate-blue tunic, ochre belt, brown soft trousers and practical brown child boots.",
+            "mask": {
+              "left": 108,
+              "top": 298,
+              "width": 292,
+              "height": 370
+            },
+            "returnRect": {
+              "left": 84,
+              "top": 274,
+              "width": 340,
+              "height": 418
+            },
+            "hint": {
+              "en": "Look beside the fountain, carrying a wooden bucket.",
+              "he": "חפשו ליד המזרקה, עם דלי העץ."
+            },
+            "placement": {
+              "depth": "near",
+              "standingHeightPx": 476,
+              "support": "Replace the dark-haired blue-clad kneeling bucket carrier completely, keeping the bucket, fountain and water intact. Both knees/shins rest on the paving.",
+              "lighting": "Warm late-afternoon courtyard light, soft foliage shadows, matte painted faces; no face spotlight.",
+              "occlusion": "Preserve all neighboring faces, hands, shared props, rails and foreground occluders. Replace only the selected source child.",
+              "comparators": "Keep the original source child body scale and supported pose. Match adjacent people at the same depth; preserve reference face, hair and age."
+            }
+          },
+          {
+            "id": "castlegate-detectives-hide-2",
+            "left": 1246,
+            "top": 508,
+            "pose": "crouching",
+            "targetId": "hide-2",
+            "wardrobe": "Dusty blue short jacket, cream shirt, dark olive child trousers and soft brown boots.",
+            "mask": {
+              "left": 176,
+              "top": 218,
+              "width": 160,
+              "height": 330
+            },
+            "returnRect": {
+              "left": 56,
+              "top": 194,
+              "width": 414,
+              "height": 378
+            },
+            "hint": {
+              "en": "Look among the friends around the friendly dog.",
+              "he": "חפשו בין החברים שסביב הכלב הידידותי."
+            },
+            "placement": {
+              "depth": "middle",
+              "standingHeightPx": 436,
+              "support": "Replace the blond blue-clad child bending beside the dog, including hair, head, torso and hands; keep the dog, neighboring child hands and flowers intact.",
+              "lighting": "Warm late-afternoon courtyard light, soft foliage shadows, matte painted faces; no face spotlight.",
+              "occlusion": "Preserve all neighboring faces, hands, shared props, rails and foreground occluders. Replace only the selected source child.",
+              "comparators": "Keep the original source child body scale and supported pose. Match adjacent people at the same depth; preserve reference face, hair and age."
+            }
+          },
+          {
+            "id": "castlegate-detectives-hide-3",
+            "left": 2484,
+            "top": 1114,
+            "pose": "walking",
+            "targetId": "hide-3",
+            "wardrobe": "Muted cobalt-blue tunic with brass belt, slate trousers and brown child boots.",
+            "mask": {
+              "left": 136,
+              "top": 336,
+              "width": 240,
+              "height": 368
+            },
+            "returnRect": {
+              "left": 112,
+              "top": 208,
+              "width": 378,
+              "height": 520
+            },
+            "hint": {
+              "en": "Look beside the rolling wooden hoop.",
+              "he": "חפשו ליד חישוק העץ המתגלגל."
+            },
+            "placement": {
+              "depth": "near",
+              "standingHeightPx": 444,
+              "support": "Replace the blue-clad child rolling the hoop; keep the hoop and opposite child connected and unchanged. Both shoes contact the paving naturally.",
+              "lighting": "Warm late-afternoon courtyard light, soft foliage shadows, matte painted faces; no face spotlight.",
+              "occlusion": "Preserve all neighboring faces, hands, shared props, rails and foreground occluders. Replace only the selected source child.",
+              "comparators": "Keep the original source child body scale and supported pose. Match adjacent people at the same depth; preserve reference face, hair and age."
+            }
+          }
+        ]
+      }
+    },
+    {
+      "board": "fairyforest",
+      "path": "public/scenes/kingdom-fairyforest-detectives-v1/base.webp",
+      "sha256": "8ff866ee5b65e0763bda3b3c907c07b278242cd9cdbd8773e362956f2a2b4788",
+      "width": 3344,
+      "height": 1882,
+      "definition": {
+        "board": "fairyforest",
+        "art": "public/scenes/kingdom-fairyforest-detectives-v1/base.webp",
+        "ground": "mossy shallow forest paths, low wooden bridges and dry picnic stones",
+        "sittable": true,
+        "wardrobe": "Age-appropriate practical fantasy clothing from this board. Preserve the reference child face, hair and age. Matte hand-painted fabric and skin; no glow or photographic smoothing.",
+        "hides": [
+          {
+            "id": "fairyforest-detectives-hide-1",
+            "left": 1258,
+            "top": 0,
+            "pose": "peeking",
+            "targetId": "hide-1",
+            "wardrobe": "Cream linen shirt, olive woodland vest and muted blue trousers.",
+            "mask": {
+              "left": 122,
+              "top": 224,
+              "width": 210,
+              "height": 302
+            },
+            "returnRect": {
+              "left": 98,
+              "top": 200,
+              "width": 258,
+              "height": 350
+            },
+            "hint": {
+              "en": "Look inside the leaf glider beside the mushroom home.",
+              "he": "חפשו בתוך דאון העלה ליד בית הפטרייה."
+            },
+            "placement": {
+              "depth": "deep",
+              "standingHeightPx": 360,
+              "support": "Lean over the upper leaf glider rail; retain leaf wings, rail and supported seated body.",
+              "lighting": "Filtered green woodland daylight with warm door lanterns, soft cool foliage shadows and no portrait glow.",
+              "occlusion": "Preserve all neighboring faces, hands, shared props, rails and foreground occluders. Replace only the selected source child.",
+              "comparators": "Keep the original source child body scale and supported pose. Match adjacent people at the same depth; preserve reference face, hair and age."
+            }
+          },
+          {
+            "id": "fairyforest-detectives-hide-2",
+            "left": 0,
+            "top": 1114,
+            "pose": "crouching",
+            "targetId": "hide-2",
+            "wardrobe": "Cream rolled-sleeve shirt, moss waistcoat, blue trousers and brown boots.",
+            "mask": {
+              "left": 48,
+              "top": 228,
+              "width": 290,
+              "height": 354
+            },
+            "returnRect": {
+              "left": 24,
+              "top": 204,
+              "width": 418,
+              "height": 402
+            },
+            "hint": {
+              "en": "Look beside the lower leaf glider.",
+              "he": "חפשו לצד דאון העלים התחתון."
+            },
+            "placement": {
+              "depth": "near",
+              "standingHeightPx": 470,
+              "support": "Bend over the lower-left leaf glider on the stone path. Preserve leaf spars, shared tools and neighboring children.",
+              "lighting": "Filtered green woodland daylight with warm door lanterns, soft cool foliage shadows and no portrait glow.",
+              "occlusion": "Preserve all neighboring faces, hands, shared props, rails and foreground occluders. Replace only the selected source child.",
+              "comparators": "Keep the original source child body scale and supported pose. Match adjacent people at the same depth; preserve reference face, hair and age."
+            }
+          },
+          {
+            "id": "fairyforest-detectives-hide-3",
+            "left": 2832,
+            "top": 470,
+            "pose": "standing",
+            "targetId": "hide-3",
+            "wardrobe": "Lavender dress, olive woodland bodice, embroidered sash and brown boots.",
+            "mask": {
+              "left": 188,
+              "top": 156,
+              "width": 294,
+              "height": 380
+            },
+            "returnRect": {
+              "left": 164,
+              "top": 132,
+              "width": 342,
+              "height": 518
+            },
+            "hint": {
+              "en": "Look at the hanging flower lantern on the right.",
+              "he": "חפשו ליד עששית הפרח התלויה מימין."
+            },
+            "placement": {
+              "depth": "middle",
+              "standingHeightPx": 426,
+              "support": "Reach to hang the right flower lantern. Preserve branch, lantern and neighboring hands; feet stay on the path.",
+              "lighting": "Filtered green woodland daylight with warm door lanterns, soft cool foliage shadows and no portrait glow.",
+              "occlusion": "Preserve all neighboring faces, hands, shared props, rails and foreground occluders. Replace only the selected source child.",
+              "comparators": "Keep the original source child body scale and supported pose. Match adjacent people at the same depth; preserve reference face, hair and age."
+            }
+          }
+        ]
+      }
+    },
+    {
+      "board": "dragoncave",
+      "path": "public/scenes/kingdom-dragoncave-detectives-v1/base.webp",
+      "sha256": "8cab3039d72a220e944dba8562472d127f1721c072d00e275c12b997b7ebae04",
+      "width": 3344,
+      "height": 1882,
+      "definition": {
+        "board": "dragoncave",
+        "art": "public/scenes/kingdom-dragoncave-detectives-v1/base.webp",
+        "ground": "layered dry cave stone ledges and safe wooden dragon-care platforms",
+        "sittable": true,
+        "wardrobe": "Age-appropriate practical fantasy clothing from this board. Preserve the reference child face, hair and age. Matte hand-painted fabric and skin; no glow or photographic smoothing.",
+        "hides": [
+          {
+            "id": "dragoncave-detectives-hide-1",
+            "left": 322,
+            "top": 380,
+            "pose": "sitting-cross-legged",
+            "targetId": "hide-1",
+            "wardrobe": "Ochre child tunic over muted brown trousers and small leather boots, simple sleeves suitable for dragon care.",
+            "mask": {
+              "left": 122,
+              "top": 268,
+              "width": 230,
+              "height": 256
+            },
+            "returnRect": {
+              "left": 50,
+              "top": 222,
+              "width": 412,
+              "height": 326
+            },
+            "hint": {
+              "en": "Look beside the little green dragon.",
+              "he": "חפשו ליד הדרקון הירוק הקטן."
+            },
+            "placement": {
+              "depth": "middle",
+              "standingHeightPx": 424,
+              "support": "Replace only the blond mustard-clad child sitting beside the small green dragon. Preserve both nearby children, adult caregiver, dragon paws and the care activity; keep an open three-quarter face.",
+              "lighting": "Dim blue cave shadows with localized amber lantern light only; retain the dark exposure, no daylight or brightened portrait.",
+              "occlusion": "Preserve all neighboring faces, hands, shared props, rails and foreground occluders. Replace only the selected source child.",
+              "comparators": "Keep the original source child body scale and supported pose. Match adjacent people at the same depth; preserve reference face, hair and age."
+            }
+          },
+          {
+            "id": "dragoncave-detectives-hide-2",
+            "left": 1584,
+            "top": 1114,
+            "pose": "kneeling",
+            "targetId": "hide-2",
+            "wardrobe": "Muted ochre field jacket, dark blue child trousers and small brown boots; no armor or adult body.",
+            "mask": {
+              "left": 206,
+              "top": 412,
+              "width": 262,
+              "height": 244
+            },
+            "returnRect": {
+              "left": 26,
+              "top": 388,
+              "width": 466,
+              "height": 292
+            },
+            "hint": {
+              "en": "Look where the cave map is being studied.",
+              "he": "חפשו במקום שבו בודקים את מפת המערה."
+            },
+            "placement": {
+              "depth": "near",
+              "standingHeightPx": 472,
+              "support": "Replace the dark-haired ochre-clad child to the right of the large cave map, supported on knees on the ledge. Preserve the map, the left reader as one connected person and all pointing hands.",
+              "lighting": "Dim blue cave shadows with localized amber lantern light only; retain the dark exposure, no daylight or brightened portrait.",
+              "occlusion": "Preserve all neighboring faces, hands, shared props, rails and foreground occluders. Replace only the selected source child.",
+              "comparators": "Keep the original source child body scale and supported pose. Match adjacent people at the same depth; preserve reference face, hair and age."
+            }
+          },
+          {
+            "id": "dragoncave-detectives-hide-3",
+            "left": 2254,
+            "top": 782,
+            "pose": "walking",
+            "targetId": "hide-3",
+            "wardrobe": "Muted olive knee-length child tunic, brown fitted trousers, small child boots and a modest soft backpack.",
+            "mask": {
+              "left": 206,
+              "top": 242,
+              "width": 212,
+              "height": 278
+            },
+            "returnRect": {
+              "left": 78,
+              "top": 218,
+              "width": 364,
+              "height": 326
+            },
+            "hint": {
+              "en": "Look on the rope bridge near the dragon keeper.",
+              "he": "חפשו על גשר החבלים ליד מטפל הדרקונים."
+            },
+            "placement": {
+              "depth": "middle",
+              "standingHeightPx": 412,
+              "support": "Replace the olive-clad child walking on the lower right bridge, including head, hair and feet. Preserve the red-clad companion, rope knots, rails and neighboring keeper.",
+              "lighting": "Dim blue cave shadows with localized amber lantern light only; retain the dark exposure, no daylight or brightened portrait.",
+              "occlusion": "Preserve all neighboring faces, hands, shared props, rails and foreground occluders. Replace only the selected source child.",
+              "comparators": "Keep the original source child body scale and supported pose. Match adjacent people at the same depth; preserve reference face, hair and age."
+            }
+          }
+        ]
+      }
+    },
+    {
+      "board": "icepalace",
+      "path": "public/scenes/kingdom-icepalace-detectives-v1/base.webp",
+      "sha256": "63c936d973803b001146f5448b006cafb030d50d8d6a436ef9043e91399e0b41",
+      "width": 3344,
+      "height": 1882,
+      "definition": {
+        "board": "icepalace",
+        "art": "public/scenes/kingdom-icepalace-detectives-v1/base.webp",
+        "ground": "solid icy palace courtyard and shallow ice steps, small child skates with real ice contact",
+        "sittable": true,
+        "wardrobe": "Age-appropriate practical fantasy clothing from this board. Preserve the reference child face, hair and age. Matte hand-painted fabric and skin; no glow or photographic smoothing.",
+        "hides": [
+          {
+            "id": "icepalace-detectives-hide-1",
+            "left": 334,
+            "top": 460,
+            "pose": "standing",
+            "targetId": "hide-1",
+            "wardrobe": "Muted sage insulated child coat, burgundy knitted cap, brown scarf, winter trousers and child skates.",
+            "mask": {
+              "left": 136,
+              "top": 236,
+              "width": 234,
+              "height": 300
+            },
+            "returnRect": {
+              "left": 32,
+              "top": 138,
+              "width": 478,
+              "height": 428
+            },
+            "hint": {
+              "en": "Look beside the snowman and the small ice bear.",
+              "he": "חפשו ליד איש השלג ודוב הקרח הקטן."
+            },
+            "placement": {
+              "depth": "middle",
+              "standingHeightPx": 428,
+              "support": "Replace the red-hatted green-coated child beside the snowman, preserving the hat as scene-appropriate headwear over recognizable canonical hair. Preserve snowman, orange nose, other children and carved ice bear.",
+              "lighting": "Cool blue ice reflections balanced by small warm lanterns, matte winter faces and no spotlight.",
+              "occlusion": "Preserve all neighboring faces, hands, shared props, rails and foreground occluders. Replace only the selected source child.",
+              "comparators": "Keep the original source child body scale and supported pose. Match adjacent people at the same depth; preserve reference face, hair and age."
+            }
+          },
+          {
+            "id": "icepalace-detectives-hide-2",
+            "left": 1580,
+            "top": 568,
+            "pose": "crouching",
+            "targetId": "hide-2",
+            "wardrobe": "Dull olive winter jacket, dark blue child trousers, warm brown scarf and small silver-bladed skates.",
+            "mask": {
+              "left": 72,
+              "top": 204,
+              "width": 366,
+              "height": 360
+            },
+            "returnRect": {
+              "left": 48,
+              "top": 54,
+              "width": 422,
+              "height": 534
+            },
+            "hint": {
+              "en": "Look among the friends learning to skate.",
+              "he": "חפשו בין החברים שלומדים להחליק."
+            },
+            "placement": {
+              "depth": "middle",
+              "standingHeightPx": 448,
+              "support": "Replace the olive-coated child balancing on skates at the center, with arms naturally spread and recognizable open three-quarter face. Preserve nearby skaters, tracks and both hand connections.",
+              "lighting": "Cool blue ice reflections balanced by small warm lanterns, matte winter faces and no spotlight.",
+              "occlusion": "Preserve all neighboring faces, hands, shared props, rails and foreground occluders. Replace only the selected source child.",
+              "comparators": "Keep the original source child body scale and supported pose. Match adjacent people at the same depth; preserve reference face, hair and age."
+            }
+          },
+          {
+            "id": "icepalace-detectives-hide-3",
+            "left": 2560,
+            "top": 1088,
+            "pose": "sitting-cross-legged",
+            "targetId": "hide-3",
+            "wardrobe": "Muted red padded child coat, burgundy knitted cap, dark wool trousers, scarf and small insulated boots.",
+            "mask": {
+              "left": 84,
+              "top": 186,
+              "width": 346,
+              "height": 384
+            },
+            "returnRect": {
+              "left": 60,
+              "top": 162,
+              "width": 394,
+              "height": 432
+            },
+            "hint": {
+              "en": "Look beside the blue snowflake cloth.",
+              "he": "חפשו ליד הבד הכחול עם פתיתי השלג."
+            },
+            "placement": {
+              "depth": "near",
+              "standingHeightPx": 484,
+              "support": "Replace the burgundy-hatted red-coated child holding the left side of the snowflake cloth, seated securely on the ice bench. Preserve the partner, cloth motif, lantern and bench edges.",
+              "lighting": "Cool blue ice reflections balanced by small warm lanterns, matte winter faces and no spotlight.",
+              "occlusion": "Preserve all neighboring faces, hands, shared props, rails and foreground occluders. Replace only the selected source child.",
+              "comparators": "Keep the original source child body scale and supported pose. Match adjacent people at the same depth; preserve reference face, hair and age."
+            }
+          }
+        ]
+      }
+    },
+    {
+      "board": "underwater",
+      "path": "public/scenes/kingdom-underwater-detectives-v1/base.webp",
+      "sha256": "0a26960579ce6e604bd123b95e6adf3baaff2aee3f63c4dfa8c7584aa16294a0",
+      "width": 3344,
+      "height": 1882,
+      "definition": {
+        "board": "underwater",
+        "art": "public/scenes/kingdom-underwater-detectives-v1/base.webp",
+        "ground": "solid pink shell walkways and shallow coral steps in a magical underwater town",
+        "sittable": true,
+        "wardrobe": "Age-appropriate practical fantasy clothing from this board. Preserve the reference child face, hair and age. Matte hand-painted fabric and skin; no glow or photographic smoothing.",
+        "hides": [
+          {
+            "id": "underwater-detectives-hide-1",
+            "left": 0,
+            "top": 632,
+            "pose": "crouching",
+            "targetId": "hide-1",
+            "wardrobe": "Muted golden diving jacket, teal child trousers, small breathing pack and transparent round helmet with full crown and canonical hair visible inside.",
+            "mask": {
+              "left": 100,
+              "top": 252,
+              "width": 304,
+              "height": 264
+            },
+            "returnRect": {
+              "left": 76,
+              "top": 228,
+              "width": 352,
+              "height": 312
+            },
+            "hint": {
+              "en": "Look beside the glowing pearl inside the shell.",
+              "he": "חפשו ליד הפנינה הזוהרת שבצדף."
+            },
+            "placement": {
+              "depth": "middle",
+              "standingHeightPx": 430,
+              "support": "Replace the yellow-sleeved child leaning toward the pearl, entirely including the original helmet occupant. Keep the helmet transparent and its air hose physically connected. Preserve pearl, shell, other children and coral.",
+              "lighting": "Soft turquoise underwater light, warm shell lamps and transparent glass helmet reflections; keep the face clear inside the helmet.",
+              "occlusion": "Preserve all neighboring faces, hands, shared props, rails and foreground occluders. Replace only the selected source child.",
+              "comparators": "Keep the original source child body scale and supported pose. Match adjacent people at the same depth; preserve reference face, hair and age."
+            }
+          },
+          {
+            "id": "underwater-detectives-hide-2",
+            "left": 1508,
+            "top": 800,
+            "pose": "standing",
+            "targetId": "hide-2",
+            "wardrobe": "Muted sage diving jacket, dark teal child trousers, compact orange air pack and clear round helmet; practical child boots.",
+            "mask": {
+              "left": 112,
+              "top": 240,
+              "width": 276,
+              "height": 282
+            },
+            "returnRect": {
+              "left": 88,
+              "top": 216,
+              "width": 324,
+              "height": 452
+            },
+            "hint": {
+              "en": "Look at the sea post office beside the octopus.",
+              "he": "חפשו בדואר הימי ליד התמנון."
+            },
+            "placement": {
+              "depth": "middle",
+              "standingHeightPx": 436,
+              "support": "Replace the child on the right handing a letter to the octopus. Preserve octopus arms, letters, basket, nearby child and shell ledge. Keep helmet rim, full hair and face coherent with breathing pack.",
+              "lighting": "Soft turquoise underwater light, warm shell lamps and transparent glass helmet reflections; keep the face clear inside the helmet.",
+              "occlusion": "Preserve all neighboring faces, hands, shared props, rails and foreground occluders. Replace only the selected source child.",
+              "comparators": "Keep the original source child body scale and supported pose. Match adjacent people at the same depth; preserve reference face, hair and age."
+            }
+          },
+          {
+            "id": "underwater-detectives-hide-3",
+            "left": 2784,
+            "top": 598,
+            "pose": "standing",
+            "targetId": "hide-3",
+            "wardrobe": "Muted olive diving coat, dark blue child trousers, mustard air pack, clear glass helmet and brown child boots.",
+            "mask": {
+              "left": 100,
+              "top": 238,
+              "width": 254,
+              "height": 292
+            },
+            "returnRect": {
+              "left": 76,
+              "top": 214,
+              "width": 354,
+              "height": 340
+            },
+            "hint": {
+              "en": "Look inside the glowing shell workshop.",
+              "he": "חפשו בתוך סדנת הצדף המוארת."
+            },
+            "placement": {
+              "depth": "middle",
+              "standingHeightPx": 414,
+              "support": "Replace the left child under the large lower pink shop shell, holding the small glowing shell tool. Preserve the partner, elder, table and lamps. Keep the transparent helmet, air tubes and hair inside physically correct.",
+              "lighting": "Soft turquoise underwater light, warm shell lamps and transparent glass helmet reflections; keep the face clear inside the helmet.",
+              "occlusion": "Preserve all neighboring faces, hands, shared props, rails and foreground occluders. Replace only the selected source child.",
+              "comparators": "Keep the original source child body scale and supported pose. Match adjacent people at the same depth; preserve reference face, hair and age."
+            }
+          }
+        ]
+      }
+    },
+    {
+      "board": "cloudcity",
+      "path": "public/scenes/kingdom-cloudcity-detectives-v1/base.webp",
+      "sha256": "68457bc37a4c2a673ea6a089826e90e93cc6bc572d21973362d988155beff136",
+      "width": 3344,
+      "height": 1882,
+      "definition": {
+        "board": "cloudcity",
+        "art": "public/scenes/kingdom-cloudcity-detectives-v1/base.webp",
+        "ground": "solid cloud terraces and gently arched rainbow walkways with real supported foot contact",
+        "sittable": true,
+        "wardrobe": "Age-appropriate practical fantasy clothing from this board. Preserve the reference child face, hair and age. Matte hand-painted fabric and skin; no glow or photographic smoothing.",
+        "hides": [
+          {
+            "id": "cloudcity-detectives-hide-1",
+            "left": 124,
+            "top": 854,
+            "pose": "standing",
+            "targetId": "hide-1",
+            "wardrobe": "Muted purple travel tunic, blue trousers, brown satchel and soft boots.",
+            "mask": {
+              "left": 90,
+              "top": 228,
+              "width": 238,
+              "height": 310
+            },
+            "returnRect": {
+              "left": 66,
+              "top": 204,
+              "width": 286,
+              "height": 358
+            },
+            "hint": {
+              "en": "Look beside the pinwheel on the left cloud steps.",
+              "he": "חפשו ליד השבשבת במדרגות העננים משמאל."
+            },
+            "placement": {
+              "depth": "middle",
+              "standingHeightPx": 370,
+              "support": "Hold the left pinwheel; preserve pinwheel, rail and supported feet.",
+              "lighting": "Soft high-altitude daylight with pastel cloud reflections and small warm brass lamps, not overexposed faces.",
+              "occlusion": "Preserve all neighboring faces, hands, shared props, rails and foreground occluders. Replace only the selected source child.",
+              "comparators": "Keep the original source child body scale and supported pose. Match adjacent people at the same depth; preserve reference face, hair and age."
+            }
+          },
+          {
+            "id": "cloudcity-detectives-hide-2",
+            "left": 1456,
+            "top": 504,
+            "pose": "walking",
+            "targetId": "hide-2",
+            "wardrobe": "Cream travel shirt, teal waistcoat, blue trousers and soft straw hat.",
+            "mask": {
+              "left": 94,
+              "top": 316,
+              "width": 222,
+              "height": 332
+            },
+            "returnRect": {
+              "left": 70,
+              "top": 292,
+              "width": 270,
+              "height": 380
+            },
+            "hint": {
+              "en": "Look for the children carrying a rolled carpet.",
+              "he": "חפשו ליד הילדים שנושאים שטיח מגולגל."
+            },
+            "placement": {
+              "depth": "middle",
+              "standingHeightPx": 390,
+              "support": "Carry the left end of the rolled carpet; preserve other carrier, carpet and shared hand contact.",
+              "lighting": "Soft high-altitude daylight with pastel cloud reflections and small warm brass lamps, not overexposed faces.",
+              "occlusion": "Preserve all neighboring faces, hands, shared props, rails and foreground occluders. Replace only the selected source child.",
+              "comparators": "Keep the original source child body scale and supported pose. Match adjacent people at the same depth; preserve reference face, hair and age."
+            }
+          },
+          {
+            "id": "cloudcity-detectives-hide-3",
+            "left": 2832,
+            "top": 590,
+            "pose": "standing",
+            "targetId": "hide-3",
+            "wardrobe": "Muted teal travel tunic, cream sleeves, brown satchel and slate trousers.",
+            "mask": {
+              "left": 204,
+              "top": 212,
+              "width": 204,
+              "height": 316
+            },
+            "returnRect": {
+              "left": 180,
+              "top": 188,
+              "width": 252,
+              "height": 364
+            },
+            "hint": {
+              "en": "Look beside the wizard and the transparent magic orbs.",
+              "he": "חפשו ליד המכשף וכדורי הקסם השקופים."
+            },
+            "placement": {
+              "depth": "middle",
+              "standingHeightPx": 370,
+              "support": "Handle the right transparent orb; preserve orb, wizard, neighboring child and pavilion rail.",
+              "lighting": "Soft high-altitude daylight with pastel cloud reflections and small warm brass lamps, not overexposed faces.",
+              "occlusion": "Preserve all neighboring faces, hands, shared props, rails and foreground occluders. Replace only the selected source child.",
+              "comparators": "Keep the original source child body scale and supported pose. Match adjacent people at the same depth; preserve reference face, hair and age."
+            }
+          }
+        ]
+      }
+    },
+    {
+      "board": "sweetworkshop",
+      "path": "public/scenes/kingdom-sweetworkshop-detectives-v1/base.webp",
+      "sha256": "fd3e5da18f9cabe47104b3905ba2701e93faa050790fe1993f7e4ee5f6a08c7a",
+      "width": 3344,
+      "height": 1882,
+      "definition": {
+        "board": "sweetworkshop",
+        "art": "public/scenes/kingdom-sweetworkshop-detectives-v1/base.webp",
+        "ground": "clean solid tiled workshop floor beside low child-height bakery counters",
+        "sittable": true,
+        "wardrobe": "Age-appropriate practical fantasy clothing from this board. Preserve the reference child face, hair and age. Matte hand-painted fabric and skin; no glow or photographic smoothing.",
+        "hides": [
+          {
+            "id": "sweetworkshop-detectives-hide-1",
+            "left": 960,
+            "top": 576,
+            "pose": "peeking",
+            "targetId": "hide-1",
+            "wardrobe": "Blue cotton baker apron over a cream rolled-sleeve shirt.",
+            "mask": {
+              "left": 64,
+              "top": 280,
+              "width": 280,
+              "height": 254
+            },
+            "returnRect": {
+              "left": 40,
+              "top": 200,
+              "width": 452,
+              "height": 358
+            },
+            "hint": {
+              "en": "Look at the child decorating the small cake.",
+              "he": "חפשו ליד קישוט העוגה הקטנה."
+            },
+            "placement": {
+              "depth": "middle",
+              "standingHeightPx": 380,
+              "support": "Decorate the cake from behind the counter; preserve cake, cherries, utensils and worktop contact.",
+              "lighting": "Warm bakery window light and green copper-lamp reflections, natural matte faces rather than glossy doll skin.",
+              "occlusion": "Preserve all neighboring faces, hands, shared props, rails and foreground occluders. Replace only the selected source child.",
+              "comparators": "Keep the original source child body scale and supported pose. Match adjacent people at the same depth; preserve reference face, hair and age."
+            }
+          },
+          {
+            "id": "sweetworkshop-detectives-hide-2",
+            "left": 732,
+            "top": 1114,
+            "pose": "peeking",
+            "targetId": "hide-2",
+            "wardrobe": "Blue baker apron, cream blouse, purple sash and pink cloth headband.",
+            "mask": {
+              "left": 144,
+              "top": 308,
+              "width": 320,
+              "height": 338
+            },
+            "returnRect": {
+              "left": 6,
+              "top": 284,
+              "width": 482,
+              "height": 386
+            },
+            "hint": {
+              "en": "Look at the cake makers near the bottom.",
+              "he": "חפשו ליד מכיני העוגות בתחתית האיור."
+            },
+            "placement": {
+              "depth": "near",
+              "standingHeightPx": 490,
+              "support": "Bend over the lower cake; preserve shared icing tools, cake, worktop and neighboring baker.",
+              "lighting": "Warm bakery window light and green copper-lamp reflections, natural matte faces rather than glossy doll skin.",
+              "occlusion": "Preserve all neighboring faces, hands, shared props, rails and foreground occluders. Replace only the selected source child.",
+              "comparators": "Keep the original source child body scale and supported pose. Match adjacent people at the same depth; preserve reference face, hair and age."
+            }
+          },
+          {
+            "id": "sweetworkshop-detectives-hide-3",
+            "left": 1234,
+            "top": 0,
+            "pose": "standing",
+            "targetId": "hide-3",
+            "wardrobe": "Blue baker apron, cream rolled-sleeve shirt and brown trousers.",
+            "mask": {
+              "left": 136,
+              "top": 104,
+              "width": 214,
+              "height": 368
+            },
+            "returnRect": {
+              "left": 0,
+              "top": 80,
+              "width": 480,
+              "height": 416
+            },
+            "hint": {
+              "en": "Look beside the stack of gifts upstairs.",
+              "he": "חפשו ליד ערימת המתנות בקומה העליונה."
+            },
+            "placement": {
+              "depth": "deep",
+              "standingHeightPx": 400,
+              "support": "Carry the upper stack of gift boxes. Keep the boxes, counter and neighboring bakers unchanged; shoes contact the balcony floor.",
+              "lighting": "Warm bakery window light and green copper-lamp reflections, natural matte faces rather than glossy doll skin.",
+              "occlusion": "Preserve all neighboring faces, hands, shared props, rails and foreground occluders. Replace only the selected source child.",
+              "comparators": "Keep the original source child body scale and supported pose. Match adjacent people at the same depth; preserve reference face, hair and age."
+            }
+          }
+        ]
+      }
+    },
+    {
+      "board": "giantlibrary",
+      "path": "public/scenes/kingdom-giantlibrary-detectives-v1/base.webp",
+      "sha256": "2ac1b1f2ac460036802a33c4d95f54c288b2b7a149d7bfe2d4822886450c50a5",
+      "width": 3344,
+      "height": 1882,
+      "definition": {
+        "board": "giantlibrary",
+        "art": "public/scenes/kingdom-giantlibrary-detectives-v1/base.webp",
+        "ground": "broad solid wooden book stairs, shallow library balconies and safe reading seats",
+        "sittable": true,
+        "wardrobe": "Age-appropriate practical fantasy clothing from this board. Preserve the reference child face, hair and age. Matte hand-painted fabric and skin; no glow or photographic smoothing.",
+        "hides": [
+          {
+            "id": "giantlibrary-detectives-hide-1",
+            "left": 700,
+            "top": 524,
+            "pose": "standing",
+            "targetId": "hide-1",
+            "wardrobe": "Muted green school waistcoat, cream shirt, dark blue trousers and small brown satchel.",
+            "mask": {
+              "left": 104,
+              "top": 210,
+              "width": 208,
+              "height": 412
+            },
+            "returnRect": {
+              "left": 80,
+              "top": 186,
+              "width": 302,
+              "height": 460
+            },
+            "hint": {
+              "en": "Look beside the wizard reading a large book.",
+              "he": "חפשו ליד המכשף שקורא בספר גדול."
+            },
+            "placement": {
+              "depth": "middle",
+              "standingHeightPx": 440,
+              "support": "Stand beside the left wizard on the wooden stairs; preserve wizard, open book, floating books and rail.",
+              "lighting": "Warm golden reading lamps and soft window light, preserve inked facial details, no glowing portrait highlights.",
+              "occlusion": "Preserve all neighboring faces, hands, shared props, rails and foreground occluders. Replace only the selected source child.",
+              "comparators": "Keep the original source child body scale and supported pose. Match adjacent people at the same depth; preserve reference face, hair and age."
+            }
+          },
+          {
+            "id": "giantlibrary-detectives-hide-2",
+            "left": 1710,
+            "top": 592,
+            "pose": "peeking",
+            "targetId": "hide-2",
+            "wardrobe": "Cream school shirt, muted blue vest and brown book satchel.",
+            "mask": {
+              "left": 148,
+              "top": 358,
+              "width": 222,
+              "height": 210
+            },
+            "returnRect": {
+              "left": 124,
+              "top": 334,
+              "width": 270,
+              "height": 258
+            },
+            "hint": {
+              "en": "Look at the reader on the middle book stairs.",
+              "he": "חפשו ליד הקוראים במדרגות הספרים שבמרכז."
+            },
+            "placement": {
+              "depth": "middle",
+              "standingHeightPx": 370,
+              "support": "Lean across an open book on the middle stair landing; preserve book, rail, nearby readers and the supported pose.",
+              "lighting": "Warm golden reading lamps and soft window light, preserve inked facial details, no glowing portrait highlights.",
+              "occlusion": "Preserve all neighboring faces, hands, shared props, rails and foreground occluders. Replace only the selected source child.",
+              "comparators": "Keep the original source child body scale and supported pose. Match adjacent people at the same depth; preserve reference face, hair and age."
+            }
+          },
+          {
+            "id": "giantlibrary-detectives-hide-3",
+            "left": 2304,
+            "top": 1114,
+            "pose": "peeking",
+            "targetId": "hide-3",
+            "wardrobe": "Cream rolled-sleeve shirt, dark blue waistcoat and brown bookbinder apron.",
+            "mask": {
+              "left": 98,
+              "top": 142,
+              "width": 314,
+              "height": 332
+            },
+            "returnRect": {
+              "left": 74,
+              "top": 118,
+              "width": 362,
+              "height": 380
+            },
+            "hint": {
+              "en": "Look at the bookbinders on the lower right.",
+              "he": "חפשו ליד כורכי הספרים מימין למטה."
+            },
+            "placement": {
+              "depth": "near",
+              "standingHeightPx": 500,
+              "support": "Bind a book at the lower-right workbench; preserve tools, open chest, books and adjacent apprentice.",
+              "lighting": "Warm golden reading lamps and soft window light, preserve inked facial details, no glowing portrait highlights.",
+              "occlusion": "Preserve all neighboring faces, hands, shared props, rails and foreground occluders. Replace only the selected source child.",
+              "comparators": "Keep the original source child body scale and supported pose. Match adjacent people at the same depth; preserve reference face, hair and age."
+            }
+          }
+        ]
+      }
+    },
+    {
+      "board": "nightcarnival",
+      "path": "public/scenes/kingdom-nightcarnival-detectives-v1/base.webp",
+      "sha256": "3be217dd23a9b2d18095735772b14f4249b340646e139ed87c61d5c9027d0bb1",
+      "width": 3344,
+      "height": 1882,
+      "definition": {
+        "board": "nightcarnival",
+        "art": "public/scenes/kingdom-nightcarnival-detectives-v1/base.webp",
+        "ground": "dry carnival cobbles, shallow wooden platforms and safe carousel seats",
+        "sittable": true,
+        "wardrobe": "Age-appropriate practical fantasy clothing from this board. Preserve the reference child face, hair and age. Matte hand-painted fabric and skin; no glow or photographic smoothing.",
+        "hides": [
+          {
+            "id": "nightcarnival-detectives-hide-1",
+            "left": 530,
+            "top": 516,
+            "pose": "peeking",
+            "targetId": "hide-1",
+            "wardrobe": "Muted mauve child jacket, dark trousers and small brown boots.",
+            "mask": {
+              "left": 202,
+              "top": 272,
+              "width": 160,
+              "height": 230
+            },
+            "returnRect": {
+              "left": 126,
+              "top": 240,
+              "width": 260,
+              "height": 286
+            },
+            "hint": {
+              "en": "Look among the children watching the shadow theatre.",
+              "he": "חפשו בין הילדים שצופים בתיאטרון הצלליות."
+            },
+            "placement": {
+              "depth": "middle",
+              "standingHeightPx": 414,
+              "support": "Replace the mauve-clad child to the right of the puppet audience, preserving both neighboring audience children, puppet screen and wooden rail. Keep the full face visible above the rail and lower body naturally occluded.",
+              "lighting": "Dark blue evening ambience with amber lantern pools and restrained warm face light; no daylight or portrait spotlight.",
+              "occlusion": "Preserve all neighboring faces, hands, shared props, rails and foreground occluders. Replace only the selected source child.",
+              "comparators": "Keep the original source child body scale and supported pose. Match adjacent people at the same depth; preserve reference face, hair and age."
+            }
+          },
+          {
+            "id": "nightcarnival-detectives-hide-2",
+            "left": 1538,
+            "top": 8,
+            "pose": "sitting-cross-legged",
+            "targetId": "hide-2",
+            "wardrobe": "Muted teal short child jacket, dark navy trousers and small brown shoes; no tall hat that obscures hair.",
+            "mask": {
+              "left": 176,
+              "top": 256,
+              "width": 160,
+              "height": 252
+            },
+            "returnRect": {
+              "left": 152,
+              "top": 232,
+              "width": 208,
+              "height": 300
+            },
+            "hint": {
+              "en": "Look on the carousel beside the winged horse.",
+              "he": "חפשו בקרוסלה ליד הסוס המכונף."
+            },
+            "placement": {
+              "depth": "deep",
+              "standingHeightPx": 410,
+              "support": "Replace the teal-clad child seated on the gold carousel animal. Preserve its pole, saddle, mane, neighboring rider and child hand grip. Keep a complete readable head without cropping hair or balloon interference.",
+              "lighting": "Dark blue evening ambience with amber lantern pools and restrained warm face light; no daylight or portrait spotlight.",
+              "occlusion": "Preserve all neighboring faces, hands, shared props, rails and foreground occluders. Replace only the selected source child.",
+              "comparators": "Keep the original source child body scale and supported pose. Match adjacent people at the same depth; preserve reference face, hair and age."
+            }
+          },
+          {
+            "id": "nightcarnival-detectives-hide-3",
+            "left": 2348,
+            "top": 644,
+            "pose": "standing",
+            "targetId": "hide-3",
+            "wardrobe": "Muted purple child tunic, dark trousers and brown shoes; ordinary child proportions in the warm lantern light.",
+            "mask": {
+              "left": 172,
+              "top": 236,
+              "width": 288,
+              "height": 296
+            },
+            "returnRect": {
+              "left": 36,
+              "top": 212,
+              "width": 448,
+              "height": 344
+            },
+            "hint": {
+              "en": "Look beside the glowing paper butterflies.",
+              "he": "חפשו ליד פרפרי הנייר הזוהרים."
+            },
+            "placement": {
+              "depth": "middle",
+              "standingHeightPx": 432,
+              "support": "Replace the purple-clad child presenting paper butterflies at the magic box, preserving the blue-clad helper, magician, butterfly shapes and box. Keep age-correct hands and a full recognizable three-quarter face.",
+              "lighting": "Dark blue evening ambience with amber lantern pools and restrained warm face light; no daylight or portrait spotlight.",
+              "occlusion": "Preserve all neighboring faces, hands, shared props, rails and foreground occluders. Replace only the selected source child.",
+              "comparators": "Keep the original source child body scale and supported pose. Match adjacent people at the same depth; preserve reference face, hair and age."
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "boundaryHeadZones": [
+    {
+      "board": "castlegate",
+      "sourceArt": "public/scenes/kingdom-castlegate-detectives-v1/base.webp",
+      "sourceSha256": "8239c9d24e8550a8b3a147b813e77ad41c4c491f66d9d6bb6ee07889f15397de",
+      "hides": [
+        {
+          "hideId": "castlegate-detectives-hide-1",
+          "heads": [
+            {
+              "left": 714,
+              "top": 1422,
+              "width": 106,
+              "height": 116
+            },
+            {
+              "left": 542,
+              "top": 1272,
+              "width": 102,
+              "height": 116
+            },
+            {
+              "left": 670,
+              "top": 1240,
+              "width": 74,
+              "height": 86
+            },
+            {
+              "left": 892,
+              "top": 1210,
+              "width": 106,
+              "height": 110
+            }
+          ]
+        },
+        {
+          "hideId": "castlegate-detectives-hide-2",
+          "heads": [
+            {
+              "left": 1448,
+              "top": 734,
+              "width": 108,
+              "height": 118
+            },
+            {
+              "left": 1318,
+              "top": 822,
+              "width": 110,
+              "height": 118
+            },
+            {
+              "left": 1582,
+              "top": 856,
+              "width": 118,
+              "height": 124
+            },
+            {
+              "left": 1738,
+              "top": 828,
+              "width": 118,
+              "height": 130
+            }
+          ]
+        },
+        {
+          "hideId": "castlegate-detectives-hide-3",
+          "heads": [
+            {
+              "left": 2670,
+              "top": 1450,
+              "width": 130,
+              "height": 132
+            },
+            {
+              "left": 2346,
+              "top": 1468,
+              "width": 120,
+              "height": 132
+            },
+            {
+              "left": 2828,
+              "top": 1338,
+              "width": 130,
+              "height": 144
+            },
+            {
+              "left": 3178,
+              "top": 1526,
+              "width": 110,
+              "height": 122
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "board": "fairyforest",
+      "sourceArt": "public/scenes/kingdom-fairyforest-detectives-v1/base.webp",
+      "sourceSha256": "8ff866ee5b65e0763bda3b3c907c07b278242cd9cdbd8773e362956f2a2b4788",
+      "hides": [
+        {
+          "hideId": "fairyforest-detectives-hide-1",
+          "heads": [
+            {
+              "left": 1422,
+              "top": 230,
+              "width": 136,
+              "height": 116
+            },
+            {
+              "left": 1618,
+              "top": 322,
+              "width": 130,
+              "height": 132
+            },
+            {
+              "left": 1204,
+              "top": 290,
+              "width": 134,
+              "height": 120
+            }
+          ]
+        },
+        {
+          "hideId": "fairyforest-detectives-hide-2",
+          "heads": [
+            {
+              "left": 152,
+              "top": 1352,
+              "width": 132,
+              "height": 138
+            },
+            {
+              "left": 294,
+              "top": 1412,
+              "width": 132,
+              "height": 146
+            },
+            {
+              "left": 496,
+              "top": 1484,
+              "width": 108,
+              "height": 116
+            }
+          ]
+        },
+        {
+          "hideId": "fairyforest-detectives-hide-3",
+          "heads": [
+            {
+              "left": 3140,
+              "top": 630,
+              "width": 128,
+              "height": 128
+            },
+            {
+              "left": 2800,
+              "top": 674,
+              "width": 132,
+              "height": 132
+            },
+            {
+              "left": 3136,
+              "top": 978,
+              "width": 130,
+              "height": 126
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "board": "dragoncave",
+      "sourceArt": "public/scenes/kingdom-dragoncave-detectives-v1/base.webp",
+      "sourceSha256": "8cab3039d72a220e944dba8562472d127f1721c072d00e275c12b997b7ebae04",
+      "hides": [
+        {
+          "hideId": "dragoncave-detectives-hide-1",
+          "heads": [
+            {
+              "left": 500,
+              "top": 648,
+              "width": 104,
+              "height": 114
+            },
+            {
+              "left": 388,
+              "top": 622,
+              "width": 96,
+              "height": 110
+            },
+            {
+              "left": 662,
+              "top": 618,
+              "width": 106,
+              "height": 114
+            },
+            {
+              "left": 118,
+              "top": 534,
+              "width": 128,
+              "height": 150
+            }
+          ]
+        },
+        {
+          "hideId": "dragoncave-detectives-hide-2",
+          "heads": [
+            {
+              "left": 1822,
+              "top": 1526,
+              "width": 134,
+              "height": 144
+            },
+            {
+              "left": 1626,
+              "top": 1522,
+              "width": 146,
+              "height": 146
+            },
+            {
+              "left": 2312,
+              "top": 1402,
+              "width": 138,
+              "height": 144
+            }
+          ]
+        },
+        {
+          "hideId": "dragoncave-detectives-hide-3",
+          "heads": [
+            {
+              "left": 2480,
+              "top": 1024,
+              "width": 128,
+              "height": 118
+            },
+            {
+              "left": 2348,
+              "top": 1050,
+              "width": 116,
+              "height": 102
+            },
+            {
+              "left": 2928,
+              "top": 908,
+              "width": 134,
+              "height": 146
+            },
+            {
+              "left": 3076,
+              "top": 1020,
+              "width": 122,
+              "height": 128
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "board": "icepalace",
+      "sourceArt": "public/scenes/kingdom-icepalace-detectives-v1/base.webp",
+      "sourceSha256": "63c936d973803b001146f5448b006cafb030d50d8d6a436ef9043e91399e0b41",
+      "hides": [
+        {
+          "hideId": "icepalace-detectives-hide-1",
+          "heads": [
+            {
+              "left": 500,
+              "top": 698,
+              "width": 114,
+              "height": 128
+            },
+            {
+              "left": 412,
+              "top": 614,
+              "width": 118,
+              "height": 122
+            },
+            {
+              "left": 726,
+              "top": 746,
+              "width": 102,
+              "height": 118
+            },
+            {
+              "left": 382,
+              "top": 882,
+              "width": 126,
+              "height": 128
+            }
+          ]
+        },
+        {
+          "hideId": "icepalace-detectives-hide-2",
+          "heads": [
+            {
+              "left": 1822,
+              "top": 772,
+              "width": 126,
+              "height": 130
+            },
+            {
+              "left": 1480,
+              "top": 668,
+              "width": 138,
+              "height": 124
+            },
+            {
+              "left": 2070,
+              "top": 744,
+              "width": 126,
+              "height": 128
+            },
+            {
+              "left": 1922,
+              "top": 638,
+              "width": 112,
+              "height": 122
+            }
+          ]
+        },
+        {
+          "hideId": "icepalace-detectives-hide-3",
+          "heads": [
+            {
+              "left": 2704,
+              "top": 1282,
+              "width": 172,
+              "height": 162
+            },
+            {
+              "left": 3034,
+              "top": 1296,
+              "width": 152,
+              "height": 148
+            },
+            {
+              "left": 2834,
+              "top": 982,
+              "width": 144,
+              "height": 160
+            },
+            {
+              "left": 3180,
+              "top": 1240,
+              "width": 114,
+              "height": 116
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "board": "underwater",
+      "sourceArt": "public/scenes/kingdom-underwater-detectives-v1/base.webp",
+      "sourceSha256": "0a26960579ce6e604bd123b95e6adf3baaff2aee3f63c4dfa8c7584aa16294a0",
+      "hides": [
+        {
+          "hideId": "underwater-detectives-hide-1",
+          "heads": [
+            {
+              "left": 182,
+              "top": 888,
+              "width": 130,
+              "height": 132
+            },
+            {
+              "left": 482,
+              "top": 948,
+              "width": 132,
+              "height": 140
+            },
+            {
+              "left": 642,
+              "top": 1006,
+              "width": 124,
+              "height": 128
+            },
+            {
+              "left": 252,
+              "top": 492,
+              "width": 120,
+              "height": 122
+            }
+          ]
+        },
+        {
+          "hideId": "underwater-detectives-hide-2",
+          "heads": [
+            {
+              "left": 1674,
+              "top": 1042,
+              "width": 120,
+              "height": 132
+            },
+            {
+              "left": 1932,
+              "top": 1092,
+              "width": 124,
+              "height": 124
+            },
+            {
+              "left": 1098,
+              "top": 1046,
+              "width": 132,
+              "height": 138
+            },
+            {
+              "left": 1686,
+              "top": 1314,
+              "width": 142,
+              "height": 138
+            }
+          ]
+        },
+        {
+          "hideId": "underwater-detectives-hide-3",
+          "heads": [
+            {
+              "left": 2944,
+              "top": 842,
+              "width": 126,
+              "height": 132
+            },
+            {
+              "left": 3094,
+              "top": 936,
+              "width": 104,
+              "height": 116
+            },
+            {
+              "left": 2740,
+              "top": 924,
+              "width": 106,
+              "height": 112
+            },
+            {
+              "left": 3214,
+              "top": 842,
+              "width": 120,
+              "height": 142
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "board": "cloudcity",
+      "sourceArt": "public/scenes/kingdom-cloudcity-detectives-v1/base.webp",
+      "sourceSha256": "68457bc37a4c2a673ea6a089826e90e93cc6bc572d21973362d988155beff136",
+      "hides": [
+        {
+          "hideId": "cloudcity-detectives-hide-1",
+          "heads": [
+            {
+              "left": 278,
+              "top": 1088,
+              "width": 116,
+              "height": 122
+            },
+            {
+              "left": 500,
+              "top": 1180,
+              "width": 122,
+              "height": 136
+            }
+          ]
+        },
+        {
+          "hideId": "cloudcity-detectives-hide-2",
+          "heads": [
+            {
+              "left": 1612,
+              "top": 830,
+              "width": 120,
+              "height": 126
+            },
+            {
+              "left": 1944,
+              "top": 902,
+              "width": 108,
+              "height": 114
+            },
+            {
+              "left": 1704,
+              "top": 632,
+              "width": 106,
+              "height": 106
+            },
+            {
+              "left": 1568,
+              "top": 698,
+              "width": 84,
+              "height": 92
+            }
+          ]
+        },
+        {
+          "hideId": "cloudcity-detectives-hide-3",
+          "heads": [
+            {
+              "left": 3080,
+              "top": 802,
+              "width": 124,
+              "height": 130
+            },
+            {
+              "left": 2754,
+              "top": 644,
+              "width": 150,
+              "height": 176
+            },
+            {
+              "left": 2900,
+              "top": 772,
+              "width": 106,
+              "height": 120
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "board": "sweetworkshop",
+      "sourceArt": "public/scenes/kingdom-sweetworkshop-detectives-v1/base.webp",
+      "sourceSha256": "fd3e5da18f9cabe47104b3905ba2701e93faa050790fe1993f7e4ee5f6a08c7a",
+      "hides": [
+        {
+          "hideId": "sweetworkshop-detectives-hide-1",
+          "heads": [
+            {
+              "left": 1078,
+              "top": 856,
+              "width": 142,
+              "height": 138
+            },
+            {
+              "left": 1052,
+              "top": 792,
+              "width": 102,
+              "height": 116
+            },
+            {
+              "left": 1320,
+              "top": 882,
+              "width": 116,
+              "height": 132
+            }
+          ]
+        },
+        {
+          "hideId": "sweetworkshop-detectives-hide-2",
+          "heads": [
+            {
+              "left": 956,
+              "top": 1422,
+              "width": 148,
+              "height": 172
+            },
+            {
+              "left": 754,
+              "top": 1470,
+              "width": 136,
+              "height": 154
+            }
+          ]
+        },
+        {
+          "hideId": "sweetworkshop-detectives-hide-3",
+          "heads": [
+            {
+              "left": 1390,
+              "top": 114,
+              "width": 108,
+              "height": 112
+            },
+            {
+              "left": 1590,
+              "top": 282,
+              "width": 108,
+              "height": 124
+            },
+            {
+              "left": 1250,
+              "top": 198,
+              "width": 108,
+              "height": 124
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "board": "giantlibrary",
+      "sourceArt": "public/scenes/kingdom-giantlibrary-detectives-v1/base.webp",
+      "sourceSha256": "2ac1b1f2ac460036802a33c4d95f54c288b2b7a149d7bfe2d4822886450c50a5",
+      "hides": [
+        {
+          "hideId": "giantlibrary-detectives-hide-1",
+          "heads": [
+            {
+              "left": 842,
+              "top": 740,
+              "width": 118,
+              "height": 132
+            },
+            {
+              "left": 612,
+              "top": 694,
+              "width": 136,
+              "height": 166
+            },
+            {
+              "left": 958,
+              "top": 848,
+              "width": 108,
+              "height": 122
+            }
+          ]
+        },
+        {
+          "hideId": "giantlibrary-detectives-hide-2",
+          "heads": [
+            {
+              "left": 1904,
+              "top": 950,
+              "width": 90,
+              "height": 96
+            },
+            {
+              "left": 1782,
+              "top": 754,
+              "width": 106,
+              "height": 108
+            },
+            {
+              "left": 1876,
+              "top": 804,
+              "width": 104,
+              "height": 108
+            },
+            {
+              "left": 1570,
+              "top": 878,
+              "width": 106,
+              "height": 120
+            }
+          ]
+        },
+        {
+          "hideId": "giantlibrary-detectives-hide-3",
+          "heads": [
+            {
+              "left": 2516,
+              "top": 1274,
+              "width": 140,
+              "height": 150
+            },
+            {
+              "left": 2746,
+              "top": 1356,
+              "width": 116,
+              "height": 126
+            },
+            {
+              "left": 1974,
+              "top": 1214,
+              "width": 142,
+              "height": 154
+            },
+            {
+              "left": 2192,
+              "top": 1324,
+              "width": 118,
+              "height": 130
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "board": "nightcarnival",
+      "sourceArt": "public/scenes/kingdom-nightcarnival-detectives-v1/base.webp",
+      "sourceSha256": "3be217dd23a9b2d18095735772b14f4249b340646e139ed87c61d5c9027d0bb1",
+      "hides": [
+        {
+          "hideId": "nightcarnival-detectives-hide-1",
+          "heads": [
+            {
+              "left": 756,
+              "top": 788,
+              "width": 110,
+              "height": 126
+            },
+            {
+              "left": 672,
+              "top": 772,
+              "width": 96,
+              "height": 110
+            },
+            {
+              "left": 440,
+              "top": 850,
+              "width": 122,
+              "height": 126
+            },
+            {
+              "left": 304,
+              "top": 828,
+              "width": 108,
+              "height": 116
+            }
+          ]
+        },
+        {
+          "hideId": "nightcarnival-detectives-hide-2",
+          "heads": [
+            {
+              "left": 1732,
+              "top": 264,
+              "width": 106,
+              "height": 114
+            },
+            {
+              "left": 1528,
+              "top": 274,
+              "width": 116,
+              "height": 124
+            },
+            {
+              "left": 2042,
+              "top": 382,
+              "width": 114,
+              "height": 122
+            }
+          ]
+        },
+        {
+          "hideId": "nightcarnival-detectives-hide-3",
+          "heads": [
+            {
+              "left": 2592,
+              "top": 886,
+              "width": 142,
+              "height": 142
+            },
+            {
+              "left": 2400,
+              "top": 906,
+              "width": 126,
+              "height": 122
+            },
+            {
+              "left": 2868,
+              "top": 858,
+              "width": 160,
+              "height": 150
+            },
+            {
+              "left": 2936,
+              "top": 1144,
+              "width": 136,
+              "height": 154
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -1,4 +1,4 @@
-import { DETECTIVE_SOURCE_BOARDS } from "../../../content/detectives/source-release";
+import { ALL_DETECTIVE_SOURCE_BOARDS as DETECTIVE_SOURCE_BOARDS } from "../../../content/detectives/families";
 import refreshedManifest from "../../../content/adventures/wizard-refresh-art.json";
 import kingdomManifest from "../../../content/adventures/wizard-kingdom-art.json";
 import { readFile } from "node:fs/promises";
@@ -32,7 +32,7 @@ export async function readCollectionArt(art: string, expectedHash: string, root 
   remote?: { fetch: typeof fetch; cookie: string }): Promise<Buffer | null> {
   const entry = [...manifest, ...refreshedManifest, ...kingdomManifest, ...DETECTIVE_SOURCE_BOARDS].find(row => row.path === art);
   if (!entry) return null;
-  if (entry.sha256 !== expectedHash || !/^public\/scenes\/(?:(?:adventure|journey|magic)-[a-z0-9-]+|fairyforest)\/base\.webp$/.test(art)) throw Error("COLLECTION_ART: unexpected pinned artwork");
+  if (entry.sha256 !== expectedHash || !/^public\/scenes\/(?:(?:adventure|journey|magic|kingdom)-[a-z0-9-]+|fairyforest)\/base\.webp$/.test(art)) throw Error("COLLECTION_ART: unexpected pinned artwork");
   if (!remote) {
     try {
       const bytes = await readFile(path.join(root, art));

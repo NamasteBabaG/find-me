@@ -1,14 +1,14 @@
 import { SceneDefinitionSchema } from "../../src/domain/scene/schema";
 import { DETECTIVES_SCENE_VERSION } from "../../src/domain/scene/local-patch-versions";
 import { maskOf } from "../../src/domain/scene/local-patch-hides";
-import { DETECTIVE_PATCH_BOARDS, DETECTIVE_ADVENTURE_CATALOG } from "./runtime-release";
+import { detectiveFamilyForBoard } from "./families";
 
 /** Scene13 selects its own Detective art, authored actors, hints and collection book.
  * Only common UI/known body-template metadata comes from the legacy scene definition;
  * no legacy art, target hint, action, transform or slot placement survives. */
 export function detectiveSceneRelease(raw: unknown): unknown {
-  const source=SceneDefinitionSchema.parse(raw),board=DETECTIVE_PATCH_BOARDS.find(b=>b.board===source.slug);
-  const plan=DETECTIVE_ADVENTURE_CATALOG.boards.find(b=>b.boardSlug===source.slug);
+  const source=SceneDefinitionSchema.parse(raw), family=detectiveFamilyForBoard(source.slug),board=family.boards.find(b=>b.board===source.slug);
+  const plan=family.adventure.boards.find(b=>b.boardSlug===source.slug);
   if (!board || !plan || plan.status!=="ready" || plan.sceneVersion!==DETECTIVES_SCENE_VERSION)
     throw Error(`DETECTIVES_SCENE: unknown family board ${source.slug}`);
   const {foreground:_foreground,...baseArt}=source.art;

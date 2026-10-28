@@ -8,7 +8,7 @@ import { authoredLocalPatchReviewBinding } from "./local-patch-authored-return";
 import { admittedInterruption, providerFailureRefusal } from "./local-patch-review-interruption-recovery";
 import type { WorldAutomaticReviewRecoveryV5 } from "./world-budget";
 import { SINGLE_VISUAL_REVIEW_VERSION, readSingleVisualReview } from "../../domain/generation/single-visual-review";
-import { DETECTIVE_PATCH_BOARDS } from "../../../content/detectives/runtime-release";
+import { ALL_DETECTIVE_PATCH_BOARDS as DETECTIVE_PATCH_BOARDS } from "../../../content/detectives/families";
 import { PrismaRetainedPurchaseStore } from "../../infra/db/prisma-retained-purchase-store";
 import { savedApplyingRepairOf } from "./local-patch-self-repair";
 import { LOCAL_PATCH_RESERVE } from "./local-patch-render";

@@ -2,12 +2,12 @@ import { createHash } from "node:crypto";
 import { readFile, realpath } from "node:fs/promises";
 import path from "node:path";
 import sharp from "sharp";
-import { detectiveSourceBoard } from "../../../content/detectives/source-release";
+import { detectiveFamilyForBoard } from "../../../content/detectives/families";
 
 /** Local, hash-bound artwork only. No runtime import from work/, network fetch,
  * private reference, generated personal sample or provider purchase. */
 export async function readDetectiveSourceArt(slug: string, root = process.cwd()): Promise<Buffer> {
-  const board = detectiveSourceBoard(slug);
+  const board = detectiveFamilyForBoard(slug).sources.find(b=>b.board===slug)!;
   const allowed = await realpath(path.join(root, "public/scenes"));
   const file = await realpath(path.join(root, board.path));
   const relative = path.relative(allowed, file);

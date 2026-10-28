@@ -1,3 +1,4 @@
+import { pinDetectiveSourceScope } from "./generation/source-family-scope";
 import { pinExplorersOperationalPolicy } from "./generation/explorers-operational-policy";
 import { pinDetectivesOperationalPolicy } from "./generation/detectives-operational-policy";
 import { Prisma } from "@prisma/client";
@@ -146,8 +147,9 @@ export async function beginWorldPurchase(c: Container, input: WorldPurchaseInput
           await pinIdentitySourceRelease(tx, gameId);
           if (lean || requested === "detectives") {
             if (version === undefined) throw Error("A local-patch source family requires its exact scene version");
-            await pinLocalPatchSourceFamily(tx, gameId, { sceneVersion: version, searchLevel: requested ?? "explorers" });
-            if(version===13)await pinDetectivesOperationalPolicy(tx,gameId,c.detectivesOperationalRelease,c.storage.id);
+            const scoped = version === 13 && await pinDetectiveSourceScope(tx, gameId, c.detectivesOperationalRelease, c.storage.id);
+            if (!scoped) await pinLocalPatchSourceFamily(tx, gameId, { sceneVersion: version, searchLevel: requested ?? "explorers" });
+            if(version===13 && !scoped)await pinDetectivesOperationalPolicy(tx,gameId,c.detectivesOperationalRelease,c.storage.id);
             if(version===12)await pinExplorersOperationalPolicy(tx,gameId,c.explorersOperationalRelease,c.storage.id);
           }
         }

@@ -42,6 +42,9 @@ export const sourcePlacementContractSchema = z.discriminatedUnion("sceneVersion"
 export type SourcePlacementHideContract = z.infer<typeof sourcePlacementContractSchema>;
 export const DETECTIVE_SOURCE_PLACEMENT_RELEASE_VERSION = "source-placement-release/v2" as const;
 export const DETECTIVE_SOURCE_FAMILY = "journey-detectives/v1" as const;
+/** Additive content families; the original Journey default remains unchanged. */
+export const DETECTIVE_SOURCE_FAMILIES = [DETECTIVE_SOURCE_FAMILY, "kingdom-detectives/v1"] as const;
+export type DetectiveSourceFamilyId = typeof DETECTIVE_SOURCE_FAMILIES[number];
 export const sourcePlacementManifestSchema = z.object({
   version: z.literal(SOURCE_PLACEMENT_RELEASE_VERSION), releaseId: id, baseSceneVersion: z.literal(12),
   qualification: z.object({
@@ -181,9 +184,9 @@ export function sourcePlacementRecoveryGeometryAllowed(contract: SourcePlacement
  * their crop, pose, source or authored return envelope. */
 export const detectiveSourcePlacementManifestSchema = z.object({
   version: z.literal(DETECTIVE_SOURCE_PLACEMENT_RELEASE_VERSION), releaseId: id,
-  familyId: z.literal(DETECTIVE_SOURCE_FAMILY), baseSceneVersion: z.literal(13),
+  familyId: z.enum(DETECTIVE_SOURCE_FAMILIES), baseSceneVersion: z.literal(13),
   qualification: sourcePlacementManifestSchema.shape.qualification.extend({
-    familyId: z.literal(DETECTIVE_SOURCE_FAMILY), sceneVersion: z.literal(13),
+    familyId: z.enum(DETECTIVE_SOURCE_FAMILIES), sceneVersion: z.literal(13),
   }),
   inventory: z.array(detectiveSourcePlacementHideContractSchema).length(27),
 }).strict();
@@ -222,7 +225,7 @@ function detectiveBaseEntries(base: readonly DetectiveSourcePlacementBaseBoard[]
 /** Source heads are measured on the new family art, not inherited from another
  * board with the same slug. Listed coverage is required for every new placement
  * in this release, and does not claim recognition of a whole board's crowd. */
-export function materializeDetectiveSourcePlacementRelease(input: { releaseId: string;
+export function materializeDetectiveSourcePlacementRelease(input: { releaseId: string; familyId?: DetectiveSourceFamilyId;
   base: readonly DetectiveSourcePlacementBaseBoard[]; neighborhoods: readonly DetectiveSourceNeighborhood[] }): DetectiveSourcePlacementManifest {
   const entries = detectiveBaseEntries(input.base), seen = new Set<string>();
   for (const neighborhood of input.neighborhoods) {
@@ -238,14 +241,15 @@ export function materializeDetectiveSourcePlacementRelease(input: { releaseId: s
   }
   demand(seen.size === entries.size, "complete Detective placement neighborhood coverage is required");
   return validateDetectiveSourcePlacementRelease({ version: DETECTIVE_SOURCE_PLACEMENT_RELEASE_VERSION,
-    releaseId: input.releaseId, familyId: DETECTIVE_SOURCE_FAMILY, baseSceneVersion: 13,
-    qualification: { ...SOURCE_PLACEMENT_QUALIFICATION, familyId: DETECTIVE_SOURCE_FAMILY, sceneVersion: 13 },
-    inventory: [...entries.values()] }, input.base);
+    releaseId: input.releaseId, familyId: input.familyId ?? DETECTIVE_SOURCE_FAMILY, baseSceneVersion: 13,
+    qualification: { ...SOURCE_PLACEMENT_QUALIFICATION, familyId: input.familyId ?? DETECTIVE_SOURCE_FAMILY, sceneVersion: 13 },
+    inventory: [...entries.values()] }, input.base, input.familyId);
 }
 
 export function validateDetectiveSourcePlacementRelease(value: unknown,
-  base: readonly DetectiveSourcePlacementBaseBoard[]): DetectiveSourcePlacementManifest {
+  base: readonly DetectiveSourcePlacementBaseBoard[], familyId: DetectiveSourceFamilyId = DETECTIVE_SOURCE_FAMILY): DetectiveSourcePlacementManifest {
   const manifest = detectiveSourcePlacementManifestSchema.parse(value), expected = detectiveBaseEntries(base), seen = new Set<string>();
+  demand(manifest.familyId === familyId && manifest.qualification.familyId === familyId, "Detective family differs from its explicitly selected release");
   for (const entry of manifest.inventory) {
     const address = key(entry.boardId, entry.hideId), original = expected.get(address);
     demand(original && !seen.has(address), "unknown or duplicate Detective inventory hide"); seen.add(address);

@@ -8,6 +8,7 @@ import { nativeMaskTailMarker } from "../../domain/generation/native-mask-tail";
 import { sourceNeighborReviewContext } from "../../domain/scene/local-patch-review-context";
 import { hasLocalPatchCapability } from "../../domain/scene/local-patch-family";
 import sharp from "sharp";
+import { boundedVisualEvidencePng } from './local-patch-visual-evidence';
 import { prepareNeighborComparisons, prepareBoundaryComparisons } from "./local-patch-integration-evidence";
 import type { Prisma, Asset, TargetVariantAsset } from "@prisma/client";
 import type { Container } from "../container";
@@ -280,13 +281,13 @@ export async function prepareLocalPatchBoardReview(c: Container, input: { gameId
         width: Math.min(meta.width!, e.crop.left + e.crop.width + padding) - left,
         height: Math.min(meta.height!, e.crop.top + e.crop.height + padding) - top,
       } : e.crop);
-      const beforePng = await sharp(before).extract(context).png().toBuffer();
+      const beforePng = await boundedVisualEvidencePng(await sharp(before).extract(context).png().toBuffer());
       // Keep untouched pixels on both sides of the rectangle boundary visible.
       // Compositing the extracted context is pixel-equivalent to extracting it
       // from base+this single patch; no sibling patch may enter the evidence.
-      const afterPng = strict ? await sharp(beforePng).composite([{ input: e.bytes,
+      const afterPng = await boundedVisualEvidencePng(strict ? await sharp(beforePng).composite([{ input: e.bytes,
         left: e.crop.left - context.left, top: e.crop.top - context.top }]).png().toBuffer()
-        : await sharp(composed).extract(e.crop).png().toBuffer();
+        : await sharp(composed).extract(e.crop).png().toBuffer());
       let closeupPng: Buffer | undefined, afterEvidencePng: Buffer | undefined;
       if (strict) {
         const receipt = JSON.parse(e.row.judgeJson!);
@@ -307,6 +308,7 @@ export async function prepareLocalPatchBoardReview(c: Container, input: { gameId
           height: Math.max(context.height, detail.height), channels: 4, background: "white" } }).composite([
           { input: afterPng, left: 0, top: 0 }, { input: closeupPng, left: context.width + 24, top: 0 },
         ]).png().toBuffer();
+        afterEvidencePng = await boundedVisualEvidencePng(afterEvidencePng);
       }
       const receipt = JSON.parse(e.row.judgeJson!);
       const returned = receipt.crownReturn!==undefined ? sourceCrownReturned(receipt.authoredReturn,receipt.crownReturn)! : [SELF_REPAIR_COMPOSITION_VERSION, AUTHORED_RECOVERY_COMPOSITION_VERSION].includes(receipt.compositionVersion)

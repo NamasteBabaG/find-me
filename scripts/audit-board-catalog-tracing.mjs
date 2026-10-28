@@ -50,6 +50,13 @@ const collectionImages = collectionManifests.flatMap(file => {
   return rows;
 });
 for (const image of collectionImages) if (sha(readFileSync(image.path)) !== image.sha256) throw new Error(`Collection art changed: ${image.path}`);
+const detectiveManifests = ["content/detectives/source-v1.json", "content/detectives/kingdom/source-v1.json"];
+for (const file of detectiveManifests) {
+ const data=JSON.parse(readFileSync(file,"utf8"));
+ if(data.boards.length!==9 || new Set(data.boards.map(b=>b.path)).size!==9) throw Error("Nine source-bound Detective boards required");
+ for(const b of data.boards) if(sha(readFileSync(b.path))!==b.sha256) throw Error("Detective art changed: "+b.board);
+}
+const expectedDetectives = detectiveManifests.map(file=>path.resolve(file));
 const expectedCollection = collectionManifests.map(file => path.resolve(file));
 const manifests = walk(path.join(root, ".next")).filter(file => file.endsWith(".nft.json"));
 const routes = manifests.map(manifest => {
@@ -67,6 +74,7 @@ const routes = manifests.map(manifest => {
     catalogFiles: expected.filter(file => paths.has(file)).length,
     localPatchFiles: expectedLocalPatch.filter(file => paths.has(file)).length,
     collectionFiles: expectedCollection.filter(file => paths.has(file)).length,
+    detectiveFiles: expectedDetectives.filter(file=>paths.has(file)).length,
     missingFiles, privateFiles, staleCatalogFiles,
     publicCdnFiles: [...paths].filter(file => /^public\/(scenes|worlds)\//.test(rel(file)) && !expectedCollection.includes(file)).length };
 });
@@ -81,6 +89,7 @@ for (const route of ["api/health", "api/jobs/tick"]) {
 if (!jobs || jobs.catalogFiles !== 37) problems.push("generation route does not trace all36 static PNGs pluscatalog");
 if (!jobs || jobs.localPatchFiles !== 10) problems.push("generation route does not trace nine local-patch base images plus manifest");
 if (!jobs || jobs.collectionFiles !== collectionManifests.length) problems.push("generation route must trace historical journey, refreshed journey and kingdom collection hash manifests");
+if (!jobs || jobs.detectiveFiles!==detectiveManifests.length) problems.push("generation route must trace both Detective source manifests");
 if (routes.some(route => route.privateFiles.length)) problems.push("private local files or dotenv were traced");
 if (routes.some(route => route.missingFiles.length)) problems.push("trace references missing files");
 if (routes.some(route => route.publicCdnFiles)) problems.push("undeclared public CDN scene art duplicated inside server function");

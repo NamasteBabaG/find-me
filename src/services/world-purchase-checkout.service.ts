@@ -1,3 +1,4 @@
+import { sealDetectiveSourceFamily } from "./generation/source-family-scope";
 
 import { creationDraftHref } from "@/domain/creation-draft";
 import { Prisma } from "@prisma/client";
@@ -88,6 +89,8 @@ async function startClaimedCheckout(c: Container, input: CheckoutClaimInput, req
       // deadlocks between a refresh and an in-flight child checkout claim.
       const fenced = await tx.game.updateMany({ where: { id: game.id, updatedAt: game.updatedAt, ownerId: input.userId, status: game.status, deletedAt: null }, data: { updatedAt: new Date(Math.max(Date.now(), game.updatedAt.getTime() + 1)) } });
       if (fenced.count !== 1) return { state: "busy" as const };
+      // An existing order must already hold its immutable selected family.
+      if (await tx.order.findFirst({where:{gameId:game.id}})) await sealDetectiveSourceFamily(tx, game.id);
       if (game.familyChildId && !await claimChildWorldForCheckout(tx, { gameId: game.id, ownerId: input.userId, familyChildId: game.familyChildId, scenes: game.scenes })) return { state: "locked" as const };
       // Re-read the child's paid history under its checkout fence. The page's
       // earlier quote cannot decide money after another world was paid.
@@ -133,8 +136,11 @@ async function startClaimedCheckout(c: Container, input: CheckoutClaimInput, req
           order = await tx.order.update({ where: { id: legacy.id }, data: { checkoutKey: key, amountAgorot: amount, currency: input.currency,
             ...(legacy.checkoutUrl ? {} : { checkoutClaimUntil: leaseUntil }) } });
           if (order.checkoutUrl) return { state: "ready" as const, order };
-        } else order = await tx.order.create({ data: { id: newId("ord"), gameId: input.gameId, userId: input.userId, amountAgorot: amount, currency: input.currency,
-          packageTier: game.packageTier, provider: c.payment.id, checkoutKey: key, checkoutClaimUntil: leaseUntil } });
+        } else {
+          await sealDetectiveSourceFamily(tx, game.id);
+          order = await tx.order.create({ data: { id: newId("ord"), gameId: input.gameId, userId: input.userId, amountAgorot: amount, currency: input.currency,
+            packageTier: game.packageTier, provider: c.payment.id, checkoutKey: key, checkoutClaimUntil: leaseUntil } });
+        }
       } else {
         const leased = await tx.order.updateMany({ where: { id: order.id, checkoutKey: key, paymentStatus: "PENDING", checkoutUrl: null,
           OR: [{ checkoutClaimUntil: null }, { checkoutClaimUntil: { lte: now } }] }, data: { checkoutClaimUntil: leaseUntil } });

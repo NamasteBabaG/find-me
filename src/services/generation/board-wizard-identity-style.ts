@@ -70,9 +70,9 @@ export async function buildBoardWizardIdentityStyle(root = process.cwd(), versio
   worldSlug: "journey" | "kingdom" = "journey", identityArtCache?: IdentityArtCache,
   runtimeSource?: { sceneVersion: typeof DETECTIVES_SCENE_VERSION }) {
   if (runtimeSource) {
-    if (runtimeSource.sceneVersion !== DETECTIVES_SCENE_VERSION || worldSlug !== "journey" || version !== "board-matched-identity/v6")
-      throw Error("BOARD_IDENTITY_STYLE: Detective sources require their full-source Journey family");
-    return buildDetectiveIdentityStyle(root, identityArtCache);
+    if (runtimeSource.sceneVersion !== DETECTIVES_SCENE_VERSION || version !== "board-matched-identity/v6")
+      throw Error("BOARD_IDENTITY_STYLE: Detective sources require their full-source world family");
+    return buildDetectiveIdentityStyle(root, worldSlug, identityArtCache);
   }
   // v5 is the v4 atlas with the reference's own hair in the sheet prompt; the pixels are the same.
   if (worldSlug === "kingdom" && version !== "board-matched-identity/v4" && version !== "board-matched-identity/v5" && version !== "board-matched-identity/v6") throw Error("Kingdom requires its integrated identity style");
@@ -151,8 +151,8 @@ async function buildRefreshedIdentityStyle(root: string, worldSlug: "journey" | 
 
 /** The new family has its own measured original-person contexts. No Explorer
  * atlas, generated child, face-only enlargement or style fallback enters it. */
-async function buildDetectiveIdentityStyle(root: string, identityArtCache?: IdentityArtCache) {
-  const sources = detectiveIdentityStyleSources();
+async function buildDetectiveIdentityStyle(root: string, worldSlug: "journey" | "kingdom", identityArtCache?: IdentityArtCache) {
+  const sources = detectiveIdentityStyleSources(worldSlug);
   const catalogSha256 = await identityStyleCatalogSha256(sources[0]!.boardId, DETECTIVES_SCENE_VERSION, root);
   const composites: OverlayOptions[] = [], examples = [];
   for (const [i, source] of sources.entries()) {

@@ -4,7 +4,7 @@ import path from "node:path";
 import sharp from "sharp";
 import { PrismaClient } from "@prisma/client";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { DETECTIVE_RELEASES, JOURNEY_DETECTIVE_RUNTIME_RELEASE } from "../../../content/worlds/detective-releases";
+import { DETECTIVE_RELEASES, JOURNEY_DETECTIVE_RUNTIME_RELEASE, KINGDOM_DETECTIVE_RUNTIME_RELEASE } from "../../../content/worlds/detective-releases";
 import { DETECTIVE_PATCH_BOARDS } from "../../../content/detectives/runtime-release";
 import { applyTestSchema } from "../../lib/test-schema";
 import { DbStorage } from "../../infra/storage/db";
@@ -48,7 +48,7 @@ afterAll(async () => {
 
 describe("actual installed Detective admission", () => {
   it("offers both levels and creates a normal name/photo/package draft with the exact13 family and original base pins", async () => {
-    expect(DETECTIVE_RELEASES).toEqual([JOURNEY_DETECTIVE_RUNTIME_RELEASE]);
+    expect(DETECTIVE_RELEASES).toEqual([JOURNEY_DETECTIVE_RUNTIME_RELEASE,KINGDOM_DETECTIVE_RUNTIME_RELEASE]);
     expect(JOURNEY_DETECTIVE_RUNTIME_RELEASE).toEqual({ worldSlug: "journey", styleVersion: STYLE, sceneVersion: 13 });
     const terms = await searchLevelTerms(c, null);
     expect(terms).toMatchObject({ asked: true, required: true, detectives: true, allowedLevels: ["explorers", "detectives"] });
@@ -117,9 +117,13 @@ describe("prospective Explorer single LOW admission", () => {
     const explorer = await createDraft(release, null, "he", { searchLevel: "explorers" });
     const detective = await createDraft(release, null, "he", { searchLevel: "detectives" });
     const first = await explorersOperationalPolicyOf(db, explorer.gameId), second = await detectivesOperationalPolicyOf(db, detective.gameId);
+    const { detectiveSourceScopeOf } = await import("../generation/source-family-scope");
+    const scope = await detectiveSourceScopeOf(db, detective.gameId);
     expect(first).toMatchObject({ gameId: explorer.gameId, worldId: explorer.gameId + ":board-wizard", model: "gpt-6.1-sol", effort: "low", oneUsableAssessmentPerImage: true, worldCapMicroUsd: 4000000, automaticBudgetExtension: false });
-    expect(second).toMatchObject({ gameId: detective.gameId, worldId: detective.gameId + ":board-wizard", effort: "low", worldCapMicroUsd: 4000000 });
-    expect(first!.authorizationSha256).not.toBe(second!.authorizationSha256);
+    expect(second).toBeNull();
+    expect(scope).toMatchObject({ gameId:detective.gameId, operationalRelease:DETECTIVES_OPERATIONAL_RELEASE });
+    expect(scope!.families).toHaveLength(2);
+    expect(first!.authorizationSha256).not.toBe(scope!.scopeSha256);
     for (const draft of [explorer, detective]) {
       expect(await readLeanWorldBudget(c, draft.gameId + ":board-wizard")).toMatchObject({ capMicroUsd: 4000000 });
       expect(await db.order.count({ where: { gameId: draft.gameId } })).toBe(0);

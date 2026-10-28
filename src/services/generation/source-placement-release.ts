@@ -1,3 +1,5 @@
+import { detectiveSourceScopeOf, detectiveSelectionWorld, detectiveFamilyV2Of, DETECTIVE_FAMILY_V2, type DetectiveFamilyV2Pin } from "./source-family-scope";
+import { detectivePlacementFamily } from "../../../content/detectives/family-releases";
 import { createHash } from "node:crypto";
 import { detectivesOperationalPolicyOf } from "./detectives-operational-policy";
 import type { DetectivesOperationalReceipt } from "../../domain/generation/detectives-operational-policy";
@@ -17,7 +19,7 @@ import { SOURCE_PLACEMENT_POLICY_ACTION, SOURCE_PLACEMENT_POLICY_VERSION, source
 import { env } from "../../lib/env";
 import { storedSearchLevel, type SearchLevel } from "../../domain/search-level";
 import { IDENTITY_SOURCE_RELEASE, identitySourceAuditId, identitySourceReleaseOf } from "./identity-source-release";
-import { DETECTIVE_SOURCE_PLACEMENT_BASE, DETECTIVE_SOURCE_PLACEMENT_RELEASE,
+import { DETECTIVE_SOURCE_PLACEMENT_RELEASE,
   DETECTIVE_SOURCE_PLACEMENT_RELEASE_ID, DETECTIVE_SOURCE_PLACEMENT_RELEASE_SHA256,
   DETECTIVE_RUNTIME_CATALOG_SHA256, DETECTIVE_SOURCE_INPUT_SHA256, DETECTIVE_IDENTITY_STYLE_SHA256,
   assertDetectiveSourcePlacementReleaseHash } from "../../../content/detectives/source-placement-release";
@@ -45,7 +47,7 @@ const detectivePinSchema = z.object({ version: z.literal(DETECTIVE_SOURCE_FAMILY
   leanPinSha256: hex, dualPinSha256: hex, identityPinSha256: hex, compositeQualificationSha256: hex,
   coverage: z.array(pinSchema.shape.coverage.element).length(27),
 }).strict();
-export type SourcePlacementReleasePin = z.infer<typeof pinSchema> | z.infer<typeof detectivePinSchema>;
+export type SourcePlacementReleasePin = z.infer<typeof pinSchema> | z.infer<typeof detectivePinSchema> | DetectiveFamilyV2Pin;
 export const sourcePlacementReleaseAuditId = (gameId: string) => `aud_source_placement_${gameId}`;
 const hashBytes = (value: string) => createHash("sha256").update(value).digest("hex");
 const demand = (ok: unknown, reason: string): void => { if (!ok) throw Error(`SOURCE_PLACEMENT: ${reason}`); };
@@ -78,6 +80,7 @@ export async function sourcePlacementReleaseOf(db: Reader, gameId: string): Prom
   if (family) {
     let value: unknown;
     try { value = JSON.parse(family.metaJson ?? "null"); } catch { throw Error("SOURCE_PLACEMENT: invalid family pin encoding"); }
+    if ((value as {version?:unknown})?.version === DETECTIVE_FAMILY_V2) return detectiveFamilyV2Of(db, gameId);
     const parsed = detectivePinSchema.safeParse(value);
     demand(parsed.success && family.actorType === "SYSTEM" && family.actorId === null && family.action === DETECTIVE_SOURCE_FAMILY_ACTION
       && family.entityType === "Game" && family.entityId === gameId, "invalid Detective family pin");
@@ -102,6 +105,7 @@ export async function sourcePlacementReleaseOf(db: Reader, gameId: string): Prom
 /** Enroll only inside the new lean-draft transaction, before any order/job.
  * It buys nothing and changes no budget or historical base pin. */
 export async function pinSourcePlacementRelease(tx: Prisma.TransactionClient, gameId: string): Promise<void> {
+  demand(!await detectiveSourceScopeOf(tx, gameId), "a Detective scope cannot gain the Explorer companion");
   demand(env().APP_ENV === "qa" && env().LOCAL_PATCH_PROMPT_RELEASE === "v19", "only the qualified QA configuration may enroll a new draft");
   const game = await tx.game.findUniqueOrThrow({ where: { id: gameId } });
   demand(game.status === "DRAFT" && game.styleVersion === "local-patch-world-v1" && !game.deletedAt
@@ -156,6 +160,7 @@ export async function pinLocalPatchSourceFamily(tx: Prisma.TransactionClient, ga
     demand(!await tx.auditLog.findUnique({ where: { id: sourceFamilyAuditId(gameId) } }), "a Detective family cannot gain the Explorer companion");
     return pinSourcePlacementRelease(tx, gameId);
   }
+  demand(!await detectiveSourceScopeOf(tx, gameId), "a prospective Detective scope must seal its selected family at checkout");
   demand(env().APP_ENV === "qa" && env().LOCAL_PATCH_PROMPT_RELEASE === "v19", "only the qualified QA configuration may enroll Detectives");
   demand(game.status === "DRAFT" && game.styleVersion === "local-patch-world-v1" && !game.deletedAt
     && !game.readyAt && !game.configJson && !game.paidAt, "only a new unstarted Detective draft may enroll");
@@ -180,11 +185,15 @@ export async function localPatchSourceSelectionAllowed(db: Reader,
   scenes?: readonly { sceneSlug: string; sceneVersion: number }[]): Promise<boolean> {
   if (game.styleVersion !== "local-patch-world-v1") return true;
   const release = await sourcePlacementReleaseOf(db, game.id);
-  if (!release) return level === "explorers" && (!scenes || scenes.every(s => s.sceneVersion !== 13));
+  if (!release) {
+    const scope = await detectiveSourceScopeOf(db, game.id);
+    if (scope) return level === "detectives" && (!scenes || scenes.length === 0 || detectiveSelectionWorld(scenes) !== null);
+    return level === "explorers" && (!scenes || scenes.every(s => s.sceneVersion !== 13));
+  }
   const version = release.baseSceneVersion;
   if (level !== (version === 13 ? "detectives" : "explorers")) return false;
   if (!scenes) return true;
-  const inventory = version === 13 ? DETECTIVE_SOURCE_PLACEMENT_RELEASE.inventory : SOURCE_PLACEMENT_RELEASE.inventory;
+  const inventory = release.baseSceneVersion === 13 ? detectivePlacementFamily(release.worldSlug).manifest.inventory : SOURCE_PLACEMENT_RELEASE.inventory;
   return scenes.every(s => s.sceneVersion === version && inventory.some(e => e.boardId === s.sceneSlug));
 }
 
@@ -221,15 +230,16 @@ export async function resolveLocalPatchBoardsForGame(db: Reader, gameId: string,
     demand(sceneVersion === release.baseSceneVersion, "companion cannot reinterpret another scene version");
     let manifest;
     if (release.baseSceneVersion === 13) {
-      assertDetectiveSourcePlacementReleaseHash();
+      const family = detectivePlacementFamily(release.worldSlug);
+      boards = family.base.map(e=>e.board);
       demand(db.game, "Detective context requires authoritative game selection");
       const game = await db.game!.findUnique({ where: { id: gameId }, include: { scenes: true } });
-      const expectedBoards = new Set(DETECTIVE_SOURCE_PLACEMENT_BASE.map(e => e.board.board));
+      const expectedBoards = new Set(family.base.map(e => e.board.board));
       demand(game && !game.deletedAt && game.styleVersion === "local-patch-world-v1" && game.searchLevel === "detectives"
         && game.scenes.length === 9 && new Set(game.scenes.map(s => s.sceneSlug)).size === 9
         && game.scenes.every(s => s.sceneVersion === 13 && expectedBoards.has(s.sceneSlug)),
-        "Detective game requires its exact whole Journey family selection");
-      manifest = validateDetectiveSourcePlacementRelease(DETECTIVE_SOURCE_PLACEMENT_RELEASE, DETECTIVE_SOURCE_PLACEMENT_BASE);
+        "Detective game requires its exact whole pinned family selection");
+      manifest = validateDetectiveSourcePlacementRelease(family.manifest, family.base, family.familyId);
     } else {
       assertSourcePlacementReleaseHash();
       manifest = validateSourcePlacementRelease(SOURCE_PLACEMENT_RELEASE, SOURCE_PLACEMENT_BASE);
@@ -248,8 +258,9 @@ export async function resolveLocalPatchBoardsForGame(db: Reader, gameId: string,
   const bodies=new Map<string,SourceBodyGeometry>();
   const bodyPin=sceneVersion===13 ? await readSourceBodyRepairPin(db,gameId) : null;
   const birthPin=sceneVersion===13?await detectivesOperationalPolicyOf(db,gameId):null;
+  demand(release?.version!==DETECTIVE_FAMILY_V2 || birthPin,"sealed Detective family requires its original operational policy");
   demand(!(bodyPin&&birthPin),"Historical repair and from-birth source policy cannot overlap");
-  const bodySelections:readonly {hideId:string}[]=bodyPin?.selected??(birthPin?SOURCE_BODY_REPAIR_MANIFEST.entries:[]);
+  const bodySelections:readonly {hideId:string}[]=bodyPin?.selected??(birthPin && release?.manifestSha256===SOURCE_BODY_REPAIR_MANIFEST.parentManifestSha256?SOURCE_BODY_REPAIR_MANIFEST.entries:[]);
   if(bodySelections.length){
     demand(release?.manifestSha256===SOURCE_BODY_REPAIR_MANIFEST.parentManifestSha256,'Body repair parent family changed');
     for(const selected of bodySelections){const geometry=SOURCE_BODY_REPAIR_MANIFEST.entries.find(e=>e.hideId===selected.hideId),entry=contracts.get(selected.hideId);

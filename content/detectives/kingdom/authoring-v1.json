@@ -1,0 +1,2874 @@
+{
+  "version": "kingdom-detectives-native-authoring/v1",
+  "transform": {
+    "scaleX": 2,
+    "scaleY": 2,
+    "kernel": "lanczos3",
+    "native4k": false
+  },
+  "coverage": "Manually annotated selected actors and listed neighboring heads; no global crowd detector claim.",
+  "boards": [
+    {
+      "board": "castlegate",
+      "name": {
+        "en": "Castle Gate",
+        "he": "שער הטירה"
+      },
+      "ground": "sunlit dry castle courtyard paving, shallow steps and flower planters",
+      "light": "Warm late-afternoon courtyard light, soft foliage shadows, matte painted faces; no face spotlight.",
+      "cues": [
+        [
+          "Ornate open castle gates",
+          "שערי טירה מעוטרים"
+        ],
+        [
+          "Courtyard errands and games",
+          "משימות ומשחקים בחצר"
+        ]
+      ],
+      "roles": [
+        {
+          "box": [
+            334,
+            706,
+            146,
+            185
+          ],
+          "returned": [
+            322,
+            694,
+            170,
+            209
+          ],
+          "head": [
+            357,
+            711,
+            53,
+            58
+          ],
+          "pose": "kneeling",
+          "standingHeight": 238,
+          "hint": {
+            "en": "Look beside the fountain, carrying a wooden bucket.",
+            "he": "חפשו ליד המזרקה, עם דלי העץ."
+          },
+          "activity": "Replace the dark-haired blue-clad kneeling bucket carrier completely, keeping the bucket, fountain and water intact. Both knees/shins rest on the paving.",
+          "outfit": "Muted slate-blue tunic, ochre belt, brown soft trousers and practical brown child boots.",
+          "neighbors": [
+            {
+              "sourceId": "source-child",
+              "head": [
+                357,
+                711,
+                53,
+                58
+              ]
+            },
+            {
+              "sourceId": "neighbor-1",
+              "head": [
+                271,
+                636,
+                51,
+                58
+              ]
+            },
+            {
+              "sourceId": "neighbor-2",
+              "head": [
+                335,
+                620,
+                37,
+                43
+              ]
+            },
+            {
+              "sourceId": "neighbor-3",
+              "head": [
+                446,
+                605,
+                53,
+                55
+              ]
+            }
+          ],
+          "id": "castlegate-detectives-hide-1",
+          "crop": [
+            280,
+            557,
+            256,
+            384
+          ]
+        },
+        {
+          "box": [
+            711,
+            363,
+            80,
+            165
+          ],
+          "returned": [
+            651,
+            351,
+            207,
+            189
+          ],
+          "head": [
+            724,
+            367,
+            54,
+            59
+          ],
+          "pose": "crouching",
+          "standingHeight": 218,
+          "hint": {
+            "en": "Look among the friends around the friendly dog.",
+            "he": "חפשו בין החברים שסביב הכלב הידידותי."
+          },
+          "activity": "Replace the blond blue-clad child bending beside the dog, including hair, head, torso and hands; keep the dog, neighboring child hands and flowers intact.",
+          "outfit": "Dusty blue short jacket, cream shirt, dark olive child trousers and soft brown boots.",
+          "neighbors": [
+            {
+              "sourceId": "source-child",
+              "head": [
+                724,
+                367,
+                54,
+                59
+              ]
+            },
+            {
+              "sourceId": "neighbor-1",
+              "head": [
+                659,
+                411,
+                55,
+                59
+              ]
+            },
+            {
+              "sourceId": "neighbor-2",
+              "head": [
+                791,
+                428,
+                59,
+                62
+              ]
+            },
+            {
+              "sourceId": "neighbor-3",
+              "head": [
+                869,
+                414,
+                59,
+                65
+              ]
+            }
+          ],
+          "id": "castlegate-detectives-hide-2",
+          "crop": [
+            623,
+            254,
+            256,
+            384
+          ]
+        },
+        {
+          "box": [
+            1310,
+            725,
+            120,
+            184
+          ],
+          "returned": [
+            1298,
+            661,
+            189,
+            260
+          ],
+          "head": [
+            1335,
+            725,
+            65,
+            66
+          ],
+          "pose": "walking",
+          "standingHeight": 222,
+          "hint": {
+            "en": "Look beside the rolling wooden hoop.",
+            "he": "חפשו ליד חישוק העץ המתגלגל."
+          },
+          "activity": "Replace the blue-clad child rolling the hoop; keep the hoop and opposite child connected and unchanged. Both shoes contact the paving naturally.",
+          "outfit": "Muted cobalt-blue tunic with brass belt, slate trousers and brown child boots.",
+          "neighbors": [
+            {
+              "sourceId": "source-child",
+              "head": [
+                1335,
+                725,
+                65,
+                66
+              ]
+            },
+            {
+              "sourceId": "neighbor-1",
+              "head": [
+                1173,
+                734,
+                60,
+                66
+              ]
+            },
+            {
+              "sourceId": "neighbor-2",
+              "head": [
+                1414,
+                669,
+                65,
+                72
+              ]
+            },
+            {
+              "sourceId": "neighbor-3",
+              "head": [
+                1589,
+                763,
+                55,
+                61
+              ]
+            }
+          ],
+          "id": "castlegate-detectives-hide-3",
+          "crop": [
+            1242,
+            557,
+            256,
+            384
+          ]
+        }
+      ],
+      "discoveries": [
+        {
+          "id": "castle-bell",
+          "name": {
+            "en": "Bronze bell",
+            "he": "פעמון ברונזה"
+          },
+          "box": [
+            36,
+            0,
+            81,
+            83
+          ],
+          "category": "object"
+        },
+        {
+          "id": "castle-pigeon",
+          "name": {
+            "en": "Courtyard pigeon",
+            "he": "יונה בחצר"
+          },
+          "box": [
+            101,
+            759,
+            123,
+            84
+          ],
+          "category": "animal"
+        },
+        {
+          "id": "castle-banner",
+          "name": {
+            "en": "Lion banner",
+            "he": "דגל אריה"
+          },
+          "box": [
+            32,
+            127,
+            77,
+            93
+          ],
+          "category": "object"
+        },
+        {
+          "id": "castle-horse",
+          "name": {
+            "en": "White horse",
+            "he": "סוס לבן"
+          },
+          "box": [
+            1391,
+            269,
+            123,
+            181
+          ],
+          "category": "animal"
+        },
+        {
+          "id": "castle-chest",
+          "name": {
+            "en": "Travel chest",
+            "he": "תיבת מסע"
+          },
+          "box": [
+            145,
+            466,
+            144,
+            84
+          ],
+          "category": "object"
+        },
+        {
+          "id": "castle-flowers",
+          "name": {
+            "en": "Blue and yellow flowers",
+            "he": "פרחים כחולים וצהובים"
+          },
+          "box": [
+            902,
+            429,
+            134,
+            44
+          ],
+          "category": "plant"
+        }
+      ],
+      "nativeSha256": "3df44123ec7d6c27ece6982e235190218014d14d162d403dd1c873d5662ce1ba",
+      "nativeWidth": 1672,
+      "nativeHeight": 941,
+      "sourceFileName": "kingdom-castlegate-detectives-v3.png",
+      "artVersion": 3
+    },
+    {
+      "board": "fairyforest",
+      "name": {
+        "en": "Fairy Forest",
+        "he": "יער הפיות"
+      },
+      "ground": "mossy shallow forest paths, low wooden bridges and dry picnic stones",
+      "light": "Filtered green woodland daylight with warm door lanterns, soft cool foliage shadows and no portrait glow.",
+      "cues": [
+        [
+          "Living tree homes",
+          "בתי עצים חיים"
+        ],
+        [
+          "Leaf boats and woodland helpers",
+          "סירות עלים ועוזרי היער"
+        ]
+      ],
+      "roles": [
+        {
+          "box": [
+            690,
+            112,
+            105,
+            151
+          ],
+          "returned": [
+            678,
+            100,
+            129,
+            175
+          ],
+          "head": [
+            711,
+            115,
+            68,
+            58
+          ],
+          "pose": "peeking",
+          "standingHeight": 180,
+          "crop": [
+            629,
+            0,
+            256,
+            384
+          ],
+          "neighbors": [
+            {
+              "sourceId": "source-child",
+              "head": [
+                711,
+                115,
+                68,
+                58
+              ]
+            },
+            {
+              "sourceId": "neighbor-1",
+              "head": [
+                809,
+                161,
+                65,
+                66
+              ]
+            },
+            {
+              "sourceId": "neighbor-2",
+              "head": [
+                602,
+                145,
+                67,
+                60
+              ]
+            }
+          ],
+          "hint": {
+            "en": "Look inside the leaf glider beside the mushroom home.",
+            "he": "חפשו בתוך דאון העלה ליד בית הפטרייה."
+          },
+          "activity": "Lean over the upper leaf glider rail; retain leaf wings, rail and supported seated body.",
+          "outfit": "Cream linen shirt, olive woodland vest and muted blue trousers.",
+          "id": "fairyforest-detectives-hide-1"
+        },
+        {
+          "box": [
+            24,
+            671,
+            145,
+            177
+          ],
+          "returned": [
+            12,
+            659,
+            209,
+            201
+          ],
+          "head": [
+            76,
+            676,
+            66,
+            69
+          ],
+          "pose": "crouching",
+          "standingHeight": 235,
+          "crop": [
+            0,
+            557,
+            256,
+            384
+          ],
+          "neighbors": [
+            {
+              "sourceId": "source-child",
+              "head": [
+                76,
+                676,
+                66,
+                69
+              ]
+            },
+            {
+              "sourceId": "neighbor-1",
+              "head": [
+                147,
+                706,
+                66,
+                73
+              ]
+            },
+            {
+              "sourceId": "neighbor-2",
+              "head": [
+                248,
+                742,
+                54,
+                58
+              ]
+            }
+          ],
+          "hint": {
+            "en": "Look beside the lower leaf glider.",
+            "he": "חפשו לצד דאון העלים התחתון."
+          },
+          "activity": "Bend over the lower-left leaf glider on the stone path. Preserve leaf spars, shared tools and neighboring children.",
+          "outfit": "Cream rolled-sleeve shirt, moss waistcoat, blue trousers and brown boots.",
+          "id": "fairyforest-detectives-hide-2"
+        },
+        {
+          "box": [
+            1510,
+            313,
+            147,
+            190
+          ],
+          "returned": [
+            1498,
+            301,
+            171,
+            259
+          ],
+          "head": [
+            1570,
+            315,
+            64,
+            64
+          ],
+          "pose": "standing",
+          "standingHeight": 213,
+          "crop": [
+            1416,
+            235,
+            256,
+            384
+          ],
+          "neighbors": [
+            {
+              "sourceId": "source-child",
+              "head": [
+                1570,
+                315,
+                64,
+                64
+              ]
+            },
+            {
+              "sourceId": "neighbor-1",
+              "head": [
+                1400,
+                337,
+                66,
+                66
+              ]
+            },
+            {
+              "sourceId": "neighbor-2",
+              "head": [
+                1568,
+                489,
+                65,
+                63
+              ]
+            }
+          ],
+          "hint": {
+            "en": "Look at the hanging flower lantern on the right.",
+            "he": "חפשו ליד עששית הפרח התלויה מימין."
+          },
+          "activity": "Reach to hang the right flower lantern. Preserve branch, lantern and neighboring hands; feet stay on the path.",
+          "outfit": "Lavender dress, olive woodland bodice, embroidered sash and brown boots.",
+          "id": "fairyforest-detectives-hide-3"
+        }
+      ],
+      "discoveries": [
+        {
+          "id": "fairyforest-owl",
+          "name": {
+            "en": "Woodland owl",
+            "he": "ינשוף היער"
+          },
+          "box": [
+            445,
+            75,
+            77,
+            101
+          ],
+          "category": "animal"
+        },
+        {
+          "id": "fairyforest-fox",
+          "name": {
+            "en": "Resting fox",
+            "he": "שועל נח"
+          },
+          "box": [
+            163,
+            411,
+            145,
+            83
+          ],
+          "category": "animal"
+        },
+        {
+          "id": "fairyforest-hedgehog",
+          "name": {
+            "en": "Hedgehog",
+            "he": "קיפוד"
+          },
+          "box": [
+            664,
+            869,
+            86,
+            57
+          ],
+          "category": "animal"
+        },
+        {
+          "id": "fairyforest-cello",
+          "name": {
+            "en": "Cello",
+            "he": "צ׳לו"
+          },
+          "box": [
+            1222,
+            91,
+            73,
+            124
+          ],
+          "category": "object"
+        },
+        {
+          "id": "fairyforest-cloth",
+          "name": {
+            "en": "Butterfly cloth",
+            "he": "אריג פרפר"
+          },
+          "box": [
+            1444,
+            8,
+            104,
+            160
+          ],
+          "category": "object"
+        },
+        {
+          "id": "fairyforest-mail",
+          "name": {
+            "en": "Owl mailbag",
+            "he": "תיק הדואר של הינשוף"
+          },
+          "box": [
+            1326,
+            531,
+            53,
+            68
+          ],
+          "category": "object"
+        }
+      ],
+      "nativeSha256": "b362daec0835e5b5a6bb5b85e279fa6fe35a2ecf65aa867d7c406c01e62f19a7",
+      "nativeWidth": 1672,
+      "nativeHeight": 941,
+      "sourceFileName": "kingdom-fairyforest-detectives-v11.png",
+      "artVersion": 11
+    },
+    {
+      "board": "dragoncave",
+      "name": {
+        "en": "Dragon Cave",
+        "he": "מערת הדרקון"
+      },
+      "ground": "layered dry cave stone ledges and safe wooden dragon-care platforms",
+      "light": "Dim blue cave shadows with localized amber lantern light only; retain the dark exposure, no daylight or brightened portrait.",
+      "cues": [
+        [
+          "Lantern-lit dragon nursery",
+          "פעוטון דרקונים לאור עששיות"
+        ],
+        [
+          "Rope bridges and care stations",
+          "גשרי חבלים ועמדות טיפול"
+        ]
+      ],
+      "roles": [
+        {
+          "box": [
+            222,
+            324,
+            115,
+            128
+          ],
+          "returned": [
+            186,
+            301,
+            206,
+            163
+          ],
+          "head": [
+            250,
+            324,
+            52,
+            57
+          ],
+          "pose": "sitting-cross-legged",
+          "standingHeight": 212,
+          "hint": {
+            "en": "Look beside the little green dragon.",
+            "he": "חפשו ליד הדרקון הירוק הקטן."
+          },
+          "activity": "Replace only the blond mustard-clad child sitting beside the small green dragon. Preserve both nearby children, adult caregiver, dragon paws and the care activity; keep an open three-quarter face.",
+          "outfit": "Ochre child tunic over muted brown trousers and small leather boots, simple sleeves suitable for dragon care.",
+          "neighbors": [
+            {
+              "sourceId": "source-child",
+              "head": [
+                250,
+                324,
+                52,
+                57
+              ]
+            },
+            {
+              "sourceId": "neighbor-1",
+              "head": [
+                194,
+                311,
+                48,
+                55
+              ]
+            },
+            {
+              "sourceId": "neighbor-2",
+              "head": [
+                331,
+                309,
+                53,
+                57
+              ]
+            },
+            {
+              "sourceId": "neighbor-3",
+              "head": [
+                59,
+                267,
+                64,
+                75
+              ]
+            }
+          ],
+          "id": "dragoncave-detectives-hide-1",
+          "crop": [
+            161,
+            190,
+            256,
+            384
+          ]
+        },
+        {
+          "box": [
+            895,
+            763,
+            131,
+            122
+          ],
+          "returned": [
+            805,
+            751,
+            233,
+            146
+          ],
+          "head": [
+            911,
+            763,
+            67,
+            72
+          ],
+          "pose": "kneeling",
+          "standingHeight": 236,
+          "hint": {
+            "en": "Look where the cave map is being studied.",
+            "he": "חפשו במקום שבו בודקים את מפת המערה."
+          },
+          "activity": "Replace the dark-haired ochre-clad child to the right of the large cave map, supported on knees on the ledge. Preserve the map, the left reader as one connected person and all pointing hands.",
+          "outfit": "Muted ochre field jacket, dark blue child trousers and small brown boots; no armor or adult body.",
+          "neighbors": [
+            {
+              "sourceId": "source-child",
+              "head": [
+                911,
+                763,
+                67,
+                72
+              ]
+            },
+            {
+              "sourceId": "neighbor-1",
+              "head": [
+                813,
+                761,
+                73,
+                73
+              ]
+            },
+            {
+              "sourceId": "neighbor-2",
+              "head": [
+                1156,
+                701,
+                69,
+                72
+              ]
+            }
+          ],
+          "id": "dragoncave-detectives-hide-2",
+          "crop": [
+            792,
+            557,
+            256,
+            384
+          ]
+        },
+        {
+          "box": [
+            1230,
+            512,
+            106,
+            139
+          ],
+          "returned": [
+            1166,
+            500,
+            182,
+            163
+          ],
+          "head": [
+            1240,
+            512,
+            64,
+            59
+          ],
+          "pose": "walking",
+          "standingHeight": 206,
+          "hint": {
+            "en": "Look on the rope bridge near the dragon keeper.",
+            "he": "חפשו על גשר החבלים ליד מטפל הדרקונים."
+          },
+          "activity": "Replace the olive-clad child walking on the lower right bridge, including head, hair and feet. Preserve the red-clad companion, rope knots, rails and neighboring keeper.",
+          "outfit": "Muted olive knee-length child tunic, brown fitted trousers, small child boots and a modest soft backpack.",
+          "neighbors": [
+            {
+              "sourceId": "source-child",
+              "head": [
+                1240,
+                512,
+                64,
+                59
+              ]
+            },
+            {
+              "sourceId": "neighbor-1",
+              "head": [
+                1174,
+                525,
+                58,
+                51
+              ]
+            },
+            {
+              "sourceId": "neighbor-2",
+              "head": [
+                1464,
+                454,
+                67,
+                73
+              ]
+            },
+            {
+              "sourceId": "neighbor-3",
+              "head": [
+                1538,
+                510,
+                61,
+                64
+              ]
+            }
+          ],
+          "id": "dragoncave-detectives-hide-3",
+          "crop": [
+            1127,
+            391,
+            256,
+            384
+          ]
+        }
+      ],
+      "discoveries": [
+        {
+          "id": "cave-windsock",
+          "name": {
+            "en": "Striped windsock",
+            "he": "שרוול רוח מפוספס"
+          },
+          "box": [
+            180,
+            14,
+            184,
+            77
+          ],
+          "category": "object"
+        },
+        {
+          "id": "cave-red-dragon",
+          "name": {
+            "en": "Red dragon",
+            "he": "דרקון אדום"
+          },
+          "box": [
+            563,
+            68,
+            188,
+            137
+          ],
+          "category": "animal"
+        },
+        {
+          "id": "cave-blue-dragon",
+          "name": {
+            "en": "Flying blue dragon",
+            "he": "דרקון כחול מעופף"
+          },
+          "box": [
+            827,
+            267,
+            272,
+            131
+          ],
+          "category": "animal"
+        },
+        {
+          "id": "cave-sleeping-dragon",
+          "name": {
+            "en": "Sleeping blue dragon",
+            "he": "דרקון כחול ישן"
+          },
+          "box": [
+            1361,
+            49,
+            216,
+            112
+          ],
+          "category": "animal"
+        },
+        {
+          "id": "cave-lantern",
+          "name": {
+            "en": "Hanging lantern",
+            "he": "עששית תלויה"
+          },
+          "box": [
+            778,
+            59,
+            44,
+            81
+          ],
+          "category": "object"
+        },
+        {
+          "id": "cave-purple-dragon",
+          "name": {
+            "en": "Purple dragon",
+            "he": "דרקון סגול"
+          },
+          "box": [
+            171,
+            755,
+            340,
+            122
+          ],
+          "category": "animal"
+        }
+      ],
+      "nativeSha256": "967cfc0e72cfa7d8c605e0c7261af1bd5737a3f17b4749412694fa2cceaea5d5",
+      "nativeWidth": 1672,
+      "nativeHeight": 941,
+      "sourceFileName": "kingdom-dragoncave-detectives-v8.png",
+      "artVersion": 8
+    },
+    {
+      "board": "icepalace",
+      "name": {
+        "en": "Ice Palace",
+        "he": "ארמון הקרח"
+      },
+      "ground": "solid icy palace courtyard and shallow ice steps, small child skates with real ice contact",
+      "light": "Cool blue ice reflections balanced by small warm lanterns, matte winter faces and no spotlight.",
+      "cues": [
+        [
+          "Carved ice palace arches",
+          "קשתות ארמון מגולפות בקרח"
+        ],
+        [
+          "Skating and winter crafts",
+          "החלקה ויצירות חורף"
+        ]
+      ],
+      "roles": [
+        {
+          "box": [
+            235,
+            348,
+            117,
+            150
+          ],
+          "returned": [
+            183,
+            299,
+            239,
+            214
+          ],
+          "head": [
+            250,
+            349,
+            57,
+            64
+          ],
+          "pose": "standing",
+          "standingHeight": 214,
+          "hint": {
+            "en": "Look beside the snowman and the small ice bear.",
+            "he": "חפשו ליד איש השלג ודוב הקרח הקטן."
+          },
+          "activity": "Replace the red-hatted green-coated child beside the snowman, preserving the hat as scene-appropriate headwear over recognizable canonical hair. Preserve snowman, orange nose, other children and carved ice bear.",
+          "outfit": "Muted sage insulated child coat, burgundy knitted cap, brown scarf, winter trousers and child skates.",
+          "neighbors": [
+            {
+              "sourceId": "source-child",
+              "head": [
+                250,
+                349,
+                57,
+                64
+              ]
+            },
+            {
+              "sourceId": "neighbor-1",
+              "head": [
+                206,
+                307,
+                59,
+                61
+              ]
+            },
+            {
+              "sourceId": "neighbor-2",
+              "head": [
+                363,
+                373,
+                51,
+                59
+              ]
+            },
+            {
+              "sourceId": "neighbor-3",
+              "head": [
+                191,
+                441,
+                63,
+                64
+              ]
+            }
+          ],
+          "id": "icepalace-detectives-hide-1",
+          "crop": [
+            167,
+            230,
+            256,
+            384
+          ]
+        },
+        {
+          "box": [
+            826,
+            386,
+            183,
+            180
+          ],
+          "returned": [
+            814,
+            311,
+            211,
+            267
+          ],
+          "head": [
+            911,
+            386,
+            63,
+            65
+          ],
+          "pose": "crouching",
+          "standingHeight": 224,
+          "hint": {
+            "en": "Look among the friends learning to skate.",
+            "he": "חפשו בין החברים שלומדים להחליק."
+          },
+          "activity": "Replace the olive-coated child balancing on skates at the center, with arms naturally spread and recognizable open three-quarter face. Preserve nearby skaters, tracks and both hand connections.",
+          "outfit": "Dull olive winter jacket, dark blue child trousers, warm brown scarf and small silver-bladed skates.",
+          "neighbors": [
+            {
+              "sourceId": "source-child",
+              "head": [
+                911,
+                386,
+                63,
+                65
+              ]
+            },
+            {
+              "sourceId": "neighbor-1",
+              "head": [
+                740,
+                334,
+                69,
+                62
+              ]
+            },
+            {
+              "sourceId": "neighbor-2",
+              "head": [
+                1035,
+                372,
+                63,
+                64
+              ]
+            },
+            {
+              "sourceId": "neighbor-3",
+              "head": [
+                961,
+                319,
+                56,
+                61
+              ]
+            }
+          ],
+          "id": "icepalace-detectives-hide-2",
+          "crop": [
+            790,
+            284,
+            256,
+            384
+          ]
+        },
+        {
+          "box": [
+            1322,
+            637,
+            173,
+            192
+          ],
+          "returned": [
+            1310,
+            625,
+            197,
+            216
+          ],
+          "head": [
+            1352,
+            641,
+            86,
+            81
+          ],
+          "pose": "sitting-cross-legged",
+          "standingHeight": 242,
+          "hint": {
+            "en": "Look beside the blue snowflake cloth.",
+            "he": "חפשו ליד הבד הכחול עם פתיתי השלג."
+          },
+          "activity": "Replace the burgundy-hatted red-coated child holding the left side of the snowflake cloth, seated securely on the ice bench. Preserve the partner, cloth motif, lantern and bench edges.",
+          "outfit": "Muted red padded child coat, burgundy knitted cap, dark wool trousers, scarf and small insulated boots.",
+          "neighbors": [
+            {
+              "sourceId": "source-child",
+              "head": [
+                1352,
+                641,
+                86,
+                81
+              ]
+            },
+            {
+              "sourceId": "neighbor-1",
+              "head": [
+                1517,
+                648,
+                76,
+                74
+              ]
+            },
+            {
+              "sourceId": "neighbor-2",
+              "head": [
+                1417,
+                491,
+                72,
+                80
+              ]
+            },
+            {
+              "sourceId": "neighbor-3",
+              "head": [
+                1590,
+                620,
+                57,
+                58
+              ]
+            }
+          ],
+          "id": "icepalace-detectives-hide-3",
+          "crop": [
+            1280,
+            544,
+            256,
+            384
+          ]
+        }
+      ],
+      "discoveries": [
+        {
+          "id": "ice-crown",
+          "name": {
+            "en": "Golden crown",
+            "he": "כתר זהוב"
+          },
+          "box": [
+            236,
+            26,
+            76,
+            48
+          ],
+          "category": "object"
+        },
+        {
+          "id": "ice-fox",
+          "name": {
+            "en": "White fox",
+            "he": "שועל לבן"
+          },
+          "box": [
+            544,
+            800,
+            243,
+            132
+          ],
+          "category": "animal"
+        },
+        {
+          "id": "ice-musical-cello",
+          "name": {
+            "en": "Cello",
+            "he": "צ׳לו"
+          },
+          "box": [
+            953,
+            131,
+            70,
+            136
+          ],
+          "category": "object"
+        },
+        {
+          "id": "ice-carving",
+          "name": {
+            "en": "Carved ice bear",
+            "he": "דוב מגולף בקרח"
+          },
+          "box": [
+            471,
+            531,
+            140,
+            133
+          ],
+          "category": "object"
+        },
+        {
+          "id": "ice-star",
+          "name": {
+            "en": "Hanging star",
+            "he": "כוכב תלוי"
+          },
+          "box": [
+            838,
+            4,
+            49,
+            53
+          ],
+          "category": "object"
+        },
+        {
+          "id": "ice-lantern",
+          "name": {
+            "en": "Small palace lantern",
+            "he": "עששית ארמון קטנה"
+          },
+          "box": [
+            429,
+            409,
+            57,
+            85
+          ],
+          "category": "object"
+        }
+      ],
+      "nativeSha256": "b660ed68452aefd1f5de663bb56f3668425dd6af625d55a5969480d04c6374c7",
+      "nativeWidth": 1672,
+      "nativeHeight": 941,
+      "sourceFileName": "kingdom-icepalace-detectives-v3.png",
+      "artVersion": 3
+    },
+    {
+      "board": "underwater",
+      "name": {
+        "en": "Underwater Kingdom",
+        "he": "הממלכה התת־ימית"
+      },
+      "ground": "solid pink shell walkways and shallow coral steps in a magical underwater town",
+      "light": "Soft turquoise underwater light, warm shell lamps and transparent glass helmet reflections; keep the face clear inside the helmet.",
+      "cues": [
+        [
+          "Shell homes and coral streets",
+          "בתי צדפים ורחובות אלמוגים"
+        ],
+        [
+          "Seahorse transport and sea errands",
+          "תחבורה בסוסוני ים ומשימות ימיות"
+        ]
+      ],
+      "roles": [
+        {
+          "box": [
+            50,
+            442,
+            152,
+            132
+          ],
+          "returned": [
+            38,
+            430,
+            176,
+            156
+          ],
+          "head": [
+            91,
+            444,
+            65,
+            66
+          ],
+          "pose": "crouching",
+          "standingHeight": 215,
+          "hint": {
+            "en": "Look beside the glowing pearl inside the shell.",
+            "he": "חפשו ליד הפנינה הזוהרת שבצדף."
+          },
+          "activity": "Replace the yellow-sleeved child leaning toward the pearl, entirely including the original helmet occupant. Keep the helmet transparent and its air hose physically connected. Preserve pearl, shell, other children and coral.",
+          "outfit": "Muted golden diving jacket, teal child trousers, small breathing pack and transparent round helmet with full crown and canonical hair visible inside.",
+          "neighbors": [
+            {
+              "sourceId": "source-child",
+              "head": [
+                91,
+                444,
+                65,
+                66
+              ]
+            },
+            {
+              "sourceId": "neighbor-1",
+              "head": [
+                241,
+                474,
+                66,
+                70
+              ]
+            },
+            {
+              "sourceId": "neighbor-2",
+              "head": [
+                321,
+                503,
+                62,
+                64
+              ]
+            },
+            {
+              "sourceId": "neighbor-3",
+              "head": [
+                126,
+                246,
+                60,
+                61
+              ]
+            }
+          ],
+          "id": "underwater-detectives-hide-1",
+          "crop": [
+            0,
+            316,
+            256,
+            384
+          ]
+        },
+        {
+          "box": [
+            810,
+            520,
+            138,
+            141
+          ],
+          "returned": [
+            798,
+            508,
+            162,
+            226
+          ],
+          "head": [
+            837,
+            521,
+            60,
+            66
+          ],
+          "pose": "standing",
+          "standingHeight": 218,
+          "hint": {
+            "en": "Look at the sea post office beside the octopus.",
+            "he": "חפשו בדואר הימי ליד התמנון."
+          },
+          "activity": "Replace the child on the right handing a letter to the octopus. Preserve octopus arms, letters, basket, nearby child and shell ledge. Keep helmet rim, full hair and face coherent with breathing pack.",
+          "outfit": "Muted sage diving jacket, dark teal child trousers, compact orange air pack and clear round helmet; practical child boots.",
+          "neighbors": [
+            {
+              "sourceId": "source-child",
+              "head": [
+                837,
+                521,
+                60,
+                66
+              ]
+            },
+            {
+              "sourceId": "neighbor-1",
+              "head": [
+                966,
+                546,
+                62,
+                62
+              ]
+            },
+            {
+              "sourceId": "neighbor-2",
+              "head": [
+                549,
+                523,
+                66,
+                69
+              ]
+            },
+            {
+              "sourceId": "neighbor-3",
+              "head": [
+                843,
+                657,
+                71,
+                69
+              ]
+            }
+          ],
+          "id": "underwater-detectives-hide-2",
+          "crop": [
+            754,
+            400,
+            256,
+            384
+          ]
+        },
+        {
+          "box": [
+            1442,
+            418,
+            127,
+            146
+          ],
+          "returned": [
+            1430,
+            406,
+            177,
+            170
+          ],
+          "head": [
+            1472,
+            421,
+            63,
+            66
+          ],
+          "pose": "standing",
+          "standingHeight": 207,
+          "hint": {
+            "en": "Look inside the glowing shell workshop.",
+            "he": "חפשו בתוך סדנת הצדף המוארת."
+          },
+          "activity": "Replace the left child under the large lower pink shop shell, holding the small glowing shell tool. Preserve the partner, elder, table and lamps. Keep the transparent helmet, air tubes and hair inside physically correct.",
+          "outfit": "Muted olive diving coat, dark blue child trousers, mustard air pack, clear glass helmet and brown child boots.",
+          "neighbors": [
+            {
+              "sourceId": "source-child",
+              "head": [
+                1472,
+                421,
+                63,
+                66
+              ]
+            },
+            {
+              "sourceId": "neighbor-1",
+              "head": [
+                1547,
+                468,
+                52,
+                58
+              ]
+            },
+            {
+              "sourceId": "neighbor-2",
+              "head": [
+                1370,
+                462,
+                53,
+                56
+              ]
+            },
+            {
+              "sourceId": "neighbor-3",
+              "head": [
+                1607,
+                421,
+                60,
+                71
+              ]
+            }
+          ],
+          "id": "underwater-detectives-hide-3",
+          "crop": [
+            1392,
+            299,
+            256,
+            384
+          ]
+        }
+      ],
+      "discoveries": [
+        {
+          "id": "sea-crab",
+          "name": {
+            "en": "Red crab",
+            "he": "סרטן אדום"
+          },
+          "box": [
+            961,
+            137,
+            89,
+            87
+          ],
+          "category": "animal"
+        },
+        {
+          "id": "sea-ray",
+          "name": {
+            "en": "Blue spotted ray",
+            "he": "מנטה כחולה מנוקדת"
+          },
+          "box": [
+            1078,
+            565,
+            264,
+            77
+          ],
+          "category": "animal"
+        },
+        {
+          "id": "sea-left-ray",
+          "name": {
+            "en": "Spotted ray",
+            "he": "טריגון מנוקד"
+          },
+          "box": [
+            0,
+            735,
+            228,
+            160
+          ],
+          "category": "animal"
+        },
+        {
+          "id": "sea-lift",
+          "name": {
+            "en": "Glass lift",
+            "he": "מעלית זכוכית"
+          },
+          "box": [
+            1146,
+            18,
+            163,
+            329
+          ],
+          "category": "object"
+        },
+        {
+          "id": "sea-fish-school",
+          "name": {
+            "en": "School of yellow fish",
+            "he": "להקת דגים צהובים"
+          },
+          "box": [
+            608,
+            14,
+            291,
+            74
+          ],
+          "category": "animal"
+        },
+        {
+          "id": "sea-jellyfish",
+          "name": {
+            "en": "Purple jellyfish",
+            "he": "מדוזה סגולה"
+          },
+          "box": [
+            1330,
+            714,
+            76,
+            104
+          ],
+          "category": "animal"
+        }
+      ],
+      "nativeSha256": "7cedffc30b2c75bbcc24c518add8e6246420ce51909336145b5b12a579a0b784",
+      "nativeWidth": 1672,
+      "nativeHeight": 941,
+      "sourceFileName": "kingdom-underwater-detectives-v5.png",
+      "artVersion": 5
+    },
+    {
+      "board": "cloudcity",
+      "name": {
+        "en": "Cloud City",
+        "he": "עיר העננים"
+      },
+      "ground": "solid cloud terraces and gently arched rainbow walkways with real supported foot contact",
+      "light": "Soft high-altitude daylight with pastel cloud reflections and small warm brass lamps, not overexposed faces.",
+      "cues": [
+        [
+          "Cloud tram and rainbow paths",
+          "רכבת עננים ושבילי קשת"
+        ],
+        [
+          "Air mail and floating gardens",
+          "דואר אווירי וגנים מרחפים"
+        ]
+      ],
+      "roles": [
+        {
+          "box": [
+            107,
+            541,
+            119,
+            155
+          ],
+          "returned": [
+            95,
+            529,
+            143,
+            179
+          ],
+          "head": [
+            139,
+            544,
+            58,
+            61
+          ],
+          "pose": "standing",
+          "standingHeight": 185,
+          "crop": [
+            62,
+            427,
+            256,
+            384
+          ],
+          "neighbors": [
+            {
+              "sourceId": "source-child",
+              "head": [
+                139,
+                544,
+                58,
+                61
+              ]
+            },
+            {
+              "sourceId": "neighbor-1",
+              "head": [
+                250,
+                590,
+                61,
+                68
+              ]
+            }
+          ],
+          "hint": {
+            "en": "Look beside the pinwheel on the left cloud steps.",
+            "he": "חפשו ליד השבשבת במדרגות העננים משמאל."
+          },
+          "activity": "Hold the left pinwheel; preserve pinwheel, rail and supported feet.",
+          "outfit": "Muted purple travel tunic, blue trousers, brown satchel and soft boots.",
+          "id": "cloudcity-detectives-hide-1"
+        },
+        {
+          "box": [
+            775,
+            410,
+            111,
+            166
+          ],
+          "returned": [
+            763,
+            398,
+            135,
+            190
+          ],
+          "head": [
+            806,
+            415,
+            60,
+            63
+          ],
+          "pose": "walking",
+          "standingHeight": 195,
+          "crop": [
+            728,
+            252,
+            256,
+            384
+          ],
+          "neighbors": [
+            {
+              "sourceId": "source-child",
+              "head": [
+                806,
+                415,
+                60,
+                63
+              ]
+            },
+            {
+              "sourceId": "neighbor-1",
+              "head": [
+                972,
+                451,
+                54,
+                57
+              ]
+            },
+            {
+              "sourceId": "neighbor-2",
+              "head": [
+                852,
+                316,
+                53,
+                53
+              ]
+            },
+            {
+              "sourceId": "neighbor-3",
+              "head": [
+                784,
+                349,
+                42,
+                46
+              ]
+            }
+          ],
+          "hint": {
+            "en": "Look for the children carrying a rolled carpet.",
+            "he": "חפשו ליד הילדים שנושאים שטיח מגולגל."
+          },
+          "activity": "Carry the left end of the rolled carpet; preserve other carrier, carpet and shared hand contact.",
+          "outfit": "Cream travel shirt, teal waistcoat, blue trousers and soft straw hat.",
+          "id": "cloudcity-detectives-hide-2"
+        },
+        {
+          "box": [
+            1518,
+            401,
+            102,
+            158
+          ],
+          "returned": [
+            1506,
+            389,
+            126,
+            182
+          ],
+          "head": [
+            1540,
+            401,
+            62,
+            65
+          ],
+          "pose": "standing",
+          "standingHeight": 185,
+          "crop": [
+            1416,
+            295,
+            256,
+            384
+          ],
+          "neighbors": [
+            {
+              "sourceId": "source-child",
+              "head": [
+                1540,
+                401,
+                62,
+                65
+              ]
+            },
+            {
+              "sourceId": "neighbor-1",
+              "head": [
+                1377,
+                322,
+                75,
+                88
+              ]
+            },
+            {
+              "sourceId": "neighbor-2",
+              "head": [
+                1450,
+                386,
+                53,
+                60
+              ]
+            }
+          ],
+          "hint": {
+            "en": "Look beside the wizard and the transparent magic orbs.",
+            "he": "חפשו ליד המכשף וכדורי הקסם השקופים."
+          },
+          "activity": "Handle the right transparent orb; preserve orb, wizard, neighboring child and pavilion rail.",
+          "outfit": "Muted teal travel tunic, cream sleeves, brown satchel and slate trousers.",
+          "id": "cloudcity-detectives-hide-3"
+        }
+      ],
+      "discoveries": [
+        {
+          "id": "cloudcity-birds",
+          "name": {
+            "en": "Cloud birds",
+            "he": "ציפורי העננים"
+          },
+          "box": [
+            935,
+            21,
+            274,
+            159
+          ],
+          "category": "animal"
+        },
+        {
+          "id": "cloudcity-unicorn",
+          "name": {
+            "en": "Unicorn",
+            "he": "חד קרן"
+          },
+          "box": [
+            640,
+            672,
+            122,
+            172
+          ],
+          "category": "animal"
+        },
+        {
+          "id": "cloudcity-face",
+          "name": {
+            "en": "Smiling cloud",
+            "he": "ענן מחייך"
+          },
+          "box": [
+            1243,
+            803,
+            115,
+            86
+          ],
+          "category": "character"
+        },
+        {
+          "id": "cloudcity-basket",
+          "name": {
+            "en": "Flower basket",
+            "he": "סל פרחים"
+          },
+          "box": [
+            331,
+            169,
+            107,
+            76
+          ],
+          "category": "plant"
+        },
+        {
+          "id": "cloudcity-pinwheel",
+          "name": {
+            "en": "High pinwheel",
+            "he": "שבשבת גבוהה"
+          },
+          "box": [
+            1272,
+            346,
+            63,
+            64
+          ],
+          "category": "object"
+        },
+        {
+          "id": "cloudcity-rainbow",
+          "name": {
+            "en": "Rainbow path",
+            "he": "שביל קשת"
+          },
+          "box": [
+            841,
+            684,
+            215,
+            100
+          ],
+          "category": "object"
+        }
+      ],
+      "nativeSha256": "7bf2c17004b934e8a9c15194adbcc9511a6b3268c5c204afe3bc1e3c197857dc",
+      "nativeWidth": 1672,
+      "nativeHeight": 941,
+      "sourceFileName": "kingdom-cloudcity-detectives-v6.png",
+      "artVersion": 6
+    },
+    {
+      "board": "sweetworkshop",
+      "name": {
+        "en": "Sweet Workshop",
+        "he": "סדנת המתוקים"
+      },
+      "ground": "clean solid tiled workshop floor beside low child-height bakery counters",
+      "light": "Warm bakery window light and green copper-lamp reflections, natural matte faces rather than glossy doll skin.",
+      "cues": [
+        [
+          "Chocolate rivers and copper machines",
+          "נהרות שוקולד ומכונות נחושת"
+        ],
+        [
+          "Baking and wrapping together",
+          "אופים ואורזים יחד"
+        ]
+      ],
+      "roles": [
+        {
+          "box": [
+            512,
+            428,
+            140,
+            127
+          ],
+          "returned": [
+            500,
+            388,
+            226,
+            179
+          ],
+          "head": [
+            539,
+            428,
+            71,
+            69
+          ],
+          "pose": "peeking",
+          "standingHeight": 190,
+          "crop": [
+            480,
+            288,
+            256,
+            384
+          ],
+          "neighbors": [
+            {
+              "sourceId": "source-child",
+              "head": [
+                539,
+                428,
+                71,
+                69
+              ]
+            },
+            {
+              "sourceId": "neighbor-1",
+              "head": [
+                526,
+                396,
+                51,
+                58
+              ]
+            },
+            {
+              "sourceId": "neighbor-2",
+              "head": [
+                660,
+                441,
+                58,
+                66
+              ]
+            }
+          ],
+          "hint": {
+            "en": "Look at the child decorating the small cake.",
+            "he": "חפשו ליד קישוט העוגה הקטנה."
+          },
+          "activity": "Decorate the cake from behind the counter; preserve cake, cherries, utensils and worktop contact.",
+          "outfit": "Blue cotton baker apron over a cream rolled-sleeve shirt.",
+          "id": "sweetworkshop-detectives-hide-1"
+        },
+        {
+          "box": [
+            438,
+            711,
+            160,
+            169
+          ],
+          "returned": [
+            369,
+            699,
+            241,
+            193
+          ],
+          "head": [
+            478,
+            711,
+            74,
+            86
+          ],
+          "pose": "peeking",
+          "standingHeight": 245,
+          "crop": [
+            366,
+            557,
+            256,
+            384
+          ],
+          "neighbors": [
+            {
+              "sourceId": "source-child",
+              "head": [
+                478,
+                711,
+                74,
+                86
+              ]
+            },
+            {
+              "sourceId": "neighbor-1",
+              "head": [
+                377,
+                735,
+                68,
+                77
+              ]
+            }
+          ],
+          "hint": {
+            "en": "Look at the cake makers near the bottom.",
+            "he": "חפשו ליד מכיני העוגות בתחתית האיור."
+          },
+          "activity": "Bend over the lower cake; preserve shared icing tools, cake, worktop and neighboring baker.",
+          "outfit": "Blue baker apron, cream blouse, purple sash and pink cloth headband.",
+          "id": "sweetworkshop-detectives-hide-2"
+        },
+        {
+          "box": [
+            685,
+            52,
+            107,
+            184
+          ],
+          "returned": [
+            617,
+            40,
+            240,
+            208
+          ],
+          "head": [
+            695,
+            57,
+            54,
+            56
+          ],
+          "pose": "standing",
+          "standingHeight": 200,
+          "crop": [
+            617,
+            0,
+            256,
+            384
+          ],
+          "neighbors": [
+            {
+              "sourceId": "source-child",
+              "head": [
+                695,
+                57,
+                54,
+                56
+              ]
+            },
+            {
+              "sourceId": "neighbor-1",
+              "head": [
+                795,
+                141,
+                54,
+                62
+              ]
+            },
+            {
+              "sourceId": "neighbor-2",
+              "head": [
+                625,
+                99,
+                54,
+                62
+              ]
+            }
+          ],
+          "hint": {
+            "en": "Look beside the stack of gifts upstairs.",
+            "he": "חפשו ליד ערימת המתנות בקומה העליונה."
+          },
+          "activity": "Carry the upper stack of gift boxes. Keep the boxes, counter and neighboring bakers unchanged; shoes contact the balcony floor.",
+          "outfit": "Blue baker apron, cream rolled-sleeve shirt and brown trousers.",
+          "id": "sweetworkshop-detectives-hide-3"
+        }
+      ],
+      "discoveries": [
+        {
+          "id": "sweetworkshop-river",
+          "name": {
+            "en": "Chocolate river",
+            "he": "נהר שוקולד"
+          },
+          "box": [
+            0,
+            790,
+            143,
+            151
+          ],
+          "category": "object"
+        },
+        {
+          "id": "sweetworkshop-present",
+          "name": {
+            "en": "Red-ribbon gift",
+            "he": "מתנה עם סרט אדום"
+          },
+          "box": [
+            1464,
+            793,
+            140,
+            126
+          ],
+          "category": "object"
+        },
+        {
+          "id": "sweetworkshop-rope",
+          "name": {
+            "en": "Twisted candy rope",
+            "he": "חבל ממתק קלוע"
+          },
+          "box": [
+            165,
+            401,
+            278,
+            90
+          ],
+          "category": "object"
+        },
+        {
+          "id": "sweetworkshop-lamp",
+          "name": {
+            "en": "Green hanging lamp",
+            "he": "מנורה ירוקה תלויה"
+          },
+          "box": [
+            526,
+            1,
+            76,
+            95
+          ],
+          "category": "object"
+        },
+        {
+          "id": "sweetworkshop-tank",
+          "name": {
+            "en": "Copper chocolate tank",
+            "he": "מכל שוקולד מנחושת"
+          },
+          "box": [
+            19,
+            92,
+            164,
+            165
+          ],
+          "category": "object"
+        },
+        {
+          "id": "sweetworkshop-creature",
+          "name": {
+            "en": "White candy creature",
+            "he": "יצור ממתק לבן"
+          },
+          "box": [
+            933,
+            610,
+            41,
+            48
+          ],
+          "category": "character"
+        }
+      ],
+      "nativeSha256": "0079a529e1033e109e6587aa3042c300be3244400552bdd58d2c2ad35a2fa49c",
+      "nativeWidth": 1672,
+      "nativeHeight": 941,
+      "sourceFileName": "kingdom-sweetworkshop-detectives-v3.png",
+      "artVersion": 3
+    },
+    {
+      "board": "giantlibrary",
+      "name": {
+        "en": "Giant Library",
+        "he": "הספרייה הענקית"
+      },
+      "ground": "broad solid wooden book stairs, shallow library balconies and safe reading seats",
+      "light": "Warm golden reading lamps and soft window light, preserve inked facial details, no glowing portrait highlights.",
+      "cues": [
+        [
+          "Endless books and glowing paper birds",
+          "ספרים בלי סוף וציפורי נייר זוהרות"
+        ],
+        [
+          "Reading and discovering together",
+          "קוראים ומגלים יחד"
+        ]
+      ],
+      "roles": [
+        {
+          "box": [
+            402,
+            367,
+            104,
+            206
+          ],
+          "returned": [
+            390,
+            355,
+            151,
+            230
+          ],
+          "head": [
+            421,
+            370,
+            59,
+            66
+          ],
+          "pose": "standing",
+          "standingHeight": 220,
+          "crop": [
+            350,
+            262,
+            256,
+            384
+          ],
+          "neighbors": [
+            {
+              "sourceId": "source-child",
+              "head": [
+                421,
+                370,
+                59,
+                66
+              ]
+            },
+            {
+              "sourceId": "neighbor-1",
+              "head": [
+                306,
+                347,
+                68,
+                83
+              ]
+            },
+            {
+              "sourceId": "neighbor-2",
+              "head": [
+                479,
+                424,
+                54,
+                61
+              ]
+            }
+          ],
+          "hint": {
+            "en": "Look beside the wizard reading a large book.",
+            "he": "חפשו ליד המכשף שקורא בספר גדול."
+          },
+          "activity": "Stand beside the left wizard on the wooden stairs; preserve wizard, open book, floating books and rail.",
+          "outfit": "Muted green school waistcoat, cream shirt, dark blue trousers and small brown satchel.",
+          "id": "giantlibrary-detectives-hide-1"
+        },
+        {
+          "box": [
+            929,
+            475,
+            111,
+            105
+          ],
+          "returned": [
+            917,
+            463,
+            135,
+            129
+          ],
+          "head": [
+            952,
+            475,
+            45,
+            48
+          ],
+          "pose": "peeking",
+          "standingHeight": 185,
+          "crop": [
+            855,
+            296,
+            256,
+            384
+          ],
+          "neighbors": [
+            {
+              "sourceId": "source-child",
+              "head": [
+                952,
+                475,
+                45,
+                48
+              ]
+            },
+            {
+              "sourceId": "neighbor-1",
+              "head": [
+                891,
+                377,
+                53,
+                54
+              ]
+            },
+            {
+              "sourceId": "neighbor-2",
+              "head": [
+                938,
+                402,
+                52,
+                54
+              ]
+            },
+            {
+              "sourceId": "neighbor-3",
+              "head": [
+                785,
+                439,
+                53,
+                60
+              ]
+            }
+          ],
+          "hint": {
+            "en": "Look at the reader on the middle book stairs.",
+            "he": "חפשו ליד הקוראים במדרגות הספרים שבמרכז."
+          },
+          "activity": "Lean across an open book on the middle stair landing; preserve book, rail, nearby readers and the supported pose.",
+          "outfit": "Cream school shirt, muted blue vest and brown book satchel.",
+          "id": "giantlibrary-detectives-hide-2"
+        },
+        {
+          "box": [
+            1201,
+            628,
+            157,
+            166
+          ],
+          "returned": [
+            1189,
+            616,
+            181,
+            190
+          ],
+          "head": [
+            1258,
+            637,
+            70,
+            75
+          ],
+          "pose": "peeking",
+          "standingHeight": 250,
+          "crop": [
+            1152,
+            557,
+            256,
+            384
+          ],
+          "neighbors": [
+            {
+              "sourceId": "source-child",
+              "head": [
+                1258,
+                637,
+                70,
+                75
+              ]
+            },
+            {
+              "sourceId": "neighbor-1",
+              "head": [
+                1373,
+                678,
+                58,
+                63
+              ]
+            },
+            {
+              "sourceId": "neighbor-2",
+              "head": [
+                987,
+                607,
+                71,
+                77
+              ]
+            },
+            {
+              "sourceId": "neighbor-3",
+              "head": [
+                1096,
+                662,
+                59,
+                65
+              ]
+            }
+          ],
+          "hint": {
+            "en": "Look at the bookbinders on the lower right.",
+            "he": "חפשו ליד כורכי הספרים מימין למטה."
+          },
+          "activity": "Bind a book at the lower-right workbench; preserve tools, open chest, books and adjacent apprentice.",
+          "outfit": "Cream rolled-sleeve shirt, dark blue waistcoat and brown bookbinder apron.",
+          "id": "giantlibrary-detectives-hide-3"
+        }
+      ],
+      "discoveries": [
+        {
+          "id": "giantlibrary-dog",
+          "name": {
+            "en": "Library dog",
+            "he": "כלב הספרייה"
+          },
+          "box": [
+            176,
+            775,
+            270,
+            112
+          ],
+          "category": "animal"
+        },
+        {
+          "id": "giantlibrary-globe",
+          "name": {
+            "en": "Brass globe",
+            "he": "גלובוס פליז"
+          },
+          "box": [
+            1288,
+            133,
+            102,
+            82
+          ],
+          "category": "object"
+        },
+        {
+          "id": "giantlibrary-window",
+          "name": {
+            "en": "Arched window",
+            "he": "חלון קשתי"
+          },
+          "box": [
+            1171,
+            0,
+            76,
+            183
+          ],
+          "category": "object"
+        },
+        {
+          "id": "giantlibrary-lantern",
+          "name": {
+            "en": "High lantern",
+            "he": "עששית גבוהה"
+          },
+          "box": [
+            125,
+            0,
+            38,
+            88
+          ],
+          "category": "object"
+        },
+        {
+          "id": "giantlibrary-ladder",
+          "name": {
+            "en": "Library ladder",
+            "he": "סולם הספרייה"
+          },
+          "box": [
+            1464,
+            91,
+            146,
+            470
+          ],
+          "category": "object"
+        },
+        {
+          "id": "giantlibrary-banner",
+          "name": {
+            "en": "Star banner",
+            "he": "דגל כוכבים"
+          },
+          "box": [
+            581,
+            0,
+            48,
+            133
+          ],
+          "category": "object"
+        }
+      ],
+      "nativeSha256": "1e7387cbd6b971e677b1b87a64fbbfac75d9e3fbddac8cce15022b17e1568666",
+      "nativeWidth": 1672,
+      "nativeHeight": 941,
+      "sourceFileName": "kingdom-giantlibrary-detectives-v18.png",
+      "artVersion": 18
+    },
+    {
+      "board": "nightcarnival",
+      "name": {
+        "en": "Night Carnival",
+        "he": "קרנבל הלילה"
+      },
+      "ground": "dry carnival cobbles, shallow wooden platforms and safe carousel seats",
+      "light": "Dark blue evening ambience with amber lantern pools and restrained warm face light; no daylight or portrait spotlight.",
+      "cues": [
+        [
+          "Lantern animals and shadow theatre",
+          "חיות עששית ותיאטרון צלליות"
+        ],
+        [
+          "Carousel music and mask games",
+          "מוזיקת קרוסלה ומשחקי מסכות"
+        ]
+      ],
+      "roles": [
+        {
+          "box": [
+            366,
+            394,
+            80,
+            115
+          ],
+          "returned": [
+            328,
+            378,
+            130,
+            143
+          ],
+          "head": [
+            378,
+            394,
+            55,
+            63
+          ],
+          "pose": "peeking",
+          "standingHeight": 207,
+          "hint": {
+            "en": "Look among the children watching the shadow theatre.",
+            "he": "חפשו בין הילדים שצופים בתיאטרון הצלליות."
+          },
+          "activity": "Replace the mauve-clad child to the right of the puppet audience, preserving both neighboring audience children, puppet screen and wooden rail. Keep the full face visible above the rail and lower body naturally occluded.",
+          "outfit": "Muted mauve child jacket, dark trousers and small brown boots.",
+          "neighbors": [
+            {
+              "sourceId": "source-child",
+              "head": [
+                378,
+                394,
+                55,
+                63
+              ]
+            },
+            {
+              "sourceId": "neighbor-1",
+              "head": [
+                336,
+                386,
+                48,
+                55
+              ]
+            },
+            {
+              "sourceId": "neighbor-2",
+              "head": [
+                220,
+                425,
+                61,
+                63
+              ]
+            },
+            {
+              "sourceId": "neighbor-3",
+              "head": [
+                152,
+                414,
+                54,
+                58
+              ]
+            }
+          ],
+          "id": "nightcarnival-detectives-hide-1",
+          "crop": [
+            265,
+            258,
+            256,
+            384
+          ]
+        },
+        {
+          "box": [
+            857,
+            132,
+            80,
+            126
+          ],
+          "returned": [
+            845,
+            120,
+            104,
+            150
+          ],
+          "head": [
+            866,
+            132,
+            53,
+            57
+          ],
+          "pose": "sitting-cross-legged",
+          "standingHeight": 205,
+          "hint": {
+            "en": "Look on the carousel beside the winged horse.",
+            "he": "חפשו בקרוסלה ליד הסוס המכונף."
+          },
+          "activity": "Replace the teal-clad child seated on the gold carousel animal. Preserve its pole, saddle, mane, neighboring rider and child hand grip. Keep a complete readable head without cropping hair or balloon interference.",
+          "outfit": "Muted teal short child jacket, dark navy trousers and small brown shoes; no tall hat that obscures hair.",
+          "neighbors": [
+            {
+              "sourceId": "source-child",
+              "head": [
+                866,
+                132,
+                53,
+                57
+              ]
+            },
+            {
+              "sourceId": "neighbor-1",
+              "head": [
+                764,
+                137,
+                58,
+                62
+              ]
+            },
+            {
+              "sourceId": "neighbor-2",
+              "head": [
+                1021,
+                191,
+                57,
+                61
+              ]
+            }
+          ],
+          "id": "nightcarnival-detectives-hide-2",
+          "crop": [
+            769,
+            4,
+            256,
+            384
+          ]
+        },
+        {
+          "box": [
+            1260,
+            440,
+            144,
+            148
+          ],
+          "returned": [
+            1192,
+            428,
+            224,
+            172
+          ],
+          "head": [
+            1296,
+            443,
+            71,
+            71
+          ],
+          "pose": "standing",
+          "standingHeight": 216,
+          "hint": {
+            "en": "Look beside the glowing paper butterflies.",
+            "he": "חפשו ליד פרפרי הנייר הזוהרים."
+          },
+          "activity": "Replace the purple-clad child presenting paper butterflies at the magic box, preserving the blue-clad helper, magician, butterfly shapes and box. Keep age-correct hands and a full recognizable three-quarter face.",
+          "outfit": "Muted purple child tunic, dark trousers and brown shoes; ordinary child proportions in the warm lantern light.",
+          "neighbors": [
+            {
+              "sourceId": "source-child",
+              "head": [
+                1296,
+                443,
+                71,
+                71
+              ]
+            },
+            {
+              "sourceId": "neighbor-1",
+              "head": [
+                1200,
+                453,
+                63,
+                61
+              ]
+            },
+            {
+              "sourceId": "neighbor-2",
+              "head": [
+                1434,
+                429,
+                80,
+                75
+              ]
+            },
+            {
+              "sourceId": "neighbor-3",
+              "head": [
+                1468,
+                572,
+                68,
+                77
+              ]
+            }
+          ],
+          "id": "nightcarnival-detectives-hide-3",
+          "crop": [
+            1174,
+            322,
+            256,
+            384
+          ]
+        }
+      ],
+      "discoveries": [
+        {
+          "id": "night-hanging-star",
+          "name": {
+            "en": "Star lantern",
+            "he": "עששית כוכב"
+          },
+          "box": [
+            1132,
+            170,
+            47,
+            51
+          ],
+          "category": "object"
+        },
+        {
+          "id": "night-moon-lantern",
+          "name": {
+            "en": "Moon lantern",
+            "he": "עששית ירח"
+          },
+          "box": [
+            614,
+            91,
+            63,
+            70
+          ],
+          "category": "object"
+        },
+        {
+          "id": "night-moon-boat",
+          "name": {
+            "en": "Moon boat",
+            "he": "סירת ירח"
+          },
+          "box": [
+            291,
+            105,
+            176,
+            130
+          ],
+          "category": "object"
+        },
+        {
+          "id": "night-rabbit",
+          "name": {
+            "en": "Carnival rabbit",
+            "he": "ארנב בקרנבל"
+          },
+          "box": [
+            1490,
+            741,
+            68,
+            99
+          ],
+          "category": "animal"
+        },
+        {
+          "id": "night-owl",
+          "name": {
+            "en": "Carved owl",
+            "he": "ינשוף מגולף"
+          },
+          "box": [
+            1554,
+            752,
+            65,
+            95
+          ],
+          "category": "object"
+        },
+        {
+          "id": "night-star-lamp",
+          "name": {
+            "en": "Star-shaped lantern",
+            "he": "עששית כוכב"
+          },
+          "box": [
+            1580,
+            239,
+            55,
+            51
+          ],
+          "category": "object"
+        }
+      ],
+      "nativeSha256": "e49b33e1943924ca19e5c18885ec27e491168bfa255003448d843d3b06d83df2",
+      "nativeWidth": 1672,
+      "nativeHeight": 941,
+      "sourceFileName": "kingdom-nightcarnival-detectives-v2.png",
+      "artVersion": 2
+    }
+  ]
+}

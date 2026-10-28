@@ -20,13 +20,13 @@ const settings = vi.hoisted(() => ({ APP_URL: "https://detective-art.example", A
 vi.mock("../../../lib/env", () => ({ env: () => settings }));
 
 describe("qualified Detective source and identity family", () => {
-  it("resolves only the nine actual Detective boards and never an Explorer or Kingdom fallback", async () => {
+  it("resolves both explicit Detective families without borrowing Explorer sources", async () => {
     const boards = localPatchBoardsForVersion(13);
-    expect(boards).toHaveLength(9);
-    expect(boards.flatMap(board => board.hides)).toHaveLength(27);
-    expect(new Set(boards.flatMap(board => board.hides.map(hide => hide.id))).size).toBe(27);
+    expect(boards).toHaveLength(18);
+    expect(boards.flatMap(board => board.hides)).toHaveLength(54);
+    expect(new Set(boards.flatMap(board => board.hides.map(hide => hide.id))).size).toBe(54);
     expect(boards.every(board => board.art.includes("-detectives-") && board.hides.every(hide => hide.id.includes("-detectives-")))).toBe(true);
-    expect(localPatchBoardForVersion("castlegate", 13)).toBeNull();
+    expect(localPatchBoardForVersion("castlegate", 13)?.art).toContain("kingdom-castlegate-detectives");
     expect(localPatchBoardsForVersion(14)).toEqual([]);
     expect(localPatchBoardForVersion("newyork", 12)?.art).not.toBe(boards[0]!.art);
     expect(await identityStyleCatalogSha256("newyork", 13)).toBe(DETECTIVE_IDENTITY_STYLE_CATALOG_SHA256);
@@ -50,7 +50,8 @@ describe("qualified Detective source and identity family", () => {
   }, 30_000);
 
   it("refuses a foreign family, older style or altered retained public source rather than reusing another atlas", async () => {
-    await expect(buildBoardWizardIdentityStyle(undefined, "board-matched-identity/v6", "kingdom", undefined, { sceneVersion: 13 })).rejects.toThrow("Detective sources");
+    const kingdom = await buildBoardWizardIdentityStyle(undefined, "board-matched-identity/v6", "kingdom", undefined, { sceneVersion: 13 });
+    expect(kingdom.examples).toHaveLength(9);expect(kingdom.catalogSha256).not.toBe(DETECTIVE_IDENTITY_STYLE_CATALOG_SHA256);
     await expect(buildBoardWizardIdentityStyle(undefined, "board-matched-identity/v5", "journey", undefined, { sceneVersion: 13 })).rejects.toThrow("Detective sources");
     const source = DETECTIVE_IDENTITY_STYLE_SOURCES[0]!;
     await expect(buildBoardWizardIdentityStyle(undefined, "board-matched-identity/v6", "journey", new Map([[source.sha256, Buffer.from("altered")]]), { sceneVersion: 13 })).rejects.toThrow("cached Detective source changed");

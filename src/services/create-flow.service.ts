@@ -1,3 +1,4 @@
+import { pinDetectiveSourceScope } from "./generation/source-family-scope";
 import { pinExplorersOperationalPolicy } from "./generation/explorers-operational-policy";
 import { pinDetectivesOperationalPolicy } from "./generation/detectives-operational-policy";
 import { Prisma } from "@prisma/client";
@@ -82,8 +83,9 @@ export async function createDraft(c: Container, ownerId: string | null, locale: 
       await pinIdentitySourceRelease(tx, created.id);
       if (lean || selectedLevel === "detectives") {
         if (selectedVersion === null || selectedVersion === undefined) throw Error("A local-patch source family requires its exact scene version");
-        await pinLocalPatchSourceFamily(tx, created.id, { sceneVersion: selectedVersion, searchLevel: selectedLevel });
-        if(selectedVersion===13)await pinDetectivesOperationalPolicy(tx,created.id,c.detectivesOperationalRelease,c.storage.id);
+        const scoped = selectedVersion === 13 && await pinDetectiveSourceScope(tx, created.id, c.detectivesOperationalRelease, c.storage.id);
+        if (!scoped) await pinLocalPatchSourceFamily(tx, created.id, { sceneVersion: selectedVersion, searchLevel: selectedLevel });
+        if(selectedVersion===13 && !scoped)await pinDetectivesOperationalPolicy(tx,created.id,c.detectivesOperationalRelease,c.storage.id);
         if(selectedVersion===12)await pinExplorersOperationalPolicy(tx,created.id,c.explorersOperationalRelease,c.storage.id);
       }
     }
@@ -317,7 +319,7 @@ export async function worldsForDraft(c: Container, styleVersion = newDraftStyleV
     if (e.APP_ENV !== "qa" || e.LOCAL_PATCH_PROMPT_RELEASE !== "v19" || e.LOCAL_PATCH_IDENTITY_SOURCE !== "full-source-v1"
       || c.leanRelease !== LOCAL_PATCH_LEAN_RELEASE || !c.pinDualVisualReview || c.dualVisualReviewRelease !== DUAL_VISUAL_REVIEW_V3 || !c.visualReview) return [];
   }
-  return (await purchasableWorlds(c, release.sceneVersion)).filter(world => release.worlds.has(world.slug));
+  return (await purchasableWorlds(c, release.sceneVersion)).filter(world => release.worlds.has(world.slug) && (styleVersion !== LOCAL_PATCH_STYLE || world.slug !== "kingdom" || c.detectivesOperationalRelease === "detectives-operational/v1" && c.storage.id === "db"));
 }
 
 /** A Detectives selection is sellable only as whole worlds that are eligible
