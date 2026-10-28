@@ -39,4 +39,20 @@ Rich native review contexts exposed the existing 5 MiB per-image admission bound
 - The five failing fixture expectations were corrected in a test-only follow-up; all 38 tests across those three files then passed (including two additional refusal tests). No runtime code changed between the broad run and this corrective run. This is combined full-run plus corrective validation; a second all-green full-suite invocation was not performed.
 - Runtime integration is commit `85a53a118c0caa2c5c1b1a6acec9655209714717`; test-fixture corrections are commit `7d7bd824`. Both are local on `codex/kingdom-engine-20261028`. The runtime checkout is ready for a separately authorized real-child QA trial; no push or deployment occurred.
 
+## Independent review follow-up
+
+The review of `aacb3812` identified a skipped Kingdom tap-area assertion and a misleading test title. The three Kingdom scenarios already used `born: true`, asserted MEDIUM on every saved review and checked the actual provider effort against the single-review version. Their shared title still said LOW. The test title now prints the scenario's expected effort. The operational birth receipt retains its original LOW authorization descriptor; the prospective `single-sol-medium/v1` review and its separate immutable policy pin govern the actual new assessment.
+
+The follow-up strengthens the existing full-world tests without changing runtime code or approved art:
+
+- Every Kingdom request, including transport continuation and guided redraws, must explicitly use MEDIUM and include both labelled native RAW and exact shipping crown evidence.
+- All 27 published rows must bind their head evidence to the actual painting attempt, image, geometry, identity and authored return, with the existing 12px opaque margin. Missing evidence, foreign RAW/shipping hashes and a changed return window cannot publish. A located head crossing the opaque return forces repair even when both verbal crown verdicts say PASS.
+- All 27 player targets use the actual 3344x1882 board dimensions. Their measured hit regions must cover the independently recorded synthetic painted figures without treating the entire crop as the child. The shared player touch policy is checked at small viewport scales and native scale with a 64px floor. These are computed geometry checks, not a mobile browser or device test.
+- A fresh read of all nine packaged images confirmed 3344x1882 throughout, 6.21–8.08 MiB per board and 62.07 MiB in total. Real mobile transfer, decode latency and FPS remain unmeasured; the accepted lossless assets and their frozen hashes are preserved.
+
+Follow-up validation passed using synthetic providers only:
+
+- `npm run check -- src/domain/generation/__tests__/target-head-return.test.ts src/game/__tests__/target-geometry.test.ts src/services/generation/__tests__/local-patch-geometry.test.ts --maxWorkers=2`: TypeScript passed; three files / 25 tests passed.
+- `npm run check -- src/services/generation/__tests__/detectives-single-review-world.test.ts -t kingdom- --maxWorkers=1`: TypeScript passed; all three complete Kingdom scenarios passed in 717.16 seconds (clean, no-answer transport recovery, guided redraw). Each delivered nine boards / 27 appearances / 54 discoveries with MEDIUM review and the unchanged four-dollar cap. The 19 unrelated cases were intentionally excluded by this focused filter. The full suite was not repeated for this test/documentation-only follow-up.
+
 These checks establish local contract integration. They do not establish real-child likeness, real provider quality/latency, remote PostgreSQL behavior, completed CI, a QA deployment or production readiness. No paid provider request or external deployment occurred.
