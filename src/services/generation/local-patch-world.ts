@@ -9,6 +9,8 @@ import { readSourceBodyRepairPin, sourceBodyPurchaseCandidate } from './source-b
 import { sourceBodyMarker } from '../../domain/scene/source-body-repair';
 import { nativeMaskTailCandidate, nativeMaskTailExhausted } from "../../domain/generation/native-mask-tail";
 import { guidedFrameCandidate, guidedFrameExhausted } from "../../domain/generation/guided-frame-recovery";
+import { qaCompletionGuidedRepair } from "../../domain/generation/qa-completion-recovery";
+import { readQaCompletionCapacity, resumeQaCompletionRecovery } from "./qa-completion-capacity";
 import { detectivesNativeMaskTail } from "./detectives-completion-budget";
 import { singleLowReviewAuthorization as detectivesSingleReviewAuthorization, hasSingleLowCapacity as hasDetectivesLowCapacity } from "./single-low-policy";
 import { hasLocalPatchCapability } from "../../domain/scene/local-patch-family";
@@ -52,7 +54,7 @@ import { advanceQualityBatches } from "./quality-batch";
 import { subjectUpgradeOf } from "./subject-enrollment";
 import { subjectRejudgePending } from "./subject-rejudge";
 import { LOCAL_PATCH_BOARD_REVIEW_MIN_MS, localPatchBoardAwaitsProvider, localPatchProgressOrder, localPatchRestDecision, localPatchRestOf,
-  localPatchReviewFits, selfRepairProgress, type LocalPatchRest } from "../../domain/scene/local-patch-progress";
+  localPatchReviewFits, localPatchReadyReviewOwed, selfRepairProgress, type LocalPatchRest } from "../../domain/scene/local-patch-progress";
 import { continueAdmittedReviewInterruptions, openAdmittedInterruptions, recoverEnrolledReviewInterruptions, resumptionAfterContinuation,
   reviewContinuationRecorded, type ContinuationWhy } from "./subject-upgrade";
 import { advanceContinuityInBackground } from "./continuity-background";
@@ -333,6 +335,8 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
     job = await c.db.generationJob.findUniqueOrThrow({ where: { id: job.id } });
   if (job.currentStep === LOCAL_PATCH_RECOVERY_EXHAUSTED && await resumePropJoinRepair(c, gameId))
     job = await c.db.generationJob.findUniqueOrThrow({ where: { id: job.id } });
+  if (job.currentStep === LOCAL_PATCH_RECOVERY_EXHAUSTED && await resumeQaCompletionRecovery(c, gameId))
+    job = await c.db.generationJob.findUniqueOrThrow({ where: { id: job.id } });
   // A job parked for a person is not a job to take. Every OTHER failure stays
   // claimable, because those do get better by trying again.
   if (job.currentStep && PARKED_STEPS.includes(job.currentStep)) {
@@ -580,8 +584,13 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
   const nativeFourthPainting = (row: typeof rows[number] | undefined) => !!row && nativeTailRows.has(row.id) && nativeMaskTailCandidate(row);
   const guidedThirdPainting = (row: Parameters<typeof guidedFrameCandidate>[0] | undefined) => !!row && !!guideGrant
     && guideCapacity && !sourceBodyBirthMarker(row) && guidedFrameCandidate(row);
+  const completionAuthority = automatic && !extraPlan ? await readQaCompletionCapacity(c, boardWizardWorldId(gameId)) : null;
+  const completionRepair = (row: Parameters<typeof qaCompletionGuidedRepair>[0]) =>
+    qaCompletionGuidedRepair(row, game.scenes[0]!.sceneVersion, !!completionAuthority);
   /** A v1 pose-plan refusal awaiting its v2 question about the same pixels (subject-rejudge/v1), read at the enrolled age. */
   const rejudgePending = (row: Parameters<typeof subjectRejudgePending>[0]) => !!subjectUpgrade && subjectRejudgePending(row, subjectUpgrade.ageYears);
+  const readyReviewOwed = (row: { status: string; judgeJson: string | null }) => localPatchReadyReviewOwed(row,
+    { required: !!subjectUpgrade, identitySha256: subjectUpgrade?.identityRevision ? subjectUpgrade.identitySha256 : undefined });
   // A board also owes its v2 re-judgments (subject-rejudge/v1), whatever status the board itself carries.
   const subjectPendingScenes = (current: typeof rows) => new Set(subjectUpgrade ? game.scenes.filter(scene => current.some(row =>
     row.targetInstance.gameSceneId === scene.id && (row.status === "GENERATED" && !subjectStageCurrent(row, subjectUpgrade?.identityRevision ? subjectUpgrade.identitySha256 : undefined) || rejudgePending(row))))
@@ -645,14 +654,9 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
     const reviewedOnce = (row: (typeof rows)[number]) => {
       try { return JSON.parse(row.judgeJson ?? "null")?.reviewState === "board-review-complete"; } catch { return false; }
     };
-    const reviewedAcceptable = (row: (typeof rows)[number]) => {
-      try { const receipt = JSON.parse(row.judgeJson ?? "null");
-        return receipt?.reviewState === "board-review-complete" && receipt.qualityDisposition?.state === "acceptable";
-      } catch { return false; }
-    };
     /** Review work on an appearance's current pixels: exactly what gives its board firstWork or retry below. */
-    const reviewWork = (row: (typeof rows)[number]) => !!subjectUpgrade && row.status === "GENERATED" && !subjectStageCurrent(row, subjectUpgrade?.identityRevision ? subjectUpgrade.identitySha256 : undefined)
-      || rejudgePending(row) || playerReviewEnabled() && needsPlayerReview(row) || row.status === "GENERATED" && !reviewedAcceptable(row)
+    const reviewWork = (row: (typeof rows)[number]) => readyReviewOwed(row)
+      || rejudgePending(row) || playerReviewEnabled() && needsPlayerReview(row)
       || !!localPatchEvidenceRecovery(row)?.retry;
     const sentKey = (row: (typeof rows)[number]) => {
       try { const sha = JSON.parse(row.judgeJson ?? "null")?.judgedSha256; return typeof sha === "string" ? `${row.id}:${sha}` : null; } catch { return null; }
@@ -672,11 +676,7 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
       // actual image/geometry/identity binding, including tampered pixels.
       // A v1 pose-plan refusal awaits its v2 subject question about the same pixels (subject-rejudge/v1).
       const firstWork = subjectWork || sceneRows.some(rejudgePending)
-        || sceneRows.some(row => playerReviewEnabled() && needsPlayerReview(row)) || ready.some(row => {
-        try { const receipt = JSON.parse(row.judgeJson ?? "null");
-          return receipt?.reviewState !== "board-review-complete" || receipt.qualityDisposition?.state !== "acceptable";
-        } catch { return true; }
-      });
+        || sceneRows.some(row => playerReviewEnabled() && needsPlayerReview(row)) || ready.some(readyReviewOwed);
       return { scene, ready, firstWork, continuityPending: sceneRows.some(localPatchContinuityPending), retry: sceneRows.some(row => localPatchEvidenceRecovery(row)?.retry),
         awaiting: localPatchBoardAwaitsProvider(sceneRows.filter(reviewWork).map(sentKey), stillRunning) };
     }).sort((a, b) => Number(!a.continuityPending) - Number(!b.continuityPending) || Number(!a.firstWork) - Number(!b.firstWork));
@@ -760,7 +760,7 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
   const repairCheckpoints = new Map(rows.map(row => [row.id, JSON.stringify(selfRepairOf(row) ?? null)]));
   const automaticWork = automatic && !extraPlan ? work.filter(item => {
     const row = stateOf(item.sceneId, item.hide.targetId);
-    return needsSelfRepair(row) && !contextPainting(row) && !contextExhausted(row) && !sourceBodyBirthMarker(row!) && !bodyPainting(row) && !bodyExhausted(row) && !(row && (guidedFrameExhausted(row) || nativeMaskTailExhausted(row))) && !leanThirdPainting(row) && !guidedThirdPainting(row) && !(hasLocalPatchCapability(game.scenes.find(scene => scene.id === item.sceneId)?.sceneVersion, "integratedQuality")
+    return needsSelfRepair(row) && !contextPainting(row) && !contextExhausted(row) && !sourceBodyBirthMarker(row!) && !bodyPainting(row) && !bodyExhausted(row) && !(row && (guidedFrameExhausted(row) && !completionRepair(row) || nativeMaskTailExhausted(row))) && !leanThirdPainting(row) && !guidedThirdPainting(row) && !(hasLocalPatchCapability(game.scenes.find(scene => scene.id === item.sceneId)?.sceneVersion, "integratedQuality")
       && (localPatchEvidenceRecovery(row!) || playerReviewEnabled() && needsPlayerReview(row!)))
       // Re-asked under v2 about the same pixels before any repair (subject-rejudge/v1).
       && !rejudgePending(row!);
@@ -981,7 +981,7 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
   // slice's todo. The final normal completion must queue the repair pass.
   const left = work.filter(item => {
     const row = after.find(r => r.targetInstance.gameSceneId === item.sceneId && r.targetInstance.targetId === item.hide.targetId);
-    return !settledHide(row) || automatic && !extraPlan && (needsSelfRepair(row) || !!row && !!localPatchEvidenceRecovery(row));
+    return !settledHide(row) || automatic && !extraPlan && (needsSelfRepair(row) || !!row && (progress && readyReviewOwed(row) || !!localPatchEvidenceRecovery(row)));
   });
   // A world the ledger is holding cannot authorise anything, so another tick
   // would read the same rows, buy nothing and ask again forever. Held is a
@@ -1053,8 +1053,8 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
       return localPatchRestOf({ hideId: item.hide.id,
         evidence: recovery ? { retry: recovery.retry, waiting: recovery.waiting, exhausted: recovery.exhausted,
           ...(diagnosis ? { kind: `${diagnosis.role} ${diagnosis.kind}` } : {}) } : null,
-        reviewOwed: !!row && (rejudgePending(row) || playerReviewEnabled() && needsPlayerReview(row)),
-        repairSpent: contextExhausted(row) || progress && !!row && !contextPainting(row) && !bodyPainting(row) && !nativeFourthPainting(row) && (bodyExhausted(row) || !!sourceBodyBirthMarker(row) && row.attempts>=LOCAL_PATCH_MAX_ATTEMPTS || guidedFrameExhausted(row) || nativeMaskTailExhausted(row) || needsSelfRepair(row) && selfRepairProgress(selfRepairOf(row), row.attempts).exhausted) });
+        reviewOwed: !!row && (progress && readyReviewOwed(row) || rejudgePending(row) || playerReviewEnabled() && needsPlayerReview(row)),
+        repairSpent: contextExhausted(row) || progress && !!row && !contextPainting(row) && !bodyPainting(row) && !nativeFourthPainting(row) && (bodyExhausted(row) || !!sourceBodyBirthMarker(row) && row.attempts>=LOCAL_PATCH_MAX_ATTEMPTS || guidedFrameExhausted(row) && !completionRepair(row) || nativeMaskTailExhausted(row) || needsSelfRepair(row) && selfRepairProgress(selfRepairOf(row), row.attempts).exhausted) });
     });
     const rest = pendingReviews ? null : localPatchRestDecision(rests);
     if (rest?.action === "wait") {

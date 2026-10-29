@@ -1,5 +1,6 @@
 import { nextWholeSourceContextWake, resumeWholeSourceContextRepair } from "./whole-source-context-repair";
 import { nextBoundEnvelopeReconciliation } from "./bound-envelope-reconciliation";
+import { nextQaCompletionRecovery, resumeQaCompletionRecovery } from "./qa-completion-capacity";
 import { nextPublishedCrownRepair,tickPublishedCrownRepair } from "./published-crown-repair";
 import { nextPropJoinRepair } from "./prop-join-repair";
 import { nextIdentitySourceRevision, tickIdentitySourceRevision } from "./identity-source-revision-queue";
@@ -131,9 +132,11 @@ export async function tickGeneration(c: Container, gameId: string | null, budget
   const capacityWake = await nextDetectivesCompletionWake(c, gameId);
   const propWake = gameId ? null : await nextPropJoinRepair(c);
   const envelopeWake = gameId ? null : await nextBoundEnvelopeReconciliation(c);
+  const completionCandidate = gameId ? null : await nextQaCompletionRecovery(c);
+  const completionWake = completionCandidate && await resumeQaCompletionRecovery(c, completionCandidate) ? completionCandidate : null;
   const contextCandidate = gameId ? null : await nextWholeSourceContextWake(c);
   const contextWake = contextCandidate && await resumeWholeSourceContextRepair(c,contextCandidate) ? contextCandidate : null;
-  const id = gameId ?? reconciled ?? envelopeWake ?? contextWake ?? capacityWake ?? propWake ?? (wake && await claimParkedWake(c, wake) ? wake.gameId : null) ?? (await nextPendingGame(c));
+  const id = gameId ?? reconciled ?? envelopeWake ?? completionWake ?? contextWake ?? capacityWake ?? propWake ?? (wake && await claimParkedWake(c, wake) ? wake.gameId : null) ?? (await nextPendingGame(c));
   if (!id) return { gameId: null, status: null, pending: false };
   const before = await c.db.game.findUnique({ where: { id }, select: { status: true, styleVersion: true, scenes: { select: { sceneVersion: true } } } });
   if (!before) return { gameId: id, status: null, pending: false };

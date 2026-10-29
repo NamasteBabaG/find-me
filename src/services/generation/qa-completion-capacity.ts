@@ -17,6 +17,8 @@ import { auditWorldBudget } from "./world-budget";
 import { fenceLocalPatchImages } from "./local-patch-lifecycle";
 import { applyBoardWizardBudgetCap, type BoardWizardBudgetGrant } from "./board-wizard-budget";
 import { isGameStatus, isPlayable } from "../../domain/order-state";
+import { QA_COMPLETION_RECOVERY, qaCompletionEngineRest, qaCompletionGuidedRepair, qaCompletionUnknownsPreserved } from "../../domain/generation/qa-completion-recovery";
+import { localPatchReadyReviewOwed } from "../../domain/scene/local-patch-progress";
 
 const ACTION = "generation:qa-medium-completion-capacity";
 const EXHAUSTED = "local-patch:recovery-exhausted";
@@ -147,4 +149,75 @@ export async function authorizeQaCompletionCapacity(c: Container,input:{gameId:s
     await tx.auditLog.create({data:{id:qaCompletionCapacityId(input.gameId),actorType:"ADMIN",actorId:input.operatorId,action:ACTION,entityType:"Game",entityId:input.gameId,metaJson:JSON.stringify(receipt)}});
     return receipt;
   },{isolationLevel:Prisma.TransactionIsolationLevel.Serializable,timeout:30000});
+}
+
+/** Read-only wake preview. Only an active, unchanged completion authority may
+ * resume its own engine rest. New unknown outcomes require diagnosis first. */
+export async function planQaCompletionRecovery(c: Container, gameId: string) {
+  if (!qualified(c) || !/^[A-Za-z0-9_-]{1,160}$/.test(gameId)) return null;
+  const job = await c.db.generationJob.findUnique({ where: { id: "job_" + gameId } });
+  if (!job || job.gameId !== gameId || job.status !== "FAILED" || job.currentStep !== EXHAUSTED
+    || !qaCompletionEngineRest(job.lastError)) return null;
+  const receipt = await receiptOf(c, gameId); if (!receipt) return null;
+  let live; try { live = await stateOf(c, gameId); } catch { return null; }
+  if (live.game.status !== "TARGETS_GENERATING" || live.game.configJson || live.game.readyAt
+    || JSON.stringify(live.state) !== JSON.stringify(receipt.state)) return null;
+  const ledger = await PrismaWorldBudgetStore.forReadOnlyTransaction(c.db).read(receipt.state.worldId);
+  if (!ledger || ledger.revision >= WORLD_BUDGET_LEDGER_MAX_REVISION) return null;
+  const audit = applyBoardWizardBudgetCap(auditWorldBudget(ledger.snapshot, QA_COMPLETION_CAP), QA_COMPLETION_CAP);
+  if (audit.held || audit.pendingRequestKeys.length || audit.conflictRequestKeys.length || audit.overrunRequestKeys.length) return null;
+  if (!qaCompletionUnknownsPreserved(ledger.snapshot.requests, receipt.unknowns)) return null;
+  const rows = await c.db.targetVariantAsset.findMany({ where: { variant: "A", targetInstance: { gameScene: { gameId } } }, orderBy: { id: "asc" } });
+  const ready = rows.filter(row => !!row.assetId && localPatchReadyReviewOwed(row, { required: true, identitySha256: receipt.state.identitySha256 }));
+  const diagnose = rows.filter(row => qaCompletionGuidedRepair(row, receipt.state.sceneVersion, true));
+  if (!ready.length && !diagnose.length) return null;
+  // Job timestamps and our revision fence are deliberately absent from the
+  // wake identity: unchanged failed work can never wake itself every minute.
+  const rowsSha256 = hash(rows), ledgerSha256 = hash(ledger.snapshot);
+  const wakeId = "aud_qa_medium_continue_" + hash({ authorizationSha256: receipt.authorizationSha256, rowsSha256, ledgerSha256 });
+  if (await c.db.auditLog.findUnique({ where: { id: wakeId } })) return null;
+  const body = { version: QA_COMPLETION_RECOVERY, gameId, authorizationSha256: receipt.authorizationSha256,
+    rowsSha256, ledgerSha256, ledgerRevision: ledger.revision, jobSha256: hash(job),
+    readyRows: ready.map(row => row.id), diagnosisRows: diagnose.map(row => row.id) };
+  return { ...body, wakeId, planSha256: hash(body), job, worldId: receipt.state.worldId };
+}
+
+class CompletionRecoveryChanged extends Error {}
+
+/** Requeues only. The ordinary worker reuses paid evidence first, diagnoses a
+ * changed recipe within the existing cycle bound, and still requires MEDIUM. */
+export async function resumeQaCompletionRecovery(c: Container, gameId: string): Promise<boolean> {
+  const plan = await planQaCompletionRecovery(c, gameId); if (!plan) return false;
+  try {
+    return await c.db.$transaction(async tx => {
+      await fenceLocalPatchImages(tx, gameId);
+      const scoped = { ...c, db: tx as Container["db"], storage: new DbStorage(tx) };
+      const fresh = await planQaCompletionRecovery(scoped, gameId);
+      if (!fresh || fresh.planSha256 !== plan.planSha256) throw new CompletionRecoveryChanged();
+      const ledger = await tx.worldBudgetLedger.updateMany({ where: { worldId: plan.worldId, revision: plan.ledgerRevision }, data: { revision: { increment: 1 } } });
+      const job = await tx.generationJob.updateMany({ where: { id: plan.job.id, gameId, status: "FAILED", currentStep: EXHAUSTED,
+        attempts: plan.job.attempts, updatedAt: plan.job.updatedAt, lastError: plan.job.lastError }, data: { status: "QUEUED", currentStep: "local-patch", lastError: null } });
+      if (ledger.count !== 1 || job.count !== 1) throw new CompletionRecoveryChanged();
+      await tx.auditLog.create({ data: { id: plan.wakeId, actorType: "SYSTEM", action: "generation:qa-medium-completion-resumed",
+        entityType: "Game", entityId: gameId, metaJson: JSON.stringify({ version: plan.version, authorizationSha256: plan.authorizationSha256,
+          planSha256: plan.planSha256, readyRows: plan.readyRows, diagnosisRows: plan.diagnosisRows,
+          attemptsPreserved: true, requestsPreserved: true, unknownsPreserved: true, qualityPolicyPreserved: true }) } });
+      return true;
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, timeout: 30000 });
+  } catch (error) {
+    if (error instanceof CompletionRecoveryChanged || error instanceof Prisma.PrismaClientKnownRequestError
+      && ["P2002", "P2034"].includes(error.code)) return false;
+    throw error;
+  }
+}
+
+export async function nextQaCompletionRecovery(c: Container): Promise<string | null> {
+  if (!qualified(c)) return null;
+  const grants = await c.db.auditLog.findMany({ where: { actorType: "ADMIN", action: ACTION, entityType: "Game" },
+    select: { entityId: true }, orderBy: { createdAt: "asc" }, take: 20 });
+  for (const grant of grants) {
+    try { if (grant.entityId && await planQaCompletionRecovery(c, grant.entityId)) return grant.entityId; }
+    catch { /* A malformed world's grant cannot authorize it or starve another world. */ }
+  }
+  return null;
 }

@@ -13,6 +13,19 @@ export const LOCAL_PATCH_PROGRESS_VERSION = "local-patch-progress/v1" as const;
 /** Self-repair cycles one appearance may start under local-patch-subject/v2 before it stops for a service decision. */
 export const SUBJECT_V2_REPAIR_CYCLES = 3;
 
+/** Scheduling only. A new shipping image still owes its own review even when
+ * every failed sibling has spent its drawing allowance. */
+export function localPatchReadyReviewOwed(row: { status: string; judgeJson: string | null },
+  subject: { required: boolean; identitySha256?: string } = { required: false }): boolean {
+  if (row.status !== "GENERATED") return false;
+  try {
+    const receipt = JSON.parse(row.judgeJson ?? "null"), dual = receipt?.boardReview?.dual;
+    return receipt?.reviewState !== "board-review-complete" || receipt?.qualityDisposition?.state !== "acceptable"
+      || subject.required && (!dual?.subject || dual.imageSha256 !== receipt.judgedSha256
+        || !!subject.identitySha256 && dual.identitySha256 !== subject.identitySha256);
+  } catch { return true; }
+}
+
 export type ProgressCandidate = {
   /** A paid step already bought or started: a repair plan to apply, or a started attempt to finish. */
   readonly inFlight: boolean;

@@ -49,6 +49,8 @@ import { needsSelfRepair } from "../../../domain/scene/local-patch-self-repair";
 import { visualReviewPolicy } from "../../../domain/generation/visual-review-policy";
 import { localPatchPublicationGeometryHash } from "../local-patch-publication-policy";
 import { createDraft } from "../../create-flow.service";
+import * as subjectEnrollment from "../subject-enrollment";
+import * as selfRepairWorker from "../local-patch-self-repair";
 
 const journeySlugs = new Set(boardsOfWorlds(["journey"]));
 const BOARDS = localPatchBoardsForVersion(12).filter(board => journeySlugs.has(board.board)), BOARD = BOARDS.find(b => b.board === "giza")!;
@@ -1325,3 +1327,43 @@ describe("quality reader v2: a located failure beside an unlocated one", () => {
     expect(await budget.readRequest(worldId, `self-repair:${hide.id}:diagnosis:1`)).toBeNull();
   });
 });
+
+it("queues a just-composed paid image for review when its failed siblings have no drawing cycles left", async () => {
+  const s = await seed("late-paid-composition-beside-spent", 3), initial = await rows(s.gameId);
+  const late = initial[2]!, lateReceipt = JSON.parse(late.judgeJson!);
+  // Scheduling fixtures are never publication evidence. All other boards are
+  // already quiet; only this in-flight repair can change a row this slice.
+  const approved = { compositionVersion: LOCAL_PATCH_COMPOSITION_VERSION, reviewState: "board-review-complete",
+    qualityDisposition: { state: "acceptable" }, judgedSha256: "synthetic-approved-picture",
+    boardReview: { dual: { subject: {}, imageSha256: "synthetic-approved-picture" } } };
+  for (const board of BOARDS.filter(board => board.board !== BOARD.board)) {
+    for (const hide of board.hides) {
+      const target = await db.targetInstance.create({ data: { id: `ti-${s.gameId}-${hide.id}`, gameSceneId: `gsc-${s.gameId}-${board.board}`,
+        targetId: hide.targetId, targetType: "child", slotAId: hide.id, slotBId: hide.id, status: "GENERATED" } });
+      await db.targetVariantAsset.create({ data: { id: `tva-${s.gameId}-${hide.id}`, targetInstanceId: target.id, variant: "A",
+        slotId: hide.id, provider: "local-patch", status: "GENERATED", attempts: 1, judgeJson: JSON.stringify(approved) } });
+    }
+    await db.gameScene.update({ where: { id: `gsc-${s.gameId}-${board.board}` }, data: { generationStatus: "GENERATED" } });
+  }
+  for (const row of initial) await db.targetVariantAsset.update({ where: { id: row.id }, data: { status: "FAILED", attempts: 2,
+    lastError: "quality-retry: synthetic spent seam", judgeJson: JSON.stringify({ ...JSON.parse(row.judgeJson!),
+      selfRepair: { version: "local-patch-self-repair/v1", phase: row.id === late.id ? "applying" : "awaiting-review", cycle: 3, subjectV2Cycles: 3 } }) } });
+  const enrolled = vi.spyOn(subjectEnrollment, "subjectUpgradeOf").mockResolvedValue({ ageYears: 8 } as never);
+  const repair = vi.spyOn(selfRepairWorker, "runLocalPatchSelfRepair").mockImplementation(async (_container, input) => {
+    expect(input.hide.id).toBe(lateReceipt.hide);
+    await db.targetVariantAsset.update({ where: { id: late.id }, data: { status: "GENERATED", lastError: null,
+      judgeJson: JSON.stringify({ ...lateReceipt, reviewState: "pending-board-review", selfRepair: {
+        version: "local-patch-self-repair/v1", phase: "awaiting-review", cycle: 3, subjectV2Cycles: 3 } }) } });
+  });
+  const noDraw = vi.fn(async () => { throw Error("No new painting is authorized by this scheduling fixture"); });
+  try {
+    const before = await boardWizardBudgetOf(c).audit(boardWizardWorldId(s.gameId));
+    const result = await runLocalPatchWorldSlice(c, { ...s.deps, render: noDraw }, s.gameId, { boardJudge: s.judge });
+    expect(repair).toHaveBeenCalledOnce(); expect(result).toMatchObject({ pending: true, attention: null });
+    expect(await db.generationJob.findUniqueOrThrow({ where: { id: `job_${s.gameId}` } })).toMatchObject({ status: "QUEUED", currentStep: "local-patch" });
+    expect((await rows(s.gameId)).find(row => row.id === late.id)).toMatchObject({ status: "GENERATED", attempts: 2 });
+    expect((await db.game.findUniqueOrThrow({ where: { id: s.gameId } })).configJson).toBeNull();
+    expect((await boardWizardBudgetOf(c).audit(boardWizardWorldId(s.gameId))).committedMicroUsd).toBe(before.committedMicroUsd);
+    expect(noDraw).not.toHaveBeenCalled(); expect(s.judge).not.toHaveBeenCalled();
+  } finally { repair.mockRestore(); enrolled.mockRestore(); }
+}, 180000);

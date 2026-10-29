@@ -11,7 +11,8 @@ import { BOUND_SUBJECT_QUALITY_ENVELOPE_READER, BOUND_SUBJECT_QUALITY_ENVELOPE_R
 import { PLACEMENT_GUIDE_VERSION } from "../../../domain/generation/placement-guide";
 import { PENDING_IMAGE_LEASE_MS } from "../../../domain/generation/pending-image-lease";
 import { ensureSingleMediumReviewPolicy } from "../single-medium-policy";
-import { planQaCompletionCapacity,authorizeQaCompletionCapacity,readQaCompletionCapacity,qaCompletionCapacityStatus } from "../qa-completion-capacity";
+import { planQaCompletionCapacity,authorizeQaCompletionCapacity,readQaCompletionCapacity,qaCompletionCapacityStatus,
+  planQaCompletionRecovery,resumeQaCompletionRecovery,nextQaCompletionRecovery } from "../qa-completion-capacity";
 import { qaCompletionCapacityId,QA_COMPLETION_CAP } from "../../../domain/generation/qa-completion-capacity";
 import * as singlePolicyModule from "../single-low-policy";
 import * as dualReviewModule from "../local-patch-dual-review";
@@ -707,6 +708,26 @@ it.each(["detectives","explorers"] as const)("publishes all 27 %s Kingdom hides 
   await db.generationJob.update({where:{id:"job_"+gameId},data:{status:"FAILED",currentStep:"local-patch:recovery-exhausted",lastError:"local-patch: synthetic original cap stop"}});
   const plan=await planQaCompletionCapacity(container,gameId),gameBefore=await db.game.findUniqueOrThrow({where:{id:gameId}});
   await authorizeQaCompletionCapacity(container,{gameId,operatorId:gameBefore.ownerId!,expectedPlanSha256:plan.planSha256,ownerAuthorizationSha256:"b".repeat(64)});
+  await budget.reserve(worldId,{requestKey:"synthetic-existing-completion-work",scope:"image",operationFingerprint:"d".repeat(64),reserveMicroUsd:1_200_000});
+  await budget.settle(worldId,"synthetic-existing-completion-work",bill("synthetic-existing-completion-work",1_200_000));
+  expect((await budget.audit(worldId)).committedMicroUsd).toBe(5_100_000);
+  // A source-bound completion may resume a premature engine rest for a new
+  // image still owing its first review. The same unchanged snapshot wakes once.
+  const frozenRows=await db.targetVariantAsset.findMany({where:{targetInstance:{gameScene:{gameId}}},orderBy:{id:"asc"}});
+  const frozenLedger=await db.worldBudgetLedger.findUniqueOrThrow({where:{worldId}});
+  const rest=localPatchRestDecision([{hideId:hides[0]!.id,rest:"spent"}]);if(rest?.action!=="park")throw Error("Synthetic rest required");
+  const jobBeforeWake=await db.generationJob.update({where:{id:"job_"+gameId},data:{status:"FAILED",currentStep:"local-patch:recovery-exhausted",lastError:rest.reason}});
+  const wake=await planQaCompletionRecovery(container,gameId);expect(wake?.readyRows).toHaveLength(1);
+  expect(await nextQaCompletionRecovery(container)).toBe(gameId);
+  expect(await resumeQaCompletionRecovery(container,gameId)).toBe(true);
+  expect(await db.generationJob.findUniqueOrThrow({where:{id:jobBeforeWake.id}})).toMatchObject({status:"QUEUED",currentStep:"local-patch",attempts:jobBeforeWake.attempts});
+  expect(await db.targetVariantAsset.findMany({where:{targetInstance:{gameScene:{gameId}}},orderBy:{id:"asc"}})).toEqual(frozenRows);
+  expect((await db.worldBudgetLedger.findUniqueOrThrow({where:{worldId}})).snapshotJson).toBe(frozenLedger.snapshotJson);
+  expect(await db.auditLog.count({where:{entityId:gameId,action:"generation:qa-medium-completion-resumed"}})).toBe(1);
+  await db.generationJob.update({where:{id:jobBeforeWake.id},data:{status:"FAILED",currentStep:"local-patch:recovery-exhausted",lastError:rest.reason}});
+  expect(await planQaCompletionRecovery(container,gameId)).toBeNull();expect(await resumeQaCompletionRecovery(container,gameId)).toBe(false);
+  // Restore this synthetic job to the already-authorized queued state.
+  await db.generationJob.update({where:{id:jobBeforeWake.id},data:{status:"QUEUED",currentStep:"local-patch",lastError:null}});
   let result={pending:true,attention:null as string|null},turns=0;
   while(result.pending&&turns++<900){result=await runLocalPatchWorldSlice(container,deps,gameId,{hardDeadlineAt:Date.now()+270000,diagnose:forbidden});expect(result.attention).toBeNull();if(result.pending)await vi.advanceTimersByTimeAsync(LEAN_RECOVERY_BACKOFF_MS+1);}
   expect(result.pending).toBe(false);expect(render).toHaveBeenCalledTimes(27);expect(provider.creates).toHaveLength(27);

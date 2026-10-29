@@ -121,3 +121,39 @@ client, as the existing capacity-recovery paths do. A synthetic single-connectio
 guard reproduces the failure on the previous implementation and qualifies both
 Kingdom families. Refused actions record only a fixed domain reason or a Prisma
 error code, never arbitrary exception text or private authorization evidence.
+
+## Pending reviews and finite completion recovery
+
+A repair may save a new shipping candidate late in a slice, after that slice's
+incremental review pass. The enrolled world's remaining-work inventory now
+includes that candidate until its own image-bound review is complete. Exhausted
+siblings cannot park the world while it still owes this review. This is a
+scheduling change; the unchanged publication policy still requires all hides,
+MEDIUM subject/head evidence, identity, source and actual geometry bindings.
+
+An active existing-world completion authority may also use the ordinary three
+self-repair diagnosis cycles after a failed guided third that had used zero
+cycles. The original three image attempts and their keys remain unchanged. A
+diagnosis must select authenticated retained pixels or a different bounded
+recipe; unreadable quality evidence never authorizes a redraw. Historical
+worlds without this explicit source-bound authority retain their existing final
+guided-third behavior. Previously used cycles are never reset.
+
+The dedicated QA queue can resume its own typed exhausted hold when this exact
+authority is still active and a current image owes review or an admitted guided
+failure has diagnosis work left. The serializable wake compares the original
+owner/payment/source/identity state, job, rows and ledger revision, then only
+requeues the job and records a SYSTEM audit. Its identity excludes job timestamps
+and the revision fence, so unchanged rows and financial history wake only once.
+Original unknown requests must remain with identical keys, fingerprints and full
+reservations; a newly unknown request prevents this wake until diagnosed. A
+held/conflicting ledger, changed source or unrelated operator hold cannot resume.
+
+The scheduling regression reproduces the old premature park with a paid
+composition saved beside two spent siblings, then verifies a queued first review
+without another painting or charge. Both complete-world fixtures verify the
+fenced wake above the historical ceiling, preservation of rows and ledger bytes,
+one wake per unchanged snapshot, and ordinary all-27 MEDIUM publication.
+Real guide evaluations must distinguish the refused shipping composition shown
+by the admin page from the immutable provider RAW; neither a thumbnail nor a
+passing synthetic rectangle qualifies the real artwork.
