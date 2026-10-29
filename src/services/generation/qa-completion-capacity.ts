@@ -86,6 +86,15 @@ export async function readQaCompletionCapacity(c: Container, worldId: string): P
     ?{worldId,capMicroUsd:QA_COMPLETION_CAP,authorizationSha256:receipt.authorizationSha256}:null;
 }
 
+/** Owner-admin visibility only: a recorded grant must not silently disappear
+ * from the order page when its immutable source binding no longer matches. */
+export async function qaCompletionCapacityStatus(c: Container, gameId: string) {
+  if(!qualified(c)||!/^[A-Za-z0-9_-]{1,160}$/.test(gameId))return null;
+  const receipt=await receiptOf(c,gameId);if(!receipt)return null;
+  return {ownerId:receipt.state.ownerId,capMicroUsd:QA_COMPLETION_CAP,
+    status:await readQaCompletionCapacity(c,receipt.state.worldId)?"active" as const:"withdrawn" as const};
+}
+
 /** No purchases or writes: freeze the exact paid unfinished world, hold and
  * financial history the owner administrator will authorize. */
 export async function planQaCompletionCapacity(c: Container, gameId: string) {

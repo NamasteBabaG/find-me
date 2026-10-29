@@ -78,3 +78,23 @@ The new grant remains readable after the normal successful photo purge, using
 the existing bound purge audit. Synthetic tests exercise both actual Kingdom
 source contracts, forged/stale plans, changed pixels, owner/refund revocation,
 unchanged reserves, and full all-27 publication through the ordinary queue.
+
+The order page shows an active grant or an explicit withdrawal notice when its
+live binding no longer matches. Displayed amounts come from the versioned cap.
+The owner-authorization digest is an audit reference to evidence retained by the
+operator, not a server-verifiable signature from another chat. The actual write
+authority is the authenticated owner administrator's explicit same-origin
+confirmation of the exact live plan. Private approval text is not released here.
+
+The guided-third regression pins each route independently: a fresh historical
+PENDING checkpoint retains its old guide, while the unpurchased ordinary third
+receives the new source-context guide. The fake-clock fixture explicitly pins
+the historical lease timestamp before resuming it.
+
+Before real continuation, inspect retained provider failures and any available
+provider usage without treating a missing response as a free request. Background
+reviews use `store:false`; OpenAI documents roughly ten minutes of polling
+retention, so hours-old responses may no longer be retrievable. Their full
+reserves remain until a genuine charge can be established. The first real guide
+repairs still need a measured size/pose and pass-rate check; synthetic rectangle
+tests do not qualify real child scale or image-reference comprehension.

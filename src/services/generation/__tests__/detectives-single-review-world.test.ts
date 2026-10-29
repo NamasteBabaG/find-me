@@ -11,7 +11,7 @@ import { BOUND_SUBJECT_QUALITY_ENVELOPE_READER, BOUND_SUBJECT_QUALITY_ENVELOPE_R
 import { PLACEMENT_GUIDE_VERSION } from "../../../domain/generation/placement-guide";
 import { PENDING_IMAGE_LEASE_MS } from "../../../domain/generation/pending-image-lease";
 import { ensureSingleMediumReviewPolicy } from "../single-medium-policy";
-import { planQaCompletionCapacity,authorizeQaCompletionCapacity,readQaCompletionCapacity } from "../qa-completion-capacity";
+import { planQaCompletionCapacity,authorizeQaCompletionCapacity,readQaCompletionCapacity,qaCompletionCapacityStatus } from "../qa-completion-capacity";
 import { qaCompletionCapacityId,QA_COMPLETION_CAP } from "../../../domain/generation/qa-completion-capacity";
 import * as singlePolicyModule from "../single-low-policy";
 import * as dualReviewModule from "../local-patch-dual-review";
@@ -647,6 +647,7 @@ it.each(["detectives","explorers"] as const)("authorizes one source-bound %s Kin
   expect(await db.auditLog.findUnique({where:{id:qaCompletionCapacityId(gameId)}})).toBeNull();
   ledger=await db.worldBudgetLedger.findUniqueOrThrow({where:{worldId}});plan=await planQaCompletionCapacity(c,gameId);input.expectedPlanSha256=plan.planSha256;
   const pin=await authorizeQaCompletionCapacity(c,input);expect(pin.capMicroUsd).toBe(QA_COMPLETION_CAP);
+  expect(await qaCompletionCapacityStatus(c,gameId)).toMatchObject({ownerId:game.ownerId,capMicroUsd:QA_COMPLETION_CAP,status:"active"});
   expect(await authorizeQaCompletionCapacity(c,input)).toEqual(pin);
   expect(await db.auditLog.count({where:{id:qaCompletionCapacityId(gameId)}})).toBe(1);
   expect(await db.generationJob.findUniqueOrThrow({where:{id:job.id}})).toMatchObject({status:"QUEUED",currentStep:"local-patch",attempts:job.attempts});
@@ -654,7 +655,9 @@ it.each(["detectives","explorers"] as const)("authorizes one source-bound %s Kin
   const afterLedger=await db.worldBudgetLedger.findUniqueOrThrow({where:{worldId}});expect(afterLedger.snapshotJson).toBe(ledger.snapshotJson);expect(afterLedger.revision).toBe(ledger.revision+1);
   expect(await budget.audit(worldId)).toMatchObject({capMicroUsd:QA_COMPLETION_CAP,committedMicroUsd:3910000,reservedMicroUsd:210000,unknownRequestKeys:["synthetic-retained-unknown"]});
   expect(await readQaCompletionCapacity(c,worldId)).toMatchObject({worldId,capMicroUsd:QA_COMPLETION_CAP});
-  await db.childProfile.update({where:{id:child.id},data:{ageYears:8}});expect(await readQaCompletionCapacity(c,worldId)).toBeNull();await db.childProfile.update({where:{id:child.id},data:{ageYears:child.ageYears}});
+  await db.childProfile.update({where:{id:child.id},data:{ageYears:8}});expect(await readQaCompletionCapacity(c,worldId)).toBeNull();
+  expect(await qaCompletionCapacityStatus(c,gameId)).toMatchObject({ownerId:game.ownerId,status:"withdrawn"});
+  await db.childProfile.update({where:{id:child.id},data:{ageYears:child.ageYears}});
   const order=await db.order.findUniqueOrThrow({where:{id:"order-"+gameId}});await db.order.update({where:{id:order.id},data:{paymentStatus:"REFUNDED"}});
   expect(await readQaCompletionCapacity(c,worldId)).toBeNull();await db.order.update({where:{id:order.id},data:{paymentStatus:order.paymentStatus}});
   const other=await db.user.create({data:{id:"synthetic-other-owner-"+level,email:"other-"+level+"@example.invalid"}});
@@ -947,9 +950,9 @@ it("resumes v3 and v4 Explorer guided thirds through one fresh MEDIUM each and n
       let frame = maskForHide(hide);
       if (selectedIds.includes(hide.id) && attempt === 3) {
         guides++;
-        // An original pending checkpoint may keep its historical guide; an
-        // unbought current third also receives the new source-context panel.
-        expect([GUIDED_FRAME_RECOVERY_VERSION,PLACEMENT_GUIDE_VERSION]).toContain(placementGuideVersion);
+        // This exact historical pending checkpoint keeps its original recipe;
+        // the other unbought third receives the new source-context panel.
+        expect(placementGuideVersion).toBe(hide.id===legacy.id?GUIDED_FRAME_RECOVERY_VERSION:PLACEMENT_GUIDE_VERSION);
         expect(placementGuidePng).toBeDefined();
         const unchangedReturn = localPatchReturnRegion(cropOf(hide), frame, hide.returnRect).local;
         const geometry = guidedFrameGeometry(frame, unchangedReturn);
@@ -983,8 +986,12 @@ it("resumes v3 and v4 Explorer guided thirds through one fresh MEDIUM each and n
           const receipt = JSON.parse(row.judgeJson!);
           // Local synthetic interruption fixture: the real failing case already
           // wrote this checkpoint and made no third provider purchase.
-          await db.targetVariantAsset.update({ where: { id: row.id }, data: { status: "PENDING", attempts: 3,
+          await db.targetVariantAsset.update({ where: { id: row.id }, data: { status: "PENDING", attempts: 3, updatedAt:new Date(Date.now()),
             judgeJson: JSON.stringify({ ...receipt, guidedFrameRecovery: newGuidedFrameMarker(row, grant!.authorizationSha256, 12) }) } });
+          // Resume this fresh historical lease before advancing the fake clock.
+          // Prisma's own @updatedAt clock is real, so the fixture pins it above.
+          expect(await runLocalPatchHide(container,deps,{gameId,board:context.boards.find(b=>b.board==="paris")!,hide:legacy,
+            finalRepair:true,guidedFrame:true})).toMatchObject({state:"generated",attempt:3});
           resumedCheckpoint = true;
         }
       }
