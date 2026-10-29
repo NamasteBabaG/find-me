@@ -14,12 +14,12 @@ export function qaCompletionUnknownsPreserved(requests: readonly (UnknownTerms &
 }
 
 /** The explicit completion authority may use the existing three diagnosis
- * cycles after a failed guided third that used none of them. It never resets
+ * cycles remaining after a failed guided third. It never resets
  * attempts/cycles, rebuys the third key, or admits a redraw for unreadable QA. */
 export function qaCompletionGuidedRepair(row: GuidedFrameRow, sceneVersion: number, authorized: boolean): boolean {
   if (!authorized || !guidedFrameExhausted(row)) return false;
   const marker = guidedFrameMarker(row);
-  if (!marker || marker.repairCyclesPreserved !== 0 || !guidedFrameVersionMatches(marker, sceneVersion)) return false;
+  if (!marker || marker.repairCyclesPreserved >= 3 || !guidedFrameVersionMatches(marker, sceneVersion)) return false;
   try {
     const receipt = JSON.parse(row.judgeJson!), repair = receipt.selfRepair;
     if (receipt.wireFault !== undefined && receipt.wireFault !== null || receipt.qualityDisposition?.state === "unresolved") return false;
@@ -29,7 +29,8 @@ export function qaCompletionGuidedRepair(row: GuidedFrameRow, sceneVersion: numb
     if (!failedPixels) return false;
     if (repair && (repair.version !== "local-patch-self-repair/v1"
       || !["diagnosing", "applying", "awaiting-review", "rejected"].includes(repair.phase)
-      || !Number.isSafeInteger(repair.subjectV2Cycles) || repair.subjectV2Cycles < 1 || repair.subjectV2Cycles > 3)) return false;
+      || !Number.isSafeInteger(repair.subjectV2Cycles) || repair.subjectV2Cycles < Math.max(1, marker.repairCyclesPreserved) || repair.subjectV2Cycles > 3)) return false;
+    if (!repair && marker.repairCyclesPreserved > 0) return false;
     return !selfRepairProgress(repair, row.attempts).exhausted;
   } catch { return false; }
 }

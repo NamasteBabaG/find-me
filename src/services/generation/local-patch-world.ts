@@ -11,6 +11,8 @@ import { nativeMaskTailCandidate, nativeMaskTailExhausted } from "../../domain/g
 import { guidedFrameCandidate, guidedFrameExhausted } from "../../domain/generation/guided-frame-recovery";
 import { qaCompletionGuidedRepair } from "../../domain/generation/qa-completion-recovery";
 import { readQaCompletionCapacity, resumeQaCompletionRecovery } from "./qa-completion-capacity";
+import { reconcileLegacyPaidJoinHead } from "./legacy-paid-join-head-recovery";
+import { legacyHeadCorrectionCandidate } from "../../domain/generation/legacy-paid-join-head";
 import { detectivesNativeMaskTail } from "./detectives-completion-budget";
 import { singleLowReviewAuthorization as detectivesSingleReviewAuthorization, hasSingleLowCapacity as hasDetectivesLowCapacity } from "./single-low-policy";
 import { hasLocalPatchCapability } from "../../domain/scene/local-patch-family";
@@ -585,6 +587,11 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
   const guidedThirdPainting = (row: Parameters<typeof guidedFrameCandidate>[0] | undefined) => !!row && !!guideGrant
     && guideCapacity && !sourceBodyBirthMarker(row) && guidedFrameCandidate(row);
   const completionAuthority = automatic && !extraPlan ? await readQaCompletionCapacity(c, boardWizardWorldId(gameId)) : null;
+  const legacyHead = completionAuthority ? await reconcileLegacyPaidJoinHead(c, gameId, rows, fence) : { changed: false, continuePaidRows: [] as string[] };
+  if (legacyHead.changed) rows = await c.db.targetVariantAsset.findMany({ where: { variant: LOCAL_PATCH_VARIANT, targetInstance: { gameScene: { gameId } } },
+    include: { targetInstance: { select: { targetId: true, gameSceneId: true } } } });
+  const legacyReviewOwed = (row: typeof rows[number] | undefined) => !!completionAuthority && !!row
+    && !legacyHead.continuePaidRows.includes(row.id) && legacyHeadCorrectionCandidate(row);
   const completionRepair = (row: Parameters<typeof qaCompletionGuidedRepair>[0]) =>
     qaCompletionGuidedRepair(row, game.scenes[0]!.sceneVersion, !!completionAuthority);
   const mechanicalRepair = (row: { status: string; judgeJson: string | null } | undefined) => !!row
@@ -762,7 +769,7 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
   const repairCheckpoints = new Map(rows.map(row => [row.id, JSON.stringify(selfRepairOf(row) ?? null)]));
   const automaticWork = automatic && !extraPlan ? work.filter(item => {
     const row = stateOf(item.sceneId, item.hide.targetId);
-    return needsSelfRepair(row) && !contextPainting(row) && !contextExhausted(row) && !sourceBodyBirthMarker(row!) && !bodyPainting(row) && !bodyExhausted(row) && !(row && (guidedFrameExhausted(row) && !completionRepair(row) && !mechanicalRepair(row) || nativeMaskTailExhausted(row))) && !leanThirdPainting(row) && !guidedThirdPainting(row) && !(hasLocalPatchCapability(game.scenes.find(scene => scene.id === item.sceneId)?.sceneVersion, "integratedQuality")
+    return needsSelfRepair(row) && !legacyReviewOwed(row) && !contextPainting(row) && !contextExhausted(row) && !sourceBodyBirthMarker(row!) && !bodyPainting(row) && !bodyExhausted(row) && !(row && (guidedFrameExhausted(row) && !completionRepair(row) && !mechanicalRepair(row) || nativeMaskTailExhausted(row))) && !leanThirdPainting(row) && !guidedThirdPainting(row) && !(hasLocalPatchCapability(game.scenes.find(scene => scene.id === item.sceneId)?.sceneVersion, "integratedQuality")
       && (localPatchEvidenceRecovery(row!) || playerReviewEnabled() && needsPlayerReview(row!)))
       // Re-asked under v2 about the same pixels before any repair (subject-rejudge/v1).
       && !rejudgePending(row!);
@@ -787,6 +794,7 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
     : plan.indices.map(index => work[index]!)).filter(item => {
     if (automaticWork.includes(item)) return false;
     const candidate = stateOf(item.sceneId, item.hide.targetId);
+    if (legacyReviewOwed(candidate)) return false;
     if(contextPainting(candidate))return true;
     if(contextExhausted(candidate))return false;
     if (automatic && hasLocalPatchCapability(game.scenes.find(scene => scene.id === item.sceneId)?.sceneVersion, "integratedQuality") && candidate && localPatchEvidenceRecovery(candidate)) return false;
@@ -984,7 +992,7 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
   // slice's todo. The final normal completion must queue the repair pass.
   const left = work.filter(item => {
     const row = after.find(r => r.targetInstance.gameSceneId === item.sceneId && r.targetInstance.targetId === item.hide.targetId);
-    return !settledHide(row) || automatic && !extraPlan && (needsSelfRepair(row) || !!row && (progress && readyReviewOwed(row) || !!localPatchEvidenceRecovery(row)));
+    return !settledHide(row) || automatic && !extraPlan && (legacyReviewOwed(row) || needsSelfRepair(row) || !!row && (progress && readyReviewOwed(row) || !!localPatchEvidenceRecovery(row)));
   });
   // A world the ledger is holding cannot authorise anything, so another tick
   // would read the same rows, buy nothing and ask again forever. Held is a
@@ -1056,8 +1064,8 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
       return localPatchRestOf({ hideId: item.hide.id,
         evidence: recovery ? { retry: recovery.retry, waiting: recovery.waiting, exhausted: recovery.exhausted,
           ...(diagnosis ? { kind: `${diagnosis.role} ${diagnosis.kind}` } : {}) } : null,
-        reviewOwed: !!row && (progress && readyReviewOwed(row) || rejudgePending(row) || playerReviewEnabled() && needsPlayerReview(row)),
-        repairSpent: contextExhausted(row) || progress && !!row && !contextPainting(row) && !bodyPainting(row) && !nativeFourthPainting(row) && (bodyExhausted(row) || !!sourceBodyBirthMarker(row) && row.attempts>=LOCAL_PATCH_MAX_ATTEMPTS || guidedFrameExhausted(row) && !completionRepair(row) && !mechanicalRepair(row) || nativeMaskTailExhausted(row) || needsSelfRepair(row) && selfRepairProgress(selfRepairOf(row), row.attempts).exhausted && !mechanicalRepair(row)) });
+        reviewOwed: legacyReviewOwed(row) || !!row && (progress && readyReviewOwed(row) || rejudgePending(row) || playerReviewEnabled() && needsPlayerReview(row)),
+        repairSpent: !legacyReviewOwed(row) && (contextExhausted(row) || progress && !!row && !contextPainting(row) && !bodyPainting(row) && !nativeFourthPainting(row) && (bodyExhausted(row) || !!sourceBodyBirthMarker(row) && row.attempts>=LOCAL_PATCH_MAX_ATTEMPTS || guidedFrameExhausted(row) && !completionRepair(row) && !mechanicalRepair(row) || nativeMaskTailExhausted(row) || needsSelfRepair(row) && selfRepairProgress(selfRepairOf(row), row.attempts).exhausted && !mechanicalRepair(row))) });
     });
     const rest = pendingReviews ? null : localPatchRestDecision(rests);
     if (rest?.action === "wait") {

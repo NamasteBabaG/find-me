@@ -132,8 +132,8 @@ scheduling change; the unchanged publication policy still requires all hides,
 MEDIUM subject/head evidence, identity, source and actual geometry bindings.
 
 An active existing-world completion authority may also use the ordinary three
-self-repair diagnosis cycles after a failed guided third that had used zero
-cycles. The original three image attempts and their keys remain unchanged. A
+self-repair diagnosis cycles remaining after a failed guided third, including
+one or two already used cycles. The original three image attempts and their keys remain unchanged. A
 diagnosis must select authenticated retained pixels or a different bounded
 recipe; unreadable quality evidence never authorizes a redraw. Historical
 worlds without this explicit source-bound authority retain their existing final
@@ -183,3 +183,41 @@ retained composition, redraw and surface repair, then verify receipt-bound free
 replay, state-tamper refusal and independent publication evidence. Synthetic
 painting fixtures test accounting and geometry; they do not establish real art
 quality or likeness.
+
+## Actual legacy repair inputs for the native head check
+
+New legacy `autonomous-paid-join/v1` candidates carry
+`headSourceVersion: legacy-paid-join-head/v1`. The head question reads the actual
+`compositionSource` and the return window in the immutable composition audit,
+rather than inferring a normal render key from the attempt counter. Normalized
+RAW bytes must match that audit. The evidence also binds the exact composition
+hash, so changing its source or window invalidates publication. Authored recovery
+continues to use its own source contract. Historical unmarked questions retain
+their original serialization and policy.
+
+An active source-bound QA completion authority can correct one proven old input
+mismatch on the same retained candidate. It verifies original ownership, payment,
+source, identity, ledger, RAW and shipping bytes, then fences the update in a
+serializable transaction with transaction-scoped storage. The previous full
+receipt is archived. Asset, costs, attempts, used cycles and ledger requests stay
+unchanged. This does not approve the image: one new ordinary MEDIUM question must
+pass all roles and the corrected head check. That judge can add its ordinary
+charge; correction itself buys no image or diagnosis. An already dispatched
+diagnosis keeps its exact question and recovery path. Pending/conflicting charges,
+a new UNKNOWN outcome or a withdrawn authority prevent this correction.
+
+New diagnosis cycles can also freeze the last authenticated MEDIUM head locations
+and its RAW/shipping crown findings. This gives the planner exact crop coordinates
+when SHIPPING clipped an otherwise complete RAW. Invalid, unbound, historical
+legacy or unreadable head evidence is not supplied as diagnostic authority. The
+optional context is frozen before a new purchase and never changes a retained
+paid prompt. It guides repair only; the final independent quality gates remain
+mandatory.
+
+Controlled regressions exercise both legacy redraw and retained composition on
+real Kingdom board geometry, require MEDIUM publication, reject changed audit
+bounds, and recover an old head-only refusal without an image/diagnosis purchase.
+They preserve the old paid question, reject refunded or newly UNKNOWN work, and
+prove that corrected pixels still need a new complete review. The painter and
+review transport in these tests are synthetic; real crown, likeness and style
+acceptance must still be established by the live engine.

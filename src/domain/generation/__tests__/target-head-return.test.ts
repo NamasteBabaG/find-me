@@ -1,5 +1,6 @@
 import { describe,it,expect } from 'vitest';
-import { targetHeadReturnDecision as decide, type TargetHeadEvidence } from '../target-head-return';
+import { targetHeadReturnDecision as decide, targetHeadRepairContext, type TargetHeadEvidence } from '../target-head-return';
+import { integrationDiagnosisPrompt } from '../../../services/generation/local-patch-integration-diagnosis';
 const evidence:TargetHeadEvidence={version:'target-head-return/v1',gameId:'synthetic-game',hideId:'synthetic-hide',sourceRequestKey:'synthetic-paid-image',
  sourceFingerprint:'a'.repeat(64),sourcePayloadSha256:'b'.repeat(64),normalizedRawSha256:'c'.repeat(64),shippingSha256:'d'.repeat(64),geometrySha256:'e'.repeat(64),identitySha256:'f'.repeat(64),
  returned:{left:140,top:323,width:174,height:244},feather:12};
@@ -16,4 +17,21 @@ describe('one-answer native target crown gate',()=>{
  it('refuses an unexplained material RAW to shipping head discrepancy',()=>expect(decide(answer({shippingHead:{...head,left:200}}),evidence).disposition).toBe('repair'));
  it.each([null,'{broken',JSON.stringify({version:'single-sol-medium/v1'})])('missing or malformed head evidence is not a pass: %s',raw=>expect(decide(raw,evidence).disposition).toBe('unresolved'));
  it('rejects forged evidence and bounds',()=>{expect(decide(answer(),{...evidence,feather:0} as unknown as TargetHeadEvidence).disposition).toBe('unresolved');expect(decide(answer({rawHead:{...head,width:513}}),evidence).disposition).toBe('unresolved');});
+ it('carries located crown loss into a new diagnosis while retaining historical prompts without the optional context',()=>{
+  const raw=answer({shippingHead:{...head,top:325},shippingCrown:'fail'}),context=targetHeadRepairContext(raw,evidence)!;
+  expect(context.evidence).toEqual(evidence);expect(context.answer.shippingHead.top).toBe(325);
+  const input={ageYears:7,pose:'standing',support:'ground',envelope:{},sourceKeys:['synthetic-paid-image'],feedback:{},history:[]};
+  expect(integrationDiagnosisPrompt(input)).not.toContain('FROZEN TARGET HEAD DATA');
+  const prompt=integrationDiagnosisPrompt({...input,headContext:context});
+  expect(prompt).toContain('"sourceKey":"synthetic-paid-image"');expect(prompt).toContain('"rawHead":{"left":180,"top":345');
+  expect(prompt).toContain('A core starting below this crown repeats the clipping');expect(prompt).toContain('required18px guard');
+ });
+ it('creates no repair direction from a pass, uncertain crown or unreadable response',()=>{
+  expect(targetHeadRepairContext(answer(),evidence)).toBeNull();
+  expect(targetHeadRepairContext(answer({shippingCrown:'uncertain'}),evidence)).toBeNull();
+  expect(targetHeadRepairContext('{broken',evidence)).toBeNull();
+ });
+ it('rejects a partially supplied legacy composition binding',()=>{
+  expect(decide(answer(),{...evidence,sourceBindingVersion:'legacy-paid-join-head/v1'} as TargetHeadEvidence).disposition).toBe('unresolved');
+ });
 });

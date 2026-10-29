@@ -4,7 +4,8 @@ import { planWholeSourceContextRepair, stageWholeSourceContextRepair, nextWholeS
 import { readWholeSourceContextPin, wholeSourceContextPinId, wholeSourceContextWakeId, wholeSourceContextRowHash, wholeSourceContextMarkerFor, fenceWholeSourceContextPurchase } from "../whole-source-context-pin";
 import { wholeSourceContextMarker } from "../../../domain/generation/whole-source-context-purchase";
 import { WHOLE_SOURCE_CONTEXT_VERSION } from "../../../domain/scene/whole-source-context";
-import { readSettledTargetRaw } from "../single-review-head-evidence";
+import { readSettledTargetRaw, singleReviewHeadEvidence, singleReviewHeadEvidenceMatches } from "../single-review-head-evidence";
+import { reconcileLegacyPaidJoinHead, LEGACY_HEAD_RECOVERY_ACTION } from "../legacy-paid-join-head-recovery";
 import { localPatchRestDecision } from "../../../domain/scene/local-patch-progress";
 import { nextBoundEnvelopeReconciliation, resumeBoundEnvelopeReconciliation } from "../bound-envelope-reconciliation";
 import { BOUND_SUBJECT_QUALITY_ENVELOPE_READER, BOUND_SUBJECT_QUALITY_ENVELOPE_READER_V2 } from "../../../domain/generation/bound-subject-quality-envelope";
@@ -654,6 +655,195 @@ it.each(["recompose-retained", "redraw-with-new-placement", "restyle-retained"] 
     expect(provider.creates[0]!.labels.at(-1)).toContain(hide.id + ":native-shipping-crown 512x768");
     expect(render).toHaveBeenCalledTimes(imageCalls); expect(diagnose).toHaveBeenCalledTimes(1);
     expect(fetch).not.toHaveBeenCalled();
+  } finally { vi.useRealTimers(); }
+}, 300000);
+
+async function legacyKingdomHeadFixture(gameId: string, action: "redraw-with-new-placement" | "recompose-retained") {
+  await newDetectiveWorld(gameId, 7, true, true, true);
+  await ensureSingleMediumReviewPolicy(c, gameId, async () => {});
+  const context = await resolveLocalPatchBoardsForGame(db, gameId, 12), board = context.boards.find(b => b.board === "dragoncave")!, hide = board.hides[2]!;
+  expect(expectedAuthoredLocalPatchReturn(board, hide, 12, context)).toBeNull();
+  const decision: SelfRepairDecision = { cause: "composition-clipping", action,
+    explanation: "Synthetic complete child in a changed legacy return; the head check must see this exact paid painting.",
+    sourceKey: `${hide.id}:${hide.pose}:render:1`, returnWindow: { left: 206, top: 155, width: 210, height: 481 },
+    protectedCore: { left: 224, top: 173, width: 174, height: 445 }, faceRect: { left: 250, top: 183, width: 76, height: 88 } };
+  const render = vi.fn<LocalPatchHideDeps["render"]>(async input => {
+    const figure = await sharp({ create: { width: 120, height: 250, channels: 4,
+      background: input.requestKey.includes(":self-repair:") ? "#916944" : input.requestKey.endsWith(":render:2") ? "#913857" : "#294c93" } }).png().toBuffer();
+    return paintedOk(await sharp(input.stylePng).composite([{ input: figure, left: 246, top: 195 }]).png().toBuffer(), bill("legacy-head-" + gameId + "-" + input.requestKey, 50000));
+  });
+  let diagnosisReplies = 0;
+  const diagnose = vi.fn<NonNullable<SelfRepairDeps["diagnose"]>>(async () => ({ verdict: null, wireFault: null, costUnknown: false,
+    model: "gpt-5.6-sol", finishReason: "stop", raw: JSON.stringify(decision), requestId: "legacy-head-diagnosis-" + gameId + "-" + ++diagnosisReplies,
+    usage: { prompt_tokens: 2000, completion_tokens: 200 } }));
+  const deps: SelfRepairDeps = { readBoardArt: readArt, renderPolicySha256: localPatchRenderPolicySha256(LOCAL_PATCH_IMAGE_POLICY), render, diagnose,
+    judge: async () => { throw Error("No duplicate synchronous judge"); }, fence: async () => {} };
+  const row = () => db.targetVariantAsset.findFirstOrThrow({ where: { variant: "A", targetInstance: { gameScene: { gameId }, targetId: hide.targetId } } });
+  for (let i = 0; i < 2; i++) {
+    expect((await runLocalPatchHide(c, deps, { gameId, board, hide })).state).toBe("generated");
+    const current = await row();
+    await db.targetVariantAsset.update({ where: { id: current.id }, data: { status: "FAILED", lastError: "quality-retry: synthetic child placement" } });
+  }
+  const scene = await db.gameScene.findFirstOrThrow({ where: { gameId, sceneSlug: board.board } });
+  for (let i = 0; i < 6; i++) {
+    await runLocalPatchSelfRepair(c, { gameId, sceneId: scene.id, board, hide }, deps);
+    const current = await row(), state = JSON.parse(current.judgeJson!).selfRepair;
+    if (current.status === "GENERATED" || state?.phase === "rejected") break;
+  }
+  const candidate = await row(), receipt = JSON.parse(candidate.judgeJson!);
+  expect(candidate.status, JSON.stringify(receipt.selfRepair)).toBe("GENERATED");
+  expect(receipt.compositionVersion).toBe("autonomous-paid-join/v1");
+  const asset = await db.asset.findUniqueOrThrow({ where: { id: candidate.assetId! } });
+  const identity = await db.asset.findUniqueOrThrow({ where: { id: "ast-sheet-" + gameId } });
+  const shipping = await c.storage.get(asset.storagePath), identitySha256 = sha256Bytes(await c.storage.get(identity.storagePath));
+  return { gameId, board, hide, scene, deps, render, diagnose, row, candidate, receipt, shipping, identitySha256, decision };
+}
+
+it.each(["redraw-with-new-placement", "recompose-retained"] as const)("binds the MEDIUM head check to the actual paid legacy Kingdom repair; action=%s", async action => {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  try {
+  const f = await legacyKingdomHeadFixture("legacy-kingdom-head-synthetic-" + action, action);
+  const expectedKey = action === "recompose-retained" ? f.decision.sourceKey : `${f.hide.id}:${f.hide.pose}:self-repair:1`;
+  const paid = await readSettledTargetRaw(db, f.gameId, expectedKey);
+  const head = await singleReviewHeadEvidence(db, { gameId: f.gameId, hide: f.hide, attempt: f.candidate.attempts, receipt: f.receipt,
+    shipping: f.shipping, geometrySha256: f.receipt.geometrySha256, identitySha256: f.identitySha256 });
+  expect(head.evidence.sourceRequestKey).toBe(expectedKey);
+  expect(head.evidence.returned).toEqual(f.decision.returnWindow);
+  expect(head.raw.equals(paid.normalized)).toBe(true);
+  expect(head.evidence).toMatchObject({ sourceBindingVersion: "legacy-paid-join-head/v1", normalizedRawSha256: sha256Bytes(paid.normalized) });
+  expect(await singleReviewHeadEvidenceMatches(db, { gameId: f.gameId, hideId: f.hide.id, imageSha256: f.receipt.judgedSha256,
+    attempts: f.candidate.attempts, sceneVersion: 12, geometrySha256: f.receipt.geometrySha256, identitySha256: f.identitySha256,
+    judgeJson: f.candidate.judgeJson }, head.evidence)).toBe(true);
+  const provider = controlledSol(false, false, undefined, true, false, 12), container = { ...c, backgroundReview: provider.fake,
+    visualReview: { request: async () => { throw Error("No duplicate synchronous judge"); } } } as Container;
+  for (let tick = 0; tick < 8; tick++) {
+    await reviewLocalPatchBoard(container, { gameId: f.gameId, sceneId: f.scene.id, deadlineAt: Date.now() + 270000 }, { fence: async () => {}, readBoardArt: readArt });
+    await advanceContinuityInBackground(container, f.gameId, { deadlineAt: Date.now() + 270000 });
+    await vi.advanceTimersByTimeAsync(LEAN_RECOVERY_BACKOFF_MS + 1);
+    if (JSON.parse((await f.row()).judgeJson!).reviewState === "board-review-complete") break;
+  }
+  const reviewed = await f.row(), binding = { ...publicationBinding(f.gameId, reviewed), sceneVersion: 12 };
+  expect(await allowedDualPublication(db, binding)).toBe(true);
+  const altered = JSON.parse(reviewed.judgeJson!); altered.recoveryComposition.returnWindow.top++;
+  expect(await allowedDualPublication(db, { ...binding, judgeJson: JSON.stringify(altered) })).toBe(false);
+  expect(provider.creates).toHaveLength(1); expect(provider.creates[0]!.reasoning).toMatchObject({ effort: "medium" });
+  expect(f.render).toHaveBeenCalledTimes(action === "recompose-retained" ? 2 : 3);
+  expect(f.diagnose).toHaveBeenCalledTimes(1); expect(fetch).not.toHaveBeenCalled();
+  } finally { vi.useRealTimers(); }
+}, 300000);
+
+it("corrects only a proven legacy head-input mismatch on the same paid candidate, archives its old question and requires a new MEDIUM pass", async () => {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  try {
+    const f = await legacyKingdomHeadFixture("legacy-head-free-recovery-synthetic", "redraw-with-new-placement");
+    // Simulate the historical writer without altering paid RAWs, plans or costs.
+    const historical = { ...f.receipt }; delete historical.headSourceVersion;
+    await db.targetVariantAsset.update({ where: { id: f.candidate.id }, data: { judgeJson: JSON.stringify(historical) } });
+    const oldHead = await singleReviewHeadEvidence(db, { gameId: f.gameId, hide: f.hide, attempt: f.candidate.attempts, receipt: historical,
+      shipping: f.shipping, geometrySha256: historical.geometrySha256, identitySha256: f.identitySha256 });
+    expect(oldHead.evidence.sourceRequestKey).toBe(`${f.hide.id}:${f.hide.pose}:render:2`);
+    expect(oldHead.evidence.sourceBindingVersion).toBeUndefined();
+    expect(await singleReviewHeadEvidenceMatches(db, { gameId: f.gameId, hideId: f.hide.id, imageSha256: historical.judgedSha256,
+      attempts: 2, sceneVersion: 12, geometrySha256: historical.geometrySha256, identitySha256: f.identitySha256,
+      judgeJson: JSON.stringify(historical) }, oldHead.evidence)).toBe(true);
+    const provider = controlledSol(false, false, undefined, true, false, 12), retrieve = provider.fake.retrieve.bind(provider.fake);
+    provider.fake.retrieve = async id => {
+      const response = await retrieve(id);
+      if (response.status === "completed" && provider.creates.length === 1) {
+        const answer = JSON.parse(response.reading.raw!); answer.head.shippingHead.width += 20;
+        return { ...response, reading: { ...response.reading, raw: JSON.stringify(answer) } };
+      }
+      return response;
+    };
+    const container = { ...c, backgroundReview: provider.fake,
+      visualReview: { request: async () => { throw Error("No duplicate synchronous judge"); } } } as Container;
+    const review = async () => { for (let tick = 0; tick < 8; tick++) {
+      await reviewLocalPatchBoard(container, { gameId: f.gameId, sceneId: f.scene.id, deadlineAt: Date.now() + 270000 }, { fence: async () => {}, readBoardArt: readArt });
+      await advanceContinuityInBackground(container, f.gameId, { deadlineAt: Date.now() + 270000 });
+      await vi.advanceTimersByTimeAsync(LEAN_RECOVERY_BACKOFF_MS + 1);
+      if (JSON.parse((await f.row()).judgeJson!).reviewState === "board-review-complete") break;
+    } };
+    await review();
+    const failed = await f.row(), refused = JSON.parse(failed.judgeJson!);
+    expect(failed.status).toBe("FAILED"); expect(refused.verdict.faults).not.toHaveLength(0);
+    expect(refused.verdict.faults.every((fault: { where: string }) => fault.where.startsWith("HEAD_RETURN:"))).toBe(true);
+    expect(await reconcileLegacyPaidJoinHead(container, f.gameId, [failed], async () => {})).toMatchObject({ changed: false });
+    await db.generationJob.update({ where: { id: "job_" + f.gameId }, data: { status: "FAILED", currentStep: "local-patch:recovery-exhausted", lastError: "local-patch: synthetic original recovery hold" } });
+    const game = await db.game.findUniqueOrThrow({ where: { id: f.gameId } }), plan = await planQaCompletionCapacity(container, f.gameId);
+    await authorizeQaCompletionCapacity(container, { gameId: f.gameId, operatorId: game.ownerId!, expectedPlanSha256: plan.planSha256, ownerAuthorizationSha256: "a".repeat(64) });
+    const worldId = boardWizardWorldId(f.gameId), budget = boardWizardBudgetOf(container);
+    await db.order.update({ where: { id: "order-" + f.gameId }, data: { paymentStatus: "REFUNDED" } });
+    expect(await reconcileLegacyPaidJoinHead(container, f.gameId, [failed], async () => {})).toMatchObject({ changed: false });
+    await db.order.update({ where: { id: "order-" + f.gameId }, data: { paymentStatus: "PAID" } });
+    await budget.reserve(worldId, { requestKey: "synthetic-new-unknown-after-grant", scope: "judge", operationFingerprint: "d".repeat(64), reserveMicroUsd: 100000 });
+    await budget.markUnknown(worldId, "synthetic-new-unknown-after-grant", "Synthetic provider charge is unverified");
+    expect(await reconcileLegacyPaidJoinHead(container, f.gameId, [failed], async () => {})).toMatchObject({ changed: false });
+    expect((await budget.audit(worldId)).reservedMicroUsd).toBe(100000);
+    // A separate verified synthetic settlement permits the existing authority again.
+    await budget.settle(worldId, "synthetic-new-unknown-after-grant", bill("synthetic-later-confirmed-charge", 10000));
+    const ledger = await db.worldBudgetLedger.findUniqueOrThrow({ where: { worldId } });
+    expect(await reconcileLegacyPaidJoinHead(container, f.gameId, [failed], async () => {})).toMatchObject({ changed: true });
+    const corrected = await f.row(), receipt = JSON.parse(corrected.judgeJson!);
+    expect(corrected).toMatchObject({ status: "GENERATED", assetId: failed.assetId, attempts: failed.attempts, costCents: failed.costCents });
+    expect(receipt.selfRepair).toEqual(refused.selfRepair);
+    expect(receipt.compositionSource).toBe(refused.compositionSource); expect(receipt.recoveryComposition).toEqual(refused.recoveryComposition);
+    expect((await db.worldBudgetLedger.findUniqueOrThrow({ where: { worldId } })).snapshotJson).toBe(ledger.snapshotJson);
+    const archive = await db.auditLog.findFirstOrThrow({ where: { entityId: f.gameId, action: LEGACY_HEAD_RECOVERY_ACTION } });
+    expect(JSON.parse(archive.metaJson!)).toMatchObject({ previousJudgeJson: failed.judgeJson, providerCalls: 0, requestsPreserved: true });
+    expect(await allowedDualPublication(db, { ...publicationBinding(f.gameId, failed), judgeJson: corrected.judgeJson, sceneVersion: 12 })).toBe(false);
+    expect(await reconcileLegacyPaidJoinHead(container, f.gameId, [corrected], async () => {})).toMatchObject({ changed: false });
+    await review(); const reviewed = await f.row(), accepted = JSON.parse(reviewed.judgeJson!);
+    expect(await allowedDualPublication(db, { ...publicationBinding(f.gameId, reviewed), sceneVersion: 12 })).toBe(true);
+    expect(accepted.boardReview.dual.quality.headEvidence.sourceRequestKey).toBe(f.receipt.compositionSource);
+    expect(accepted.boardReview.dual.quality.headEvidence.returned).toEqual(f.decision.returnWindow);
+    expect(provider.creates).toHaveLength(2); expect(provider.creates.every(one => (one.reasoning as { effort: string }).effort === "medium")).toBe(true);
+    expect(provider.creates[0]!.prompt).not.toBe(provider.creates[1]!.prompt);
+    const after = JSON.parse((await db.worldBudgetLedger.findUniqueOrThrow({ where: { worldId } })).snapshotJson), before = JSON.parse(ledger.snapshotJson);
+    for (const request of before.requests) expect(after.requests.find((r: { requestKey: string }) => r.requestKey === request.requestKey)).toEqual(request);
+    expect(after.requests).toHaveLength(before.requests.length + 1);
+    expect(f.render).toHaveBeenCalledTimes(3); expect(f.diagnose).toHaveBeenCalledTimes(1); expect(fetch).not.toHaveBeenCalled();
+  } finally { vi.useRealTimers(); }
+}, 300000);
+
+it("freezes the last authenticated crown coordinates before a new diagnostic purchase without changing an earlier paid question", async () => {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  try {
+    const f = await legacyKingdomHeadFixture("legacy-head-next-diagnosis-synthetic", "redraw-with-new-placement");
+    const firstPrompt = f.diagnose.mock.calls[0]![0].prompt;
+    expect(firstPrompt).not.toContain("FROZEN TARGET HEAD DATA");
+    const provider = controlledSol(false, false, undefined, true, false, 12), retrieve = provider.fake.retrieve.bind(provider.fake);
+    provider.fake.retrieve = async id => {
+      const response = await retrieve(id);
+      if (response.status !== "completed") return response;
+      const answer = JSON.parse(response.reading.raw!), proof = JSON.parse(provider.creates[0]!.prompt.split("\n").find(line => line.startsWith("HEAD_RETURN_EVIDENCE: "))!.slice("HEAD_RETURN_EVIDENCE: ".length));
+      answer.head.shippingHead.top = proof.returned.top + 3; answer.head.shippingCrown = "fail";
+      return { ...response, reading: { ...response.reading, raw: JSON.stringify(answer) } };
+    };
+    const container = { ...c, backgroundReview: provider.fake, visualReview: { request: async () => { throw Error("No duplicate synchronous judge"); } } } as Container;
+    for (let tick = 0; tick < 8; tick++) {
+      await reviewLocalPatchBoard(container, { gameId: f.gameId, sceneId: f.scene.id, deadlineAt: Date.now() + 270000 }, { fence: async () => {}, readBoardArt: readArt });
+      await advanceContinuityInBackground(container, f.gameId, { deadlineAt: Date.now() + 270000 });
+      await vi.advanceTimersByTimeAsync(LEAN_RECOVERY_BACKOFF_MS + 1);
+      if (JSON.parse((await f.row()).judgeJson!).reviewState === "board-review-complete") break;
+    }
+    const refused = await f.row(), prior = JSON.parse(refused.judgeJson!); expect(refused.status).toBe("FAILED");
+    await runLocalPatchSelfRepair(container, { gameId: f.gameId, sceneId: f.scene.id, board: f.board, hide: f.hide }, f.deps);
+    const frozen = JSON.parse((await f.row()).judgeJson!).selfRepair;
+    expect(frozen).toMatchObject({ phase: "diagnosing", cycle: 2, subjectV2Cycles: 2, headContext: { version: "target-head-repair/v1",
+      evidence: { sourceRequestKey: f.receipt.compositionSource, returned: f.decision.returnWindow }, answer: { shippingCrown: "fail" } } });
+    expect(frozen.headContext.evidence).toEqual(prior.boardReview.dual.quality.headEvidence);
+    expect(f.diagnose).toHaveBeenCalledTimes(1);
+    // A legacy state can first need its ordinary schema-order freeze; that
+    // free phase must preserve the exact context rather than dispatch twice.
+    for (let tick = 0; tick < 3 && f.diagnose.mock.calls.length < 2; tick++) {
+      await runLocalPatchSelfRepair(container, { gameId: f.gameId, sceneId: f.scene.id, board: f.board, hide: f.hide }, f.deps);
+      expect(JSON.parse((await f.row()).judgeJson!).selfRepair.headContext).toEqual(frozen.headContext);
+    }
+    expect(f.diagnose).toHaveBeenCalledTimes(2);
+    expect(f.diagnose.mock.calls[0]![0].prompt).toBe(firstPrompt);
+    expect(f.diagnose.mock.calls[1]![0].prompt).toContain("FROZEN TARGET HEAD DATA (target-head-repair/v1)");
+    expect(f.diagnose.mock.calls[1]![0].prompt).toContain(JSON.stringify(f.receipt.compositionSource));
+    expect(f.render).toHaveBeenCalledTimes(3); expect(fetch).not.toHaveBeenCalled();
   } finally { vi.useRealTimers(); }
 }, 300000);
 

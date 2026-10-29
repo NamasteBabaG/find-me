@@ -20,12 +20,22 @@ describe("an authorized existing-world completion after a guided third", () => {
     expect(qaCompletionUnknownsPreserved([...current, { ...current[0]!, requestKey: "synthetic-new-unknown" }], original)).toBe(false);
     expect(qaCompletionUnknownsPreserved([...current, { ...current[0]!, requestKey: "synthetic-new-settled", state: "settled" }], original)).toBe(true);
   });
-  it("admits diagnosis only with the live authority, original scene and zero prior cycles", () => {
+  it("admits only remaining diagnosis cycles with live authority and the original scene", () => {
     expect(qaCompletionGuidedRepair(failure(), 12, true)).toBe(true);
     expect(qaCompletionGuidedRepair(failure(), 12, false)).toBe(false);
     expect(qaCompletionGuidedRepair(failure(), 13, true)).toBe(false);
     expect(qaCompletionGuidedRepair(failure({ guidedFrameRecovery: { ...marker, repairCyclesPreserved: 1 } }), 12, true)).toBe(false);
     expect(qaCompletionGuidedRepair({ ...failure(), attempts: 4 }, 12, true)).toBe(false);
+  });
+  it.each([1, 2])("preserves %i cycles already used before the guided third and admits only its remaining capacity", prior => {
+    const marked = { ...marker, repairCyclesPreserved: prior };
+    const repair = { version: "local-patch-self-repair/v1", phase: "awaiting-review", subjectV2Cycles: prior, cycle: prior };
+    expect(qaCompletionGuidedRepair(failure({ guidedFrameRecovery: marked, selfRepair: repair }), 12, true)).toBe(true);
+    expect(qaCompletionGuidedRepair(failure({ guidedFrameRecovery: marked, selfRepair: repair }), 12, false)).toBe(false);
+    expect(qaCompletionGuidedRepair(failure({ guidedFrameRecovery: marked, selfRepair: { ...repair, subjectV2Cycles: prior - 1 } }), 12, true)).toBe(false);
+    expect(qaCompletionGuidedRepair(failure({ guidedFrameRecovery: marked, selfRepair: { ...repair, subjectV2Cycles: 3 } }), 12, true)).toBe(false);
+    expect(qaCompletionGuidedRepair(failure({ guidedFrameRecovery: marked, selfRepair: { ...repair, phase: "applying", subjectV2Cycles: 3 } }), 12, true)).toBe(true);
+    expect(qaCompletionGuidedRepair(failure({ guidedFrameRecovery: { ...marked, repairCyclesPreserved: 3 }, selfRepair: repair }), 12, true)).toBe(false);
   });
   it("preserves the three-cycle bound and finishes a paid phase before it rests", () => {
     const repair = { version: "local-patch-self-repair/v1", phase: "awaiting-review", subjectV2Cycles: 2, cycle: 2 };

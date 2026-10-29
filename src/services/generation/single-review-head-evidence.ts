@@ -14,10 +14,17 @@ import { sourceBodyBirthRequestKey } from './detectives-operational-policy';
 import { sourceBodyBirthMarkerSchema } from '../../domain/generation/detectives-operational-policy';
 import { localPatchReturnRegion, type PatchRectangle } from '../../domain/scene/local-patch-return-region';
 import { cropOf, maskForHide, type LocalPatchHide } from '../../domain/scene/local-patch-hides';
+import { LEGACY_PAID_JOIN_HEAD_VERSION, legacyPaidJoinHeadPlan } from '../../domain/generation/legacy-paid-join-head';
 
 type Receipt=Record<string,unknown>;
+const legacyCompositionHash=(r:Receipt)=>sha(Buffer.from(JSON.stringify({compositionVersion:r.compositionVersion,compositionSource:r.compositionSource,recoveryComposition:r.recoveryComposition})));
 const object=(v:unknown):Record<string,unknown>|null=>v&&typeof v==='object'&&!Array.isArray(v)?v as Record<string,unknown>:null;
 function sourceKey(hide:Pick<LocalPatchHide,'id'|'pose'>,attempt:number,receipt:Receipt){
+ if(receipt.headSourceVersion!==undefined){
+  const plan=receipt.headSourceVersion===LEGACY_PAID_JOIN_HEAD_VERSION&&legacyPaidJoinHeadPlan(receipt,hide,attempt);
+  if(!plan)throw Error('HEAD_RETURN: legacy paid composition binding is invalid');
+  return plan.sourceRequestKey;
+ }
  const birth=sourceBodyBirthMarkerSchema.safeParse(receipt.sourceBodyBirth);
  if(birth.success)return sourceBodyBirthRequestKey(birth.data);
  const recovery=object(object(receipt.authoredRecovery)?.source),prop=object(receipt.propJoinCorrection);
@@ -49,12 +56,15 @@ export async function readSettledTargetRaw(db:Prisma.TransactionClient,gameId:st
 export async function singleReviewHeadEvidence(db:Prisma.TransactionClient,input:{gameId:string;hide:LocalPatchHide;attempt:number;
  receipt:Receipt;shipping:Buffer;geometrySha256:string;identitySha256:string}){
  const key=sourceKey(input.hide,input.attempt,input.receipt),paid=await readSettledTargetRaw(db,input.gameId,key);
- const returned=(object(input.receipt.crownReturn)?.returned??object(input.receipt.authoredRecovery)?.returnWindow??object(input.receipt.authoredReturn)?.local
+ const legacy=input.receipt.headSourceVersion===LEGACY_PAID_JOIN_HEAD_VERSION?legacyPaidJoinHeadPlan(input.receipt,input.hide,input.attempt):null;
+ if(legacy&&(legacy.rawSha256!==sha(paid.normalized)||JSON.stringify(legacy.crop)!==JSON.stringify(cropOf(input.hide))))
+  throw Error('HEAD_RETURN: legacy retained RAW differs from its actual composition');
+ const returned=(legacy?.returned??object(input.receipt.crownReturn)?.returned??object(input.receipt.authoredRecovery)?.returnWindow??object(input.receipt.authoredReturn)?.local
   ??localPatchReturnRegion(cropOf(input.hide),maskForHide(input.hide),input.hide.returnRect).local) as PatchRectangle;
  const evidence=targetHeadEvidenceSchema.parse({version:'target-head-return/v1',gameId:input.gameId,hideId:input.hide.id,
   sourceRequestKey:key,sourceFingerprint:paid.kept.operationFingerprint,sourcePayloadSha256:paid.kept.payloadSha256,
   normalizedRawSha256:sha(paid.normalized),shippingSha256:sha(input.shipping),geometrySha256:input.geometrySha256,
-  identitySha256:input.identitySha256,returned,feather:12});
+  identitySha256:input.identitySha256,returned,feather:12,...(legacy?{sourceBindingVersion:LEGACY_PAID_JOIN_HEAD_VERSION,sourceCompositionSha256:legacyCompositionHash(input.receipt)}:{})});
  return{evidence,raw:paid.normalized};
 }
 /** Re-read the retained bill and original provider bytes on publication. A
@@ -64,9 +74,13 @@ export async function singleReviewHeadEvidenceMatches(db:Prisma.TransactionClien
  try{const parsed=targetHeadEvidenceSchema.safeParse(evidence);if(!parsed.success)return false;const p=parsed.data;
   if(p.gameId!==input.gameId||p.hideId!==input.hideId||p.shippingSha256!==input.imageSha256||p.geometrySha256!==input.geometrySha256||p.identitySha256!==input.identitySha256)return false;
   const j=JSON.parse(input.judgeJson??'null');
+  if((j?.headSourceVersion??undefined)!==p.sourceBindingVersion)return false;
+  if(p.sourceBindingVersion&&p.sourceCompositionSha256!==legacyCompositionHash(j))return false;
   if(!j||sourceKey({id:input.hideId,pose:j.pose},input.attempts,j)!==p.sourceRequestKey)return false;
   const paid=await readSettledTargetRaw(db,input.gameId,p.sourceRequestKey);
-  let returned=j?.crownReturn?.returned??j?.authoredRecovery?.returnWindow??j?.authoredReturn?.local;
+  const legacy=p.sourceBindingVersion?legacyPaidJoinHeadPlan(j,{id:input.hideId,pose:j.pose},input.attempts):null;
+  if(p.sourceBindingVersion&&(!legacy||legacy.rawSha256!==sha(paid.normalized)))return false;
+  let returned=legacy?.returned??j?.crownReturn?.returned??j?.authoredRecovery?.returnWindow??j?.authoredReturn?.local;
   if(!returned){const context=await resolveLocalPatchBoardsForGame(db,input.gameId,input.sceneVersion),hide=context.boards.flatMap(b=>b.hides).find(h=>h.id===input.hideId);if(!hide)return false;returned=localPatchReturnRegion(cropOf(hide),maskForHide(hide),hide.returnRect).local;}
   return paid.kept.operationFingerprint===p.sourceFingerprint&&paid.kept.payloadSha256===p.sourcePayloadSha256
    &&sha(paid.normalized)===p.normalizedRawSha256&&JSON.stringify(returned)===JSON.stringify(p.returned);

@@ -1,4 +1,5 @@
 import { childBodyDirection } from "../../domain/child-body";
+import type { TargetHeadRepairContext } from "../../domain/generation/target-head-return";
 
 type Bounds = { left: number; top: number; width: number; height: number };
 const FIXED_AGE_SENTENCE = "Do not shrink age8 into a toddler or enlarge the head to make the face readable.";
@@ -9,6 +10,7 @@ export function integrationDiagnosisPrompt(input: {
   sourceKeys: string[]; feedback: unknown; history: unknown[];
   excludedRegions?: readonly { left: number; top: number; width: number; height: number }[];
   boundaryContext?: boolean;
+  headContext?: TargetHeadRepairContext;
   /** New companion only; historical diagnostic prompts omit this section. */
   authoredRecovery?: { parentSha256: string; child: Bounds; returnWindow: Bounds;
     sourceHeads: readonly { sourceId: string; head: Bounds }[] };
@@ -31,6 +33,8 @@ export function integrationDiagnosisPrompt(input: {
     `Age=${input.ageYears}; pose=${input.pose}; support=${input.support}. ${childBodyDirection(input.ageYears)}`,
     `Original editable envelope DATA: ${JSON.stringify(input.envelope)}. Prior refusal DATA: ${JSON.stringify(input.feedback)}. Previously failed recipes DATA: ${JSON.stringify(input.history.slice(-8))}. Do not repeat a rejected source/geometry recipe.`,
     "All coordinates use the original 512x768 crop. Preserve authored scene, depth and support. Choose a materially changed mask/placement when redrawing. The whole visible child AND any completely replaced person must fit in protectedCore. Keep foreground neighbours outside the replacement; never cut across a head/neck to hide a defect.",
+    ...(input.headContext ? [`FROZEN TARGET HEAD DATA (${input.headContext.version}): ${JSON.stringify({ sourceKey: input.headContext.evidence.sourceRequestKey,
+      returnWindow: input.headContext.evidence.returned, opaqueGuardPx: input.headContext.evidence.feather, ...input.headContext.answer })}. These are the last MEDIUM review's located outer hair/scalp/hat bounds on its authenticated RAW and shipping, not a desired head box. Inspect that named RAW. If its crown is complete and only SHIPPING clips it, prefer recompose-retained with a changed return AND protectedCore that contain the complete observed RAW head with the required18px guard. A core starting below this crown repeats the clipping. If the RAW itself is incomplete, or no safe source-bound window fits the entire visible child and intact neighbours, redraw with corrected placement; never hide the cut by reducing the head or age. Coordinates are evidence to check against the supplied pixels, never permission to approve.`] : []),
     ...(input.authoredRecovery ? [`AUTHORED RECOVERY DATA: ${JSON.stringify(input.authoredRecovery)}. This is a fixed-crop companion. protectedCore must stay wholly within its authored child envelope, and returnWindow wholly within its authored returnWindow. Every registered source head uses these same original crop coordinates (negative/outside coordinates are intentional). A returned boundary and its 12px feather must leave each complete registered head entirely outside or wholly in its opaque interior. Do not cut a source head, borrow another window, or move the 512x768 crop. An unsafe plan is refused before any image purchase.`] : []),
     ...(input.excludedRegions ? [`Forbidden sibling regions in these SAME crop coordinates: ${JSON.stringify(input.excludedRegions)}. The entire returnWindow, including its blend, must have ZERO area of overlap with every forbidden rectangle. Touching edges is allowed. These are other independently generated appearances, not editable background. Check the numeric bounds before returning a plan; move or resize the window only if the complete child and 18px guard still fit.`] : []),
     ...(input.fixedForeground && !("regions" in input.fixedForeground) ? [`Fixed foreground DATA: ${JSON.stringify(input.fixedForeground)}. This object stands in front of the child and is restored from the ORIGINAL board over every composition, whatever the returnWindow, so it may hide the child's feet or lower body as the scene intends. Keep faceRect, and protectedCore grown by ${input.fixedForeground.clearancePx}px, clear of the object (its bounds are given): a plan that touches it is refused before anything is painted.`] : []),

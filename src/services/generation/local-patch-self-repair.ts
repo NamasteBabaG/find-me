@@ -4,6 +4,9 @@ import { childBodyDirection } from "../../domain/child-body";
 import { Prisma } from "@prisma/client";
 import sharp from "sharp";
 import { z } from "zod";
+import { LEGACY_PAID_JOIN_HEAD_VERSION } from "../../domain/generation/legacy-paid-join-head";
+import { targetHeadRepairContext, targetHeadRepairContextSchema } from "../../domain/generation/target-head-return";
+import { singleReviewHeadEvidenceMatches } from "./single-review-head-evidence";
 import type { Container } from "../container";
 import { cropOf, maskForHide, type LocalPatchBoard, type LocalPatchHide } from "../../domain/scene/local-patch-hides";
 import { SELF_REPAIR_VERSION, SELF_REPAIR_COMPOSITION_VERSION, selfRepairDecisionSchema, selfRepairRecipe, selfRepairExcludedRegions,
@@ -54,6 +57,7 @@ const stateSchema = z.object({ version: z.literal(SELF_REPAIR_VERSION), cycle: z
   authoredContext: authoredRecoveryContextSchema.optional(),
   authoredDiagnosis: authoredRecoveryDiagnosisSchema.optional(),
   nativeSizeReplay: nativeSizeReplaySchema.optional(),
+  headContext: targetHeadRepairContextSchema.optional(),
   // Absent on historical paid questions; pinned before dispatch on new cycles.
   excludedRegions: z.array(z.object({ left: z.number().int().nonnegative(), top: z.number().int().nonnegative(),
     width: z.number().int().positive(), height: z.number().int().positive() }).strict()).optional(),
@@ -200,8 +204,16 @@ export async function runLocalPatchSelfRepair(c: Container, input: { gameId: str
       cause: state.decision.cause, result: row.lastError ?? "visual-review-refused", imageSha256: previous.judgedSha256 ?? null });
     const failedSource = refusedCompositionSource(previous, state, hide, row.attempts);
     const refusal = upgrade && plan ? subjectRefusalOf(previous, plan, upgrade.ageYears) : null;
+    const quality = previous.boardReview?.dual?.quality, proof = quality?.headEvidence;
+    // Historical legacy joins may name a different RAW. Never propagate that
+    // known bad evidence into a new diagnosis; its dedicated correction runs first.
+    const headContext = (previous.compositionVersion !== SELF_REPAIR_COMPOSITION_VERSION || previous.headSourceVersion === LEGACY_PAID_JOIN_HEAD_VERSION)
+      && proof && await singleReviewHeadEvidenceMatches(c.db, { gameId, hideId: hide.id, imageSha256: previous.judgedSha256,
+        attempts: row.attempts, sceneVersion: scene.sceneVersion, geometrySha256: localPatchPublicationGeometryHash(row), identitySha256,
+        judgeJson: row.judgeJson }, proof) ? targetHeadRepairContext(quality.raw, proof) : null;
     state = { version: SELF_REPAIR_VERSION, cycle: (state?.cycle ?? 0) + 1, phase: "diagnosing", contextSha256,
       ...(authoredContext ? { authoredContext } : {}),
+      ...(headContext ? { headContext } : {}),
       decision: null, history, feedback: (state?.phase === "rejected" ? state.feedback : row.lastError ?? "Two completed attempts did not produce a publishable appearance").slice(0, 1200),
       sourceKeys: state?.sourceKeys ?? Array.from({ length: row.attempts }, (_, i) => `${hide.id}:${hide.pose}:render:${i + 1}`),
       ...(state?.nativeSizeReplay ? { nativeSizeReplay: state.nativeSizeReplay } : {}),
@@ -314,6 +326,7 @@ export async function runLocalPatchSelfRepair(c: Container, input: { gameId: str
       ...(active.boundaryContext ? { boundaryContext: true } : {}), ...(ageBody ? { exactAge: true } : {}),
       ...(subject ? { subject: { codes: subject.codes, located: subject.located, intrinsic: subject.intrinsic, failedSource: subject.failedSource,
         suggestion: `${plan!.action}; head ${plan!.head}; expression ${plan!.expression}`, warmHat: plan!.warmHat } } : {}),
+      ...(active.headContext ? { headContext: active.headContext } : {}),
       feedback: { feedback: active.feedback, verdict: previous.verdict ?? null, seam: previous.seam ?? null }, history: active.history })
       : `Diagnose a personalized hidden-child game after repeated failures. Return a repair PLAN, never an approval. All rectangles use ORIGINAL crop coordinates, 512x768. `
       + `Child age=${child.ageYears}; pose=${hide.pose}; support=${board.ground}. Original editable envelope=${JSON.stringify(maskForHide(hide))}. `
@@ -491,6 +504,7 @@ export async function runLocalPatchSelfRepair(c: Container, input: { gameId: str
     const rejected: string[] = JSON.parse(row.rejectedAssetIdsJson ?? "[]");
     const receipt = { ...previous, verdict: null, wireFault: null, boardReview: undefined, qualityDisposition: undefined,
       reviewState: "pending-board-review", compositionVersion: authoredRecovery ? AUTHORED_RECOVERY_COMPOSITION_VERSION : SELF_REPAIR_COMPOSITION_VERSION,
+      headSourceVersion: authoredRecovery ? undefined : LEGACY_PAID_JOIN_HEAD_VERSION, legacyHeadRecovery: undefined,
       ...(authoredRecovery ? { authoredReturn: authoredReturn!, authoredRecovery } : {}),
       judgedSha256: joined.candidateSha256, geometrySha256: localPatchPublicationGeometryHash(geometry),
       hide: hide.id, pose: hide.pose, seam: joined.audit.originalRawSeamReport, renderFault: null,
