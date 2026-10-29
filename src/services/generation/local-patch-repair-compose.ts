@@ -18,7 +18,7 @@ function validRect(r: PatchRegion, bounds: PatchRegion, name: string) {
 
 export type PaidPatchJoinInput = {
   /** Versioned collection boards use their own native geometry. */
-  readonly boardSize?: { readonly width: 3840; readonly height: 2160 };
+  readonly boardSize?: { readonly width: 3840; readonly height: 2160 } | { readonly width: 3344; readonly height: 1882 };
   /** Full original authored board; caller binds its hash to the paid operation. */
   readonly beforePng: Buffer;
   readonly rawPng: Buffer;
@@ -34,6 +34,13 @@ export type PaidPatchJoinInput = {
    * the face and the protected child with its guard, or the join is refused. */
   readonly foreground?: AppliedForeground;
 };
+/** Callers obtain these dimensions from their authenticated authored source,
+ * never from an HTTP parameter or a returned painting. */
+export function paidPatchJoinBoardSize(source: { readonly width: number; readonly height: number }): NonNullable<PaidPatchJoinInput["boardSize"]> {
+  if (source.width === 3344 && source.height === 1882) return { width: 3344, height: 1882 };
+  if (source.width === 3840 && source.height === 2160) return { width: 3840, height: 2160 };
+  return fail("unsupported collection dimensions");
+}
 export type PaidPatchJoinResult = {
   readonly version: typeof LOCAL_PATCH_REPAIR_COMPOSITION_VERSION;
   readonly candidatePng: Buffer;
@@ -74,7 +81,7 @@ function connected(mask: Uint8Array, label: number, start: number) {
 export async function recomputePaidPatchJoin(input: PaidPatchJoinInput): Promise<PaidPatchJoinResult> {
   const { crop, returnWindow, protectedCore, faceRect } = input;
   const boardSize = input.boardSize ?? LOCAL_PATCH_BOARD;
-  if (input.boardSize && (input.boardSize.width !== 3840 || input.boardSize.height !== 2160)) fail("unsupported collection dimensions");
+  if (input.boardSize) paidPatchJoinBoardSize(input.boardSize);
   const bounds = { left: 0, top: 0, ...LOCAL_PATCH_CROP };
   validRect(crop, { left: 0, top: 0, ...boardSize }, "crop");
   if (crop.width !== 512 || crop.height !== 768) fail("crop must be512x768");

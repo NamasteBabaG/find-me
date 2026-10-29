@@ -37,6 +37,29 @@ export const selfRepairDecisionSchema = z.object({
     message: "The whole child, face and 18px unblended guard must fit inside a closed 512x768 return" });
 });
 export type SelfRepairDecision = z.infer<typeof selfRepairDecisionSchema>;
+export const NATIVE_SIZE_REPLAY_VERSION = "authored-native-size-replay/v1" as const;
+export const NATIVE_SIZE_REPLAY_FAILURE = "LOCAL_PATCH_REPAIR_COMPOSE: board must be a single unrotated 8-bit authored 3840x2160 image";
+const replaySha = z.string().regex(/^[a-f0-9]{64}$/);
+export const nativeSizeReplaySchema = z.object({ version: z.literal(NATIVE_SIZE_REPLAY_VERSION), cycle: z.number().int().positive(),
+  sourcePngSha256: replaySha, diagnosisRequestKey: z.string().min(1).max(240), priorStateSha256: replaySha }).strict();
+
+/** Scheduling hint only. The worker authenticates the frozen paid diagnosis,
+ * source and RAW before changing phase or composing anything. No new cycle. */
+export function nativeSizeSelfRepairWork(judgeJson: string | null): boolean {
+  try {
+    const receipt = JSON.parse(judgeJson ?? "null"), state = receipt?.selfRepair, source = receipt?.authoredReturn?.source;
+    if (source?.width !== 3344 || source?.height !== 1882 || state?.version !== SELF_REPAIR_VERSION
+      || !Number.isSafeInteger(state.cycle) || state.cycle < 1 || !Number.isSafeInteger(state.subjectV2Cycles)
+      || state.subjectV2Cycles < 1 || state.subjectV2Cycles > 3 || !state.authoredContext || !state.authoredDiagnosis
+      || !selfRepairDecisionSchema.safeParse(state.decision).success) return false;
+    const marked = nativeSizeReplaySchema.safeParse(state.nativeSizeReplay);
+    const current = marked.success && marked.data.cycle === state.cycle
+      && marked.data.sourcePngSha256 === state.authoredContext.sourcePngSha256
+      && marked.data.diagnosisRequestKey === state.authoredDiagnosis.requestKey;
+    return state.phase === "applying" ? current
+      : state.phase === "rejected" && state.feedback === NATIVE_SIZE_REPLAY_FAILURE && !current;
+  } catch { return false; }
+}
 /** No model prose becomes an image prompt. Only this closed set of causes does.
  * `subjectPainter`: true (or "v2", local-patch-subject-paint/v2) asks for the plan's arms, head and
  * expression; "v3" (local-patch-subject-paint/v3) keeps the photograph's face and hair and lets the

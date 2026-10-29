@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { needsSelfRepair, selfRepairDecisionSchema, selfRepairRecipe, selfRepairRenderInstructions, selfRepairExcludedRegions } from "../local-patch-self-repair";
+import { needsSelfRepair, selfRepairDecisionSchema, selfRepairRecipe, selfRepairRenderInstructions, selfRepairExcludedRegions,
+  nativeSizeSelfRepairWork, NATIVE_SIZE_REPLAY_FAILURE, NATIVE_SIZE_REPLAY_VERSION } from "../local-patch-self-repair";
 
 const decision = { cause: "composition-clipping" as const, explanation: "A full head exists in the raw image above the old return.",
   action: "recompose-retained" as const, sourceKey: "test:standing:render:1",
@@ -7,6 +8,23 @@ const decision = { cause: "composition-clipping" as const, explanation: "A full 
   protectedCore: { left: 150, top: 160, width: 180, height: 500 },
   faceRect: { left: 170, top: 180, width: 80, height: 90 } };
 describe("autonomous repair contracts", () => {
+  it("schedules only the precise native-size mechanical failure, including a saved third cycle, without granting a new cycle", () => {
+    const receipt = { authoredReturn: { source: { width: 3344, height: 1882 } }, selfRepair: {
+      version: "local-patch-self-repair/v1", cycle: 3, subjectV2Cycles: 3, phase: "rejected", feedback: NATIVE_SIZE_REPLAY_FAILURE,
+      decision, authoredContext: { sourcePngSha256: "a".repeat(64) }, authoredDiagnosis: { requestKey: "self-repair:test:diagnosis:3" } } };
+    const work = () => nativeSizeSelfRepairWork(JSON.stringify(receipt));
+    expect(work()).toBe(true);
+    receipt.selfRepair.feedback = "LOCAL_PATCH_REPAIR_COMPOSE: protected child touches blend";
+    expect(work()).toBe(false); receipt.selfRepair.feedback = NATIVE_SIZE_REPLAY_FAILURE;
+    receipt.authoredReturn.source.width = 3840; expect(work()).toBe(false); receipt.authoredReturn.source.width = 3344;
+    const marked = { ...receipt, selfRepair: { ...receipt.selfRepair, phase: "applying", nativeSizeReplay: {
+      version: NATIVE_SIZE_REPLAY_VERSION, cycle: 3, sourcePngSha256: "a".repeat(64), diagnosisRequestKey: "self-repair:test:diagnosis:3", priorStateSha256: "b".repeat(64) } } };
+    expect(nativeSizeSelfRepairWork(JSON.stringify(marked))).toBe(true);
+    marked.selfRepair.nativeSizeReplay.cycle = 2; expect(nativeSizeSelfRepairWork(JSON.stringify(marked))).toBe(false);
+    marked.selfRepair.nativeSizeReplay.cycle = 3; marked.selfRepair.nativeSizeReplay.sourcePngSha256 = "c".repeat(64);
+    expect(nativeSizeSelfRepairWork(JSON.stringify(marked))).toBe(false);
+    expect(nativeSizeSelfRepairWork("invalid json")).toBe(false);
+  });
   it("gives diagnosis exact local coordinates for occupied sibling areas, including partial intersections", () => {
     expect(selfRepairExcludedRegions({ left: 100, top: 200, width: 512, height: 768 }, [
       { left: 590, top: 180, width: 512, height: 768 },

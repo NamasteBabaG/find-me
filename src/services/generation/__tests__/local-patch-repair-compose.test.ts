@@ -1,7 +1,7 @@
 import sharp from "sharp";
 import { createHash } from "node:crypto";
 import { beforeAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { recomputePaidPatchJoin, LOCAL_PATCH_REPAIR_COMPOSITION_VERSION, type PaidPatchJoinInput } from "../local-patch-repair-compose";
+import { recomputePaidPatchJoin, paidPatchJoinBoardSize, LOCAL_PATCH_REPAIR_COMPOSITION_VERSION, type PaidPatchJoinInput } from "../local-patch-repair-compose";
 
 const crop = { left: 400, top: 300, width: 512, height: 768 };
 const returnWindow = { left: 100, top: 220, width: 320, height: 420 };
@@ -33,6 +33,18 @@ beforeEach(() => { vi.stubGlobal("fetch", vi.fn(() => { throw new Error("No prov
 afterEach(() => { expect(fetch).not.toHaveBeenCalled(); vi.unstubAllGlobals(); });
 
 describe("recomputing a frozen paid-image background join", () => {
+  it.each([{ width: 3840, height: 2160 }, { width: 3344, height: 1882 }] as const)("uses authenticated native collection geometry $width x $height without changing paid pixels", async boardSize => {
+    const beforePng = await sharp(fixture.beforePng).resize(boardSize.width, boardSize.height).png().toBuffer();
+    const input = { ...fixture, beforePng, boardSize: paidPatchJoinBoardSize(boardSize) };
+    const joined = await recomputePaidPatchJoin(input), replay = await recomputePaidPatchJoin(input);
+    expect(joined.geometry.rect).toEqual({ x: crop.left / boardSize.width, y: crop.top / boardSize.height, w: 512 / boardSize.width, h: 768 / boardSize.height });
+    expect(joined.geometry.hitRect).toEqual({ x: 610 / boardSize.width, y: 700 / boardSize.height, w: 80 / boardSize.width, h: 160 / boardSize.height });
+    expect(joined.audit).toMatchObject({ outsideChangedPixels: 0, protectedChangedPixels: 0, sourceSha256: sha(beforePng) });
+    expect(joined.candidatePng.equals(replay.candidatePng)).toBe(true);
+    expect(joined.audit).toEqual(replay.audit);
+    await expect(recomputePaidPatchJoin({ ...input, beforePng: fixture.beforePng })).rejects.toThrow("single unrotated 8-bit authored");
+    expect(() => paidPatchJoinBoardSize({ width: boardSize.width, height: boardSize.height + 1 })).toThrow("unsupported collection dimensions");
+  });
   it("uses exact saved alpha arithmetic, protects every child pixel and restores every outside pixel", async () => {
     const beforeHashes = [fixture.beforePng, fixture.rawPng, fixture.alphaPng].map(sha);
     const result = await recomputePaidPatchJoin(fixture);

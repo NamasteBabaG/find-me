@@ -201,9 +201,10 @@ export async function authoredLocalPatchRecoveryEvidenceMatches(db: Prisma.Trans
     const before = input.beforePng ?? await (await import("./local-patch-hide")).readShippedBoardArt(board.art, parent.source.sha256);
     if (sha256Bytes(before) !== recovery.sourcePngSha256) return false;
     const alphaPng = await sharp(Buffer.from(authoredRecoveryAlpha(recovery)), { raw: { width: 512, height: 768, channels: 1 } }).toColourspace("b-w").png().toBuffer();
-    const joined = await (await import("./local-patch-repair-compose")).recomputePaidPatchJoin({ beforePng: before, rawPng: raw, alphaPng,
+    const composer = await import("./local-patch-repair-compose");
+    const joined = await composer.recomputePaidPatchJoin({ beforePng: before, rawPng: raw, alphaPng,
       crop: recovery.crop, returnWindow: recovery.returnWindow, protectedCore: recovery.protectedCore, faceRect: recovery.faceRect,
-      boardSize: { width: 3840, height: 2160 }, ...(foreground ? { foreground } : {}) });
+      boardSize: composer.paidPatchJoinBoardSize(parent.source), ...(foreground ? { foreground } : {}) });
     return joined.candidateSha256 === receipt.judgedSha256 && equal(joined.audit, receipt.recoveryComposition) && equal(joined.foreground, receipt.foreground);
   } catch { return false; }
 }

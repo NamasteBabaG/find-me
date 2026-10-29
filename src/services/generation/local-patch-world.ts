@@ -37,7 +37,7 @@ import { localPatchAttemptPlan, localPatchSettled, localPatchFinalRepairAllowed,
 import { localPatchNeedsRecomposition, recomposeLocalPatchHide } from "./local-patch-recompose";
 import { runLocalPatchPaidRepair, LOCAL_PATCH_PAID_REPAIR_ACTION, LocalPatchPaidRepairError } from "./local-patch-paid-repair";
 import { readLocalPatchExtraAttemptPlan } from "./local-patch-extra-attempt";
-import { needsSelfRepair, selfRepairEnabled } from "../../domain/scene/local-patch-self-repair";
+import { needsSelfRepair, selfRepairEnabled, nativeSizeSelfRepairWork } from "../../domain/scene/local-patch-self-repair";
 import { needsPlayerReview, playerReviewEnabled } from "./local-patch-player-review";
 import { runLocalPatchSelfRepair, savedApplyingRepairOf, SELF_REPAIR_REQUEST_ACTION, type SelfRepairDeps } from "./local-patch-self-repair";
 import { WorldBudgetError } from "./world-budget";
@@ -587,6 +587,8 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
   const completionAuthority = automatic && !extraPlan ? await readQaCompletionCapacity(c, boardWizardWorldId(gameId)) : null;
   const completionRepair = (row: Parameters<typeof qaCompletionGuidedRepair>[0]) =>
     qaCompletionGuidedRepair(row, game.scenes[0]!.sceneVersion, !!completionAuthority);
+  const mechanicalRepair = (row: { status: string; judgeJson: string | null } | undefined) => !!row
+    && row.status === "FAILED" && nativeSizeSelfRepairWork(row.judgeJson);
   /** A v1 pose-plan refusal awaiting its v2 question about the same pixels (subject-rejudge/v1), read at the enrolled age. */
   const rejudgePending = (row: Parameters<typeof subjectRejudgePending>[0]) => !!subjectUpgrade && subjectRejudgePending(row, subjectUpgrade.ageYears);
   const readyReviewOwed = (row: { status: string; judgeJson: string | null }) => localPatchReadyReviewOwed(row,
@@ -760,7 +762,7 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
   const repairCheckpoints = new Map(rows.map(row => [row.id, JSON.stringify(selfRepairOf(row) ?? null)]));
   const automaticWork = automatic && !extraPlan ? work.filter(item => {
     const row = stateOf(item.sceneId, item.hide.targetId);
-    return needsSelfRepair(row) && !contextPainting(row) && !contextExhausted(row) && !sourceBodyBirthMarker(row!) && !bodyPainting(row) && !bodyExhausted(row) && !(row && (guidedFrameExhausted(row) && !completionRepair(row) || nativeMaskTailExhausted(row))) && !leanThirdPainting(row) && !guidedThirdPainting(row) && !(hasLocalPatchCapability(game.scenes.find(scene => scene.id === item.sceneId)?.sceneVersion, "integratedQuality")
+    return needsSelfRepair(row) && !contextPainting(row) && !contextExhausted(row) && !sourceBodyBirthMarker(row!) && !bodyPainting(row) && !bodyExhausted(row) && !(row && (guidedFrameExhausted(row) && !completionRepair(row) && !mechanicalRepair(row) || nativeMaskTailExhausted(row))) && !leanThirdPainting(row) && !guidedThirdPainting(row) && !(hasLocalPatchCapability(game.scenes.find(scene => scene.id === item.sceneId)?.sceneVersion, "integratedQuality")
       && (localPatchEvidenceRecovery(row!) || playerReviewEnabled() && needsPlayerReview(row!)))
       // Re-asked under v2 about the same pixels before any repair (subject-rejudge/v1).
       && !rejudgePending(row!);
@@ -807,7 +809,8 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
   const order = (item: (typeof work)[number]) => work.indexOf(item);
   const ordered = progress ? localPatchProgressOrder([
     ...automaticWork.map(item => { const row = stateOf(item.sceneId, item.hide.targetId);
-      return { item, kind: "repair" as const, order: order(item), ...selfRepairProgress(selfRepairOf(row), row?.attempts ?? 0) }; }),
+      return { item, kind: "repair" as const, order: order(item), ...selfRepairProgress(selfRepairOf(row), row?.attempts ?? 0),
+        ...(mechanicalRepair(row) ? { inFlight: true, exhausted: false } : {}) }; }),
     ...todo.map(item => { const row = stateOf(item.sceneId, item.hide.targetId);
       return { item, kind: "render" as const, order: order(item), inFlight: row?.status === "PENDING", served: row?.attempts ?? 0, exhausted: false }; }),
   ]) : null;
@@ -1054,7 +1057,7 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
         evidence: recovery ? { retry: recovery.retry, waiting: recovery.waiting, exhausted: recovery.exhausted,
           ...(diagnosis ? { kind: `${diagnosis.role} ${diagnosis.kind}` } : {}) } : null,
         reviewOwed: !!row && (progress && readyReviewOwed(row) || rejudgePending(row) || playerReviewEnabled() && needsPlayerReview(row)),
-        repairSpent: contextExhausted(row) || progress && !!row && !contextPainting(row) && !bodyPainting(row) && !nativeFourthPainting(row) && (bodyExhausted(row) || !!sourceBodyBirthMarker(row) && row.attempts>=LOCAL_PATCH_MAX_ATTEMPTS || guidedFrameExhausted(row) && !completionRepair(row) || nativeMaskTailExhausted(row) || needsSelfRepair(row) && selfRepairProgress(selfRepairOf(row), row.attempts).exhausted) });
+        repairSpent: contextExhausted(row) || progress && !!row && !contextPainting(row) && !bodyPainting(row) && !nativeFourthPainting(row) && (bodyExhausted(row) || !!sourceBodyBirthMarker(row) && row.attempts>=LOCAL_PATCH_MAX_ATTEMPTS || guidedFrameExhausted(row) && !completionRepair(row) && !mechanicalRepair(row) || nativeMaskTailExhausted(row) || needsSelfRepair(row) && selfRepairProgress(selfRepairOf(row), row.attempts).exhausted && !mechanicalRepair(row)) });
     });
     const rest = pendingReviews ? null : localPatchRestDecision(rests);
     if (rest?.action === "wait") {

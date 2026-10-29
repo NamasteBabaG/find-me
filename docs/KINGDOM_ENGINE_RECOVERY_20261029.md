@@ -157,3 +157,29 @@ one wake per unchanged snapshot, and ordinary all-27 MEDIUM publication.
 Real guide evaluations must distinguish the refused shipping composition shown
 by the admin page from the immutable provider RAW; neither a thumbnail nor a
 passing synthetic rectangle qualifies the real artwork.
+
+## Native board geometry and retained-plan replay
+
+Authored recovery now composes and independently reconstructs its proof using
+the dimensions of the authenticated source contract: 3344x1882 for the current
+Kingdom Detective source, or the existing 3840x2160 collection source. The
+legacy default remains 3072x2048. A mismatched payload or any other explicit
+collection dimensions still fail before composition; no source is resized to
+make the geometry appear valid.
+
+A saved rejection caused by the old hardcoded 3840x2160 guard can replay its
+existing paid diagnosis in the same cycle. The worker authenticates the source,
+identity, immutable diagnosis and retained RAW receipts, freezes a hash of the
+rejected state, and verifies it again after the asynchronous boundary. An
+already-paid repaint is read directly from retention without calling the image
+provider or counting its cost again. Attempts, used cycles, failed recipes,
+request keys and all ledger history remain intact. Other visual or geometric
+rejections do not qualify for this mechanical replay.
+
+The replay produces an unreviewed candidate. Its own ordinary MEDIUM review,
+head/crown evidence and publication checks remain mandatory. Native-source
+integration regressions reproduce the old size failure after a paid plan for
+retained composition, redraw and surface repair, then verify receipt-bound free
+replay, state-tamper refusal and independent publication evidence. Synthetic
+painting fixtures test accounting and geometry; they do not establish real art
+quality or likeness.
