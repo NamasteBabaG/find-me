@@ -106,7 +106,7 @@ beforeAll(async () => {
     email: { id: "console", send: async () => ({ id: "synthetic-mail" }) }, emailFallbackTo: null } as unknown as Container;
   vi.stubGlobal("fetch", vi.fn(async () => { throw Error("Real provider calls forbidden in Detective integration"); }));
 }, 180_000);
-afterEach(()=>vi.restoreAllMocks());
+afterEach(()=>{vi.useRealTimers();vi.restoreAllMocks();});
 afterAll(async () => {
   sourceBytes.clear(); vi.useRealTimers(); vi.unstubAllGlobals(); await db.$disconnect();
   if (path.dirname(directory) === realpathSync(tmpdir()) && path.basename(directory).startsWith("findme-detective-world-")) rmSync(directory, { recursive: true });
@@ -452,7 +452,20 @@ it.each([{mode:"clean",interrupted:false,guided:false},{mode:"transport",interru
       }
     }
   }
-  else if (oversized.kind === "image") expect(oversized.hitRect!.h * 2160).toBeGreaterThan(540 * 0.8);
+  else if (oversized.kind === "image") {
+    if(born&&!crown){
+      const scene=config.scenes.find(s=>s.slug==="paris")!,target=scene.targets.find(t=>t.id==="hide-2")!;
+      const hide=context.boards.find(b=>b.board==="paris")!.hides.find(h=>h.targetId==="hide-2")!,figure=paintedFigures.get(hide.id)!;
+      // The prospective guide deliberately shrinks this figure. Measure the
+      // real synthetic pixels rather than keeping the old unguided 432px floor.
+      const hit=targetGeometry(scene,target,"A").hitRect;
+      expect((hit.x1-hit.x0)*scene.art.width).toBeGreaterThanOrEqual(figure.width-24);
+      expect((hit.x1-hit.x0)*scene.art.width).toBeLessThanOrEqual(figure.width+48);
+      expect((hit.y1-hit.y0)*scene.art.height).toBeGreaterThanOrEqual(figure.height-24);
+      expect((hit.y1-hit.y0)*scene.art.height).toBeLessThanOrEqual(figure.height+48);
+      expect(rectContains(hit,(figure.left+figure.width/2)/scene.art.width,(figure.top+figure.height/2)/scene.art.height)).toBe(true);
+    }else expect(oversized.hitRect!.h * 2160).toBeGreaterThan(540 * 0.8);
+  }
   if(mode==="born-clean")expect(bornPendingChecked).toBe(true);
   const audit = await boardWizardBudgetOf(c).audit(worldId);
   expect(audit).toMatchObject({ capMicroUsd: born?4_000_000:tail ? 10_000_000 : 8_000_000, held: false, pendingRequestKeys: [] });
@@ -934,7 +947,9 @@ it("resumes v3 and v4 Explorer guided thirds through one fresh MEDIUM each and n
       let frame = maskForHide(hide);
       if (selectedIds.includes(hide.id) && attempt === 3) {
         guides++;
-        expect(placementGuideVersion).toBe(GUIDED_FRAME_RECOVERY_VERSION);
+        // An original pending checkpoint may keep its historical guide; an
+        // unbought current third also receives the new source-context panel.
+        expect([GUIDED_FRAME_RECOVERY_VERSION,PLACEMENT_GUIDE_VERSION]).toContain(placementGuideVersion);
         expect(placementGuidePng).toBeDefined();
         const unchangedReturn = localPatchReturnRegion(cropOf(hide), frame, hide.returnRect).local;
         const geometry = guidedFrameGeometry(frame, unchangedReturn);
@@ -944,7 +959,10 @@ it("resumes v3 and v4 Explorer guided thirds through one fresh MEDIUM each and n
         let editable = 0;
         for (let i = 3; i < alpha.length; i += 4) if (alpha[i] === 0) editable++;
         expect(editable).toBe(unchangedReturn.width * unchangedReturn.height);
-      } else expect(placementGuidePng).toBeUndefined();
+      } else {
+        expect(placementGuideVersion).toBe(PLACEMENT_GUIDE_VERSION);expect(placementGuidePng).toBeDefined();
+        frame=guidedFrameGeometry(frame,localPatchReturnRegion(cropOf(hide),frame,hide.returnRect).local).target;
+      }
       const figure = await sharp({ create: { width: Math.round(frame.width * 0.6), height: Math.round(frame.height * 0.8), channels: 4,
         background: attempt === 2 ? "#304f91" : attempt === 3 ? "#704f91" : "#1e3ca0" } }).png().toBuffer();
       const png = await sharp(stylePng).composite([{ input: figure, left: frame.left + Math.round(frame.width * 0.2), top: frame.top + Math.round(frame.height * 0.2) }]).png().toBuffer();
