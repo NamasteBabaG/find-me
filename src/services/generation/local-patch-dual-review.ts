@@ -1,4 +1,4 @@
-import { BOUND_SUBJECT_QUALITY_ENVELOPE_READER } from "../../domain/generation/bound-subject-quality-envelope";
+import { BOUND_SUBJECT_QUALITY_ENVELOPE_READER_V2 } from "../../domain/generation/bound-subject-quality-envelope";
 import { singleMediumEvidence, singleMediumPrompt, singleMediumAnatomyPrompt } from "./single-medium-evidence";
 import { publishedCrownSubjectAnchor } from "./published-crown-repair";
 import { singleReviewHeadEvidence } from "./single-review-head-evidence";
@@ -1191,7 +1191,7 @@ async function singleLowReview(c: Container, prepared: Prepared, deps: LocalPatc
     throw Error('SINGLE_REVIEW: retained answer differs from dispatched authored candidate');
   const base: DualStageBase = { requestKey, fingerprint: question.fingerprint, attempt, policy: question.policy, raw: wire.raw,
     model: wire.model, finishReason: wire.finishReason, wireFault: wire.wireFault, costMicroUsd: bought.evidence.amountMicroUsd,
-    ...(singleVersion === SINGLE_MEDIUM_VISUAL_REVIEW_VERSION ? { envelopeReader: BOUND_SUBJECT_QUALITY_ENVELOPE_READER } : {}) };
+    ...(singleVersion === SINGLE_MEDIUM_VISUAL_REVIEW_VERSION ? { envelopeReader: BOUND_SUBJECT_QUALITY_ENVELOPE_READER_V2 } : {}) };
   const qualityStage: QualityStage = { ...base, reader: CURRENT_QUALITY_READER, subjectBundle: combined.binding, ...(sourceNeighbors ? { sourceNeighbors } : {}), ...(head ? { headEvidence: head.evidence } : {}) };
   const continuity: ContinuityStage = { ...base, reader: CURRENT_CONTINUITY_READER[version] };
   const subjectStage: SubjectStage = { ...base, subjectPolicy: SUBJECT_POLICY_V2, reader: SUBJECT_READER_V2,

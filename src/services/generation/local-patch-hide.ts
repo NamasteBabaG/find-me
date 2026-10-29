@@ -45,6 +45,10 @@ import { isLocalPatchAdvisoryVersion, isLocalPatchAgeVersion, isLocalPatchStrict
 import { requireLocalPatchExtraAttempt, fenceLocalPatchExtraAttempt } from "./local-patch-extra-attempt";
 import { localPatchPublicationGeometryHash } from "./local-patch-publication-policy";
 import { initialAdaptiveRecovery, prepareAdaptiveRecovery } from "./local-patch-adaptive-recovery";
+import { PLACEMENT_GUIDE_VERSION, placementGuideOf, placementGuideSchema, type PlacementGuide } from "../../domain/generation/placement-guide";
+import { expectedGuidedLocalPatchReturn } from "./local-patch-authored-return";
+import { maskForHide } from "../../domain/scene/local-patch-hides";
+import { PENDING_IMAGE_LEASE_MS } from "../../domain/generation/pending-image-lease";
 export { LOCAL_PATCH_MAX_ATTEMPTS, nextLocalPatchAttempt } from "../../domain/scene/local-patch-attempts";
 
 /**
@@ -335,7 +339,7 @@ export async function runLocalPatchHide(c: Container, deps: LocalPatchHideDeps, 
   const birthPolicy=sourceBodyBirthForHide(placementContext,hide.id),bodyBirth=birthPolicy&&!exhausted?sourceBodyBirthMarkerFor(birthPolicy,row.id,hide.id,attempt):null;
   if(bodyBirth)demand(!bodyRepair&&!guidedFrame&&!nativeMaskTail&&!extra&&scene.sceneVersion===13,'From-birth footprints keep normal finite image attempts');
   const original=bodyRepair?JSON.parse(row.judgeJson??'{}'):{};
-  const guidedHistory=wholeContext?{wholeSourceContext:wholeContext.marker}:bodyBirth?{sourceBodyBirth:bodyBirth}:bodyRepair?{sourceBodyRepair:bodyRepair.marker,...(original.selfRepair?{selfRepair:original.selfRepair}:{}),...(original.guidedFrameRecovery?{guidedFrameRecovery:original.guidedFrameRecovery}:{}),...(original.nativeMaskTail?{nativeMaskTail:original.nativeMaskTail}:{})}:guidedFrame?{guidedFrameRecovery:guidedFrame,selfRepair:JSON.parse(row.judgeJson!).selfRepair,...(nativeMaskTail?{nativeMaskTail}:{})}:{};
+  let guidedHistory: Record<string, unknown>=wholeContext?{wholeSourceContext:wholeContext.marker}:bodyBirth?{sourceBodyBirth:bodyBirth}:bodyRepair?{sourceBodyRepair:bodyRepair.marker,...(original.selfRepair?{selfRepair:original.selfRepair}:{}),...(original.guidedFrameRecovery?{guidedFrameRecovery:original.guidedFrameRecovery}:{}),...(original.nativeMaskTail?{nativeMaskTail:original.nativeMaskTail}:{})}:guidedFrame?{guidedFrameRecovery:guidedFrame,selfRepair:JSON.parse(row.judgeJson!).selfRepair,...(nativeMaskTail?{nativeMaskTail}:{})}:{};
   // judgeJson is intentionally kept while PENDING: clearing lastError must not
   // change the prompt/fingerprint when attempt 2/3 resumes after an interruption.
   // v8 corrects its own located defect on the very next attempt. The old paid
@@ -390,7 +394,29 @@ export async function runLocalPatchHide(c: Container, deps: LocalPatchHideDeps, 
   const contextSourceFile=wholeContext?await readCollectionArt(board.art,definition.art.sha256??""):null;
   if(wholeContext)demand(contextSourceFile&&sha256Bytes(contextSourceFile)===wholeContext.pin.selected.plan.source.sha256,
     "Original encoded source is unavailable for the native context");
-  const adaptiveRecovery = wholeContext || guidedFrame || bodyRepair || bodyBirth ? null : prepareAdaptiveRecovery(row.judgeJson, row, attempt, {
+  // Pin a visual recipe before its first dispatch. A live pre-upgrade claim
+  // or any already reserved key keeps its original request byte for byte.
+  // This grants neither another attempt nor any additional budget.
+  let placementGuide: PlacementGuide | null = null;
+  const priorGuide = placementGuideOf(row.judgeJson);
+  if ((scene.sceneVersion === 12 || scene.sceneVersion === 13) && !wholeContext && !bodyRepair && !bodyBirth && !nativeMaskTail && !extra
+    && (attempt <= LOCAL_PATCH_NORMAL_ATTEMPTS || !!guidedFrame)) {
+    const authority = await singleLowReviewAuthorization(c.db, gameId);
+    if (authority?.kind === "from-birth") {
+      const returned = expectedGuidedLocalPatchReturn(board, hide, scene.sceneVersion, placementContext);
+      const expected = placementGuideSchema.parse({ version: PLACEMENT_GUIDE_VERSION, hideId: hide.id, attempt, sceneVersion: scene.sceneVersion,
+        sourceSha256: returned.source.sha256, reviewAuthorizationSha256: authority.authorizationSha256,
+        geometrySha256: sha256Bytes(Buffer.from(JSON.stringify({ crop: cropOf(hide), child: maskForHide(hide), returned: returned.local }))) });
+      if (priorGuide?.attempt === attempt) {
+        demand(JSON.stringify(priorGuide) === JSON.stringify(expected), "Persisted placement guide differs from its original source or authority");
+        placementGuide = priorGuide;
+      } else if (!(row.status === "PENDING" && row.attempts > 0 && Date.now() - row.updatedAt.getTime() < PENDING_IMAGE_LEASE_MS)
+        && !await budget.readRequest(worldId, `${hide.id}:${hide.pose}:render:${attempt}`)) placementGuide = expected;
+    }
+  }
+  if (priorGuide?.attempt === attempt) demand(placementGuide, "Persisted placement guide cannot be removed from a started painting");
+  if (placementGuide) guidedHistory = { ...guidedHistory, placementGuide };
+  const adaptiveRecovery = wholeContext || guidedFrame || placementGuide || bodyRepair || bodyBirth ? null : prepareAdaptiveRecovery(row.judgeJson, row, attempt, {
     gameId, rowId: row.id, contentVersion: scene.sceneVersion, promptVersion, hide,
     boardSha256: sha256Bytes(artwork), identitySha256: sha256Bytes(sheet), ageYears: child.ageYears,
     renderPolicySha256: deps.renderPolicySha256,
@@ -419,11 +445,12 @@ export async function runLocalPatchHide(c: Container, deps: LocalPatchHideDeps, 
     if (extra) await fenceLocalPatchExtraAttempt(tx, {
       gameId, hideId: hide.id, rowId: row.id, authorizationId: input.extraAttemptAuthorizationId!,
     });
-    await tx.targetVariantAsset.update({ where: { id: row.id }, data: {
+    const claimed = await tx.targetVariantAsset.updateMany({ where: { id: row.id, status: row.status, attempts: row.attempts, judgeJson: row.judgeJson }, data: {
       attempts: attempt, status: "PENDING", lastError: null,
       provider: LOCAL_PATCH_PROVIDER, promptVersion, slotId: target.slots[0].id,
-      ...((adaptiveRecovery || wholeContext || guidedFrame || bodyRepair || bodyBirth) ? { judgeJson: JSON.stringify({ ...JSON.parse(row.judgeJson ?? "{}"), ...guidedHistory, ...(adaptiveRecovery ? { adaptiveRecovery } : {}) }) } : {}),
+      ...((adaptiveRecovery || wholeContext || guidedFrame || placementGuide || bodyRepair || bodyBirth) ? { judgeJson: JSON.stringify({ ...JSON.parse(row.judgeJson ?? "{}"), ...guidedHistory, ...(adaptiveRecovery ? { adaptiveRecovery } : {}) }) } : {}),
     } });
+    demand(claimed.count === 1, "Painting row changed before its recipe could be pinned");
   });
   const started = { ...base, attempts: attempt };
 
@@ -445,6 +472,7 @@ export async function runLocalPatchHide(c: Container, deps: LocalPatchHideDeps, 
     ...(repairChecks === undefined ? {} : { repairChecks }),
     ...(extra ? { recoveryDirective: extra.directive } : {}),
     ...(guidedFrame ? { guidedFrameRecovery: guidedFrame } : {}),
+    ...(placementGuide ? { placementGuide } : {}),
     ...(nativeMaskTail ? { nativeMaskTail } : {}),
     ...(bodyRepair?{sourceBodyRepair:bodyRepair.marker}:{}),
     ...(bodyBirth?{sourceBodyBirth:bodyBirth}:{}),

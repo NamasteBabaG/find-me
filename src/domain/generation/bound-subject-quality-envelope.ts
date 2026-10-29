@@ -3,6 +3,8 @@ import { readSubjectQualityBundle, SUBJECT_QUALITY_BUNDLE_VERSION, type SubjectQ
 
 /** A parser repair, not a new question or a transfer of any approval. */
 export const BOUND_SUBJECT_QUALITY_ENVELOPE_READER = "quality-subject-envelope/v1-exact-bound-echo" as const;
+export const BOUND_SUBJECT_QUALITY_ENVELOPE_READER_V2 = "quality-subject-envelope/v2-exact-nested-echo" as const;
+export type BoundSubjectQualityEnvelopeReader = typeof BOUND_SUBJECT_QUALITY_ENVELOPE_READER | typeof BOUND_SUBJECT_QUALITY_ENVELOPE_READER_V2;
 const sha = z.string().regex(/^[a-f0-9]{64}$/);
 const echoed = z.object({
   version: z.literal(SUBJECT_QUALITY_BUNDLE_VERSION), quality: z.record(z.string(), z.unknown()), subject: z.record(z.string(), z.unknown()),
@@ -26,4 +28,25 @@ export function readBoundSubjectQualityEnvelope(raw: string | null, binding: Sub
       || value.subjectPolicy !== binding.subjectPolicy || value.subject.subjectPolicy !== binding.subjectPolicy) return null;
     return readSubjectQualityBundle(JSON.stringify({ version: value.version, quality: value.quality, subject: value.subject }));
   } catch { return null; }
+}
+
+/** Some MEDIUM answers repeat the two question hashes inside the subject
+ * document instead. Remove only that complete, exact redundant pair. The v1
+ * reader and the immutable paid answer remain unchanged; every semantic field,
+ * including unknown fields, still reaches the original strict subject reader. */
+export function readBoundSubjectQualityEnvelopeV2(raw: string | null, binding: SubjectQualityBundleBinding) {
+  const bundle = readBoundSubjectQualityEnvelope(raw, binding);
+  if (!bundle) return null;
+  const subject = JSON.parse(bundle.subject) as Record<string, unknown>;
+  if (!("photoSha256" in subject) && !("planSha256" in subject)) return bundle;
+  if (binding.version !== SUBJECT_QUALITY_BUNDLE_VERSION || binding.subjectPolicy !== "local-patch-subject/v2"
+    || subject.subjectPolicy !== binding.subjectPolicy || subject.photoSha256 !== binding.photoSha256
+    || subject.planSha256 !== binding.planSha256) return null;
+  const { photoSha256: _photo, planSha256: _plan, ...checks } = subject;
+  return { quality: bundle.quality, subject: JSON.stringify(checks) };
+}
+
+export function readSubjectQualityEnvelopeWith(reader: string, raw: string | null, binding: SubjectQualityBundleBinding) {
+  return reader === BOUND_SUBJECT_QUALITY_ENVELOPE_READER ? readBoundSubjectQualityEnvelope(raw, binding)
+    : reader === BOUND_SUBJECT_QUALITY_ENVELOPE_READER_V2 ? readBoundSubjectQualityEnvelopeV2(raw, binding) : null;
 }

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { readSubjectQualityBundle, SUBJECT_QUALITY_BUNDLE_VERSION } from "../subject-quality-bundle";
-import { readBoundSubjectQualityEnvelope } from "../bound-subject-quality-envelope";
+import { readBoundSubjectQualityEnvelope, readBoundSubjectQualityEnvelopeV2 } from "../bound-subject-quality-envelope";
 
 const binding = { version: SUBJECT_QUALITY_BUNDLE_VERSION, photoSha256: "a".repeat(64), planSha256: "b".repeat(64), subjectPolicy: "local-patch-subject/v2" as const };
 const quality = { hides: [{ hideId: "paris-v12-3", verdict: { childPresent: "pass", childComplete: "pass", severeSeam: "fail",
@@ -31,5 +31,31 @@ describe("exact bound MEDIUM metadata echo", () => {
     expect(readBoundSubjectQualityEnvelope(JSON.stringify({ ...echoed(), subject: { ...subject, subjectPolicy: "local-patch-subject/v1" } }), binding)).toBeNull();
     expect(readBoundSubjectQualityEnvelope("The answer is "+JSON.stringify(echoed()), binding)).toBeNull();
     expect(readBoundSubjectQualityEnvelope(JSON.stringify(echoed()), { ...binding, subjectPolicy: undefined })).toBeNull();
+  });
+});
+
+describe("v2 exact nested subject hashes", () => {
+  const nested = () => ({ ...canonical, subject: { ...subject, photoSha256: binding.photoSha256, planSha256: binding.planSha256 } });
+  it("removes only the matching pair and preserves failed and uncertain semantic checks", () => {
+    const doc = nested(), raw = JSON.stringify(doc);
+    expect(JSON.parse(readBoundSubjectQualityEnvelope(raw, binding)!.subject)).toEqual(doc.subject);
+    expect(readBoundSubjectQualityEnvelopeV2(raw, binding)).toEqual(readSubjectQualityBundle(JSON.stringify(canonical)));
+    expect(readBoundSubjectQualityEnvelopeV2("```json\n" + raw + "\n```", binding)).not.toBeNull();
+    expect(readBoundSubjectQualityEnvelopeV2(JSON.stringify({ ...echoed(), subject: doc.subject }), binding))
+      .toEqual(readSubjectQualityBundle(JSON.stringify(canonical)));
+  });
+  it.each(["photoSha256", "planSha256"])("refuses a partial or foreign nested %s", key => {
+    const doc = nested();
+    expect(readBoundSubjectQualityEnvelopeV2(JSON.stringify({ ...doc, subject: { ...doc.subject, [key]: "c".repeat(64) } }), binding)).toBeNull();
+    const partial: Record<string, unknown> = { ...doc.subject }; delete partial[key];
+    expect(readBoundSubjectQualityEnvelopeV2(JSON.stringify({ ...doc, subject: partial }), binding)).toBeNull();
+  });
+  it("preserves unknown subject fields for rejection by its strict semantic reader", () => {
+    const doc = nested();
+    const read = readBoundSubjectQualityEnvelopeV2(JSON.stringify({ ...doc, subject: { ...doc.subject, approved: true } }), binding)!;
+    expect(JSON.parse(read.subject)).toEqual({ ...subject, approved: true });
+    expect(readBoundSubjectQualityEnvelopeV2(JSON.stringify({ ...doc, approved: true }), binding)).toBeNull();
+    expect(readBoundSubjectQualityEnvelopeV2(JSON.stringify(doc), { ...binding, subjectPolicy: undefined })).toBeNull();
+    expect(readBoundSubjectQualityEnvelopeV2(JSON.stringify({ ...doc, subject: { ...doc.subject, subjectPolicy: "local-patch-subject/v1" } }), binding)).toBeNull();
   });
 });

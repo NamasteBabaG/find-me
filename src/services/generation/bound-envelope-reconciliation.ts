@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { Prisma } from "@prisma/client";
 import { env } from "../../lib/env";
-import { BOUND_SUBJECT_QUALITY_ENVELOPE_READER } from "../../domain/generation/bound-subject-quality-envelope";
+import { BOUND_SUBJECT_QUALITY_ENVELOPE_READER_V2 } from "../../domain/generation/bound-subject-quality-envelope";
 import type { Container } from "../container";
 import { boardWizardBudgetOf } from "./board-conditioned-wizard";
 import { localPatchBoundEnvelopeUndecided } from "./local-patch-dual-evidence";
@@ -43,7 +43,7 @@ async function eligible(c:Container,gameId:string) {
     targetInstance:{gameScene:{gameId}}},include:{targetInstance:{select:{gameSceneId:true}}},orderBy:{id:"asc"}});
   for(const row of rows){
     if(!localPatchBoundEnvelopeUndecided(row))continue;
-    const id="aud_bound_envelope_"+hash({gameId,rowId:row.id,receipt:hash(row.judgeJson),reader:BOUND_SUBJECT_QUALITY_ENVELOPE_READER}).slice(0,40);
+    const id="aud_bound_envelope_"+hash({gameId,rowId:row.id,receipt:hash(row.judgeJson),reader:BOUND_SUBJECT_QUALITY_ENVELOPE_READER_V2}).slice(0,40);
     if(await c.db.auditLog.findUnique({where:{id}}))continue;
     const {prepareLocalPatchBoardReview}=await import("./local-patch-board-review");
     const {buyDualLocalPatchReview}=await import("./local-patch-dual-review");
@@ -52,7 +52,7 @@ async function eligible(c:Container,gameId:string) {
       {decideRetained:true,playerReview:true,skipApprovedEvidence:true,onlyHideId:hideId});
     if(!prepared.ready)continue;
     const answer=await buyDualLocalPatchReview(c,prepared,{fence:async()=>{throw Error("BOUND_ENVELOPE: read-only preflight cannot write");}},undefined,{decideRetained:true});
-    if(answer.kind!=="reviewed"||!answer.salvaged||answer.proof.quality.envelopeReader!==BOUND_SUBJECT_QUALITY_ENVELOPE_READER)continue;
+    if(answer.kind!=="reviewed"||!answer.salvaged||answer.proof.quality.envelopeReader!==BOUND_SUBJECT_QUALITY_ENVELOPE_READER_V2)continue;
     return {original,job,row,ledger,id};
   }
   return null;
@@ -85,7 +85,7 @@ export async function resumeBoundEnvelopeReconciliation(c:Container,gameId:strin
       attempts:job.attempts,updatedAt:job.updatedAt,lastError:job.lastError},data:{status:"QUEUED",currentStep:"local-patch",lastError:null}});
     if(changed.count!==1)return false;
     await tx.auditLog.create({data:{id,actorType:"SYSTEM",action:ACTION,entityType:"Game",entityId:gameId,
-      metaJson:JSON.stringify({version:BOUND_SUBJECT_QUALITY_ENVELOPE_READER,kind:"software-wake",rowId:row.id,
+      metaJson:JSON.stringify({version:BOUND_SUBJECT_QUALITY_ENVELOPE_READER_V2,kind:"software-wake",rowId:row.id,
         receiptSha256:hash(row.judgeJson),previousHoldSha256:hash(job),ledgerSha256:hash(ledger.snapshotJson),
         attemptsPreserved:true,capPreserved:true,providerCalls:0})}});
     return true;

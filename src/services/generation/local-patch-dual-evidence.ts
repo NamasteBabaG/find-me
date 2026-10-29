@@ -1,4 +1,5 @@
-import { BOUND_SUBJECT_QUALITY_ENVELOPE_READER, readBoundSubjectQualityEnvelope } from "../../domain/generation/bound-subject-quality-envelope";
+import { BOUND_SUBJECT_QUALITY_ENVELOPE_READER, readBoundSubjectQualityEnvelopeV2,
+  readSubjectQualityEnvelopeWith, type BoundSubjectQualityEnvelopeReader } from "../../domain/generation/bound-subject-quality-envelope";
 import { targetHeadReturnDecision, type TargetHeadEvidence } from "../../domain/generation/target-head-return";
 import { SINGLE_MEDIUM_VISUAL_REVIEW_VERSION, readSingleVisualReviewVersion, readSingleVisualReview, type SingleVisualReviewVersion } from "../../domain/generation/single-visual-review";
 import { SINGLE_LOW_REVIEW_POLICIES, SINGLE_MEDIUM_REVIEW_POLICIES, isSingleReviewPolicy, isSingleMediumReviewPolicy } from "../../domain/generation/visual-review-policy";
@@ -89,7 +90,7 @@ export type DualStageBase = { requestKey: string; fingerprint: string; attempt: 
   /** The recovery variant of the question, when it was not the standard one. */
   strategy?: EvidenceStrategy;
   /** Named lossless envelope reading; absent on all historical decisions. */
-  envelopeReader?: typeof BOUND_SUBJECT_QUALITY_ENVELOPE_READER;
+  envelopeReader?: BoundSubjectQualityEnvelopeReader;
   /** Why the answer could not be used: a code and a JSON path, never answer text. */
   readFault?: ContinuityReadFault | null };
 /** Each role names the reader that decided it. Absent on stages written before readers were named. */
@@ -183,8 +184,8 @@ export function qualityStageRaw(stage: Pick<QualityStage, "raw" | "subjectBundle
   if (!stage.subjectBundle) return stage.envelopeReader === undefined ? raw : null;
   if (stage.subjectBundle.version !== SUBJECT_QUALITY_BUNDLE_VERSION) return null;
   if (stage.envelopeReader === undefined) return readSubjectQualityBundle(raw)?.quality ?? null;
-  return stage.envelopeReader === BOUND_SUBJECT_QUALITY_ENVELOPE_READER && stage.policy && isSingleMediumReviewPolicy(stage.policy)
-    ? readBoundSubjectQualityEnvelope(raw, stage.subjectBundle)?.quality ?? null : null;
+  return stage.policy && isSingleMediumReviewPolicy(stage.policy)
+    ? readSubjectQualityEnvelopeWith(stage.envelopeReader, raw, stage.subjectBundle)?.quality ?? null : null;
 }
 export function subjectStageRaw(stage: Pick<SubjectStage, "raw" | "combined" | "sourceNeighbors"> & {
   policy?: VisualReviewPolicy; envelopeReader?: string; photoSha256?: string; planSha256?: string; subjectPolicy?: string;
@@ -192,10 +193,10 @@ export function subjectStageRaw(stage: Pick<SubjectStage, "raw" | "combined" | "
   const raw = sourceNeighborAssessmentRaw(stage);
   if (stage.envelopeReader === undefined) return stage.combined === undefined ? raw : stage.combined === SUBJECT_QUALITY_BUNDLE_VERSION
     ? readSubjectQualityBundle(raw)?.subject ?? null : null;
-  if (stage.envelopeReader !== BOUND_SUBJECT_QUALITY_ENVELOPE_READER || !stage.policy || !isSingleMediumReviewPolicy(stage.policy)
+  if (!stage.policy || !isSingleMediumReviewPolicy(stage.policy)
     || stage.combined !== SUBJECT_QUALITY_BUNDLE_VERSION || stage.subjectPolicy !== "local-patch-subject/v2"
     || !stage.photoSha256 || !stage.planSha256) return null;
-  return readBoundSubjectQualityEnvelope(raw, { version: stage.combined, photoSha256: stage.photoSha256,
+  return readSubjectQualityEnvelopeWith(stage.envelopeReader, raw, { version: stage.combined, photoSha256: stage.photoSha256,
     planSha256: stage.planSha256, subjectPolicy: stage.subjectPolicy })?.subject ?? null;
 }
 
@@ -264,11 +265,15 @@ export function localPatchBoundEnvelopeUndecided(row: { status: string; lastErro
   try {
     const receipt = JSON.parse(row.judgeJson ?? "null"), p = receipt?.boardReview?.dual as DualReviewProof | undefined;
     if (receipt?.reviewState !== "board-review-complete" || p?.single !== SINGLE_MEDIUM_VISUAL_REVIEW_VERSION
-      || !p.quality || !p.continuity || !p.subject || p.quality.envelopeReader !== undefined || p.subject.envelopeReader !== undefined
+      || !p.quality || !p.continuity || !p.subject || p.quality.envelopeReader !== p.subject.envelopeReader
+      || p.quality.envelopeReader !== undefined && p.quality.envelopeReader !== BOUND_SUBJECT_QUALITY_ENVELOPE_READER
       || !p.quality.subjectBundle || !isSingleMediumReviewPolicy(p.quality.policy) || !visualStageReadable(p.quality)
       || p.imageSha256 !== receipt.judgedSha256 || p.geometrySha256 !== receipt.geometrySha256 || p.hideId !== receipt.hide) return false;
     const raw = sourceNeighborAssessmentRaw(p.quality);
-    if (readSubjectQualityBundle(raw) || !readBoundSubjectQualityEnvelope(raw, p.quality.subjectBundle)) return false;
+    const previous = p.quality.envelopeReader === undefined ? readSubjectQualityBundle(raw)
+      : readSubjectQualityEnvelopeWith(p.quality.envelopeReader, raw, p.quality.subjectBundle);
+    const current = readBoundSubjectQualityEnvelopeV2(raw, p.quality.subjectBundle);
+    if (!current || JSON.stringify(previous) === JSON.stringify(current)) return false;
     const q = p.quality, s = p.subject, bundle = q.subjectBundle;
     if (!bundle) return false;
     return [p.continuity,s].every(v=>v.raw===q.raw && v.requestKey===q.requestKey && v.fingerprint===q.fingerprint

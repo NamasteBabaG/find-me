@@ -3,6 +3,7 @@ import type { SourceNeighborContract } from "../../domain/scene/local-patch-sour
 import type { PatchRectangle } from "../../domain/scene/local-patch-return-region";
 import { SOURCE_BODY_REPAIR_VERSION } from '../../domain/scene/source-body-repair';
 import { GUIDED_FRAME_RECOVERY_VERSION } from '../../domain/generation/guided-frame-recovery';
+import { PLACEMENT_GUIDE_VERSION } from "../../domain/generation/placement-guide";
 import { hasLocalPatchCapability } from "../../domain/scene/local-patch-family";
 import { createHash } from "node:crypto";
 import sharp from "sharp";
@@ -118,7 +119,7 @@ export type LocalPatchRenderInput = {
   readonly boardPeoplePng?: Buffer;
   readonly maskPng: Buffer;
   readonly placementGuidePng?: Buffer;
-  readonly placementGuideVersion?: typeof GUIDED_FRAME_RECOVERY_VERSION | typeof SOURCE_BODY_REPAIR_VERSION | typeof WHOLE_SOURCE_CONTEXT_VERSION;
+  readonly placementGuideVersion?: typeof GUIDED_FRAME_RECOVERY_VERSION | typeof SOURCE_BODY_REPAIR_VERSION | typeof WHOLE_SOURCE_CONTEXT_VERSION | typeof PLACEMENT_GUIDE_VERSION;
   readonly wholeSourceContext?: WholeSourceContextTransport;
   /**
    * What is left of the caller's request, when it has a deadline.
@@ -232,7 +233,7 @@ export async function buyLocalPatch(apiKey: string, input: LocalPatchRenderInput
     || chosen.model && chosen.model !== "gpt-image-2")) throw new Error("LOCAL_PATCH_PAINTER: subject redraw requires its photograph and declared quality policy");
   if (!photoReference && (input.subjectPhotoPng || input.subjectQuality)) throw new Error("LOCAL_PATCH_PAINTER: photograph requires its explicit reference mode");
   if ((input.placementGuidePng !== undefined || input.placementGuideVersion !== undefined)
-    && (!photoReference || ![GUIDED_FRAME_RECOVERY_VERSION,SOURCE_BODY_REPAIR_VERSION,WHOLE_SOURCE_CONTEXT_VERSION].includes(input.placementGuideVersion as typeof GUIDED_FRAME_RECOVERY_VERSION) || !Buffer.isBuffer(input.placementGuidePng)))
+    && (!photoReference || ![GUIDED_FRAME_RECOVERY_VERSION,SOURCE_BODY_REPAIR_VERSION,WHOLE_SOURCE_CONTEXT_VERSION,PLACEMENT_GUIDE_VERSION].includes(input.placementGuideVersion as typeof GUIDED_FRAME_RECOVERY_VERSION) || !Buffer.isBuffer(input.placementGuidePng)))
     throw new Error('LOCAL_PATCH_PAINTER: layout guide requires its explicit version and photograph mode');
   if (input.wholeSourceContext) {
     if (!photoReference) throw Error("WHOLE_SOURCE_CONTEXT: enrolled subject references required");

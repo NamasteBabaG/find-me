@@ -10,6 +10,8 @@ import { sourceBodyForHide, sourceBodyBirthForHide } from './source-placement-re
 import { sourceBodyBirthMarkerSchema, type SourceBodyBirthMarker } from '../../domain/generation/detectives-operational-policy';
 import { nativeMaskTailMarkerSchema, nativeMaskTailDirections, nativeMaskTailEditRegion, type NativeMaskTailMarker } from "../../domain/generation/native-mask-tail";
 import { GUIDED_FRAME_RECOVERY_VERSION, guidedFrameGeometry, guidedFrameOverlay, guidedFrameDirections, parseGuidedFrameMarker, guidedFrameVersionMatches, type GuidedFrameMarker } from '../../domain/generation/guided-frame-recovery';
+import { PLACEMENT_GUIDE_VERSION, placementGuideSchema, placementGuideDirections, type PlacementGuide } from "../../domain/generation/placement-guide";
+import { localPatchPlacementGuidePixels } from "./local-patch-placement-guide";
 import { hasLocalPatchCapability } from "../../domain/scene/local-patch-family";
 import { isCollectionVersion } from "../../domain/scene/local-patch-versions";
 import { SUBJECT_PAINTER_V2, SUBJECT_PAINTER_V3, SUBJECT_PAINTER_V4, isPlanLedPainter, type SubjectPainterVersion } from "../../domain/generation/subject-painter";
@@ -87,7 +89,7 @@ export type LocalPatchRenderDeps = {
   readonly render: (input: {
     readonly worldId: string; readonly requestKey: string; readonly prompt: string;
     readonly stylePng: Buffer; readonly identityPng: Buffer; readonly maskPng: Buffer;
-    readonly placementGuidePng?: Buffer; readonly placementGuideVersion?: typeof GUIDED_FRAME_RECOVERY_VERSION | typeof SOURCE_BODY_REPAIR_VERSION | typeof WHOLE_SOURCE_CONTEXT_VERSION;
+    readonly placementGuidePng?: Buffer; readonly placementGuideVersion?: typeof GUIDED_FRAME_RECOVERY_VERSION | typeof SOURCE_BODY_REPAIR_VERSION | typeof WHOLE_SOURCE_CONTEXT_VERSION | typeof PLACEMENT_GUIDE_VERSION;
     readonly wholeSourceContext?: WholeSourceContextTransport;
     readonly referenceMode?: LocalPatchReferenceMode;
     readonly subjectPhotoPng?: Buffer;
@@ -122,6 +124,8 @@ export type LocalPatchAttemptInput = {
   readonly authoredDiagnosis?: AuthoredRecoveryDiagnosis;
   /** Bounded one-world LOW recovery; never changes the authored source or window. */
   readonly guidedFrameRecovery?: GuidedFrameMarker;
+  /** Persisted before starting a genuinely new ordinary purchase. */
+  readonly placementGuide?: PlacementGuide;
   readonly nativeMaskTail?: NativeMaskTailMarker;
   readonly sourceBodyRepair?: SourceBodyMarker;
   readonly sourceBodyBirth?: SourceBodyBirthMarker;
@@ -386,11 +390,20 @@ export async function renderLocalPatchHide(deps: LocalPatchRenderDeps, input: Lo
   if (input.guidedFrameRecovery && (!parseGuidedFrameMarker(input.guidedFrameRecovery) || !guidedFrameVersionMatches(input.guidedFrameRecovery, input.contentVersion) || (input.nativeMaskTail ? input.attempt !== 4 : input.attempt !== 3)
     || input.selfRepair || input.adaptiveRecovery || input.recoveryDirective))
     throw Error('GUIDED_FRAME: only a trusted original-geometry third painting may use this guide');
-  const guidedReturn = input.guidedFrameRecovery
+  const guidedReturn = input.guidedFrameRecovery || input.placementGuide
     ? expectedGuidedLocalPatchReturn(input.board, input.hide, input.contentVersion!, input.placementContext) : undefined;
   if (guidedReturn && input.authoredSource && (input.authoredSource.sha256 !== guidedReturn.source.sha256
     || input.authoredSource.width !== guidedReturn.source.width || input.authoredSource.height !== guidedReturn.source.height))
     throw Error("GUIDED_FRAME: source pixels differ from the trusted placement");
+  if (input.placementGuide) {
+    const guide = placementGuideSchema.parse(input.placementGuide);
+    if (guide.hideId !== input.hide.id || guide.attempt !== input.attempt || guide.sceneVersion !== input.contentVersion
+      || guide.sourceSha256 !== guidedReturn!.source.sha256
+      || guide.geometrySha256 !== sha(Buffer.from(JSON.stringify({ crop: cropOf(input.hide), child: maskForHide(input.hide), returned: guidedReturn!.local })))
+      || !input.subjectDirection || input.nativeMaskTail || input.sourceBodyRepair || input.sourceBodyBirth
+      || input.wholeSourceContext || input.selfRepair || input.adaptiveRecovery || input.recoveryDirective)
+      throw Error("PLACEMENT_GUIDE: persisted ordinary purchase and original geometry required");
+  }
   if (input.nativeMaskTail && (input.contentVersion !== 13 || !nativeMaskTailMarkerSchema.safeParse(input.nativeMaskTail).success || !input.guidedFrameRecovery
     || input.nativeMaskTail.previousAuthorizationSha256 !== input.guidedFrameRecovery.authorizationSha256)) throw Error("NATIVE_MASK_TAIL: exact finite allowance and original guide required");
   const body=input.placementContext?sourceBodyForHide(input.placementContext,input.hide.id):null;
@@ -460,7 +473,7 @@ async function renderLocalPatchHideInner(deps: LocalPatchRenderDeps, input: Loca
   const bodyGeometry=(input.sourceBodyRepair||input.sourceBodyBirth)&&input.placementContext?sourceBodyForHide(input.placementContext,hide.id):null;
   if(bodyGeometry&&foreground)throw Error('SOURCE_BODY: a separate authored foreground requires its own qualification');
   const guideReturn = guidedReturn?.local ?? authoredReturn?.local;
-  const guideGeometry = input.guidedFrameRecovery||bodyGeometry||input.wholeSourceContext ? guidedFrameGeometry(authoredMask, guideReturn!) : null;
+  const guideGeometry = input.guidedFrameRecovery||input.placementGuide||bodyGeometry||input.wholeSourceContext ? guidedFrameGeometry(authoredMask, guideReturn!) : null;
   const mask = authoredMask;
   const paintTarget = guideGeometry?.target ?? mask;
   if (input.adaptiveRecovery && (attempt !== 3 || !isLocalPatchStrictVersion(input.contentVersion) || input.recoveryDirective)) {
@@ -530,7 +543,7 @@ async function renderLocalPatchHideInner(deps: LocalPatchRenderDeps, input: Loca
     const directed = authoredPaint ? `${base}\n\n${authoredPaint}` : base;
     if(bodyGeometry)return directed+'\n\n'+sourceBodyDirections(bodyGeometry);
     if (!guideGeometry) return directed;
-    const guide = guidedFrameDirections(authoredMask, guideReturn!);
+    const guide = input.placementGuide ? placementGuideDirections(authoredMask, guideReturn!) : guidedFrameDirections(authoredMask, guideReturn!);
     const permission = input.nativeMaskTail ? guide.replace("The editor mask covers the orange context so surrounding scenery can be reconstructed coherently, but the child must stay inside cyan.",
       "The native editor mask covers only the ORIGINAL child envelope. Remove the original target person WHOLE inside that envelope, including hair above cyan, then draw the whole new child inside cyan. The orange return-boundary band is protected.") : guide;
     return directed + '\n\n' + permission + (input.nativeMaskTail ? '\n\n'+nativeMaskTailDirections : '');
@@ -549,7 +562,12 @@ async function renderLocalPatchHideInner(deps: LocalPatchRenderDeps, input: Loca
   // Editing context and target placement differ: repaint only the existing returned context,
   // and keep the whole target within its unchanged authored envelope via the cyan guide.
   let maskPng = bodyGeometry ? await sourceBodyMaskPng(bodyGeometry) : await poseMask(guideGeometry ? { ...hide, mask: nativeEdit ? nativeEdit.editable : guideReturn! } : recovery ? { ...hide, mask } : hide);
-  let placementGuidePng = guideGeometry ? await sharp(stylePng).composite([...(bodyGeometry?[{input:Buffer.from(sourceBodyOverlay(bodyGeometry))}]:[]),{ input:Buffer.from(guidedFrameOverlay(authoredMask,guideReturn!)) }]).png().toBuffer() : undefined;
+  let placementGuidePng: Buffer | undefined = guideGeometry ? await sharp(stylePng).composite([...(bodyGeometry?[{input:Buffer.from(sourceBodyOverlay(bodyGeometry))}]:[]),{ input:Buffer.from(guidedFrameOverlay(authoredMask,guideReturn!)) }]).png().toBuffer() : undefined;
+  if (input.placementGuide) {
+    const entry = sourcePlacementForHide(input.placementContext!, hide.id);
+    placementGuidePng = await localPatchPlacementGuidePixels({ sourcePng: input.composedPng, crop, child: authoredMask,
+      returned: guideReturn!, heads: entry?.sourceNeighbors?.contract.neighbors.map(n => n.head) ?? [] });
+  }
 
   if (input.wholeSourceContext) {
     if (!painterNeighbors?.ok || !placementGuidePng) throw Error("WHOLE_SOURCE_CONTEXT: original source neighbors and guide required");
@@ -587,6 +605,7 @@ async function renderLocalPatchHideInner(deps: LocalPatchRenderDeps, input: Loca
     ...(input.nativeMaskTail ? { nativeMaskTail: input.nativeMaskTail } : {}),
     ...(input.sourceBodyRepair ? { sourceBodyRepair: input.sourceBodyRepair } : {}),
     ...(input.sourceBodyBirth ? {sourceBodyBirth:input.sourceBodyBirth}:{}),
+    ...(input.placementGuide ? { placementGuide: input.placementGuide } : {}),
     ...(placementGuidePng ? { guidedFrameRecovery: input.guidedFrameRecovery, placementGuideSha256:sha(placementGuidePng) } : {}),
     ...(plan ? { subject: plan.sha256 } : {}),
   });
@@ -612,7 +631,7 @@ async function renderLocalPatchHideInner(deps: LocalPatchRenderDeps, input: Loca
     operationFingerprint: renderFingerprint, reserveMicroUsd: input.wholeSourceContext ? WHOLE_SOURCE_CONTEXT_IMAGE_RESERVE : LOCAL_PATCH_RESERVE.renderMicroUsd,
     buy: async ({ timeoutMs }) => {
       const result = await deps.render({ worldId, requestKey: renderKey, prompt, stylePng, identityPng: renderIdentityPng, maskPng,
-        ...(placementGuidePng ? { placementGuidePng, placementGuideVersion:input.wholeSourceContext?WHOLE_SOURCE_CONTEXT_VERSION:bodyGeometry?SOURCE_BODY_REPAIR_VERSION:GUIDED_FRAME_RECOVERY_VERSION } : {}),
+        ...(placementGuidePng ? { placementGuidePng, placementGuideVersion:input.placementGuide?PLACEMENT_GUIDE_VERSION:input.wholeSourceContext?WHOLE_SOURCE_CONTEXT_VERSION:bodyGeometry?SOURCE_BODY_REPAIR_VERSION:GUIDED_FRAME_RECOVERY_VERSION } : {}),
         ...(input.wholeSourceContext && painterNeighbors?.ok ? { wholeSourceContext: { plan: input.wholeSourceContext.plan, contract: painterNeighbors.contract, child: authoredMask } } : {}),
         ...(input.boardPeoplePng ? { boardPeoplePng: input.boardPeoplePng } : {}),
         ...(input.canonicalIdentityPng ? { canonicalIdentityPng: input.canonicalIdentityPng } : {}),
