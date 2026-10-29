@@ -73,7 +73,7 @@ export function ChildCard({ child, t, eager }: { child: FamilyChild; t: Dictiona
 }
 
 /** The child's passport and the existing entry to another adventure. */
-export function FamilyCompanion({ child, t, returningPrice, stamps }: { child: FamilyChild; t: Dictionary; returningPrice: string | null; stamps: { n: number; total: number } }) {
+export function FamilyCompanion({ child, t, worldPrice, stamps }: { child: FamilyChild; t: Dictionary; worldPrice: string | null; stamps: { n: number; total: number } }) {
   const f = t.family;
   return <aside className="family-desk__side">
     <Link href={`/family/${child.id}/passport`} className="family-passport">
@@ -86,7 +86,7 @@ export function FamilyCompanion({ child, t, returningPrice, stamps }: { child: F
       <span className="family-more__icon"><ToolIcon name="map" /></span>
       <h2 id={`family-more-${child.id}`}>{tf(f.more, { name: child.name })}</h2>
       <p>{f.moreLead}</p>
-      {returningPrice !== null ? <p className="family-more__price">{tf(t.home.pricing.returning, { price: returningPrice })}</p> : null}
+      {worldPrice !== null ? <p className="family-more__price">{tf(t.home.pricing.everyWorld, { price: worldPrice })}</p> : null}
       <LinkButton href={`/create?child=${child.id}`} variant="secondary">{f.exploreMore}<span className="fm-btn__arrow" aria-hidden>➜</span></LinkButton>
     </section>
   </aside>;

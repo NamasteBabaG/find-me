@@ -102,7 +102,8 @@ describe("server-owned same-child world continuation", () => {
   it("photo fallback preserves return context, then skips package/world reselection to checkout", async () => {
     const f = await fixture(), { result } = await prepared(f);
     expect(result.href).toBe(`/create/photo?game=${result.gameId}`);
-    const context = await worldPurchaseContext(f.c, f.input); expect(context).toMatchObject({ state: "checkout", ageYears: 8, returnHref: `/family/${f.childId}/play/${f.sourceId}`, continuation: true });
+    const context = await worldPurchaseContext(f.c, f.input); expect(context).toMatchObject({ state: "checkout", ageYears: 8, returnHref: `/family/${f.childId}/play/${f.sourceId}` });
+    expect(context).not.toHaveProperty("continuation");
     expect((await db.game.findUniqueOrThrow({ where: { id: result.gameId } })).status).toBe("PACKAGE_SELECTED");
     expect(await selectWorlds(f.c, result.gameId, ["journey"])).toMatchObject({ ok: false, code: "DRAFT_LOCKED" });
     expect(await selectPackage(f.c, result.gameId, "TWO_WORLDS")).toMatchObject({ ok: false });
@@ -110,7 +111,7 @@ describe("server-owned same-child world continuation", () => {
     expect((await db.childWorldPurchase.findFirstOrThrow({ where: { familyChildId: fresh.childId } })).returnGameId).toBeNull();
     expect((await worldPurchaseContext(fresh.c, { ...fresh.input, returnGameId: f.sourceId }))?.returnHref).toBe(`/family/${fresh.childId}`);
   });
-  it.each([[true, 3000], [false, 3900]] as const)("charges server-verified price (prior paid=%s) once across parallel checkout and refresh", async (paid, amount) => {
+  it.each([[true, 2900], [false, 2900]] as const)("charges the one server price (prior paid=%s) once across parallel checkout and refresh", async (paid, amount) => {
     const f = await fixture(paid), { result, checkoutInput } = await prepared(f);
     const parallel = await Promise.all([startCheckout(f.c, checkoutInput), startCheckout(f.c, checkoutInput)]);
     expect(parallel.some(r => r.ok)).toBe(true); expect(f.checkout).toHaveBeenCalledTimes(1);
@@ -129,7 +130,7 @@ describe("server-owned same-child world continuation", () => {
     expect(await startCheckout(f.c, checkoutInput)).toMatchObject({ ok: true }); expect(f.checkout).toHaveBeenCalledTimes(2);
     const requests = f.checkout.mock.calls.map(([request]) => request); expect(requests[0]).toEqual(requests[1]); expect(requests[0]!.idempotencyKey).toBe(before.id);
     expect(await db.order.count({ where: { gameId: result.gameId } })).toBe(1);
-    const body = JSON.stringify({ eventId: `${before.id}-paid`, orderId: before.id, kind: "PAID", amountAgorot: 3000, currency: "ILS" });
+    const body = JSON.stringify({ eventId: `${before.id}-paid`, orderId: before.id, kind: "PAID", amountAgorot: 2900, currency: "ILS" });
     expect((await handlePaymentWebhook(f.c, body, { "x-mock-signature": f.payment.sign(body) })).status).toBe(200);
     expect((await handlePaymentWebhook(f.c, body, { "x-mock-signature": f.payment.sign(body) })).status).toBe(200);
     expect((await db.game.findUniqueOrThrow({ where: { id: result.gameId } })).status).toBe("PAID"); expect(await db.paymentEvent.count({ where: { orderId: before.id } })).toBe(1);
@@ -208,7 +209,8 @@ describe("server-owned same-child world continuation", () => {
     f.checkout.mockImplementationOnce(async request => { await create(request); throw Error("unknown accepted result"); });
     expect(await startCheckout(f.c, kingdom.checkoutInput)).toMatchObject({ ok: false, code: "CHECKOUT_IN_PROGRESS" });
     const order = await db.order.findFirstOrThrow({ where: { gameId: kingdom.result.gameId } });
-    await db.order.update({ where: { id: order.id }, data: { checkoutClaimUntil: new Date(0) } });
+    // Quoted at an older price; today's price differs from the stored order.
+    await db.order.update({ where: { id: order.id }, data: { checkoutClaimUntil: new Date(0), amountAgorot: 3900 } });
     expect(await attachPhoto(f.c, kingdom.result.gameId, { buffer: photo, mimeType: "image/png", crop: null })).toMatchObject({ ok: false, code: "CHECKOUT_IN_PROGRESS" });
     expect(await startCheckout(f.c, journey.checkoutInput)).toMatchObject({ ok: false, code: "CHECKOUT_IN_PROGRESS" });
     await recordPriorPaidWorld(f);
@@ -218,7 +220,7 @@ describe("server-owned same-child world continuation", () => {
     expect(await db.order.count({ where: { gameId: journey.result.gameId } })).toBe(0); expect(f.checkout).toHaveBeenCalledTimes(1);
   });
 
-  it("two worlds for one child serialize payment: the first costs 39 and the next costs 30 after its verified payment", async () => {
+  it("two worlds for one child serialize payment, and the next one costs the same 29 after the first is paid", async () => {
     const f = await fixture(false), kingdom = await prepared(f), journey = await prepared({ ...f, input: { ...f.input, worldSlug: "journey" } });
     const inputs = [kingdom.checkoutInput, journey.checkoutInput];
     const responses = await Promise.all(inputs.map(input => startCheckout(f.c, input)));
@@ -226,21 +228,21 @@ describe("server-owned same-child world continuation", () => {
     expect(responses.find(r => !r.ok)).toMatchObject({ code: "CHECKOUT_IN_PROGRESS" });
     expect(f.checkout).toHaveBeenCalledTimes(1);
     const winner = inputs[responses.findIndex(r => r.ok)]!, loser = inputs[responses.findIndex(r => !r.ok)]!;
-    expect((await payOrder(f, winner.gameId)).amountAgorot).toBe(3900);
+    expect((await payOrder(f, winner.gameId)).amountAgorot).toBe(2900);
     expect(await startCheckout(f.c, loser)).toMatchObject({ ok: true });
-    expect((await db.order.findFirstOrThrow({ where: { gameId: loser.gameId } })).amountAgorot).toBe(3000);
-    expect(f.checkout.mock.calls.map(([request]) => request.amountAgorot)).toEqual([3900, 3000]);
+    expect((await db.order.findFirstOrThrow({ where: { gameId: loser.gameId } })).amountAgorot).toBe(2900);
+    expect(f.checkout.mock.calls.map(([request]) => request.amountAgorot)).toEqual([2900, 2900]);
   });
 
-  it("reprices a never-dispatched pending order under the child's final payment claim without replacing its ID", async () => {
+  it("reprices a never-dispatched pending order quoted at an older price without replacing its ID", async () => {
     const f = await fixture(false), { result } = await prepared(f), orderId = `${result.gameId}-not-dispatched`;
     await db.order.create({ data: { id: orderId, gameId: result.gameId, userId: f.ownerId, amountAgorot: 3900, currency: "ILS", packageTier: "ONE_WORLD", provider: "mock", checkoutKey: `world-checkout:${result.gameId}` } });
     await recordPriorPaidWorld(f);
     // Even a stale caller quote is not payment authority.
     expect(await startWorldPurchaseCheckout(f.c, { gameId: result.gameId, userId: f.ownerId, email: f.email, amount: 3900, currency: "ILS", description: "Synthetic world", locale: "he" })).toMatchObject({ ok: true });
-    expect(await db.order.findUniqueOrThrow({ where: { id: orderId } })).toMatchObject({ amountAgorot: 3000, checkoutKey: `world-checkout:${result.gameId}`, paymentStatus: "PENDING" });
+    expect(await db.order.findUniqueOrThrow({ where: { id: orderId } })).toMatchObject({ amountAgorot: 2900, checkoutKey: `world-checkout:${result.gameId}`, paymentStatus: "PENDING" });
     expect(await db.order.count({ where: { gameId: result.gameId } })).toBe(1);
-    expect(f.checkout).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ orderId, idempotencyKey: orderId, amountAgorot: 3000 }));
+    expect(f.checkout).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ orderId, idempotencyKey: orderId, amountAgorot: 2900 }));
   });
 
   it("a claimed photo edit blocks checkout until storage completes, then payment uses the new approved photo", async () => {
@@ -294,7 +296,7 @@ describe("server-owned same-child world continuation", () => {
     expect((await handlePaymentWebhook(f.c, body, { "x-mock-signature": f.payment.sign(body) })).status).toBe(400);
     expect((await db.order.findUniqueOrThrow({ where: { id: order.id } })).paymentStatus).toBe("CANCELLED");
     expect(await startCheckout(f.c, journey.checkoutInput)).toMatchObject({ ok: true });
-    expect((await db.order.findFirstOrThrow({ where: { gameId: journey.result.gameId } })).amountAgorot).toBe(3900);
+    expect((await db.order.findFirstOrThrow({ where: { gameId: journey.result.gameId } })).amountAgorot).toBe(2900);
   });
 
   it("an unknown closure keeps its original payment and blocks edits/another world until the same close request is confirmed", async () => {
@@ -328,12 +330,14 @@ describe("server-owned same-child world continuation", () => {
     expect(replacement.id).not.toBe(order.id); expect(f.checkout).toHaveBeenCalledTimes(2);
   });
 
-  it("a declined saved session cannot resume at a changed continuation price or mutate its original quote", async () => {
+  it("a declined saved session quoted at an older price cannot resume at today's price or mutate its original quote", async () => {
     const f = await fixture(false), { result, checkoutInput } = await prepared(f);
     expect(await startCheckout(f.c, checkoutInput)).toMatchObject({ ok: true });
     const order = await db.order.findFirstOrThrow({ where: { gameId: result.gameId } });
     const declined = JSON.stringify({ eventId: `${order.id}-declined`, orderId: order.id, kind: "FAILED", amountAgorot: order.amountAgorot, currency: order.currency });
     expect((await handlePaymentWebhook(f.c, declined, { "x-mock-signature": f.payment.sign(declined) })).status).toBe(200);
+    // The hosted session still carries the quote from before the launch price.
+    await db.order.update({ where: { id: order.id }, data: { amountAgorot: 3900 } });
     const before = await db.order.findUniqueOrThrow({ where: { id: order.id } });
     await recordPriorPaidWorld(f);
     expect(await startCheckout(f.c, checkoutInput)).toMatchObject({ ok: false, code: "CHECKOUT_IN_PROGRESS" });
@@ -405,7 +409,7 @@ describe("server-owned same-child world continuation", () => {
     expect(results.filter(r => r.ok)).toHaveLength(1); expect(results.find(r => !r.ok)).toMatchObject({ code: "CHECKOUT_IN_PROGRESS" });
     expect(f.checkout).toHaveBeenCalledTimes(1);
     const winner = results.findIndex(r => r.ok), loser = winner === 0 ? 1 : 0;
-    expect((await payOrder(f, inputs[winner]!.gameId)).amountAgorot).toBe(winner === 0 ? 3900 : 6900);
+    expect((await payOrder(f, inputs[winner]!.gameId)).amountAgorot).toBe(winner === 0 ? 2900 : 5800);
     // Whichever product won owns Kingdom. Neither an overlapping package nor
     // a duplicate one-world draft may charge for that owned world again.
     expect(await startCheckout(f.c, inputs[loser]!)).toMatchObject({ ok: false, code: "DRAFT_LOCKED" });
@@ -424,7 +428,7 @@ describe("server-owned same-child world continuation", () => {
     expect(await closeDraftCheckout(f.c, { ownerId: f.ownerId, gameId: one.result.gameId, orderId: order.id })).toEqual({ ok: true });
     expect(await startCheckout(f.c, two)).toMatchObject({ ok: true });
     expect(f.checkout).toHaveBeenCalledTimes(2);
-    expect((await payOrder(f, two.gameId)).amountAgorot).toBe(6900);
+    expect((await payOrder(f, two.gameId)).amountAgorot).toBe(5800);
     expect(await db.childWorldPurchase.count({ where: { activeGameId: two.gameId } })).toBe(0);
   });
 
@@ -439,7 +443,7 @@ describe("server-owned same-child world continuation", () => {
     expect(await db.game.findUniqueOrThrow({ where: { id: f.sourceId }, include: { scenes: true, orders: true } })).toEqual(source);
     const one = await prepared(f);
     expect(await startCheckout(f.c, one.checkoutInput)).toMatchObject({ ok: true });
-    expect((await db.order.findFirstOrThrow({ where: { gameId: one.result.gameId } })).amountAgorot).toBe(3000);
+    expect((await db.order.findFirstOrThrow({ where: { gameId: one.result.gameId } })).amountAgorot).toBe(2900);
   });
 
   it("a pending multi-world draft is never adopted as a single-world intent and remains payable through its original order", async () => {

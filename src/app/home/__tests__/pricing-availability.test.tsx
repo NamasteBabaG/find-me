@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { en } from "@/i18n/dictionaries/en";
 import { he } from "@/i18n/dictionaries/he";
 import { formatMoney, tf } from "@/i18n";
-import { WORLD_PRICES, priceFor } from "@/domain/package";
+import { WORLD_PRICE, priceFor } from "@/domain/package";
 import { Pricing } from "../sections";
 
 vi.mock("../Reveal", () => ({ Reveal: ({ children, className }: { children: React.ReactNode; className?: string }) => <div className={className}>{children}</div> }));
@@ -13,14 +13,15 @@ beforeEach(() => vi.stubGlobal("React", React));
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
 describe("homepage pricing", () => {
-  it.each(["en", "he"] as const)("tells one price story in %s: the first world, then each additional world", locale => {
+  it.each(["en", "he"] as const)("shows one price for every world in %s, and says the next world costs the same", locale => {
     const t = locale === "he" ? he : en;
     const view = render(<Pricing t={t} locale={locale} currency="ILS" allowedTiers={["ONE_WORLD"]} />);
-    // One offer, not a ladder of package cards to compare.
+    // One offer, not a ladder of package cards to compare, and no separate first-world price.
     expect(view.container.querySelectorAll(".offer")).toHaveLength(1);
     expect(view.container.querySelector(".plan")).toBeNull();
     const prices = [...view.container.querySelectorAll(".offer__price")].map(price => price.textContent);
-    expect(prices).toEqual([formatMoney(WORLD_PRICES.ILS.first, "ILS", locale), formatMoney(WORLD_PRICES.ILS.additional, "ILS", locale)]);
+    expect(prices).toEqual([`${formatMoney(WORLD_PRICE.ILS, "ILS", locale)} ${t.home.pricing.perWorld}`]);
+    expect(view.getByRole("heading", { name: t.home.pricing.sameAgain })).toBeTruthy();
     const links = view.getAllByRole("link");
     expect(links).toHaveLength(1);
     expect(links[0]!.getAttribute("href")).toBe("/create");

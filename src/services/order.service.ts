@@ -17,7 +17,6 @@ import { localPatchSourceSelectionAllowed } from "./generation/source-placement-
 import { GameStatusConflict, statusOf, transitionGame } from "./game-status";
 import { WEBHOOK, audit, type Actor } from "./audit.service";
 import { bindCheckoutFamilyChild, reconcilePaidFamilyChildren } from "./family.service";
-import { childHasPaidWorld } from "./child-pricing.service";
 import { claimChildWorldForCheckout, startOrdinaryCheckout, startWorldPurchaseCheckout } from "./world-purchase-checkout.service";
 import { DraftCheckoutInProgress, outstandingCheckoutOrder } from "./draft-checkout-lock";
 import { boardSlugs } from "@/domain/world";
@@ -93,7 +92,6 @@ export async function startCheckout(c: Container, input: { gameId: string; email
   // All three mutations share a transaction, and the draft proof is rechecked
   // under the Game -> Child -> Asset fence before any payment call.
   const locale: Locale = game.locale === "he" ? "he" : "en";
-  let continuation = false;
   try {
     await c.db.$transaction(async tx => {
       const current = await tx.game.findUnique({ where: { id: game.id } });
@@ -124,7 +122,6 @@ export async function startCheckout(c: Container, input: { gameId: string; email
       requireCheckoutDraft(childChanged.count === 1 && photoChanged.count === 1);
       if (current.familyChildId) requireCheckoutDraft(await bindCheckoutFamilyChild(tx, { gameId: game.id, familyChildId: current.familyChildId, ownerId: user.id, displayName: child.displayName }));
       if (current.familyChildId) requireCheckoutDraft(await claimChildWorldForCheckout(tx, { gameId: game.id, ownerId: user.id, familyChildId: current.familyChildId, scenes: game.scenes }));
-      continuation = await childHasPaidWorld(tx, { ownerId: user.id, familyChildId: current.familyChildId, excludeGameId: game.id });
       await tx.user.update({ where: { id: user.id }, data: { locale } });
     }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, timeout: 15_000 });
   } catch (error) {
@@ -135,7 +132,7 @@ export async function startCheckout(c: Container, input: { gameId: string; email
 
   const pkg = PACKAGES[game.packageTier];
   const currency = input.currency;
-  const amount = priceFor(pkg.tier, currency, continuation); // server-verified child's price
+  const amount = priceFor(pkg.tier, currency); // server-side price, never the client's
   if (game.familyChildId && await c.db.childWorldPurchase.findUnique({ where: { activeGameId: game.id } })) {
     return startWorldPurchaseCheckout(c, { gameId: game.id, userId: user.id, email: user.email, currency, amount, locale,
       description: `${pick({ en: `Where's ${game.childProfile!.displayName}?`, he: `איפה ${game.childProfile!.displayName}?` }, locale)} — ${pick(pkg.name, locale)}`,

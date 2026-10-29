@@ -14,7 +14,7 @@ beforeEach(() => vi.stubGlobal("React", React));
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 const options = [1, 2, 3].map(n => ({
   tier: String(n), name: `Package ${n}`, worldCount: n, boardCount: n * 9,
-  meta: "Searches", price: "$1", popular: n === 2,
+  meta: "Searches", price: "$1",
 }));
 
 describe("package continuation copy", () => {

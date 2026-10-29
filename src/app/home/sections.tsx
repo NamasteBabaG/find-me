@@ -1,6 +1,6 @@
 import Link from "next/link";
 import type { SceneDefinition } from "@/domain/scene/schema";
-import { PACKAGES, PACKAGE_ORDER, WORLD_PRICES, boardsFor, priceFor, type PackageTier } from "@/domain/package";
+import { PACKAGES, PACKAGE_ORDER, WORLD_PRICE, boardsFor, priceFor, type PackageTier } from "@/domain/package";
 import { formatMoney, pick, tf, type Currency, type Dictionary, type Locale } from "@/i18n";
 import { Reveal } from "./Reveal";
 import { WorldsCarousel, type CarouselWorld } from "./WorldsCarousel";
@@ -177,9 +177,9 @@ export function Worlds({ t, carousel }: { t: Dictionary; carousel: CarouselWorld
 
 /* ─── Pricing ─── */
 /**
- * One price story, not a ladder of package cards (Guy, 2026-10-05): the first world, and each world added after
- * it. Two or three worlds cost exactly that sum, so they appear only as small links, and only when the purchase
- * policy allows buying them together.
+ * One price for every world (Guy, 2026-10-29). The number leads the dark panel; beside it, the answer to "and the
+ * next world?" is the same number. Two or three worlds are exactly that sum, so they appear only as small links,
+ * and only when the purchase policy allows buying them together.
  */
 export function Pricing({ t, locale, allowedTiers, currency }: SectionProps & { allowedTiers: readonly PackageTier[]; currency: Currency }) {
   const p = t.home.pricing;
@@ -194,8 +194,8 @@ export function Pricing({ t, locale, allowedTiers, currency }: SectionProps & { 
           <p className="fm-lead">{p.lead}</p>
         </Reveal>
         <Reveal className="offer">
-          <div className="offer__first">
-            <div className="offer__head"><h3>{p.firstWorld}</h3><span className="offer__price">{money(WORLD_PRICES[currency].first)}</span></div>
+          <div className="offer__main">
+            <p className="offer__price"><bdi>{money(WORLD_PRICE[currency])}</bdi> <small>{p.perWorld}</small></p>
             <ul className="offer__feats">
               <li>{tf(p.feats.boards, { boards: boardsFor("ONE_WORLD") })}</li>
               <li>{p.passport}</li>
@@ -205,11 +205,10 @@ export function Pricing({ t, locale, allowedTiers, currency }: SectionProps & { 
             </ul>
             {allowedTiers.includes("ONE_WORLD") ? <Link href="/create" className="fm-btn fm-btn--lg">{p.start}</Link> : null}
           </div>
-          <span className="offer__plus" aria-hidden="true">+</span>
           <div className="offer__more">
-            <div className="offer__head"><h3>{p.eachMore}</h3><span className="offer__price">{money(WORLD_PRICES[currency].additional)}</span></div>
+            <h3>{p.sameAgain}</h3>
             <p>{p.eachMoreHow}</p>
-            <p className="fm-small">{p.sameChild}</p>
+            <p className="fm-small">{p.samePrice}</p>
             {bundles.length ? <div className="offer__bundles">{bundles.map(tier => <Link key={tier} href="/create" className="fm-btn fm-btn--secondary">
               {tf(p.bundle, { count: PACKAGES[tier].worldCount, price: money(priceFor(tier, currency)) })}</Link>)}</div> : null}
           </div>

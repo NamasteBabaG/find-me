@@ -36,7 +36,7 @@ export default async function WorldPurchasePage({ params, searchParams }: {
         <p className="fm-hint">{t.worldPurchase.selectedWorld}</p><h2>{pick(context.world.name, locale)}</h2>
         {ready || preparing ? <><p>{ready ? t.worldPurchase.owned : t.worldPurchase.preparing}</p><LinkButton href={href!} size="lg">{ready ? t.worldPurchase.playWorld : t.worldPurchase.viewPreparation}</LinkButton></>
           : !purchasingEnabled() ? <CreationPrelaunchNotice t={t} heading="h2" />
-          : <><p className="fm-lead">{t.worldPurchase.priceLabel}: <bdi>{formatMoney(priceFor("ONE_WORLD", currency, context.continuation), currency, locale)}</bdi></p>
+          : <><p className="fm-lead">{t.worldPurchase.priceLabel}: <bdi>{formatMoney(priceFor("ONE_WORLD", currency), currency, locale)}</bdi></p>
             <p>{t.worldPurchase.photoNeeded}</p><PurchasePanel childId={route.childId} worldSlug={route.worldSlug} ageYears={!context.active && validChildAge(requestedAge) ? requestedAge : context.ageYears} returnGameId={context.returnGameId} resuming={Boolean(context.active)}
               levelChoice={context.levels.shown} initialLevel={context.active ? null : requestedLevel} frozenLevel={context.activeLevel} /></>}
       </section>

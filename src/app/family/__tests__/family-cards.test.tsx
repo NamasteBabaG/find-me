@@ -85,17 +85,17 @@ describe("family adventure presentation keeps the existing action destinations",
 });
 
 describe.each(["en", "he"] as const)("family companion and counts in %s", locale => {
-  it("displays the exact supplied continuation price and preserves the create/passport destinations", () => {
+  it("displays the exact supplied world price and preserves the create/passport destinations", () => {
     const t = getDict(locale), owner = child(), price = "SYNTHETIC 37.45";
-    const view = render(<div dir={locale === "he" ? "rtl" : "ltr"}><FamilyCompanion child={owner} t={t} returningPrice={price} stamps={{ n: 2, total: 9 }} /></div>);
-    expect(view.getByText(tf(t.home.pricing.returning, { price }))).toBeTruthy();
+    const view = render(<div dir={locale === "he" ? "rtl" : "ltr"}><FamilyCompanion child={owner} t={t} worldPrice={price} stamps={{ n: 2, total: 9 }} /></div>);
+    expect(view.getByText(tf(t.home.pricing.everyWorld, { price }))).toBeTruthy();
     expect(view.getByRole("link", { name: t.family.exploreMore }).getAttribute("href")).toBe("/create?child=fam_synthetic");
     expect(view.getByRole("link", { name: new RegExp(t.family.openPassport) }).getAttribute("href")).toBe("/family/fam_synthetic/passport");
     expect(view.getByRole("region", { name: tf(t.family.more, { name: owner.name }) })).toBeTruthy();
   });
 
-  it("does not invent a continuation price when one was not supplied", () => {
-    const view = render(<FamilyCompanion child={child()} t={getDict(locale)} returningPrice={null} stamps={{ n: 0, total: 0 }} />);
+  it("does not invent a world price when one was not supplied", () => {
+    const view = render(<FamilyCompanion child={child()} t={getDict(locale)} worldPrice={null} stamps={{ n: 0, total: 0 }} />);
     expect(view.container.querySelector(".family-more__price")).toBeNull();
     expect(view.container.querySelector(".family-passport__count")).toBeNull();
     expect(view.getByRole("link", { name: getDict(locale).family.exploreMore })).toBeTruthy();

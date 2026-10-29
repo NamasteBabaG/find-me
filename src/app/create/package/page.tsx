@@ -5,7 +5,7 @@ import { getContainer } from "@/services/container";
 import { availablePackages, sceneVersionForLevel, searchLevelTerms, worldsForDraft } from "@/services/create-flow.service";
 import { storedSearchLevel } from "@/domain/search-level";
 import { currentUser, isAdminEmail } from "@/lib/server/session";
-import { PACKAGES, PACKAGE_ORDER, WORLD_PRICES, boardsFor, priceFor, type PackageTier } from "@/domain/package";
+import { PACKAGES, PACKAGE_ORDER, WORLD_PRICE, boardsFor, priceFor, type PackageTier } from "@/domain/package";
 import { childHasPaidWorld } from "@/services/child-pricing.service";
 import { getCurrency, getI18n } from "@/i18n/server";
 import { formatMoney, pick, tf } from "@/i18n";
@@ -50,16 +50,16 @@ export default async function CreatePackagePage({ searchParams }: { searchParams
       worldCount: p.worldCount,
       boardCount: boardsFor(tier),
       meta: tf(t.create.package.spots, { n: boardsFor(tier) * spotsPerBoard }),
-      price: formatMoney(priceFor(tier, currency, continuation), currency, locale),
-      popular: p.popular,
+      price: formatMoney(priceFor(tier, currency), currency, locale),
     };
   });
-  const fallbackTier = available.has("TWO_WORLDS") ? "TWO_WORLDS" : (options[0]?.tier ?? "ONE_WORLD");
+  // Every world costs the same, so nothing is pushed: a fresh draft starts on the smallest available package.
+  const fallbackTier = options[0]?.tier ?? "ONE_WORLD";
   const defaultTier = draft.packageTier && available.has(draft.packageTier as PackageTier) ? draft.packageTier : fallbackTier;
   return (
     <CreateFrame width="mid" step={2} title={t.create.package.title} lead={tf(t.create.package.lead, { name: draft.childProfile.displayName, spots: spotsPerBoard })} user={user} isAdmin={isAdminEmail(user?.email)}>
       <PackagePicker draftGameId={draft.id} options={options} defaultTier={defaultTier} availableWorldCount={availableWorldCount}
-        continuationNote={tf(continuation ? t.home.pricing.returning : t.home.pricing.continuation, { price: formatMoney(WORLD_PRICES[currency].additional, currency, locale) })} />
+        continuationNote={tf(t.home.pricing.addLater, { price: formatMoney(WORLD_PRICE[currency], currency, locale) })} />
     </CreateFrame>
   );
 }

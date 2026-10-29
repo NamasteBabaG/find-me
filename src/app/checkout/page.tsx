@@ -6,7 +6,7 @@ import { detectiveSelectionEligible, draftSummary, searchLevelTerms, worldsForDr
 import { storedSearchLevel } from "@/domain/search-level";
 import { gameShape, worldsOwned } from "@/services/world-catalog.service";
 import { currentUser, isAdminEmail } from "@/lib/server/session";
-import { boardsFor, priceFor, WORLD_PRICES } from "@/domain/package";
+import { boardsFor, priceFor } from "@/domain/package";
 import { childHasPaidWorld } from "@/services/child-pricing.service";
 import { isCollectionVersion } from "@/domain/scene/local-patch-versions";
 import { getCurrency, getI18n } from "@/i18n/server";
@@ -48,7 +48,7 @@ export default async function CheckoutPage({ searchParams }: { searchParams: Pro
   const ck = t.create.checkout;
   const currency = await getCurrency();
   const continuation = !!user && user.id === draft.ownerId && await childHasPaidWorld(c.db, { ownerId: user.id, familyChildId: draft.familyChildId, excludeGameId: draft.id });
-  const price = formatMoney(priceFor(summary.pkg.tier, currency, continuation), currency, locale);
+  const price = formatMoney(priceFor(summary.pkg.tier, currency), currency, locale);
   const packageName = continuation && summary.pkg.tier === "ONE_WORLD" ? t.home.pricing.additionalTitle : pick(summary.pkg.name, locale);
   const name = summary.child?.displayName ?? "";
   const shape = gameShape(summary.game.scenes);
@@ -97,7 +97,6 @@ export default async function CheckoutPage({ searchParams }: { searchParams: Pro
             </div>
           </div>
           <p className="summary__passport">{t.home.pricing.passport}</p>
-          {continuation ? <p className="fm-hint">{tf(t.home.pricing.returning, { price: formatMoney(WORLD_PRICES[currency].additional, currency, locale) })}</p> : null}
           <p className="fm-small">{ck.vat}</p>
         </div>
         <div className="fm-stack fm-stack--3"><CheckoutForm

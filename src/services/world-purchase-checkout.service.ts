@@ -12,7 +12,6 @@ import type { Container } from "./container";
 import { transitionGame } from "./game-status";
 import type { Currency, Locale } from "@/i18n/config";
 import { boardsFor, isPackageTier, priceFor } from "@/domain/package";
-import { childHasPaidWorld } from "./child-pricing.service";
 import { outstandingCheckout, DraftCheckoutInProgress } from "./draft-checkout-lock";
 import { checkoutCloseReceiptId, closeReceiptState } from "./checkout-close.service";
 import { storedSearchLevel } from "@/domain/search-level";
@@ -89,9 +88,8 @@ async function startClaimedCheckout(c: Container, input: CheckoutClaimInput, req
       const fenced = await tx.game.updateMany({ where: { id: game.id, updatedAt: game.updatedAt, ownerId: input.userId, status: game.status, deletedAt: null }, data: { updatedAt: new Date(Math.max(Date.now(), game.updatedAt.getTime() + 1)) } });
       if (fenced.count !== 1) return { state: "busy" as const };
       if (game.familyChildId && !await claimChildWorldForCheckout(tx, { gameId: game.id, ownerId: input.userId, familyChildId: game.familyChildId, scenes: game.scenes })) return { state: "locked" as const };
-      // Re-read the child's paid history under its checkout fence. The page's
-      // earlier quote cannot decide money after another world was paid.
-      const amount = priceFor(game.packageTier, input.currency, await childHasPaidWorld(tx, { ownerId: input.userId, familyChildId: game.familyChildId, excludeGameId: game.id }));
+      // Priced here, under the checkout fence, never from the page's earlier quote.
+      const amount = priceFor(game.packageTier, input.currency);
       let order = await tx.order.findUnique({ where: { checkoutKey: key } });
       // A resume-only request holds no permission of its own: if its exact order closed,
       // changed or was replaced since the caller looked, nothing new is sold under it.

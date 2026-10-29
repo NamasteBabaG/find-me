@@ -15,15 +15,14 @@ export const TARGETS_PER_SCENE = MISSIONS_PER_BOARD;
 export type PackageTier = "ONE_WORLD" | "TWO_WORLDS" | "ALL_WORLDS";
 export type Currency = "ILS" | "USD";
 
-/** Fixed per-child pricing, independent of purchase date or catalog size. */
-export const WORLD_PRICES: Record<Currency, { first: number; additional: number }> = {
-  ILS: { first: 3900, additional: 3000 },
-  USD: { first: 2200, additional: 1700 },
-};
-export function worldPurchasePrice(worldCount: number, currency: Currency, hasPaidWorld = false): number {
+/**
+ * One price for every world (Guy, 2026-10-29: 29 ₪ a world for the launch): the first, the second and a world
+ * added months later cost the same, so a purchase never depends on what the child already owns.
+ */
+export const WORLD_PRICE: Record<Currency, number> = { ILS: 2900, USD: 1000 };
+export function worldPurchasePrice(worldCount: number, currency: Currency): number {
   if (!Number.isSafeInteger(worldCount) || worldCount < 1) throw Error("Invalid world count");
-  const rate = WORLD_PRICES[currency];
-  const total = (hasPaidWorld ? rate.additional : rate.first) + (worldCount - 1) * rate.additional;
+  const total = worldCount * WORLD_PRICE[currency];
   if (!Number.isSafeInteger(total)) throw Error("Invalid purchase amount");
   return total;
 }
@@ -36,7 +35,6 @@ export interface PackageDefinition {
   prices: Record<Currency, number>;
   /** Approximate first-play time, shown as a product target — not a promise. */
   playtime: LocalizedText;
-  popular: boolean;
 }
 
 export const PACKAGES: Record<PackageTier, PackageDefinition> = {
@@ -46,7 +44,6 @@ export const PACKAGES: Record<PackageTier, PackageDefinition> = {
     worldCount: 1,
     prices: { ILS: worldPurchasePrice(1, "ILS"), USD: worldPurchasePrice(1, "USD") },
     playtime: { en: "around half an hour", he: "בערך חצי שעה" },
-    popular: false,
   },
   TWO_WORLDS: {
     tier: "TWO_WORLDS",
@@ -54,7 +51,6 @@ export const PACKAGES: Record<PackageTier, PackageDefinition> = {
     worldCount: 2,
     prices: { ILS: worldPurchasePrice(2, "ILS"), USD: worldPurchasePrice(2, "USD") },
     playtime: { en: "around an hour", he: "בערך שעה" },
-    popular: true,
   },
   ALL_WORLDS: {
     tier: "ALL_WORLDS",
@@ -63,7 +59,6 @@ export const PACKAGES: Record<PackageTier, PackageDefinition> = {
     worldCount: 3,
     prices: { ILS: worldPurchasePrice(3, "ILS"), USD: worldPurchasePrice(3, "USD") },
     playtime: { en: "an hour or two", he: "שעה–שעתיים" },
-    popular: false,
   },
 };
 
@@ -77,8 +72,8 @@ export function isCurrency(value: unknown): value is Currency {
   return value === "ILS" || value === "USD";
 }
 
-export function priceFor(tier: PackageTier, currency: Currency, hasPaidWorld = false): number {
-  return worldPurchasePrice(PACKAGES[tier].worldCount, currency, hasPaidWorld);
+export function priceFor(tier: PackageTier, currency: Currency): number {
+  return worldPurchasePrice(PACKAGES[tier].worldCount, currency);
 }
 
 export function boardsFor(tier: PackageTier): number {
@@ -111,12 +106,12 @@ export interface UpgradeOffer {
 }
 
 /**
- * Every additional world has the same price, including after a price change
+ * Every added world costs the world price, including after a price change
  * or a long gap. Previous amounts paid are never subtracted from a new order.
  */
 export function upgradePrice(ownedWorlds: number, targetWorlds: number, currency: Currency): number | null {
   if (!Number.isSafeInteger(ownedWorlds) || ownedWorlds < 0 || !Number.isSafeInteger(targetWorlds) || targetWorlds <= ownedWorlds) return null;
-  return worldPurchasePrice(targetWorlds - ownedWorlds, currency, ownedWorlds > 0);
+  return worldPurchasePrice(targetWorlds - ownedWorlds, currency);
 }
 
 /**

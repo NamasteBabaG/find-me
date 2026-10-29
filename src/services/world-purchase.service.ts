@@ -20,7 +20,6 @@ import { newDraftStyleVersion, sceneVersionForLevel, searchLevelChoice, worldsFo
 import { isSearchLevel, storedSearchLevel, type SearchLevel } from "@/domain/search-level";
 import { pinSearchLevelChoice } from "./search-level-policy";
 import { sceneBySlug } from "./scene-catalog.service";
-import { childHasPaidWorld } from "./child-pricing.service";
 import { outstandingCheckout } from "./draft-checkout-lock";
 import { purchasingClosed, purchasingEnabled } from "@/lib/purchasing";
 
@@ -61,7 +60,6 @@ export async function worldPurchaseContext(c: Container, input: WorldPurchaseInp
   const levels = await searchLevelChoice(c, newDraftStyleVersion(), world.slug);
   return { child, world, active: state === "closed" ? null : active, state: state === "closed" ? "new" as const : state,
     ageYears, levels, activeLevel: active && state !== "closed" ? storedSearchLevel(active.searchLevel) : null,
-    continuation: await childHasPaidWorld(c.db, { ownerId: input.ownerId, familyChildId: child.id }),
     returnGameId, returnHref: worldPurchaseReturnHref(child.id, returnGameId),
     earlierPaymentHref: earlierPayment ? `/checkout/close?game=${encodeURIComponent(earlierPayment.id)}` : null };
 }

@@ -8,7 +8,7 @@ import { childHasPaidWorld } from "../child-pricing.service";
 import { reconcilePaidFamilyChildren } from "../family.service";
 import { startCheckout, handlePaymentWebhook } from "../order.service";
 import { MockPaymentProvider } from "../../infra/payment/mock";
-import { boardsFor, type PackageTier } from "../../domain/package";
+import { boardsFor, priceFor, type PackageTier } from "../../domain/package";
 import type { Container } from "../container";
 
 vi.mock("../../lib/env", () => ({ env: () => ({ APP_ENV: "development" }), spendGuard: () => ({ appEnv: "development", realGeneration: false, testers: [] }) }));
@@ -45,11 +45,12 @@ function context() {
   const c = { db, payment, appUrl: "https://pricing.invalid", analytics: { track: vi.fn() } } as unknown as Container;
   return { c, payment, checkout };
 }
-describe("per-child continuation pricing", () => {
-  it.each(["ONE_WORLD", "TWO_WORLDS", "ALL_WORLDS"] as const)("charges a returning passport for only new worlds: %s, including a year-old purchase", async tier => {
+describe("per-child purchase history", () => {
+  it.each(["ONE_WORLD", "TWO_WORLDS", "ALL_WORLDS"] as const)("charges a returning passport the same world price as a new one: %s, including a year-old purchase", async tier => {
     const child = await passport(), old = await purchase(child.id), draft = await game(child.id, tier), { c, checkout, payment } = context();
     const input = { gameId: draft.id, email: "pricing@example.invalid", currency: "ILS" as const, access: { userId: "parent", draftToken: draft.draftToken } };
-    const amount = boardsFor(tier) / 9 * 3000;
+    const amount = boardsFor(tier) / 9 * 2900;
+    expect(amount).toBe(priceFor(tier, "ILS"));
     expect(await startCheckout(c, input)).toMatchObject({ ok: true });
     expect(await startCheckout(c, input)).toMatchObject({ ok: true });
     expect(checkout.mock.calls.every(([r]) => r.amountAgorot === amount && r.currency === "ILS")).toBe(true);
@@ -61,15 +62,15 @@ describe("per-child continuation pricing", () => {
     expect((await handlePaymentWebhook(c, paid, { "x-mock-signature": payment.sign(paid) })).status).toBe(200);
     expect((await db.game.findUniqueOrThrow({ where: { id: draft.id } })).status).toBe("PAID");
   });
-  it("a same-name sibling pays 39 and another parent cannot use this child's entitlement", async () => {
+  it("a same-name sibling pays 29 and another parent cannot use this child's purchase history", async () => {
     const a = await passport(), b = await passport(); await purchase(a.id);
     expect(await childHasPaidWorld(db, { ownerId: "parent", familyChildId: b.id })).toBe(false);
     expect(await childHasPaidWorld(db, { ownerId: "other", familyChildId: a.id })).toBe(false);
     const draft = await game(b.id), { c, checkout } = context();
     expect(await startCheckout(c, { gameId: draft.id, email: "pricing@example.invalid", currency: "ILS", access: { userId: "parent", draftToken: draft.draftToken } })).toMatchObject({ ok: true });
-    expect(checkout.mock.calls[0]![0].amountAgorot).toBe(3900);
+    expect(checkout.mock.calls[0]![0].amountAgorot).toBe(2900);
   });
-  it.each(["PENDING", "FAILED", "CANCELLED", "REFUNDED"])("%s does not grant the continuation price", async state => {
+  it.each(["PENDING", "FAILED", "CANCELLED", "REFUNDED"])("%s does not count as a paid world", async state => {
     const child = await passport(); await purchase(child.id, state);
     expect(await childHasPaidWorld(db, { ownerId: "parent", familyChildId: child.id })).toBe(false);
   });

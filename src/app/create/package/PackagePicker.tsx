@@ -15,7 +15,6 @@ interface Option {
   boardCount: number;
   meta: string;
   price: string;
-  popular: boolean;
 }
 
 export function PackagePicker({ draftGameId, options, defaultTier, availableWorldCount, continuationNote }: { draftGameId?: string; options: Option[]; defaultTier: string; availableWorldCount: number; continuationNote?: string }) {
@@ -32,7 +31,6 @@ export function PackagePicker({ draftGameId, options, defaultTier, availableWorl
           return (
             <label key={o.tier} className={`fm-card fm-card--pad-4 package fm-card--selectable${selected ? " fm-card--selected" : ""}`}>
               <input type="radio" name="tier" value={o.tier} className="visually-hidden" checked={selected} onChange={() => setTier(o.tier)} />
-              {o.popular ? <span className="fm-sticker-badge package__ribbon">{t.common.popular}</span> : null}
               <h3>{o.name}</h3>
               {/* The number is the choice, drawn the way the site's pricing draws it: big, with the word small beside it. */}
               <span className="package__worlds" aria-label={o.worldCount === 1 ? t.common.worldCountOne : tf(t.common.worldsCount, { n: o.worldCount })}>

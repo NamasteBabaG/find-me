@@ -5,8 +5,7 @@ import { requireQaAccess } from "@/lib/server/qa-access";
 import { familySignInHref } from "@/lib/safe-redirect";
 import { getI18n, getCurrency } from "@/i18n/server";
 import { tf, formatMoney } from "@/i18n";
-import { WORLD_PRICES } from "@/domain/package";
-import { childHasPaidWorld } from "@/services/child-pricing.service";
+import { WORLD_PRICE } from "@/domain/package";
 import { getContainer } from "@/services/container";
 import { familyAdventures } from "@/services/family-adventures.service";
 import { SiteHeader, SiteFooter } from "@/ui/Shell";
@@ -32,7 +31,6 @@ export default async function ChildPage({ params, searchParams }: { params: Prom
   const c = getContainer();
   const child = (await familyAdventures(c, user.id, childId))[0];
   if (!child) notFound();
-  const continuation = await childHasPaidWorld(c.db, { ownerId: user.id, familyChildId: child.id });
   const f = t.family;
   const stamps = child.adventures.filter(a => a.tracked).flatMap(a => a.worlds).reduce((sum, w) => ({ n: sum.n + w.stamped, total: sum.total + w.places }), { n: 0, total: 0 });
   return <><SiteHeader user={user} isAdmin={isAdminEmail(user.email)} />
@@ -47,7 +45,7 @@ export default async function ChildPage({ params, searchParams }: { params: Prom
           {child.adventures.length === 0 ? <p className="fm-lead">{f.noAdventures}</p> : null}
           {child.adventures.map((adventure, i) => <AdventureCard key={adventure.gameId} adventure={adventure} child={child} t={t} eager={i === 0} friendIntent={query.friends === adventure.gameId ? query.world ?? null : null} />)}
         </section>
-        <FamilyCompanion child={child} t={t} returningPrice={continuation ? formatMoney(WORLD_PRICES[currency].additional, currency, locale) : null} stamps={stamps} />
+        <FamilyCompanion child={child} t={t} worldPrice={formatMoney(WORLD_PRICE[currency], currency, locale)} stamps={stamps} />
       </div>
     </main><SiteFooter /></>;
 }
