@@ -1,5 +1,8 @@
 "use server";
 
+import { QA_COMPLETION_CONFIRMATION } from "@/domain/generation/qa-completion-capacity";
+import { authorizeQaCompletionCapacity } from "@/services/generation/qa-completion-capacity";
+
 import { LEAN_CAPACITY_RECOVERY_CONFIRMATION } from "@/domain/generation/lean-capacity-recovery";
 import { authorizeDetectivesCompletionBudget, authorizeDetectivesCompletionExtension, authorizeDetectivesCompletionTail } from "@/services/generation/detectives-completion-budget";
 import { DETECTIVES_COMPLETION_CONFIRMATION, DETECTIVES_EXTENSION_CONFIRMATION, DETECTIVES_TAIL_CONFIRMATION } from "@/domain/generation/detectives-completion-budget";
@@ -33,6 +36,19 @@ async function admin() {
 
 function str(fd: FormData, key: string): string {
   return String(fd.get(key) ?? "");
+}
+
+/** One explicit source-bound QA capacity grant, preserving every art gate. */
+export async function authorizeQaCompletionCapacityAction(fd:FormData):Promise<void>{
+  const actor=await admin(),gameId=str(fd,"gameId"),planSha256=str(fd,"planSha256"),ownerAuthorizationSha256=str(fd,"ownerAuthorizationSha256");
+  if(!/^[A-Za-z0-9_-]{1,160}$/.test(gameId))redirect("/admin/orders");
+  const destination=`/admin/orders/${encodeURIComponent(gameId)}`,h=await headers();let sameOrigin=false;
+  try{const origin=h.get("origin"),host=h.get("x-forwarded-host")??h.get("host");sameOrigin=!!origin&&!!host&&new URL(origin).host===host&&h.get("sec-fetch-site")!=="cross-site";}catch{/* refuse invalid origin */}
+  if(env().APP_ENV!=="qa"||!sameOrigin||fd.getAll("gameId").length!==1||fd.getAll("planSha256").length!==1||!/^[a-f0-9]{64}$/.test(planSha256)
+    ||fd.getAll("ownerAuthorizationSha256").length!==1||!/^[a-f0-9]{64}$/.test(ownerAuthorizationSha256)
+    ||fd.getAll("confirm").length!==1||str(fd,"confirm")!==QA_COMPLETION_CONFIRMATION)redirect(`${destination}?qaCompletion=blocked`);
+  let granted=false;try{await authorizeQaCompletionCapacity(getContainer(),{gameId,operatorId:actor.id,expectedPlanSha256:planSha256,ownerAuthorizationSha256});granted=true;}catch{/* Safe operational notice only. */}
+  revalidatePath(destination);redirect(`${destination}?qaCompletion=${granted?"authorized":"blocked"}`);
 }
 
 export async function approveAction(fd: FormData): Promise<void> {

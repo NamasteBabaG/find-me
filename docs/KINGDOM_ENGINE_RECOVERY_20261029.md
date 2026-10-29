@@ -55,3 +55,26 @@ art success rate. The two existing real QA games must finish with every required
 hide, unchanged private-source ownership and explicitly authorized spend. Exact
 green pushed-commit CI and QA-only deployment precede that continuation. No
 production release or automatic budget extension is included.
+
+## Explicit completion capacity for an existing MEDIUM QA world
+
+When the owner authorizes the additional expense needed to finish an existing
+game, `qa-existing-medium-completion/v1` can record a separate cumulative $12
+working ceiling for that one world. It includes all historical spending and
+every unknown reservation. It does not change the commercial $4 birth policy.
+The authenticated owner administrator must submit the exact current plan and the
+digest of the recorded owner authorization through a same-origin QA action.
+
+The immutable grant binds payment, owner, profile, original source family, nine
+scenes, canonical identity approval, source pixels, age/crop, exact failed job,
+retained rows and the ledger revision. A changed plan, active provider work,
+pending/conflicting bills, refund, deletion or source/ownership change blocks or
+withdraws it. One serializable transaction records capacity and requeues the same
+job, preserving attempts, requests, verdicts, private assets and full UNKNOWN
+reserves. Repeated submission is idempotent. Ordinary automatic recovery and
+publication still require every hide and every quality gate.
+
+The new grant remains readable after the normal successful photo purge, using
+the existing bound purge audit. Synthetic tests exercise both actual Kingdom
+source contracts, forged/stale plans, changed pixels, owner/refund revocation,
+unchanged reserves, and full all-27 publication through the ordinary queue.

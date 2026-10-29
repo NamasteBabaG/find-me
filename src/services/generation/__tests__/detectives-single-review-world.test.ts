@@ -10,6 +10,9 @@ import { nextBoundEnvelopeReconciliation, resumeBoundEnvelopeReconciliation } fr
 import { BOUND_SUBJECT_QUALITY_ENVELOPE_READER, BOUND_SUBJECT_QUALITY_ENVELOPE_READER_V2 } from "../../../domain/generation/bound-subject-quality-envelope";
 import { PLACEMENT_GUIDE_VERSION } from "../../../domain/generation/placement-guide";
 import { PENDING_IMAGE_LEASE_MS } from "../../../domain/generation/pending-image-lease";
+import { ensureSingleMediumReviewPolicy } from "../single-medium-policy";
+import { planQaCompletionCapacity,authorizeQaCompletionCapacity,readQaCompletionCapacity } from "../qa-completion-capacity";
+import { qaCompletionCapacityId,QA_COMPLETION_CAP } from "../../../domain/generation/qa-completion-capacity";
 import * as singlePolicyModule from "../single-low-policy";
 import * as dualReviewModule from "../local-patch-dual-review";
 import { planPublishedCrownRepair,stagePublishedCrownRepair,publishedCrownRepairOf,publishedCrownReviewOrder } from "../published-crown-repair";
@@ -112,7 +115,9 @@ afterAll(async () => {
 async function newDetectiveWorld(gameId: string, ageYears=8, born=false, explorer=false, kingdom=false) {
   const version = explorer ? 12 : 13, level = explorer ? "explorers" : "detectives";
   const journey = new Set(boardsOfWorlds(["journey"]));
-  const boards = explorer ? localPatchBoardsForVersion(12).filter(board => journey.has(board.board)) : kingdom ? KINGDOM_DETECTIVE_PATCH_BOARDS : DETECTIVE_PATCH_BOARDS;
+  const kingdomBoards=new Set(boardsOfWorlds(["kingdom"]));
+  const boards = kingdom ? explorer ? localPatchBoardsForVersion(12).filter(board=>kingdomBoards.has(board.board)) : KINGDOM_DETECTIVE_PATCH_BOARDS
+    : explorer ? localPatchBoardsForVersion(12).filter(board => journey.has(board.board)) : DETECTIVE_PATCH_BOARDS;
   const seeded = await seedApprovedGame(c, db, { gameId, approved: false, styleVersion: "local-patch-world-v1", status: "DRAFT", withJob: false,
     scenes: boards.map(board => ({ slug: board.board, version })) });
   await db.game.update({ where: { id: gameId }, data: { searchLevel: level } });
@@ -125,7 +130,7 @@ async function newDetectiveWorld(gameId: string, ageYears=8, born=false, explore
     await pinVisualReviewRelease(tx, gameId, DUAL_VISUAL_REVIEW_V3);
     await pinLeanRelease(tx, gameId, LOCAL_PATCH_LEAN_RELEASE);
     await pinIdentitySourceRelease(tx, gameId);
-    if(kingdom){
+    if(kingdom&&!explorer){
       await pinDetectiveSourceScope(tx,gameId,DETECTIVES_OPERATIONAL_RELEASE,c.storage.id);
       await tx.game.update({where:{id:gameId},data:{status:"PACKAGE_SELECTED"}});
       await tx.childProfile.update({where:{id:profile.id},data:{originalPhotoAssetId:"ast-photo-"+gameId}});
@@ -597,6 +602,97 @@ it("pins whole-target and outside-source guides before new purchases, replays th
   expect(calls).toHaveLength(4);expect((await boardWizardBudgetOf(c).audit(boardWizardWorldId(gameId))).capMicroUsd).toBe(4000000);
   expect(fetch).not.toHaveBeenCalled();
 },300000);
+
+it.each(["detectives","explorers"] as const)("authorizes one source-bound %s Kingdom completion frame without resetting attempts, UNKNOWN reserves or quality",async level=>{
+  const explorer=level==="explorers",gameId="kingdom-completion-capacity-synthetic-"+level;
+  await newDetectiveWorld(gameId,7,true,explorer,true);await ensureSingleMediumReviewPolicy(c,gameId,async()=>{});
+  const version=explorer?12:13,context=await resolveLocalPatchBoardsForGame(db,gameId,version),board=context.boards.find(b=>b.board==="castlegate")!,hide=board.hides[0]!;
+  const render=vi.fn<LocalPatchHideDeps["render"]>(async input=>paintedOk(input.stylePng,bill("synthetic-completion-paint",50000)));
+  const deps:LocalPatchHideDeps={readBoardArt:readArt,renderPolicySha256:localPatchRenderPolicySha256(LOCAL_PATCH_IMAGE_POLICY),render,
+    judge:async()=>{throw Error("No synchronous review in a capacity grant");}};
+  await runLocalPatchHide(c,deps,{gameId,board,hide});
+  const game=await db.game.findUniqueOrThrow({where:{id:gameId}}),budget=boardWizardBudgetOf(c),worldId=boardWizardWorldId(gameId);
+  const fill=3_700_000-(await budget.audit(worldId)).committedMicroUsd;
+  await budget.reserve(worldId,{requestKey:"synthetic-precompletion-work",scope:"image",operationFingerprint:"d".repeat(64),reserveMicroUsd:fill});
+  await budget.settle(worldId,"synthetic-precompletion-work",bill("synthetic-precompletion-work",fill));
+  await budget.reserve(worldId,{requestKey:"synthetic-retained-unknown",scope:"judge",operationFingerprint:"e".repeat(64),reserveMicroUsd:210000});
+  await budget.markUnknown(worldId,"synthetic-retained-unknown","Synthetic terminal provider response has no verifiable usage");
+  await db.generationJob.update({where:{id:"job_"+gameId},data:{status:"FAILED",currentStep:"local-patch:recovery-exhausted",lastError:"local-patch: synthetic exhausted capacity"}});
+  const rows=await db.targetVariantAsset.findMany({where:{targetInstance:{gameScene:{gameId}}},orderBy:{id:"asc"}}),job=await db.generationJob.findUniqueOrThrow({where:{id:"job_"+gameId}});
+  let ledger=await db.worldBudgetLedger.findUniqueOrThrow({where:{worldId}});
+  const child=await db.childProfile.findUniqueOrThrow({where:{id:game.childProfileId!}});
+  let plan=await planQaCompletionCapacity(c,gameId);const input={gameId,operatorId:game.ownerId!,expectedPlanSha256:plan.planSha256,ownerAuthorizationSha256:"a".repeat(64)};
+  expect(plan.binding).toMatchObject({capMicroUsd:QA_COMPLETION_CAP,committedMicroUsd:3910000,reservedMicroUsd:210000,unknowns:[{requestKey:"synthetic-retained-unknown",reserveMicroUsd:210000}]});
+  expect(await db.generationJob.findUniqueOrThrow({where:{id:job.id}})).toEqual(job);
+  await expect(authorizeQaCompletionCapacity(c,{...input,operatorId:"forged-operator"})).rejects.toThrow("Owner administrator");
+  await expect(authorizeQaCompletionCapacity(c,{...input,expectedPlanSha256:"f".repeat(64)})).rejects.toThrow("plan changed");
+  const photo=await db.asset.findUniqueOrThrow({where:{id:child.originalPhotoAssetId!}}),source=await c.storage.get(photo.storagePath);
+  await c.storage.put(photo.storagePath,Buffer.from("synthetic changed source pixels"),photo.mimeType);
+  await expect(authorizeQaCompletionCapacity(c,input)).rejects.toThrow("Exact live source pixels");await c.storage.put(photo.storagePath,source,photo.mimeType);
+  await db.worldBudgetLedger.update({where:{worldId},data:{revision:{increment:1}}});
+  await expect(authorizeQaCompletionCapacity(c,input)).rejects.toThrow("plan changed");
+  expect(await db.auditLog.findUnique({where:{id:qaCompletionCapacityId(gameId)}})).toBeNull();
+  ledger=await db.worldBudgetLedger.findUniqueOrThrow({where:{worldId}});plan=await planQaCompletionCapacity(c,gameId);input.expectedPlanSha256=plan.planSha256;
+  const pin=await authorizeQaCompletionCapacity(c,input);expect(pin.capMicroUsd).toBe(QA_COMPLETION_CAP);
+  expect(await authorizeQaCompletionCapacity(c,input)).toEqual(pin);
+  expect(await db.auditLog.count({where:{id:qaCompletionCapacityId(gameId)}})).toBe(1);
+  expect(await db.generationJob.findUniqueOrThrow({where:{id:job.id}})).toMatchObject({status:"QUEUED",currentStep:"local-patch",attempts:job.attempts});
+  expect(await db.targetVariantAsset.findMany({where:{targetInstance:{gameScene:{gameId}}},orderBy:{id:"asc"}})).toEqual(rows);
+  const afterLedger=await db.worldBudgetLedger.findUniqueOrThrow({where:{worldId}});expect(afterLedger.snapshotJson).toBe(ledger.snapshotJson);expect(afterLedger.revision).toBe(ledger.revision+1);
+  expect(await budget.audit(worldId)).toMatchObject({capMicroUsd:QA_COMPLETION_CAP,committedMicroUsd:3910000,reservedMicroUsd:210000,unknownRequestKeys:["synthetic-retained-unknown"]});
+  expect(await readQaCompletionCapacity(c,worldId)).toMatchObject({worldId,capMicroUsd:QA_COMPLETION_CAP});
+  await db.childProfile.update({where:{id:child.id},data:{ageYears:8}});expect(await readQaCompletionCapacity(c,worldId)).toBeNull();await db.childProfile.update({where:{id:child.id},data:{ageYears:child.ageYears}});
+  const order=await db.order.findUniqueOrThrow({where:{id:"order-"+gameId}});await db.order.update({where:{id:order.id},data:{paymentStatus:"REFUNDED"}});
+  expect(await readQaCompletionCapacity(c,worldId)).toBeNull();await db.order.update({where:{id:order.id},data:{paymentStatus:order.paymentStatus}});
+  const other=await db.user.create({data:{id:"synthetic-other-owner-"+level,email:"other-"+level+"@example.invalid"}});
+  await db.game.update({where:{id:gameId},data:{ownerId:other.id}});expect(await readQaCompletionCapacity(c,worldId)).toBeNull();await db.game.update({where:{id:gameId},data:{ownerId:game.ownerId}});
+  expect(await readQaCompletionCapacity(c,worldId)).not.toBeNull();
+  const row=rows[0]!,receipt=JSON.parse(row.judgeJson!);
+  expect(await allowedDualPublication(db,{gameId,sceneVersion:version,hideId:receipt.hide,variantId:row.id,attempts:row.attempts,
+    identityAssetId:child.identityAssetId!,identitySha256:plan.binding.state.identitySha256,assetId:row.assetId!,imageSha256:receipt.judgedSha256,
+    geometrySha256:receipt.geometrySha256,judgeJson:row.judgeJson})).toBe(false);
+  expect(render).toHaveBeenCalledTimes(1);expect(fetch).not.toHaveBeenCalled();
+},300000);
+
+it.each(["detectives","explorers"] as const)("publishes all 27 %s Kingdom hides after explicit completion and retains its cap after the real source purge",async level=>{
+  vi.useFakeTimers({toFake:["Date"]});
+  try{
+  const explorer=level==="explorers",version=explorer?12:13,gameId="kingdom-completion-publication-synthetic-"+level;
+  await newDetectiveWorld(gameId,7,true,explorer,true);await ensureSingleMediumReviewPolicy(c,gameId,async()=>{});
+  const mediumBefore=await db.auditLog.findUniqueOrThrow({where:{id:"aud_single_medium_"+gameId}});
+  const context=await resolveLocalPatchBoardsForGame(db,gameId,version),worldBoards=new Set(boardsOfWorlds(["kingdom"]));
+  const boards=context.boards.filter(b=>worldBoards.has(b.board)),hides=boards.flatMap(b=>b.hides);
+  const provider=controlledSol(false,false,undefined,true,false,version),forbidden=vi.fn(async()=>{throw Error("No extra synchronous review or diagnosis");});
+  const container={...c,backgroundReview:provider.fake,visualReview:{request:forbidden}} as Container;
+  const render=vi.fn<LocalPatchHideDeps["render"]>(async input=>{
+    const hide=hides.find(h=>input.requestKey.startsWith(h.id+":"))!;expect(input.requestKey.endsWith(":render:1")).toBe(true);
+    expect(input.placementGuideVersion).toBe(PLACEMENT_GUIDE_VERSION);
+    const frame=guidedFrameGeometry(maskForHide(hide),localPatchReturnRegion(cropOf(hide),maskForHide(hide),hide.returnRect).local).target;
+    const figure=await sharp({create:{width:Math.round(frame.width*0.6),height:Math.round(frame.height*0.7),channels:4,background:"#284d99"}}).png().toBuffer();
+    return paintedOk(await sharp(input.stylePng).composite([{input:figure,left:frame.left+Math.round(frame.width*0.2),top:frame.top+Math.round(frame.height*0.2)}]).png().toBuffer(),bill("synthetic-completion-"+input.requestKey,50000));
+  });
+  const deps:LocalPatchHideDeps={readBoardArt:readArt,renderPolicySha256:localPatchRenderPolicySha256(LOCAL_PATCH_IMAGE_POLICY),render,judge:forbidden};
+  await runLocalPatchHide(container,deps,{gameId,board:boards[0]!,hide:boards[0]!.hides[0]!});
+  const worldId=boardWizardWorldId(gameId),budget=boardWizardBudgetOf(container),fill=3_900_000-(await budget.audit(worldId)).committedMicroUsd;
+  await budget.reserve(worldId,{requestKey:"synthetic-original-cap-stop",scope:"image",operationFingerprint:"c".repeat(64),reserveMicroUsd:fill});
+  await budget.settle(worldId,"synthetic-original-cap-stop",bill("synthetic-original-cap-stop",fill));
+  await db.generationJob.update({where:{id:"job_"+gameId},data:{status:"FAILED",currentStep:"local-patch:recovery-exhausted",lastError:"local-patch: synthetic original cap stop"}});
+  const plan=await planQaCompletionCapacity(container,gameId),gameBefore=await db.game.findUniqueOrThrow({where:{id:gameId}});
+  await authorizeQaCompletionCapacity(container,{gameId,operatorId:gameBefore.ownerId!,expectedPlanSha256:plan.planSha256,ownerAuthorizationSha256:"b".repeat(64)});
+  let result={pending:true,attention:null as string|null},turns=0;
+  while(result.pending&&turns++<900){result=await runLocalPatchWorldSlice(container,deps,gameId,{hardDeadlineAt:Date.now()+270000,diagnose:forbidden});expect(result.attention).toBeNull();if(result.pending)await vi.advanceTimersByTimeAsync(LEAN_RECOVERY_BACKOFF_MS+1);}
+  expect(result.pending).toBe(false);expect(render).toHaveBeenCalledTimes(27);expect(provider.creates).toHaveLength(27);
+  const game=await db.game.findUniqueOrThrow({where:{id:gameId}});expect(["READY","DELIVERED"]).toContain(game.status);
+  const config=parseGameConfig(game.configJson!);expect(config.scenes).toHaveLength(9);expect(config.scenes.flatMap(s=>s.targets)).toHaveLength(27);
+  const child=await db.childProfile.findUniqueOrThrow({where:{id:game.childProfileId!}});expect(child.originalPhotoAssetId).toBeNull();
+  const audit=await budget.audit(worldId);expect(audit).toMatchObject({capMicroUsd:QA_COMPLETION_CAP,held:false,pendingRequestKeys:[],unknownRequestKeys:[]});expect(audit.committedMicroUsd).toBeGreaterThan(4000000);
+  expect(await db.auditLog.findUniqueOrThrow({where:{id:mediumBefore.id}})).toEqual(mediumBefore);
+  const rows=await db.targetVariantAsset.findMany({where:{variant:"A",targetInstance:{gameScene:{gameId}}}});expect(rows).toHaveLength(27);
+  for(const row of rows){const receipt=JSON.parse(row.judgeJson!);expect(receipt.boardReview.dual.single).toBe(SINGLE_MEDIUM_VISUAL_REVIEW_VERSION);
+    expect(await allowedDualPublication(db,{...publicationBinding(gameId,row),sceneVersion:version})).toBe(true);}
+  expect(forbidden).not.toHaveBeenCalled();expect(fetch).not.toHaveBeenCalled();
+  }finally{vi.useRealTimers();}
+},1500000);
 
 it("uses the unchanged authored return as the editor mask and one smaller visual target for a finite third painting", async()=>{
  const gameId="detective-guided-frame-synthetic";await newDetectiveWorld(gameId);

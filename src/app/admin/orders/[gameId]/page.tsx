@@ -1,5 +1,6 @@
 import { Suspense } from "react";
 import { WholeSourceContextForm } from "./WholeSourceContextForm";
+import { QaCompletionCapacityForm } from "./QaCompletionCapacityForm";
 import { CrownReturnRepairForm } from "./CrownReturnRepairForm";
 import { gameShape } from "@/services/world-catalog.service";
 import Link from "next/link";
@@ -46,9 +47,9 @@ function judgeLabel(judge: { verdict: string; reason: string; claimedVerdict?: s
   return "? השופט לא הכריע";
 }
 
-export default async function AdminOrderPage({ params, searchParams }: { params: Promise<{ gameId: string }>; searchParams: Promise<{ v?: string; sourceContext?: string; repair?: string; paidRepair?: string; partialRelease?: string; delivery?: string; refund?: string; leanRecovery?: string; referenceRepair?: string; capacityRecovery?: string; detectivesBudget?: string; detectivesExtension?: string }> }) {
+export default async function AdminOrderPage({ params, searchParams }: { params: Promise<{ gameId: string }>; searchParams: Promise<{ v?: string; qaCompletion?: string; sourceContext?: string; repair?: string; paidRepair?: string; partialRelease?: string; delivery?: string; refund?: string; leanRecovery?: string; referenceRepair?: string; capacityRecovery?: string; detectivesBudget?: string; detectivesExtension?: string }> }) {
   await requireAdmin();
-  const [{ gameId }, { v, sourceContext, repair, paidRepair, partialRelease, delivery, refund, leanRecovery, referenceRepair, capacityRecovery, detectivesBudget, detectivesExtension }, { t }] = await Promise.all([params, searchParams, getI18n()]);
+  const [{ gameId }, { v, qaCompletion, sourceContext, repair, paidRepair, partialRelease, delivery, refund, leanRecovery, referenceRepair, capacityRecovery, detectivesBudget, detectivesExtension }, { t }] = await Promise.all([params, searchParams, getI18n()]);
   const variant: "A" | "B" = v === "B" ? "B" : "A";
   const c = getContainer();
   const detail = await orderDetailForAdmin(c, gameId);
@@ -114,6 +115,9 @@ export default async function AdminOrderPage({ params, searchParams }: { params:
       {detectivesExtension === "blocked" ? <Notice kind="danger">{t.adminIdentityRevision.detectivesBudgetBlocked}</Notice> : null}
       <DetectivesCompletionExtensionForm gameId={gameId} />
       <DetectivesCompletionBudgetForm gameId={gameId} />
+      {qaCompletion==="authorized"?<Notice>{t.adminQaCompletion.authorized}</Notice>:null}
+      {qaCompletion==="blocked"?<Notice kind="danger">{t.adminQaCompletion.blocked}</Notice>:null}
+      <Suspense fallback={null}><QaCompletionCapacityForm gameId={gameId} /></Suspense>
       <CrownReturnRepairForm gameId={gameId} />
       <Suspense fallback={null}><WholeSourceContextForm gameId={gameId} outcome={sourceContext}/></Suspense>
       <IdentitySourceRevisionForm gameId={gameId} />

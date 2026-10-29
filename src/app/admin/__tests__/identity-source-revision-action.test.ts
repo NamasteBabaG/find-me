@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 const f = vi.hoisted(() => ({ appEnv: "qa", admin: { id: "real-session-admin" } as { id: string } | null,
-  requestHeaders: new Headers(), qaAccess: vi.fn(), apply: vi.fn(), retry: vi.fn(), grant: vi.fn(), capacity: vi.fn(), detectives: vi.fn(), extension: vi.fn(), revalidate: vi.fn() }));
+  requestHeaders: new Headers(), qaAccess: vi.fn(), apply: vi.fn(), retry: vi.fn(), grant: vi.fn(), capacity: vi.fn(), detectives: vi.fn(), extension: vi.fn(), qaCompletion:vi.fn(), revalidate: vi.fn() }));
 vi.mock("next/navigation", () => ({ redirect: (url: string) => { throw new Error(`redirect:${url}`); } }));
 vi.mock("next/headers", () => ({ headers: async () => f.requestHeaders }));
 vi.mock("next/cache", () => ({ revalidatePath: f.revalidate }));
@@ -21,21 +21,41 @@ vi.mock("@/services/generation/identity-source-revision", () => ({
 vi.mock("@/services/generation/lean-completion-budget", () => ({ authorizeLeanCompletionBudget: f.grant }));
 vi.mock("@/services/generation/lean-capacity-recovery", () => ({ authorizeLeanCapacityRecovery: f.capacity }));
 vi.mock("@/services/generation/detectives-completion-budget", () => ({ authorizeDetectivesCompletionBudget: f.detectives, authorizeDetectivesCompletionTail: f.extension, authorizeDetectivesCompletionExtension: f.extension }));
+vi.mock("@/services/generation/qa-completion-capacity",()=>({authorizeQaCompletionCapacity:f.qaCompletion}));
+import { QA_COMPLETION_CONFIRMATION } from "@/domain/generation/qa-completion-capacity";
 import { DETECTIVES_COMPLETION_CONFIRMATION, DETECTIVES_EXTENSION_CONFIRMATION, DETECTIVES_TAIL_CONFIRMATION } from "@/domain/generation/detectives-completion-budget";
 import { LEAN_CAPACITY_RECOVERY_CONFIRMATION } from "@/domain/generation/lean-capacity-recovery";
 import { LEAN_COMPLETION_BUDGET_CONFIRMATION } from "@/domain/generation/lean-completion-budget";
-import { beginIdentitySourceRevisionAction, retryIdentitySourceRevisionAction, authorizeLeanCompletionBudgetAction, authorizeLeanCapacityRecoveryAction, authorizeDetectivesCompletionBudgetAction, authorizeDetectivesCompletionExtensionAction, authorizeDetectivesCompletionTailAction } from "../actions";
+import { beginIdentitySourceRevisionAction, retryIdentitySourceRevisionAction, authorizeLeanCompletionBudgetAction, authorizeLeanCapacityRecoveryAction, authorizeDetectivesCompletionBudgetAction, authorizeDetectivesCompletionExtensionAction, authorizeDetectivesCompletionTailAction, authorizeQaCompletionCapacityAction } from "../actions";
 const destination = "/admin/orders/game-synthetic", digest = "a".repeat(64);
 function form() {
   const data = new FormData(); data.set("gameId", "game-synthetic"); data.set("planSha256", digest);
   data.set("confirm", "repair-this-world-reference-from-full-source-v1"); return data;
 }
 beforeEach(() => {
+  f.qaCompletion.mockReset().mockResolvedValue({capMicroUsd:12000000});
   f.extension.mockReset().mockResolvedValue({ capMicroUsd: 8_000_000 });
   f.detectives.mockReset().mockResolvedValue({ capMicroUsd: 6_000_000 });
   f.appEnv = "qa"; f.admin = { id: "real-session-admin" };
   f.requestHeaders = new Headers({ origin: "https://qa.example.invalid", host: "qa.example.invalid", "sec-fetch-site": "same-origin" });
   f.qaAccess.mockReset().mockResolvedValue(undefined); f.apply.mockReset().mockResolvedValue({ applied: true }); f.revalidate.mockReset(); f.retry.mockReset().mockResolvedValue(undefined); f.grant.mockReset().mockResolvedValue({ capMicroUsd: 6_000_000 }); f.capacity.mockReset().mockResolvedValue({ capMicroUsd: 12_000_000 });
+});
+
+describe("existing MEDIUM QA completion action",()=>{
+  const completionForm=()=>{const data=form();data.set("confirm",QA_COMPLETION_CONFIRMATION);data.set("ownerAuthorizationSha256","b".repeat(64));return data;};
+  it("uses the authenticated actor and exact shown plan, never a supplied operator or cap",async()=>{
+    const data=completionForm();data.set("operatorId","forged-operator");data.set("capMicroUsd","999999999");
+    await expect(authorizeQaCompletionCapacityAction(data)).rejects.toThrow(`redirect:${destination}?qaCompletion=authorized`);
+    expect(f.qaCompletion).toHaveBeenCalledExactlyOnceWith({synthetic:true},{gameId:"game-synthetic",operatorId:"real-session-admin",expectedPlanSha256:digest,ownerAuthorizationSha256:"b".repeat(64)});
+  });
+  it.each(["production","no-admin","cross-origin","missing-origin","unconfirmed","duplicate-id","duplicate-plan","duplicate-evidence","malformed-evidence"])("refuses %s before any grant",async mode=>{
+    const data=completionForm();
+    if(mode==="production")f.appEnv="production";if(mode==="no-admin")f.admin=null;
+    if(mode==="cross-origin")f.requestHeaders.set("origin","https://attacker.invalid");if(mode==="missing-origin")f.requestHeaders.delete("origin");
+    if(mode==="unconfirmed")data.delete("confirm");if(mode==="duplicate-id")data.append("gameId","another-game");if(mode==="duplicate-plan")data.append("planSha256",digest);
+    if(mode==="duplicate-evidence")data.append("ownerAuthorizationSha256","b".repeat(64));if(mode==="malformed-evidence")data.set("ownerAuthorizationSha256","short");
+    await expect(authorizeQaCompletionCapacityAction(data)).rejects.toThrow(/redirect:/);expect(f.qaCompletion).not.toHaveBeenCalled();
+  });
 });
 describe("an authenticated administrator starts a bound source revision, never image approval", () => {
   it("binds the authenticated administrator and the exact plan digest, then returns to the order page", async () => {

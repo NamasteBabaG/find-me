@@ -51,6 +51,13 @@ export const en = {
     committed: "Total committed", reserved: "Included uncertain reserves", cap: "World cap", confirm: "I have explicit authorization for up to three reference candidates within this world's existing cap, including continuing after an unresolved reference attempt while keeping its full reserve. This is not image approval or permission to publish the rejected result.",
     begin: "Start reference repair", started: "Reference repair is authorized. The regular creation queue will draw and review the replacement, then reassess all 27 appearances. The rejected reference cannot be published.", blocked: "Reference repair did not start. Refresh to check the source, payment, job and historical charges.",
   },
+  adminQaCompletion: {
+    title: "Complete this existing QA game", description: "After explicit owner authorization, give this original MEDIUM QA world a cumulative working ceiling of $12. Existing charges, uncertain reservations, identity, image attempts and every automatic quality check remain. Only the saved work resumes.",
+    committed: "Total committed", reserved: "Included uncertain reserves", cap: "Cumulative working ceiling", evidence: "SHA-256 of the recorded owner authorization",
+    confirm: "The owner authorized the required completion expense for this existing QA game, including a $12 cumulative working ceiling and retained unknown charges. This grants capacity and queue continuation; every required picture still needs automatic approval.",
+    grant: "Authorize completion and resume retained work", authorized: "Completion capacity is recorded. The normal queue resumes the retained work with all quality checks.",
+    blocked: "Completion capacity was not recorded. Refresh and check the current owner, source, payment, job and financial history.",
+  },
   qaSubjectUpgrade: {
     title: "QA · Updated child appearance checks",
     description: "Continue this existing paid world with stricter likeness, age, varied actions and required clothing checks. All 27 hiding spots must pass. The existing budget and uncertain charges are preserved.",
