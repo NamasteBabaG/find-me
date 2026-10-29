@@ -56,6 +56,16 @@ describe("existing MEDIUM QA completion action",()=>{
     if(mode==="duplicate-evidence")data.append("ownerAuthorizationSha256","b".repeat(64));if(mode==="malformed-evidence")data.set("ownerAuthorizationSha256","short");
     await expect(authorizeQaCompletionCapacityAction(data)).rejects.toThrow(/redirect:/);expect(f.qaCompletion).not.toHaveBeenCalled();
   });
+  it.each(["database","bound-hold","private-error","prefixed-private-error"])("logs only a safe %s reason when a completion grant is refused",async mode=>{
+    const privateMessage="synthetic private source and financial details";
+    const error=mode==="database"?Object.assign(Error(privateMessage),{code:"P2028"}):Error(mode==="bound-hold"?"QA_COMPLETION: Concurrent completion state changed":mode==="prefixed-private-error"?"QA_COMPLETION: "+privateMessage:privateMessage);
+    f.qaCompletion.mockRejectedValue(error);const warning=vi.spyOn(console,"warn").mockImplementation(()=>{});
+    try{
+      await expect(authorizeQaCompletionCapacityAction(completionForm())).rejects.toThrow(`redirect:${destination}?qaCompletion=blocked`);
+      expect(warning).toHaveBeenCalledExactlyOnceWith("[qa-completion] blocked",{reason:mode==="database"?"P2028":mode==="bound-hold"?"concurrent-state":mode==="prefixed-private-error"?"bound-state":"unexpected"});
+      expect(JSON.stringify(warning.mock.calls)).not.toContain(privateMessage);
+    }finally{warning.mockRestore();}
+  });
 });
 describe("an authenticated administrator starts a bound source revision, never image approval", () => {
   it("binds the authenticated administrator and the exact plan digest, then returns to the order page", async () => {

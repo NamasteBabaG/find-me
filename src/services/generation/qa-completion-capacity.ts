@@ -1,4 +1,5 @@
 import { Prisma } from "@prisma/client";
+import { DbStorage } from "../../infra/storage/db";
 import type { Container } from "../container";
 import { env } from "../../lib/env";
 import { QA_COMPLETION_CAPACITY, QA_COMPLETION_CAP, qaCompletionCapacityId, qaCompletionStateSchema,
@@ -134,7 +135,7 @@ export async function authorizeQaCompletionCapacity(c: Container,input:{gameId:s
   demand(plan.planSha256===input.expectedPlanSha256&&plan.binding.state.ownerId===input.operatorId,"Owner or completion plan changed");
   return c.db.$transaction(async tx=>{
     await fenceLocalPatchImages(tx,input.gameId);
-    const scoped={...c,db:tx as Container["db"]},fresh=await planQaCompletionCapacity(scoped,input.gameId);
+    const scoped={...c,db:tx as Container["db"],storage:new DbStorage(tx)},fresh=await planQaCompletionCapacity(scoped,input.gameId);
     demand(fresh.planSha256===plan.planSha256,"Concurrent completion state changed");
     const body={...fresh.binding,planSha256:fresh.planSha256,operatorId:input.operatorId,ownerAuthorizationSha256:input.ownerAuthorizationSha256,
       authorizedAt:new Date().toISOString(),automaticExtension:false as const,requestsPreserved:true as const,attemptsPreserved:true as const,qualityPolicyPreserved:true as const};

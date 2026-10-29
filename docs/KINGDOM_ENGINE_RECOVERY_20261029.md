@@ -111,3 +111,13 @@ duplicate or foreign inventories fail closed. Core checks, the lean world file,
 all four Detective partitions, validators, build and private-asset audits must
 all pass in one run on the same commit before the existing QA release guard can
 authorize deployment.
+
+The live completion action also exposed a transaction-storage scope gap: its
+fenced recheck kept the outer `DbStorage` instance after switching the database
+client to the transaction. A limited connection pool could therefore wait on
+itself, and the source-byte read was outside the atomic snapshot. The completion
+transaction now binds both database and DB storage to the same transaction
+client, as the existing capacity-recovery paths do. A synthetic single-connection
+guard reproduces the failure on the previous implementation and qualifies both
+Kingdom families. Refused actions record only a fixed domain reason or a Prisma
+error code, never arbitrary exception text or private authorization evidence.

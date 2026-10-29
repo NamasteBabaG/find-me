@@ -46,8 +46,18 @@ export async function authorizeQaCompletionCapacityAction(fd:FormData):Promise<v
   try{const origin=h.get("origin"),host=h.get("x-forwarded-host")??h.get("host");sameOrigin=!!origin&&!!host&&new URL(origin).host===host&&h.get("sec-fetch-site")!=="cross-site";}catch{/* refuse invalid origin */}
   if(env().APP_ENV!=="qa"||!sameOrigin||fd.getAll("gameId").length!==1||fd.getAll("planSha256").length!==1||!/^[a-f0-9]{64}$/.test(planSha256)
     ||fd.getAll("ownerAuthorizationSha256").length!==1||!/^[a-f0-9]{64}$/.test(ownerAuthorizationSha256)
-    ||fd.getAll("confirm").length!==1||str(fd,"confirm")!==QA_COMPLETION_CONFIRMATION)redirect(`${destination}?qaCompletion=blocked`);
-  let granted=false;try{await authorizeQaCompletionCapacity(getContainer(),{gameId,operatorId:actor.id,expectedPlanSha256:planSha256,ownerAuthorizationSha256});granted=true;}catch{/* Safe operational notice only. */}
+    ||fd.getAll("confirm").length!==1||str(fd,"confirm")!==QA_COMPLETION_CONFIRMATION){
+    console.warn("[qa-completion] blocked",{reason:"request-validation"});redirect(`${destination}?qaCompletion=blocked`);
+  }
+  let granted=false;try{await authorizeQaCompletionCapacity(getContainer(),{gameId,operatorId:actor.id,expectedPlanSha256:planSha256,ownerAuthorizationSha256});granted=true;}catch(error){
+    // Diagnose the hold without logging SQL, credentials, private paths, source
+    // pixels, authorization digests or arbitrary exception messages.
+    const code=typeof error==="object"&&error&&"code" in error&&typeof error.code==="string"&&/^P\d{4}$/.test(error.code)?error.code:null;
+    const holds:Record<string,string>={"QA_COMPLETION: Owner or completion plan changed":"plan-changed",
+      "QA_COMPLETION: Concurrent completion state changed":"concurrent-state","QA_COMPLETION: Completion hold changed before authorization":"hold-changed"};
+    const reason=code??(error instanceof Error?(holds[error.message]??(error.message.startsWith("QA_COMPLETION: ")?"bound-state":"unexpected")):"unexpected");
+    console.warn("[qa-completion] blocked",{reason});
+  }
   revalidatePath(destination);redirect(`${destination}?qaCompletion=${granted?"authorized":"blocked"}`);
 }
 

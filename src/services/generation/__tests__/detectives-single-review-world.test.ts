@@ -646,7 +646,19 @@ it.each(["detectives","explorers"] as const)("authorizes one source-bound %s Kin
   await expect(authorizeQaCompletionCapacity(c,input)).rejects.toThrow("plan changed");
   expect(await db.auditLog.findUnique({where:{id:qaCompletionCapacityId(gameId)}})).toBeNull();
   ledger=await db.worldBudgetLedger.findUniqueOrThrow({where:{worldId}});plan=await planQaCompletionCapacity(c,gameId);input.expectedPlanSha256=plan.planSha256;
-  const pin=await authorizeQaCompletionCapacity(c,input);expect(pin.capMicroUsd).toBe(QA_COMPLETION_CAP);
+  const originalGet=c.storage.get.bind(c.storage),originalTransaction=db.$transaction.bind(db);
+  let inGrantTransaction=false,externalSourceReads=0;
+  const sourceRead=vi.spyOn(c.storage,"get").mockImplementation(async key=>{
+    externalSourceReads++;
+    if(inGrantTransaction)throw Error("Synthetic single-connection guard: completion source escaped transaction");
+    return originalGet(key);
+  });
+  const transaction=vi.spyOn(db,"$transaction").mockImplementation(((work:(tx:import("@prisma/client").Prisma.TransactionClient)=>Promise<unknown>,options?:unknown)=>
+    originalTransaction(async tx=>{inGrantTransaction=true;try{return await work(tx);}finally{inGrantTransaction=false;}},options as never)) as typeof db.$transaction);
+  let pin;
+  try{pin=await authorizeQaCompletionCapacity(c,input);expect(externalSourceReads).toBeGreaterThan(0);}
+  finally{transaction.mockRestore();sourceRead.mockRestore();}
+  expect(pin.capMicroUsd).toBe(QA_COMPLETION_CAP);
   expect(await qaCompletionCapacityStatus(c,gameId)).toMatchObject({ownerId:game.ownerId,capMicroUsd:QA_COMPLETION_CAP,status:"active"});
   expect(await authorizeQaCompletionCapacity(c,input)).toEqual(pin);
   expect(await db.auditLog.count({where:{id:qaCompletionCapacityId(gameId)}})).toBe(1);
