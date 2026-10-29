@@ -224,3 +224,22 @@ They preserve the old paid question, reject refunded or newly UNKNOWN work, and
 prove that corrected pixels still need a new complete review. The painter and
 review transport in these tests are synthetic; real crown, likeness and style
 acceptance must still be established by the live engine.
+
+## Preserved repair context after a guided third
+
+A guided third can retain a completed repair cycle whose frozen context names
+attempt two. The existing source-bound QA completion authority can start the
+next unused cycle at attempt three only after authenticating the prior source
+asset, its retained MEDIUM answer and background intent, and the paid third
+painting's ledger receipt. Changed source context, an in-flight diagnosis, a
+previously bought next-cycle key, or withdrawn completion authority still fail.
+The same checks run again under the transaction fence and its scoped storage.
+
+This free transition archives the full previous receipt and its context hashes;
+attempts, prior cycles, costs and every purchase remain unchanged. The next
+cycle receives the current third-painting refusal and its retained RAW alongside
+the old inventory. The preserved second-attempt decision is never mislabeled as
+the source or outcome of the third painting. Publication still needs a new
+ordinary image-bound MEDIUM pass. Controlled integrations cover both Kingdom
+families and both concluded prior-cycle phases with no provider purchases during
+the transition.

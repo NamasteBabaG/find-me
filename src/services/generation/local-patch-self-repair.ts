@@ -7,6 +7,8 @@ import { z } from "zod";
 import { LEGACY_PAID_JOIN_HEAD_VERSION } from "../../domain/generation/legacy-paid-join-head";
 import { targetHeadRepairContext, targetHeadRepairContextSchema } from "../../domain/generation/target-head-return";
 import { singleReviewHeadEvidenceMatches } from "./single-review-head-evidence";
+import { qaGuidedRepairContextTransition } from "./qa-guided-repair-context";
+import { DbStorage } from "../../infra/storage/db";
 import type { Container } from "../container";
 import { cropOf, maskForHide, type LocalPatchBoard, type LocalPatchHide } from "../../domain/scene/local-patch-hides";
 import { SELF_REPAIR_VERSION, SELF_REPAIR_COMPOSITION_VERSION, selfRepairDecisionSchema, selfRepairRecipe, selfRepairExcludedRegions,
@@ -163,15 +165,18 @@ export async function runLocalPatchSelfRepair(c: Container, input: { gameId: str
   if (authoredReturn) demand(placement?.sourceNeighbors && authoredReturn.sourcePlacement, "Authored recovery requires a source-annotated trusted companion");
   const authoredContext = authoredReturn ? { version: AUTHORED_RECOVERY_CONTEXT_VERSION,
     parentSha256: authoredRecoveryParentSha256(authoredReturn), sourcePngSha256: sha256Bytes(original) } : undefined;
-  const crop = cropOf(hide), contextSha256 = hash({ gameId, rowId: row.id, attempts: row.attempts, hide,
+  const crop = cropOf(hide), contextTerms = { gameId, rowId: row.id, attempts: row.attempts, hide,
     originalSha256: sha256Bytes(original), identitySha256, ageYears: child.ageYears, policy: deps.renderPolicySha256, promptVersion: row.promptVersion,
-    ...(authoredReturn ? { authoredReturn } : {}) });
+    ...(authoredReturn ? { authoredReturn } : {}) }, contextSha256 = hash(contextTerms);
   // A v18 row's outline: restored in every join, told to the diagnosis, and never
   // allowed over a plan's face or protected child (refused before any image purchase).
   const foreground = foregroundForPinnedPrompt(hide, row.promptVersion);
   let state: State | null = previous.selfRepair ? stateSchema.parse(previous.selfRepair) : null;
-  if (state) demand(state.contextSha256 === contextSha256, "Pinned recovery context changed");
-  if (state && (state.phase === "rejected" && nativeSizeSelfRepairWork(row.judgeJson)
+  const transitionInput = { gameId, ownerId: game.ownerId, sceneVersion: scene.sceneVersion, hideId: hide.id, pose: hide.pose, row,
+    previousContextSha256: hash({ ...contextTerms, attempts: 2 }), contextSha256 };
+  const guidedContextTransition = state && state.contextSha256 !== contextSha256 ? await qaGuidedRepairContextTransition(c, transitionInput) : null;
+  if (state) demand(state.contextSha256 === contextSha256 || guidedContextTransition, "Pinned recovery context changed");
+  if (state && !guidedContextTransition && (state.phase === "rejected" && nativeSizeSelfRepairWork(row.judgeJson)
     || state.phase === "applying" && state.nativeSizeReplay?.cycle === state.cycle)) {
     demand(nativeSizeSelfRepairWork(row.judgeJson), "Native replay marker changed");
     if (state.phase === "applying") demand(state.nativeSizeReplay!.priorStateSha256
@@ -201,8 +206,11 @@ export async function runLocalPatchSelfRepair(c: Container, input: { gameId: str
     if (upgrade && (state?.subjectV2Cycles ?? 0) >= SUBJECT_V2_REPAIR_CYCLES) return;
     const history = state?.history ?? [];
     if (state?.decision && state.phase === "awaiting-review") history.push({ recipe: selfRepairRecipe(state.decision),
-      cause: state.decision.cause, result: row.lastError ?? "visual-review-refused", imageSha256: previous.judgedSha256 ?? null });
-    const failedSource = refusedCompositionSource(previous, state, hide, row.attempts);
+      cause: state.decision.cause, result: guidedContextTransition ? "visual-review-refused-before-guided-third" : row.lastError ?? "visual-review-refused",
+      imageSha256: guidedContextTransition?.sourceImageSha256 ?? previous.judgedSha256 ?? null });
+    // A guided third is a different paid painting. The preserved cycle belongs
+    // to attempt2, so its old decision is not the source of today's refusal.
+    const failedSource = refusedCompositionSource(previous, guidedContextTransition ? null : state, hide, row.attempts);
     const refusal = upgrade && plan ? subjectRefusalOf(previous, plan, upgrade.ageYears) : null;
     const quality = previous.boardReview?.dual?.quality, proof = quality?.headEvidence;
     // Historical legacy joins may name a different RAW. Never propagate that
@@ -214,9 +222,11 @@ export async function runLocalPatchSelfRepair(c: Container, input: { gameId: str
     state = { version: SELF_REPAIR_VERSION, cycle: (state?.cycle ?? 0) + 1, phase: "diagnosing", contextSha256,
       ...(authoredContext ? { authoredContext } : {}),
       ...(headContext ? { headContext } : {}),
-      decision: null, history, feedback: (state?.phase === "rejected" ? state.feedback : row.lastError ?? "Two completed attempts did not produce a publishable appearance").slice(0, 1200),
-      sourceKeys: state?.sourceKeys ?? Array.from({ length: row.attempts }, (_, i) => `${hide.id}:${hide.pose}:render:${i + 1}`),
-      ...(state?.nativeSizeReplay ? { nativeSizeReplay: state.nativeSizeReplay } : {}),
+      decision: null, history, feedback: (state?.phase === "rejected" && !guidedContextTransition ? state.feedback
+        : row.lastError ?? "Two completed attempts did not produce a publishable appearance").slice(0, 1200),
+      sourceKeys: guidedContextTransition ? [...new Set([...(state?.sourceKeys ?? []), `${hide.id}:${hide.pose}:render:3`])]
+        : state?.sourceKeys ?? Array.from({ length: row.attempts }, (_, i) => `${hide.id}:${hide.pose}:render:${i + 1}`),
+      ...(state?.nativeSizeReplay && !guidedContextTransition ? { nativeSizeReplay: state.nativeSizeReplay } : {}),
       ...(hasLocalPatchCapability(scene.sceneVersion, "integratedQuality") ? { excludedRegions: selfRepairExcludedRegions(crop, board.hides.filter(h => h.id !== hide.id).map(cropOf)) } : {}),
       ...(hasLocalPatchCapability(scene.sceneVersion, "integratedQuality") && previous.boardReview?.assessmentMode === PLAYER_REVIEW_MODE ? { boundaryContext: true as const } : {}),
       ...(upgrade ? { subjectV2Cycles: (state?.subjectV2Cycles ?? 0) + 1 } : {}),
@@ -250,9 +260,20 @@ export async function runLocalPatchSelfRepair(c: Container, input: { gameId: str
       && sha256Bytes(Buffer.from(blob.data)) === identitySha256
       && orders.some(o => o.paymentStatus === "PAID" && o.userId === game.ownerId && o.paidAt && !o.refundedAt)
       && !orders.some(o => o.paymentStatus === "REFUNDED" || o.refundedAt), "Recovery identity, ownership or payment changed");
+    if (guidedContextTransition) {
+      const scoped = { ...c, db: tx as Container["db"], storage: new DbStorage(tx) };
+      const live = await qaGuidedRepairContextTransition(scoped, transitionInput);
+      demand(live && JSON.stringify(live) === JSON.stringify(guidedContextTransition), "Guided completion context changed");
+    }
   };
   const save = async (changes: Partial<State>, costCents = 0) => c.db.$transaction(async tx => {
     await fenced(tx);
+    if (guidedContextTransition) await tx.auditLog.create({ data: {
+      id: "aud_qa_guided_ctx_" + hash([gameId, row.id, row.judgeJson, contextSha256]).slice(0, 32), actorType: "SYSTEM",
+      action: "local-patch:qa-guided-repair-context", entityType: "Game", entityId: gameId,
+      metaJson: JSON.stringify({ ...guidedContextTransition, variantId: row.id, previousJudgeJson: row.judgeJson,
+        requestsPreserved: true, attemptsPreserved: true, providerCalls: 0 }),
+    } });
     await tx.targetVariantAsset.update({ where: { id: row.id }, data: {
       judgeJson: JSON.stringify({ ...previous, selfRepair: authoredContext ? stateSchema.parse({ ...active, ...changes }) : { ...active, ...changes } }), costCents: row.costCents + Math.ceil(costCents),
     } });
