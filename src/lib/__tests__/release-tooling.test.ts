@@ -25,6 +25,28 @@ describe("reviewed release tooling", () => {
     expect(build).toContain("DATABASE_URL: file:./ci.db");
     expect(build).toMatch(/npx prisma db push --schema prisma\/schema.prisma --skip-generate\r?\n          npm run build/);
   });
+  it("partitions every expanded world scenario exactly once and rejects ambiguous inventories", async () => {
+    const { planWorldShard, WORLD_TEST_FILE, WORLD_TEST_SHARDS } = await import(pathToFileURL(path.resolve("scripts/ci-detective-worlds.mjs")).href);
+    const names = Array.from({ length: 32 }, (_, i) => `synthetic case ${i}: [a.b]+ (repair)? $ ^ | \\`);
+    const inventory = names.map(name => ({ name, file: "/synthetic/" + WORLD_TEST_FILE }));
+    const plans = Array.from({ length: WORLD_TEST_SHARDS }, (_, i) => planWorldShard(inventory, i + 1));
+    expect(plans.flatMap(plan => plan.selected).sort()).toEqual([...names].sort());
+    for (const name of names) {
+      expect(plans.filter(plan => new RegExp(plan.testNamePattern).test(name))).toHaveLength(1);
+      expect(plans.some(plan => new RegExp(plan.testNamePattern).test("prefix " + name))).toBe(false);
+    }
+    for (const invalid of [[], [...inventory, inventory[0]], [{ name: "foreign", file: "/synthetic/foreign.test.ts" }],
+      [{ name: "", file: "/synthetic/" + WORLD_TEST_FILE }]]) expect(() => planWorldShard(invalid, 1)).toThrow();
+    for (const invalid of [0, 5, 1.5]) expect(() => planWorldShard(inventory, invalid)).toThrow();
+  });
+  it("requires core, lean and all isolated Detective world jobs before the quality gate can pass", () => {
+    const workflow = readFileSync(".github/workflows/quality.yml", "utf8");
+    expect(workflow).toContain("needs: [checks, lean-world, detective-world]");
+    expect(workflow).toContain("shard: [1, 2, 3, 4]");expect(workflow).toContain("fail-fast: false");
+    expect(workflow).toContain("node scripts/ci-detective-worlds.mjs --shard ${{ matrix.shard }}/4");
+    expect(workflow).toContain('test "$DETECTIVE_RESULT" = success');
+    expect(workflow).toContain("--exclude src/services/generation/__tests__/detectives-single-review-world.test.ts");
+  });
   it("requires a clean commit on a freshly verified remote, while allowing detached release snapshots", () => {
     const root = mkdtempSync(path.join(tmpdir(), "findme-release-guard-"));
     const repo = path.join(root, "repo"), remote = path.join(root, "remote.git");

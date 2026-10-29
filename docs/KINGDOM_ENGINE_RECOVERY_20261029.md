@@ -98,3 +98,16 @@ retention, so hours-old responses may no longer be retrievable. Their full
 reserves remain until a genuine charge can be established. The first real guide
 repairs still need a measured size/pose and pass-rate check; synthetic rectangle
 tests do not qualify real child scale or image-reference comprehension.
+
+## Complete CI scheduling
+
+The unpartitioned Detective integration file exceeded the core job's 100-minute
+limit while still running complete-world scenarios. Its assertions and per-test
+limits remain unchanged. CI now collects all expanded test names, sorts them and
+assigns each exactly once across four isolated runners using an exact escaped
+name pattern. Each runner checks that Vitest collects precisely its assigned
+cases before executing them. New cases join the partition automatically; empty,
+duplicate or foreign inventories fail closed. Core checks, the lean world file,
+all four Detective partitions, validators, build and private-asset audits must
+all pass in one run on the same commit before the existing QA release guard can
+authorize deployment.

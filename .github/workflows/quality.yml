@@ -12,10 +12,8 @@ jobs:
   checks:
     name: Core quality and privacy
     runs-on: ubuntu-latest
-    # The controlled lean-world file has its own runner; every other test,
-    # validators and the private-asset build audit stay in this job.
-    # The core job also runs both native-context all-27 continuation fixtures.
-    # Keep the complete suite and every assertion; allow measured runner margin.
+    # The two expensive complete-world files have isolated runners below.
+    # Every other test, validators and the private-asset build audit stay here.
     timeout-minutes: 100
     env:
       APP_COMMIT: ${{ github.sha }}
@@ -28,7 +26,7 @@ jobs:
           cache: npm
       - run: npm ci
       - name: Typecheck and core tests
-        run: npm run check -- --maxWorkers=4 --exclude src/services/generation/__tests__/local-patch-lean-world.test.ts
+        run: npm run check -- --maxWorkers=4 --exclude src/services/generation/__tests__/local-patch-lean-world.test.ts --exclude src/services/generation/__tests__/detectives-single-review-world.test.ts
       - run: npm run scenes:validate
       - run: npm run adventures:validate
       - name: Production build and private-asset audit
@@ -70,15 +68,39 @@ jobs:
       - name: No lean generated source drift
         run: git diff --exit-code
 
+  detective-world:
+    name: Complete Detective worlds (${{ matrix.shard }}/4)
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
+    env:
+      APP_COMMIT: ${{ github.sha }}
+      NEXT_TELEMETRY_DISABLED: 1
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Every collected scenario assigned exactly once
+        run: node scripts/ci-detective-worlds.mjs --shard ${{ matrix.shard }}/4
+      - name: No Detective generated source drift
+        run: git diff --exit-code
+
   # Preserve the required verify status. A skipped, failed or cancelled part
   # cannot turn the full quality gate green, even when the other job passed.
   verify:
-    needs: [checks, lean-world]
+    needs: [checks, lean-world, detective-world]
     if: always()
     runs-on: ubuntu-latest
     steps:
-      - name: Both complete quality jobs passed
+      - name: Every complete quality job passed
         env:
           CORE_RESULT: ${{ needs.checks.result }}
           LEAN_RESULT: ${{ needs.lean-world.result }}
-        run: test "$CORE_RESULT" = success && test "$LEAN_RESULT" = success
+          DETECTIVE_RESULT: ${{ needs.detective-world.result }}
+        run: test "$CORE_RESULT" = success && test "$LEAN_RESULT" = success && test "$DETECTIVE_RESULT" = success
