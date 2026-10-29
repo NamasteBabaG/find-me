@@ -34,8 +34,13 @@ export function legacyHeadCorrectionCandidate(row: { status: string; assetId: st
   if (!row || !row.assetId || !["FAILED", "GENERATED"].includes(row.status)) return false;
   try {
     const j = object(JSON.parse(row.judgeJson ?? "null")), verdict = object(j?.verdict);
-    if (!j || j.headSourceVersion !== undefined || object(j.selfRepair)?.phase === "applying" || verdict?.verdict === "pass" || typeof j.hide !== "string" || typeof j.pose !== "string"
-      || !legacyPaidJoinHeadPlan(j, { id: j.hide, pose: j.pose }, row.attempts)) return false;
+    if (!j || j.headSourceVersion !== undefined || object(j.selfRepair)?.phase === "applying" || verdict?.verdict === "pass" || typeof j.hide !== "string" || typeof j.pose !== "string") return false;
+    const plan = legacyPaidJoinHeadPlan(j, { id: j.hide, pose: j.pose }, row.attempts); if (!plan) return false;
+    const proof = object(object(object(object(j.boardReview)?.dual)?.quality)?.headEvidence), returned = object(proof?.returned);
+    // No input error means no corrected question is owed. A real crown defect
+    // must retain its ordinary finite repair path, never wait on a no-op.
+    if (proof?.sourceRequestKey === plan.sourceRequestKey && returned
+      && (["left", "top", "width", "height"] as const).every(k => returned[k] === plan.returned[k])) return false;
     if (verdict?.verdict !== "fail") return true;
     return Array.isArray(verdict.faults) && verdict.faults.length > 0 && verdict.faults.every(value => {
       const f = object(value); return f?.check === "childComplete" && typeof f.where === "string" && f.where.startsWith("HEAD_RETURN:");

@@ -205,6 +205,9 @@ pass all roles and the corrected head check. That judge can add its ordinary
 charge; correction itself buys no image or diagnosis. An already dispatched
 diagnosis keeps its exact question and recovery path. Pending/conflicting charges,
 a new UNKNOWN outcome or a withdrawn authority prevent this correction.
+When the recorded head question already used the actual RAW and return, its
+visual refusal stays on the ordinary bounded repair path; it never waits on
+an input correction that would make no change.
 
 New diagnosis cycles can also freeze the last authenticated MEDIUM head locations
 and its RAW/shipping crown findings. This gives the planner exact crop coordinates
