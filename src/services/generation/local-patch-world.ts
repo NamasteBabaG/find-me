@@ -13,6 +13,8 @@ import { qaCompletionGuidedRepair } from "../../domain/generation/qa-completion-
 import { readQaCompletionCapacity, resumeQaCompletionRecovery } from "./qa-completion-capacity";
 import { reconcileLegacyPaidJoinHead } from "./legacy-paid-join-head-recovery";
 import { legacyHeadCorrectionCandidate } from "../../domain/generation/legacy-paid-join-head";
+import { reconcileVisibleHeadPolicy } from "./visible-head-policy-recovery";
+import { restoreRetainedNormalHead } from "./retained-normal-head-recovery";
 import { detectivesNativeMaskTail } from "./detectives-completion-budget";
 import { singleLowReviewAuthorization as detectivesSingleReviewAuthorization, hasSingleLowCapacity as hasDetectivesLowCapacity } from "./single-low-policy";
 import { hasLocalPatchCapability } from "../../domain/scene/local-patch-family";
@@ -590,6 +592,10 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
   const legacyHead = completionAuthority ? await reconcileLegacyPaidJoinHead(c, gameId, rows, fence) : { changed: false, continuePaidRows: [] as string[] };
   if (legacyHead.changed) rows = await c.db.targetVariantAsset.findMany({ where: { variant: LOCAL_PATCH_VARIANT, targetInstance: { gameScene: { gameId } } },
     include: { targetInstance: { select: { targetId: true, gameSceneId: true } } } });
+  if (completionAuthority && await reconcileVisibleHeadPolicy(c, gameId, rows, fence)) rows = await c.db.targetVariantAsset.findMany({
+    where: { variant: LOCAL_PATCH_VARIANT, targetInstance: { gameScene: { gameId } } }, include: { targetInstance: { select: { targetId: true, gameSceneId: true } } } });
+  if (completionAuthority && await restoreRetainedNormalHead(c, gameId, rows, fence, deps.readBoardArt)) rows = await c.db.targetVariantAsset.findMany({
+    where: { variant: LOCAL_PATCH_VARIANT, targetInstance: { gameScene: { gameId } } }, include: { targetInstance: { select: { targetId: true, gameSceneId: true } } } });
   const legacyReviewOwed = (row: typeof rows[number] | undefined) => !!completionAuthority && !!row
     && !legacyHead.continuePaidRows.includes(row.id) && legacyHeadCorrectionCandidate(row);
   const completionRepair = (row: Parameters<typeof qaCompletionGuidedRepair>[0]) =>

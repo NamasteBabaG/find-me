@@ -243,3 +243,41 @@ the source or outcome of the third painting. Publication still needs a new
 ordinary image-bound MEDIUM pass. Controlled integrations cover both Kingdom
 families and both concluded prior-cycle phases with no provider purchases during
 the transition.
+
+## Visible head completeness and retained normal candidates
+
+New candidate writers explicitly mark `target-head-return/v2-visible-completeness`.
+The painter's 12px planning clearance remains guidance. The new MEDIUM question
+inspects actual hair, scalp, opaque headwear and face loss in RAW and SHIPPING;
+transparent helmet glass is not anatomical crown. Numeric clearance below 12px
+alone cannot refuse an intact head. Located bounds must still remain at least
+1px inside every actual return edge. Reported shaving, fading or other visible
+loss, uncertainty and material RAW/shipping discrepancies retain their repair or
+unresolved outcomes. All other quality, subject, neighbor and continuity gates
+remain mandatory. A new answer must name the exact new version; historical
+unmarked receipts, paid v1 prompts and their decisions retain their old meaning.
+
+An original source-bound QA completion grant may transition a concluded,
+authenticated head-only candidate to a fresh ordinary MEDIUM question on the
+same pixels. This buys no painting or diagnosis and manufactures no verdict.
+The old complete receipt is archived. A refund, changed ownership, altered
+pixels/geometry/identity, pending or newly UNKNOWN charges, or an in-flight
+repair phase prevents this transition. The financial snapshot, attempts and
+repair cycles are preserved.
+
+When a concluded second-attempt repair or failed guided third superseded an earlier good normal painting, the
+worker may reproduce at most the two original settled normal renders. Selection
+requires the owned stored image, exact paid RAW, deterministic original-source
+composition, original review intent and settlement, and positive original
+quality, subject, neighbor and continuity readings. The located old crown must
+qualify for close-edge reassessment. A fenced versioned audit binds the selected
+normal request and pixels, rather than pretending that a row's high-water third
+attempt produced them. The row keeps its historical attempts, cycles and costs.
+A later permitted diagnosis names that restored paid RAW, even when a later
+repair state is retained for its counters. Its authenticated head/source binding
+is checked before any such diagnostic purchase.
+A new MEDIUM question and every normal publication check must still pass. The
+same image cannot be restored repeatedly under that grant. Controlled tests
+cover both Kingdom source families, foreign ownership, changed bytes, lost
+fences, fresh review requirements and forged source keys. Game deletion redacts
+these private assessment archives while retaining the separate accounting ledger.

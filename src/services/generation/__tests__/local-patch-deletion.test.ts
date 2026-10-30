@@ -68,7 +68,8 @@ describe("local-patch deletion through the owner/admin game action", () => {
     await run(gameId);
     const other = await seedApprovedGame(c, db, { gameId: "other-pilot-game", styleVersion: LOCAL_PATCH_STYLE,
       status: "TARGETS_GENERATING", withJob: true, scenes: [{ slug: BOARD.board, version: LOCAL_PATCH_SCENE_VERSION }] });
-    const actions = ["local-patch:quality-pilot", "local-patch:quality-pilot:review-requeued", "local-patch:extra-attempt", "local-patch:partial-release"];
+    const actions = ["local-patch:quality-pilot", "local-patch:quality-pilot:review-requeued", "local-patch:extra-attempt", "local-patch:partial-release",
+      "local-patch:legacy-head-source-corrected", "local-patch:qa-guided-repair-context", "local-patch:visible-head-policy-corrected", "local-patch:retained-normal-head-restored"];
     for (const [prefix, entityId] of [["deleted", gameId], ["retained", other.gameId]] as const) {
       for (const [index, action] of actions.entries()) await db.auditLog.create({ data: {
         id: `pilot-${prefix}-${index}`, actorType: "SYSTEM", action, entityType: "Game", entityId,

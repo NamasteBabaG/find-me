@@ -169,6 +169,16 @@ describe("subject-diagnosis/v1: the refused child's source painting is bound to 
       .toBe("newyork-v12-1:standing:render:1");
   });
 
+  it("diagnoses the restored normal RAW despite preserved later repair counters, never a foreign or changed candidate",()=>{
+    const digest='a'.repeat(64),marker={version:'retained-normal-head/v1',auditId:'aud_normal_head_'+'b'.repeat(40),authorizationSha256:digest,
+      sourceRequestKey:hide.id+':standing:render:2',sourceFingerprint:digest,sourcePayloadSha256:digest,normalizedRawSha256:digest,
+      shippingSha256:digest,geometrySha256:digest,identitySha256:digest,originalAttempt:2,sourceReviewRequestKey:'synthetic-review',sourceReviewFingerprint:digest};
+    const previous={judgedSha256:digest,retainedNormalHead:marker},oldCycle={phase:'awaiting-review' as const,cycle:3,decision:plan('redraw-with-new-placement',hide.id+':standing:render:1')};
+    expect(refusedCompositionSource(previous,oldCycle,hide,3)).toBe(hide.id+':standing:render:2');
+    expect(refusedCompositionSource({...previous,retainedNormalHead:{...marker,sourceRequestKey:'foreign-hide:standing:render:2'}},oldCycle,hide,3)).toBeNull();
+    expect(refusedCompositionSource({...previous,judgedSha256:'c'.repeat(64)},oldCycle,hide,3)).toBeNull();
+  });
+
   it("refuses recomposing the refused child's painting, and any painting when its source is unknown", () => {
     expect(recomposeRefusedBySubject(context("k:render:2"), plan("recompose-retained", "k:render:2"))).toContain("cannot be fixed by recomposing");
     expect(recomposeRefusedBySubject(context("k:render:2"), plan("recompose-retained", "k:render:1"))).toBeNull();

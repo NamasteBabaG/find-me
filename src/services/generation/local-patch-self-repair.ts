@@ -5,7 +5,8 @@ import { Prisma } from "@prisma/client";
 import sharp from "sharp";
 import { z } from "zod";
 import { LEGACY_PAID_JOIN_HEAD_VERSION } from "../../domain/generation/legacy-paid-join-head";
-import { targetHeadRepairContext, targetHeadRepairContextSchema } from "../../domain/generation/target-head-return";
+import { targetHeadRepairContext, targetHeadRepairContextSchema, TARGET_HEAD_VISIBLE_VERSION } from "../../domain/generation/target-head-return";
+import { retainedNormalHeadSchema } from "../../domain/generation/retained-normal-head";
 import { singleReviewHeadEvidenceMatches } from "./single-review-head-evidence";
 import { qaGuidedRepairContextTransition } from "./qa-guided-repair-context";
 import { DbStorage } from "../../infra/storage/db";
@@ -92,6 +93,11 @@ export function savedApplyingRepairOf(judgeJson: string | null): State | null {
  */
 export function refusedCompositionSource(previous: Record<string, unknown> | null,
   state: Pick<State, "phase" | "cycle" | "decision" | "subjectContext"> | null, hide: Pick<LocalPatchHide, "id" | "pose">, attempts: number): string | null {
+  if(previous?.retainedNormalHead!==undefined){
+    const p=retainedNormalHeadSchema.safeParse(previous.retainedNormalHead);
+    return p.success&&p.data.originalAttempt<=attempts&&p.data.sourceRequestKey===`${hide.id}:${hide.pose}:render:${p.data.originalAttempt}`
+      &&p.data.shippingSha256===previous.judgedSha256?p.data.sourceRequestKey:null;
+  }
   const recorded = typeof previous?.compositionSource === "string" ? previous.compositionSource : null;
   if (state?.phase === "awaiting-review" && state.decision) return recorded
     ?? (state.decision.action === "recompose-retained" ? state.decision.sourceKey : `${hide.id}:${hide.pose}:self-repair:${state.cycle}`);
@@ -155,6 +161,10 @@ export async function runLocalPatchSelfRepair(c: Container, input: { gameId: str
   demand(identity.ownerId === game.ownerId && identity.visibility === "PRIVATE" && identity.type === "IDENTITY_SHEET"
     && identity.status === "READY" && !identity.deletedAt, "Canonical identity is unavailable");
   const sheet = await c.storage.get(identity.storagePath), identitySha256 = sha256Bytes(sheet);
+  if(previous.retainedNormalHead!==undefined)demand(await singleReviewHeadEvidenceMatches(c.db,{gameId,hideId:hide.id,
+    imageSha256:previous.judgedSha256,attempts:row.attempts,sceneVersion:scene.sceneVersion,
+    geometrySha256:localPatchPublicationGeometryHash(row),identitySha256,judgeJson:row.judgeJson},previous.boardReview?.dual?.quality?.headEvidence),
+    "Retained normal candidate source or head binding changed");
   const budget = boardWizardBudgetOf(c), worldId = boardWizardWorldId(gameId), store = new LocalPatchRetainedPurchaseStore(c, gameId, budget);
   await requireBoardWizardIdentityApproval(c, budget, { gameId, identityAssetId: identity.id, sheetSha256: identitySha256,
     catalogSha256: await identityStyleCatalogSha256(scene.sceneSlug, scene.sceneVersion), photoAssetId: child.originalPhotoAssetId, ageYears: child.ageYears,
@@ -526,6 +536,8 @@ export async function runLocalPatchSelfRepair(c: Container, input: { gameId: str
     const receipt = { ...previous, verdict: null, wireFault: null, boardReview: undefined, qualityDisposition: undefined,
       reviewState: "pending-board-review", compositionVersion: authoredRecovery ? AUTHORED_RECOVERY_COMPOSITION_VERSION : SELF_REPAIR_COMPOSITION_VERSION,
       headSourceVersion: authoredRecovery ? undefined : LEGACY_PAID_JOIN_HEAD_VERSION, legacyHeadRecovery: undefined,
+      headPolicyVersion: TARGET_HEAD_VISIBLE_VERSION,
+      retainedNormalHead: undefined, visibleHeadRecovery: undefined,
       ...(authoredRecovery ? { authoredReturn: authoredReturn!, authoredRecovery } : {}),
       judgedSha256: joined.candidateSha256, geometrySha256: localPatchPublicationGeometryHash(geometry),
       hide: hide.id, pose: hide.pose, seam: joined.audit.originalRawSeamReport, renderFault: null,

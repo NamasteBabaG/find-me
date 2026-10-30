@@ -11,6 +11,7 @@ import { singleLowReviewAuthorization, hasSingleLowCapacity } from "./single-low
 import { WorldBudgetError } from "./world-budget";
 import { hasLocalPatchCapability } from "../../domain/scene/local-patch-family";
 import { createHash } from "node:crypto";
+import { TARGET_HEAD_VISIBLE_VERSION } from "../../domain/generation/target-head-return";
 import { Prisma } from "@prisma/client";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
@@ -571,7 +572,7 @@ export async function runLocalPatchHide(c: Container, deps: LocalPatchHideDeps, 
     };
     const judgeJson = JSON.stringify({ ...guidedHistory, ...(adaptiveRecovery ? { adaptiveRecovery } : {}), verdict: attemptResult.verdict, seam: attemptResult.seam, judgedSha256: attemptResult.judgedSha256,
       ...(isLocalPatchStrictVersion(scene.sceneVersion) ? { compositionPermission: attemptResult.compositionPermission, compositionVersion: attemptResult.compositionVersion } : {}),
-      ...(isLocalPatchAdvisoryVersion(scene.sceneVersion) ? { wireFault: attemptResult.wireFault, reviewState: "pending-board-review", geometrySha256: localPatchPublicationGeometryHash(geometry) } : {}),
+      ...(isLocalPatchAdvisoryVersion(scene.sceneVersion) ? { wireFault: attemptResult.wireFault, reviewState: "pending-board-review", geometrySha256: localPatchPublicationGeometryHash(geometry), headPolicyVersion: TARGET_HEAD_VISIBLE_VERSION } : {}),
       ...(attemptResult.foreground ? { foreground: attemptResult.foreground } : {}),
       ...(attemptResult.authoredReturn ? { authoredReturn: attemptResult.authoredReturn } : {}),
         ...(attemptResult.sourceBodyComposition?{sourceBodyComposition:attemptResult.sourceBodyComposition}:{}),

@@ -1,4 +1,5 @@
 import { hasLocalPatchCapability } from "../../domain/scene/local-patch-family";
+import { TARGET_HEAD_VISIBLE_VERSION } from "../../domain/generation/target-head-return";
 import { Prisma } from "@prisma/client";
 import sharp from "sharp";
 import type { Container } from "../container";
@@ -152,7 +153,7 @@ export async function recomposeLocalPatchHide(c: Container, input: {
   const auditId = `aud_lpc_${hash([gameId, row.id, row.attempts, LOCAL_PATCH_COMPOSITION_VERSION, imageSha256]).slice(0, 28)}`;
   const judgeJson = JSON.stringify({ verdict: null, wireFault: null, seam: result.report, compositionPermission: result.compositionPermission,
     ...(hasLocalPatchCapability(scene.sceneVersion, "integratedQuality") && playerReviewEnabled() ? { playerSeamReview: PLAYER_REVIEW_MODE } : {}),
-    compositionVersion: LOCAL_PATCH_COMPOSITION_VERSION, judgedSha256: imageSha256, geometrySha256: localPatchPublicationGeometryHash(geometry),
+    compositionVersion: LOCAL_PATCH_COMPOSITION_VERSION, headPolicyVersion: TARGET_HEAD_VISIBLE_VERSION, judgedSha256: imageSha256, geometrySha256: localPatchPublicationGeometryHash(geometry),
     geometryBasis: measured.basis, measuredFraction: Number(measured.measuredFraction.toFixed(4)), hide: hide.id, pose: hide.pose,
     reviewState: result.usable ? "pending-board-review" : "composition-refused", renderFault: result.usable ? null : `quality-seam: ${result.report.reason}`,
     renderPurchase: { requestKey, operationFingerprint: retained.operationFingerprint, payloadSha256: retained.payloadSha256 },

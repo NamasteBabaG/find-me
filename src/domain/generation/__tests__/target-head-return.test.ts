@@ -1,5 +1,7 @@
 import { describe,it,expect } from 'vitest';
-import { targetHeadReturnDecision as decide, targetHeadRepairContext, type TargetHeadEvidence } from '../target-head-return';
+import { createHash } from 'node:crypto';
+import { targetHeadReturnDecision as decide, targetHeadRepairContext, targetHeadReturnPrompt, targetHeadVersionOfReceipt,
+ TARGET_HEAD_VISIBLE_VERSION, type TargetHeadEvidence } from '../target-head-return';
 import { integrationDiagnosisPrompt } from '../../../services/generation/local-patch-integration-diagnosis';
 const evidence:TargetHeadEvidence={version:'target-head-return/v1',gameId:'synthetic-game',hideId:'synthetic-hide',sourceRequestKey:'synthetic-paid-image',
  sourceFingerprint:'a'.repeat(64),sourcePayloadSha256:'b'.repeat(64),normalizedRawSha256:'c'.repeat(64),shippingSha256:'d'.repeat(64),geometrySha256:'e'.repeat(64),identitySha256:'f'.repeat(64),
@@ -33,5 +35,45 @@ describe('one-answer native target crown gate',()=>{
  });
  it('rejects a partially supplied legacy composition binding',()=>{
   expect(decide(answer(),{...evidence,sourceBindingVersion:'legacy-paid-join-head/v1'} as TargetHeadEvidence).disposition).toBe('unresolved');
+ });
+});
+
+describe('versioned visible completeness rather than planning clearance',()=>{
+ const visible:TargetHeadEvidence={...evidence,version:TARGET_HEAD_VISIBLE_VERSION};
+ const fresh=(patch:object={})=>answer({version:TARGET_HEAD_VISIBLE_VERSION,...patch});
+ it('keeps the exact historical paid v1 question',()=>{
+  expect(createHash('sha256').update(targetHeadReturnPrompt(evidence)).digest('hex')).toBe('de7302d24cc9564c90ca3baa50b20402f2a9582ec6a4da5aa7db1a54cd4c0b43');
+  expect(targetHeadVersionOfReceipt({})).toBe('target-head-return/v1');
+  expect(()=>targetHeadVersionOfReceipt({headPolicyVersion:'invented'})).toThrow('unsupported');
+ });
+ it.each([6,10])('accepts an intact located head at %ipx after a NEW v2 assessment',clearance=>{
+  const intact={...head,top:visible.returned.top+clearance};
+  expect(decide(fresh({rawHead:intact,shippingHead:intact}),visible).disposition).toBe('pass');
+  expect(decide(answer({rawHead:intact,shippingHead:intact}),evidence).disposition).toBe('repair');
+ });
+ it('separates a transparent helmet enclosure from actual anatomical crown loss',()=>{
+  const enclosed={left:176,top:222,width:116,height:113},p={...visible,returned:{left:88,top:216,width:324,height:452}};
+  expect(decide(fresh({rawHead:enclosed,shippingHead:enclosed,observation:'Complete hair and face in RAW and SHIPPING; surrounding transparent glass is not missing hair.'}),p).disposition).toBe('pass');
+  expect(targetHeadReturnPrompt(p)).toContain('Transparent helmet glass');
+  expect(targetHeadReturnPrompt(p)).toContain('clearance smaller than12px is NOT');
+ });
+ it.each(['rawCrown','shippingCrown'])('still rejects actual %s loss even with entirely fitting bounds',field=>{
+  expect(decide(fresh({[field]:'fail'}),visible).disposition).toBe('repair');
+  expect(decide(fresh({[field]:'uncertain'}),visible).disposition).toBe('unresolved');
+ });
+ it.each([
+  {left:140,top:345,width:70,height:80}, {left:139,top:345,width:70,height:80},
+  {left:180,top:323,width:70,height:80}, {left:180,top:322,width:70,height:80},
+  {left:244,top:345,width:70,height:80}, {left:245,top:345,width:70,height:80},
+  {left:180,top:487,width:70,height:80}, {left:180,top:488,width:70,height:80},
+ ])('refuses touching or crossing any actual return edge: %j',located=>{
+  expect(decide(fresh({rawHead:located,shippingHead:located}),visible).disposition).toBe('repair');
+ });
+ it('requires matching question/answer versions and retains RAW geometry protection',()=>{
+  expect(decide(answer(),visible).disposition).toBe('unresolved');
+  expect(decide(fresh(),evidence).disposition).toBe('unresolved');
+  expect(decide(fresh({shippingHead:{...head,left:200}}),visible).disposition).toBe('repair');
+  expect(targetHeadRepairContext(fresh({shippingCrown:'fail'}),visible)?.evidence.version).toBe(TARGET_HEAD_VISIBLE_VERSION);
+  expect(targetHeadRepairContext(answer({shippingCrown:'fail'}),visible)).toBeNull();
  });
 });

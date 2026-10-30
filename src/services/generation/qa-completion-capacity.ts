@@ -21,6 +21,8 @@ import { QA_COMPLETION_RECOVERY, qaCompletionEngineRest, qaCompletionGuidedRepai
 import { localPatchReadyReviewOwed } from "../../domain/scene/local-patch-progress";
 import { nativeSizeSelfRepairWork } from "../../domain/scene/local-patch-self-repair";
 import { legacyHeadCorrectionCandidate } from "../../domain/generation/legacy-paid-join-head";
+import { visibleHeadPolicyRecoveryCandidate } from "../../domain/generation/visible-head-policy-recovery";
+import { retainedNormalHeadRecoveryCandidate } from "../../domain/generation/retained-normal-head";
 
 const ACTION = "generation:qa-medium-completion-capacity";
 const EXHAUSTED = "local-patch:recovery-exhausted";
@@ -172,7 +174,7 @@ export async function planQaCompletionRecovery(c: Container, gameId: string) {
   const rows = await c.db.targetVariantAsset.findMany({ where: { variant: "A", targetInstance: { gameScene: { gameId } } }, orderBy: { id: "asc" } });
   const ready = rows.filter(row => !!row.assetId && localPatchReadyReviewOwed(row, { required: true, identitySha256: receipt.state.identitySha256 }));
   const diagnose = rows.filter(row => qaCompletionGuidedRepair(row, receipt.state.sceneVersion, true) || row.status === "FAILED" && nativeSizeSelfRepairWork(row.judgeJson)
-    || legacyHeadCorrectionCandidate(row));
+    || legacyHeadCorrectionCandidate(row) || visibleHeadPolicyRecoveryCandidate(row) || retainedNormalHeadRecoveryCandidate(row));
   if (!ready.length && !diagnose.length) return null;
   // Job timestamps and our revision fence are deliberately absent from the
   // wake identity: unchanged failed work can never wake itself every minute.
