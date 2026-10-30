@@ -588,13 +588,19 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
   const nativeFourthPainting = (row: typeof rows[number] | undefined) => !!row && nativeTailRows.has(row.id) && nativeMaskTailCandidate(row);
   const guidedThirdPainting = (row: Parameters<typeof guidedFrameCandidate>[0] | undefined) => !!row && !!guideGrant
     && guideCapacity && !sourceBodyBirthMarker(row) && guidedFrameCandidate(row);
+  const readyReviewOwed = (row: { status: string; judgeJson: string | null }) => localPatchReadyReviewOwed(row,
+    { required: !!subjectUpgrade, identitySha256: subjectUpgrade?.identityRevision ? subjectUpgrade.identitySha256 : undefined });
   const completionAuthority = automatic && !extraPlan ? await readQaCompletionCapacity(c, boardWizardWorldId(gameId)) : null;
   const legacyHead = completionAuthority ? await reconcileLegacyPaidJoinHead(c, gameId, rows, fence) : { changed: false, continuePaidRows: [] as string[] };
   if (legacyHead.changed) rows = await c.db.targetVariantAsset.findMany({ where: { variant: LOCAL_PATCH_VARIANT, targetInstance: { gameScene: { gameId } } },
     include: { targetInstance: { select: { targetId: true, gameSceneId: true } } } });
   if (completionAuthority && await reconcileVisibleHeadPolicy(c, gameId, rows, fence)) rows = await c.db.targetVariantAsset.findMany({
     where: { variant: LOCAL_PATCH_VARIANT, targetInstance: { gameScene: { gameId } } }, include: { targetInstance: { select: { targetId: true, gameSceneId: true } } } });
-  if (completionAuthority && await restoreRetainedNormalHead(c, gameId, rows, fence, deps.readBoardArt)) rows = await c.db.targetVariantAsset.findMany({
+  // A slow optional scan must not spend the window reserved for deciding an
+  // already-ready image or re-reading an exact settled all-role document.
+  // Retained normal paintings still get their free recovery when neither is owed.
+  if (completionAuthority && !rows.some(row => readyReviewOwed(row) || localPatchBoundEnvelopeUndecided(row))
+    && await restoreRetainedNormalHead(c, gameId, rows, fence, deps.readBoardArt)) rows = await c.db.targetVariantAsset.findMany({
     where: { variant: LOCAL_PATCH_VARIANT, targetInstance: { gameScene: { gameId } } }, include: { targetInstance: { select: { targetId: true, gameSceneId: true } } } });
   const legacyReviewOwed = (row: typeof rows[number] | undefined) => !!completionAuthority && !!row
     && !legacyHead.continuePaidRows.includes(row.id) && legacyHeadCorrectionCandidate(row);
@@ -604,8 +610,6 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
     && row.status === "FAILED" && nativeSizeSelfRepairWork(row.judgeJson);
   /** A v1 pose-plan refusal awaiting its v2 question about the same pixels (subject-rejudge/v1), read at the enrolled age. */
   const rejudgePending = (row: Parameters<typeof subjectRejudgePending>[0]) => !!subjectUpgrade && subjectRejudgePending(row, subjectUpgrade.ageYears);
-  const readyReviewOwed = (row: { status: string; judgeJson: string | null }) => localPatchReadyReviewOwed(row,
-    { required: !!subjectUpgrade, identitySha256: subjectUpgrade?.identityRevision ? subjectUpgrade.identitySha256 : undefined });
   // A board also owes its v2 re-judgments (subject-rejudge/v1), whatever status the board itself carries.
   const subjectPendingScenes = (current: typeof rows) => new Set(subjectUpgrade ? game.scenes.filter(scene => current.some(row =>
     row.targetInstance.gameSceneId === scene.id && (row.status === "GENERATED" && !subjectStageCurrent(row, subjectUpgrade?.identityRevision ? subjectUpgrade.identitySha256 : undefined) || rejudgePending(row))))

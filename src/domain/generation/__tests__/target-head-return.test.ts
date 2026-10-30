@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 import { targetHeadReturnDecision as decide, targetHeadRepairContext, targetHeadReturnPrompt, targetHeadVersionOfReceipt,
  TARGET_HEAD_VISIBLE_VERSION, type TargetHeadEvidence } from '../target-head-return';
 import { integrationDiagnosisPrompt } from '../../../services/generation/local-patch-integration-diagnosis';
+import { measureHeadRetention, type HeadRetentionPixels } from '../head-retention';
 const evidence:TargetHeadEvidence={version:'target-head-return/v1',gameId:'synthetic-game',hideId:'synthetic-hide',sourceRequestKey:'synthetic-paid-image',
  sourceFingerprint:'a'.repeat(64),sourcePayloadSha256:'b'.repeat(64),normalizedRawSha256:'c'.repeat(64),shippingSha256:'d'.repeat(64),geometrySha256:'e'.repeat(64),identitySha256:'f'.repeat(64),
  returned:{left:140,top:323,width:174,height:244},feather:12};
@@ -75,5 +76,43 @@ describe('versioned visible completeness rather than planning clearance',()=>{
   expect(decide(fresh({shippingHead:{...head,left:200}}),visible).disposition).toBe('repair');
   expect(targetHeadRepairContext(fresh({shippingCrown:'fail'}),visible)?.evidence.version).toBe(TARGET_HEAD_VISIBLE_VERSION);
   expect(targetHeadRepairContext(answer({shippingCrown:'fail'}),visible)).toBeNull();
+ });
+});
+
+describe('measured retention can only refuse a located visible-head PASS',()=>{
+ // Synthetic public pixels on the evidence's own return, composed with the real 12px feather.
+ const visible:TargetHeadEvidence={...evidence,version:TARGET_HEAD_VISIBLE_VERSION},r=visible.returned;
+ const fresh=(patch:object={})=>answer({version:TARGET_HEAD_VISIBLE_VERSION,...patch});
+ const scene=(x:number)=>Math.floor(x/6)%2?[40,60,90]:[200,210,230];
+ const pixels=(at:(x:number,y:number)=>number[]):HeadRetentionPixels=>{const data=new Uint8Array(512*768*3);
+  for(let y=0;y<768;y++)for(let x=0;x<512;x++)data.set(at(x,y),(y*512+x)*3);return{data,width:512,height:768,channels:3};};
+ const measured=(located:typeof head)=>{
+  const raw=pixels((x,y)=>x>=located.left&&x<located.left+located.width&&y>=located.top&&y<located.top+located.height?[90,50,20]:scene(x));
+  const shipped=pixels((x,y)=>{const inside=x>=r.left&&x<r.left+r.width&&y>=r.top&&y<r.top+r.height;if(!inside)return scene(x);
+   const w=Math.min(1,(Math.min(x-r.left,y-r.top,r.left+r.width-1-x,r.top+r.height-1-y)+0.5)/12),p=(y*512+x)*3,s=scene(x);
+   return[0,1,2].map(c=>Math.round(raw.data[p+c]!*w+s[c]!*(1-w)));});
+  return{...visible,retention:measureHeadRetention(raw,shipped,r)};
+ };
+ const faded={...head,top:r.top+3},intact={...head,top:r.top+20};
+ it('turns a located PASS into repair when the crown measurably fades into the scene',()=>{
+  expect(decide(fresh({rawHead:faded,shippingHead:faded}),visible).disposition).toBe('pass');
+  expect(decide(fresh({rawHead:faded,shippingHead:faded}),measured(faded))).toMatchObject({disposition:'repair',reason:expect.stringContaining('measured target crown')});
+ });
+ it('keeps an intact interior head a PASS with its measurement attached',()=>{
+  expect(decide(fresh({rawHead:intact,shippingHead:intact}),measured(intact)).disposition).toBe('pass');
+ });
+ it('never overrides a visual failure or an unresolved answer',()=>{
+  const ok=measured(intact);
+  expect(decide(fresh({rawHead:intact,shippingHead:intact,shippingCrown:'fail'}),ok)).toMatchObject({disposition:'repair',reason:expect.stringContaining('visibly incomplete')});
+  expect(decide(fresh({rawHead:intact,shippingHead:intact,rawCrown:'uncertain'}),ok).disposition).toBe('unresolved');
+ });
+ it('keeps the paid visible-head question byte-identical with or without the derived reading',()=>{
+  expect(targetHeadReturnPrompt(measured(faded))).toBe(targetHeadReturnPrompt(visible));
+ });
+ it('refuses a measurement on a v1 question, of another return, or edited',()=>{
+  const m=measured(faded);
+  expect(decide(answer({rawHead:faded,shippingHead:faded}),{...evidence,retention:m.retention}).disposition).toBe('unresolved');
+  expect(decide(fresh({rawHead:faded,shippingHead:faded}),{...m,returned:{...r,left:r.left+1}}).disposition).toBe('unresolved');
+  expect(decide(fresh({rawHead:faded,shippingHead:faded}),{...m,retention:{...m.retention!,lost:m.retention!.lost.slice(8)}}).disposition).toBe('unresolved');
  });
 });

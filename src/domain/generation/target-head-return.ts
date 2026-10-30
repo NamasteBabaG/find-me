@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { LEGACY_PAID_JOIN_HEAD_VERSION } from './legacy-paid-join-head';
 import { RETAINED_NORMAL_HEAD_VERSION } from './retained-normal-head';
+import { headRetentionSchema, headRetentionLostPixels, HEAD_RETENTION_TOLERANCE } from './head-retention';
 
 /** A named inspection in the same MEDIUM answer, never a second judge request. */
 export const TARGET_HEAD_RETURN_VERSION = 'target-head-return/v1' as const;
@@ -14,9 +15,12 @@ const rect = z.object({ left:z.number().int().nonnegative(),top:z.number().int()
 export const targetHeadEvidenceSchema = z.object({ version:z.enum([TARGET_HEAD_RETURN_VERSION,TARGET_HEAD_VISIBLE_VERSION]), gameId:z.string(),hideId:z.string(),
   sourceRequestKey:z.string(),sourceFingerprint:digest,sourcePayloadSha256:digest,normalizedRawSha256:digest,
   shippingSha256:digest,geometrySha256:digest,identitySha256:digest,returned:rect,feather:z.literal(12),
-  sourceBindingVersion:z.enum([LEGACY_PAID_JOIN_HEAD_VERSION,RETAINED_NORMAL_HEAD_VERSION]).optional(),sourceCompositionSha256:digest.optional() }).strict()
+  sourceBindingVersion:z.enum([LEGACY_PAID_JOIN_HEAD_VERSION,RETAINED_NORMAL_HEAD_VERSION]).optional(),sourceCompositionSha256:digest.optional(),
+  /** Derived from the authenticated RAW/SHIPPING; never part of the paid question. */
+  retention:headRetentionSchema.optional() }).strict()
   .refine(v=>(v.sourceBindingVersion===undefined)===(v.sourceCompositionSha256===undefined),'Legacy source version and composition binding must agree')
-  .refine(v=>v.sourceBindingVersion!==RETAINED_NORMAL_HEAD_VERSION||v.version===TARGET_HEAD_VISIBLE_VERSION,'Retained normal source requires the prospective visible-head policy');
+  .refine(v=>v.sourceBindingVersion!==RETAINED_NORMAL_HEAD_VERSION||v.version===TARGET_HEAD_VISIBLE_VERSION,'Retained normal source requires the prospective visible-head policy')
+  .refine(v=>v.retention===undefined||v.version===TARGET_HEAD_VISIBLE_VERSION&&v.retention.band===v.feather,'Measured head retention belongs only to the visible-head policy and its own feather');
 export type TargetHeadEvidence = z.infer<typeof targetHeadEvidenceSchema>;
 const status=z.enum(['pass','fail','uncertain']);
 export const targetHeadAnswerSchema=z.object({ version:z.enum([TARGET_HEAD_RETURN_VERSION,TARGET_HEAD_VISIBLE_VERSION]),rawHead:rect,shippingHead:rect,
@@ -53,6 +57,13 @@ export function targetHeadReturnDecision(raw:string|null,evidence:TargetHeadEvid
   if(!inside(a.rawHead)||!inside(a.shippingHead))return{disposition:'repair',reason:'HEAD_RETURN: the complete target head crosses the opaque return boundary'};
   const discrepancy=Math.max(...(['left','top','width','height'] as const).map(k=>Math.abs(a.rawHead[k]-a.shippingHead[k])));
   if(discrepancy>12)return{disposition:'repair',reason:'HEAD_RETURN: target head geometry differs between retained RAW and shipping'};
+  // Measured retention can only turn a located PASS into repair: it never
+  // overrides a visual failure or an unresolved answer, and never approves.
+  if(p.retention){
+   const lost=headRetentionLostPixels(p.retention,r,[a.rawHead,a.shippingHead]);
+   if(lost===null)return unresolved;
+   if(lost>=HEAD_RETENTION_TOLERANCE.minLostPixels)return{disposition:'repair',reason:'HEAD_RETURN: measured target crown pixels fade into the original scene at the return edge'};
+  }
   return{disposition:'pass',reason:'HEAD_RETURN: complete crown retained inside the opaque return'};
 }
 

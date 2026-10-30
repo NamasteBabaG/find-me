@@ -1,5 +1,6 @@
 import { SOURCE_CROWN_COMPOSITION_VERSION } from "../../domain/scene/source-crown-return";
 import { singleReviewHeadEvidenceMatches } from "./single-review-head-evidence";
+import { TARGET_HEAD_VISIBLE_VERSION } from "../../domain/generation/target-head-return";
 import { singleMediumReviewPolicyOf } from "./single-medium-policy";
 import { SINGLE_MEDIUM_VISUAL_REVIEW_VERSION, isSingleVisualReviewVersion, singleVisualReviewEffort, readSingleVisualReviewVersion, readSingleVisualReview } from "../../domain/generation/single-visual-review";
 import { isSingleReviewPolicy } from "../../domain/generation/visual-review-policy";
@@ -56,6 +57,10 @@ export async function allowedDualPublication(db: Prisma.TransactionClient, input
       || proof.identitySha256 !== input.identitySha256 || !proof.quality || !proof.continuity) return false;
     if(receipt.compositionVersion===SOURCE_CROWN_COMPOSITION_VERSION&&proof.single!==SINGLE_MEDIUM_VISUAL_REVIEW_VERSION)return false;
     if (!await authoredLocalPatchPublicationMatches(db, input)) return false;
+    // A visible-head decision publishes only with its measured retention; an older
+    // one is first re-read for free (localPatchHeadRetentionUnread), never waived.
+    if (proof.single === SINGLE_MEDIUM_VISUAL_REVIEW_VERSION && proof.quality.headEvidence?.version === TARGET_HEAD_VISIBLE_VERSION
+      && proof.quality.headEvidence.retention === undefined) return false;
     if (proof.single === SINGLE_MEDIUM_VISUAL_REVIEW_VERSION && !await singleReviewHeadEvidenceMatches(db,input,proof.quality.headEvidence)) return false;
     if (!await sourceNeighborPublicationMatches(db, input, proof.quality)) return false;
     if (!equal(proof.authoredReturn, receipt.authoredReturn) || !equal(proof.authoredRecovery, receipt.authoredRecovery)) return false;

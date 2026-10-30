@@ -5,6 +5,8 @@ import { readWholeSourceContextPin, wholeSourceContextPinId, wholeSourceContextW
 import { wholeSourceContextMarker } from "../../../domain/generation/whole-source-context-purchase";
 import { WHOLE_SOURCE_CONTEXT_VERSION } from "../../../domain/scene/whole-source-context";
 import { readSettledTargetRaw, singleReviewHeadEvidence, singleReviewHeadEvidenceMatches } from "../single-review-head-evidence";
+import * as headEvidenceModule from "../single-review-head-evidence";
+import * as dualPublicationModule from "../local-patch-dual-publication";
 import { reconcileLegacyPaidJoinHead, LEGACY_HEAD_RECOVERY_ACTION } from "../legacy-paid-join-head-recovery";
 import { reconcileVisibleHeadPolicy,VISIBLE_HEAD_RECOVERY_ACTION } from "../visible-head-policy-recovery";
 import { visibleHeadPolicyRecoveryCandidate } from "../../../domain/generation/visible-head-policy-recovery";
@@ -81,7 +83,7 @@ import type { Container } from "../../container";
 import { reviewBoardWizardIdentity } from "../board-wizard-identity-gate";
 import { buildBoardWizardIdentityStyle } from "../board-wizard-identity-style";
 import { readShippedBoardArt, type LocalPatchHideDeps } from "../local-patch-hide";
-import { readQualityStage, readContinuityStage, subjectStageRaw, type DualReviewProof } from "../local-patch-dual-evidence";
+import { readQualityStage, readContinuityStage, subjectStageRaw, localPatchHeadRetentionUnread, type DualReviewProof } from "../local-patch-dual-evidence";
 import { pinLocalPatchSourceFamily, resolveLocalPatchBoardsForGame, sourcePlacementForHide, sourcePlacementReleaseOf } from "../source-placement-release";
 import { pinIdentitySourceRelease } from "../identity-source-release";
 import { allowedDualPublication } from "../local-patch-dual-publication";
@@ -877,6 +879,184 @@ it.each([{level:'detectives',normalOnly:true},{level:'explorers',normalOnly:true
   for(const request of before.requests)expect(after.requests.find((r:{requestKey:string})=>r.requestKey===request.requestKey)).toEqual(request);
   expect(after.requests).toHaveLength(before.requests.length+1);
   expect(f.render).toHaveBeenCalledTimes(renderCount);expect(f.diagnose).toHaveBeenCalledTimes(diagnosisCount);expect(fetch).not.toHaveBeenCalled();
+ }finally{vi.useRealTimers();}
+},300000);
+
+it.each(['detectives','explorers'] as const)('re-reads an unmeasured visible-head PASS once for free with derived retention, archives it and publishes only measured; level=%s',async level=>{
+ vi.useFakeTimers({toFake:['Date']});
+ try{
+  const f=await legacyKingdomHeadFixture('head-retention-reread-synthetic-'+level,'redraw-with-new-placement',level==='explorers',true);
+  const provider=controlledSol(false,false,undefined,true,false,f.version),retrieve=provider.fake.retrieve.bind(provider.fake);
+  provider.fake.retrieve=async id=>{
+   const response=await retrieve(id);if(response.status!=='completed')return response;
+   const question=provider.creates[provider.creates.length-1]!,p=JSON.parse(question.prompt.split('\n').find(s=>s.startsWith('HEAD_RETURN_EVIDENCE: '))!.slice('HEAD_RETURN_EVIDENCE: '.length));
+   const answer=JSON.parse(response.reading.raw!),head={...answer.head.rawHead,top:p.returned.top+20};
+   Object.assign(answer.head,{rawHead:head,shippingHead:head,rawCrown:'pass',shippingCrown:'pass',observation:'Synthetic complete crown in RAW and SHIPPING well inside the opaque return.'});
+   return{...response,reading:{...response.reading,raw:JSON.stringify(answer)}};
+  };
+  const container={...c,backgroundReview:provider.fake,visualReview:{request:async()=>{throw Error('No synchronous duplicate');}}} as Container;
+  const scope={gameId:f.gameId,sceneId:f.scene.id},deps={fence:async()=>{},readBoardArt:readArt};
+  for(let tick=0;tick<8;tick++){
+   await reviewLocalPatchBoard(container,{...scope,deadlineAt:Date.now()+270000},deps);
+   await advanceContinuityInBackground(container,f.gameId,{deadlineAt:Date.now()+270000});await vi.advanceTimersByTimeAsync(LEAN_RECOVERY_BACKOFF_MS+1);
+   if(JSON.parse((await f.row()).judgeJson!).reviewState==='board-review-complete')break;
+  }
+  const accepted=await f.row(),j=JSON.parse(accepted.judgeJson!);
+  expect(accepted.status).toBe('GENERATED');expect(j.verdict.verdict).toBe('pass');
+  expect(j.boardReview.dual.quality.headEvidence).toMatchObject({version:TARGET_HEAD_VISIBLE_VERSION,retention:{version:'head-retention/v1'}});
+  expect(await allowedDualPublication(db,{...publicationBinding(f.gameId,accepted),sceneVersion:f.version})).toBe(true);
+  // A visible-head decision committed before the measurement existed.
+  const historical=structuredClone(j);delete historical.boardReview.dual.quality.headEvidence.retention;
+  await db.targetVariantAsset.update({where:{id:accepted.id},data:{judgeJson:JSON.stringify(historical)}});
+  const before=await f.row();expect(localPatchHeadRetentionUnread(before)).toBe(true);
+  expect(await allowedDualPublication(db,{...publicationBinding(f.gameId,before),sceneVersion:f.version})).toBe(false);
+  const worldId=boardWizardWorldId(f.gameId),ledger=await db.worldBudgetLedger.findUniqueOrThrow({where:{worldId}}),asked=provider.creates.length;
+  const reread=await reviewLocalPatchBoard(container,{...scope,deadlineAt:Date.now()+270000},deps,{decideRetained:true});
+  expect(reread.decidedRetained).toBe(true);
+  const after=await f.row(),k=JSON.parse(after.judgeJson!);
+  expect(after).toMatchObject({status:'GENERATED',assetId:before.assetId,attempts:before.attempts,costCents:before.costCents});
+  expect(k.boardReview.dual.quality.headEvidence.retention).toEqual(j.boardReview.dual.quality.headEvidence.retention);
+  expect(k.boardReview.dual.quality).toMatchObject({raw:historical.boardReview.dual.quality.raw,requestKey:historical.boardReview.dual.quality.requestKey,
+   fingerprint:historical.boardReview.dual.quality.fingerprint,costMicroUsd:historical.boardReview.dual.quality.costMicroUsd});
+  expect(k.reviewHistory.at(-1)).toMatchObject({boardReview:historical.boardReview,supersededBy:'head-retention/v1'});
+  expect(provider.creates).toHaveLength(asked);
+  expect((await db.worldBudgetLedger.findUniqueOrThrow({where:{worldId}})).snapshotJson).toBe(ledger.snapshotJson);
+  expect(localPatchHeadRetentionUnread(after)).toBe(false);
+  expect(await allowedDualPublication(db,{...publicationBinding(f.gameId,after),sceneVersion:f.version})).toBe(true);
+  // An edited measurement cannot admit the same pixels.
+  const edited=structuredClone(k);edited.boardReview.dual.quality.headEvidence.retention.lost=Buffer.alloc(Buffer.from(k.boardReview.dual.quality.headEvidence.retention.lost,'base64').length,255).toString('base64');
+  expect(await allowedDualPublication(db,{...publicationBinding(f.gameId,after),judgeJson:JSON.stringify(edited),sceneVersion:f.version})).toBe(false);
+  expect((await reviewLocalPatchBoard(container,{...scope,deadlineAt:Date.now()+270000},deps,{decideRetained:true})).decidedRetained).toBeFalsy();
+  expect(provider.creates).toHaveLength(asked);expect(fetch).not.toHaveBeenCalled();
+ }finally{vi.useRealTimers();}
+},300000);
+
+it('re-reads an unmeasured visible-head PASS whose crown really fades into the scene: FAILED, then the existing repair decision, same bill and counters',async()=>{
+ vi.useFakeTimers({toFake:['Date']});
+ try{
+  const gameId='head-retention-real-fade-synthetic';await newDetectiveWorld(gameId,7,true,true,true);
+  const context=await resolveLocalPatchBoardsForGame(db,gameId,12),board=context.boards.find(b=>b.board==='dragoncave')!,hide=board.hides[2]!;
+  const returned=localPatchReturnRegion(cropOf(hide),maskForHide(hide),hide.returnRect).local;
+  // The painting's figure starts 3px inside the return: the composition's feather really fades its top rows.
+  const figure={left:returned.left+60,top:returned.top+3,width:120,height:250};
+  const render=vi.fn<LocalPatchHideDeps['render']>(async input=>paintedOk(await sharp(input.stylePng).composite([{input:await sharp({create:{width:figure.width,height:figure.height,
+   channels:4,background:'#ff00ff'}}).png().toBuffer(),left:figure.left,top:figure.top}]).png().toBuffer(),bill('real-fade-'+input.requestKey,50000)));
+  const diagnose=vi.fn<NonNullable<SelfRepairDeps['diagnose']>>(async()=>({verdict:null,wireFault:null,costUnknown:false,model:'gpt-5.6-sol',finishReason:'stop',requestId:'real-fade-diagnosis',
+   usage:{prompt_tokens:2000,completion_tokens:200},raw:JSON.stringify({cause:'composition-clipping',explanation:'Synthetic: keep the whole head inside the opaque return.',action:'redraw-with-new-placement',
+    sourceKey:`${hide.id}:${hide.pose}:render:1`,returnWindow:returned,protectedCore:{left:returned.left+30,top:returned.top+30,width:returned.width-60,height:returned.height-60},
+    faceRect:{left:returned.left+60,top:returned.top+60,width:60,height:60}})}));
+  const deps:SelfRepairDeps={readBoardArt:readArt,renderPolicySha256:localPatchRenderPolicySha256(LOCAL_PATCH_IMAGE_POLICY),render,diagnose,
+   judge:async()=>{throw Error('No duplicate synchronous judge');},fence:async()=>{}};
+  expect((await runLocalPatchHide(c,deps,{gameId,board,hide})).state).toBe('generated');
+  const row=()=>db.targetVariantAsset.findFirstOrThrow({where:{variant:'A',targetInstance:{gameScene:{gameId},targetId:hide.targetId}}});
+  const scene=await db.gameScene.findFirstOrThrow({where:{gameId,sceneSlug:board.board}});
+  const provider=controlledSol(false,false,undefined,true,false,12),retrieve=provider.fake.retrieve.bind(provider.fake);
+  provider.fake.retrieve=async id=>{
+   const response=await retrieve(id);if(response.status!=='completed')return response;
+   const answer=JSON.parse(response.reading.raw!),head={left:figure.left,top:figure.top,width:figure.width,height:110};
+   Object.assign(answer.head,{rawHead:head,shippingHead:head,rawCrown:'pass',shippingCrown:'pass',observation:'Synthetic: the judge reports a complete crown in RAW and SHIPPING.'});
+   return{...response,reading:{...response.reading,raw:JSON.stringify(answer)}};
+  };
+  const container={...c,backgroundReview:provider.fake,visualReview:{request:async()=>{throw Error('No synchronous duplicate');}}} as Container;
+  const scope={gameId,sceneId:scene.id},reviewDeps={fence:async()=>{},readBoardArt:readArt};
+  // The historical writer: visible-head evidence without a measurement, published by the code of its day.
+  const build=headEvidenceModule.singleReviewHeadEvidence,publish=dualPublicationModule.allowedDualPublication;
+  const historical=vi.spyOn(headEvidenceModule,'singleReviewHeadEvidence').mockImplementation(async(...args)=>{
+   const built=await build(...args),{retention:_measured,...evidence}=built.evidence;return{...built,evidence};});
+  const historicalPublication=vi.spyOn(dualPublicationModule,'allowedDualPublication').mockImplementation(async(...args)=>{
+   const receipt=JSON.parse(args[1].judgeJson??'null');return receipt?.boardReview?.dual?.quality?.headEvidence?.retention===undefined?true:publish(...args);});
+  try{
+   for(let tick=0;tick<8;tick++){
+    await reviewLocalPatchBoard(container,{...scope,deadlineAt:Date.now()+270000},reviewDeps);
+    await advanceContinuityInBackground(container,gameId,{deadlineAt:Date.now()+270000});await vi.advanceTimersByTimeAsync(LEAN_RECOVERY_BACKOFF_MS+1);
+    if(JSON.parse((await row()).judgeJson!).reviewState==='board-review-complete')break;
+   }
+  }finally{historical.mockRestore();historicalPublication.mockRestore();}
+  const accepted=await row(),j=JSON.parse(accepted.judgeJson!);
+  expect(accepted.status).toBe('GENERATED');expect(j.verdict.verdict).toBe('pass');
+  expect(j.boardReview.dual.quality.headEvidence.version).toBe(TARGET_HEAD_VISIBLE_VERSION);expect(j.boardReview.dual.quality.headEvidence.retention).toBeUndefined();
+  expect(localPatchHeadRetentionUnread(accepted)).toBe(true);
+  expect(await allowedDualPublication(db,{...publicationBinding(gameId,accepted),sceneVersion:12})).toBe(false);
+  const worldId=boardWizardWorldId(gameId),ledger=await db.worldBudgetLedger.findUniqueOrThrow({where:{worldId}}),asked=provider.creates.length,painted=render.mock.calls.length;
+  // One free re-reading of the exact settled document, now with the derived measurement.
+  expect((await reviewLocalPatchBoard(container,{...scope,deadlineAt:Date.now()+270000},reviewDeps,{decideRetained:true})).decidedRetained).toBe(true);
+  const refused=await row(),k=JSON.parse(refused.judgeJson!);
+  expect(refused).toMatchObject({status:'FAILED',assetId:accepted.assetId,attempts:accepted.attempts,costCents:accepted.costCents});
+  expect(refused.lastError).toMatch(/^quality-/);
+  expect(k.verdict.verdict).toBe('fail');
+  expect(k.verdict.faults[0]).toMatchObject({check:'childComplete',where:'HEAD_RETURN: measured target crown pixels fade into the original scene at the return edge'});
+  expect(k.boardReview.dual.quality).toMatchObject({raw:j.boardReview.dual.quality.raw,requestKey:j.boardReview.dual.quality.requestKey,
+   fingerprint:j.boardReview.dual.quality.fingerprint,costMicroUsd:j.boardReview.dual.quality.costMicroUsd,headEvidence:{retention:{version:'head-retention/v1'}}});
+  expect(k.reviewHistory.at(-1)).toMatchObject({boardReview:j.boardReview,supersededBy:'head-retention/v1'});
+  expect(provider.creates).toHaveLength(asked);expect(render).toHaveBeenCalledTimes(painted);
+  expect((await db.worldBudgetLedger.findUniqueOrThrow({where:{worldId}})).snapshotJson).toBe(ledger.snapshotJson);
+  expect((await reviewLocalPatchBoard(container,{...scope,deadlineAt:Date.now()+270000},reviewDeps,{decideRetained:true})).decidedRetained).toBeFalsy();
+  // The ordinary repair route takes it, with the measured head as its frozen context.
+  for(let step=0;step<3&&!diagnose.mock.calls.length;step++)await runLocalPatchSelfRepair(c,{gameId,sceneId:scene.id,board,hide},deps);
+  const repairing=await row(),state=JSON.parse(repairing.judgeJson!).selfRepair;
+  expect(state).toMatchObject({cycle:1,headContext:{evidence:{retention:{version:'head-retention/v1'}},answer:{shippingCrown:'pass'}}});
+  expect(diagnose).toHaveBeenCalledTimes(1);
+  expect(JSON.stringify(diagnose.mock.calls[0]![0])).toContain('FROZEN TARGET HEAD DATA');
+  // From here the existing repair route spends as it always does; the measured re-reading itself bought nothing
+  // and the original paid painting's bill is untouched.
+  const paintKey=`${hide.id}:${hide.pose}:render:1`,bills=(snapshot:string)=>JSON.parse(snapshot).requests.find((r:{requestKey:string})=>r.requestKey===paintKey);
+  expect(bills((await db.worldBudgetLedger.findUniqueOrThrow({where:{worldId}})).snapshotJson)).toEqual(bills(ledger.snapshotJson));
+  expect(repairing.attempts).toBeGreaterThanOrEqual(accepted.attempts);
+  expect(fetch).not.toHaveBeenCalled();
+ }finally{vi.useRealTimers();}
+},300000);
+
+it.each(['detectives','explorers'] as const)('keeps a free measured head re-reading ahead of a slow optional scan; level=%s',async level=>{
+ vi.useFakeTimers({toFake:['Date']});
+ try{
+  const f=await legacyKingdomHeadFixture('retention-free-priority-synthetic-'+level,'redraw-with-new-placement',level==='explorers',true);
+  const provider=controlledSol(false,false,undefined,true,false,f.version),retrieve=provider.fake.retrieve.bind(provider.fake);
+  provider.fake.retrieve=async id=>{
+   const response=await retrieve(id);if(response.status!=='completed')return response;
+   const question=provider.creates[provider.creates.length-1]!,evidence=JSON.parse(question.prompt.split('\n').find(s=>s.startsWith('HEAD_RETURN_EVIDENCE: '))!.slice('HEAD_RETURN_EVIDENCE: '.length));
+   const answer=JSON.parse(response.reading.raw!),head={...answer.head.rawHead,top:evidence.returned.top+20};
+   Object.assign(answer.head,{rawHead:head,shippingHead:head,rawCrown:'pass',shippingCrown:'pass',observation:'Synthetic complete crown inside the opaque return, without a visible fade.'});
+   return{...response,reading:{...response.reading,raw:JSON.stringify(answer)}};
+  };
+  const container={...c,backgroundReview:provider.fake,visualReview:{request:async()=>{throw Error('No duplicate synchronous judge');}}} as Container;
+  const scope={gameId:f.gameId,sceneId:f.scene.id},reviewDeps={fence:async()=>{},readBoardArt:readArt};
+  for(let tick=0;tick<8;tick++){
+   await reviewLocalPatchBoard(container,{...scope,deadlineAt:Date.now()+270000},reviewDeps);
+   await advanceContinuityInBackground(container,f.gameId,{deadlineAt:Date.now()+270000});await vi.advanceTimersByTimeAsync(LEAN_RECOVERY_BACKOFF_MS+1);
+   if(JSON.parse((await f.row()).judgeJson!).reviewState==='board-review-complete')break;
+  }
+  const accepted=await f.row(),historical=JSON.parse(accepted.judgeJson!);
+  expect(historical.verdict.verdict).toBe('pass');
+  delete historical.boardReview.dual.quality.headEvidence.retention;
+  await db.targetVariantAsset.update({where:{id:accepted.id},data:{judgeJson:JSON.stringify(historical)}});
+  const before=await f.row();expect(localPatchHeadRetentionUnread(before)).toBe(true);
+  const progress=await import('../../../domain/scene/local-patch-progress');
+  expect(progress.localPatchReadyReviewOwed(before,{required:true})).toBe(false);
+  const worldId=boardWizardWorldId(f.gameId),ledger=await db.worldBudgetLedger.findUniqueOrThrow({where:{worldId}}),asked=provider.creates.length,painted=f.render.mock.calls.length;
+  const start=Date.now();let clock=start;
+  const now=vi.spyOn(Date,'now').mockImplementation(()=>clock);
+  const capacity=await import('../qa-completion-capacity');
+  const grant=vi.spyOn(capacity,'readQaCompletionCapacity').mockResolvedValue({worldId,capMicroUsd:12000000,authorizationSha256:'a'.repeat(64)});
+  const recovery=await import('../retained-normal-head-recovery');
+  const scan=vi.spyOn(recovery,'restoreRetainedNormalHead').mockImplementation(async()=>{clock+=95000;return false;});
+  const reviewModule=await import('../local-patch-board-review'),realReview=reviewModule.reviewLocalPatchBoard;
+  const committed=vi.spyOn(reviewModule,'reviewLocalPatchBoard').mockImplementation(async(...args)=>{
+   const result=await realReview(...args);if(args[3]?.decideRetained&&result.decidedRetained)clock=start+250000;return result;
+  });
+  try{
+   const result=await runLocalPatchWorldSlice(container,f.deps,f.gameId,{maxHides:1,hardDeadlineAt:start+270000});
+   expect(result).toMatchObject({claimed:true,pending:true,attention:null});
+   expect(scan).not.toHaveBeenCalled();
+   const after=await f.row(),receipt=JSON.parse(after.judgeJson!);
+   expect(after).toMatchObject({status:'GENERATED',assetId:before.assetId,attempts:before.attempts,costCents:before.costCents});
+   expect(receipt.boardReview.dual.quality.headEvidence.retention.version).toBe('head-retention/v1');
+   expect(receipt.reviewHistory.at(-1)).toMatchObject({boardReview:historical.boardReview,supersededBy:'head-retention/v1'});
+   expect(localPatchHeadRetentionUnread(after)).toBe(false);
+   expect((await db.worldBudgetLedger.findUniqueOrThrow({where:{worldId}})).snapshotJson).toBe(ledger.snapshotJson);
+   expect(provider.creates).toHaveLength(asked);expect(f.render).toHaveBeenCalledTimes(painted);
+   expect(await db.generationJob.findUniqueOrThrow({where:{id:'job_'+f.gameId}})).toMatchObject({status:'QUEUED',currentStep:'local-patch'});
+   expect(fetch).not.toHaveBeenCalled();
+  }finally{committed.mockRestore();scan.mockRestore();grant.mockRestore();now.mockRestore();}
  }finally{vi.useRealTimers();}
 },300000);
 

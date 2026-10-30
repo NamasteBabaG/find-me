@@ -1,6 +1,6 @@
 import { BOUND_SUBJECT_QUALITY_ENVELOPE_READER, readBoundSubjectQualityEnvelopeV2,
   readSubjectQualityEnvelopeWith, type BoundSubjectQualityEnvelopeReader } from "../../domain/generation/bound-subject-quality-envelope";
-import { targetHeadReturnDecision, type TargetHeadEvidence } from "../../domain/generation/target-head-return";
+import { targetHeadReturnDecision, TARGET_HEAD_VISIBLE_VERSION, type TargetHeadEvidence } from "../../domain/generation/target-head-return";
 import { SINGLE_MEDIUM_VISUAL_REVIEW_VERSION, readSingleVisualReviewVersion, readSingleVisualReview, type SingleVisualReviewVersion } from "../../domain/generation/single-visual-review";
 import { SINGLE_LOW_REVIEW_POLICIES, SINGLE_MEDIUM_REVIEW_POLICIES, isSingleReviewPolicy, isSingleMediumReviewPolicy } from "../../domain/generation/visual-review-policy";
 import type { Prisma } from "@prisma/client";
@@ -258,9 +258,11 @@ export function readContinuityStage(stage: ContinuityStage, hideId: string, vers
  */
 /** Scheduling only: this exact MEDIUM answer already contains all three paid
  * roles, and only redundant matching metadata made its canonical envelope
- * unreadable. The service still verifies the original bill, pixels and every
- * role before recording any changed decision. No new question is authorized. */
+ * unreadable, or its visible-head evidence predates measured retention. The
+ * service still verifies the original bill, pixels and every role before
+ * recording any changed decision. No new question is authorized. */
 export function localPatchBoundEnvelopeUndecided(row: { status: string; lastError?: string | null; judgeJson?: string | null }): boolean {
+  if (localPatchHeadRetentionUnread(row)) return true;
   if (row.status !== "FAILED" || !row.lastError?.startsWith("quality-unresolved:")) return false;
   try {
     const receipt = JSON.parse(row.judgeJson ?? "null"), p = receipt?.boardReview?.dual as DualReviewProof | undefined;
@@ -280,6 +282,22 @@ export function localPatchBoundEnvelopeUndecided(row: { status: string; lastErro
       && JSON.stringify(v.policy)===JSON.stringify(q.policy) && visualStageReadable(v))
       && s.photoSha256===bundle.photoSha256 && s.planSha256===bundle.planSha256
       && s.subjectPolicy===bundle.subjectPolicy;
+  } catch { return false; }
+}
+
+/** Scheduling only: a committed visible-head PASS whose head evidence predates
+ * measured retention (head-retention/v1). Its exact settled all-role MEDIUM
+ * document is read once more, free, with the derived measurement: the paid bytes,
+ * prompt, fingerprint, intent and charge are untouched, the prior receipt joins
+ * reviewHistory, and the measured reading cannot schedule itself again. */
+export function localPatchHeadRetentionUnread(row: { status: string; judgeJson?: string | null }): boolean {
+  if (row.status !== "GENERATED") return false;
+  try {
+    const receipt = JSON.parse(row.judgeJson ?? "null"), p = receipt?.boardReview?.dual as DualReviewProof | undefined, head = p?.quality?.headEvidence;
+    return receipt?.reviewState === "board-review-complete" && p?.single === SINGLE_MEDIUM_VISUAL_REVIEW_VERSION
+      && !!p.quality && !!p.continuity && !!p.subject && head?.version === TARGET_HEAD_VISIBLE_VERSION && head.retention === undefined
+      && p.imageSha256 === receipt.judgedSha256 && p.geometrySha256 === receipt.geometrySha256 && p.hideId === receipt.hide
+      && [p.continuity, p.subject].every(v => v.raw === p.quality.raw && v.requestKey === p.quality.requestKey && v.fingerprint === p.quality.fingerprint);
   } catch { return false; }
 }
 

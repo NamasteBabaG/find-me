@@ -281,3 +281,40 @@ same image cannot be restored repeatedly under that grant. Controlled tests
 cover both Kingdom source families, foreign ownership, changed bytes, lost
 fences, fresh review requirements and forged source keys. Game deletion redacts
 these private assessment archives while retaining the separate accounting ledger.
+
+## Ready review before optional retained-paint scans
+
+A source-bound QA completion worker defers its optional search for earlier normal
+paintings while an appearance still owes its ordinary review or an exact-bound
+free reading of an already settled all-role document. A slow
+no-op search can otherwise consume 95 seconds of a 270-second worker window,
+leaving less than the unchanged 180-second review guard on every invocation.
+The integration regression reproduces the lost review window before the fix,
+then verifies that the same owned image receives its real paid review first and
+the scan resumes when no review is owed. No timeout, reserve, purchase key,
+attempt, repair counter, quality predicate or publication check is relaxed.
+The free-reading regression starts with a committed, unmeasured visible-head PASS
+in both Kingdom families. It proves the measured decision is committed before
+the optional scan, with identical ledger, image keys, attempts and costs and no
+new provider question or painting.
+
+## Measured retention for the visible-head policy
+
+`head-retention/v1` derives a return-band measurement from the exact settled RAW
+and the candidate's owned SHIPPING bytes. A changed cluster must continue into
+the opaque interior before it can refuse a located head PASS. Named tolerances
+and synthetic regressions distinguish a real fade from a redrawn background
+stroke in the empty corner of a head rectangle. This is a conservative signal,
+not semantic child segmentation: attached novel background content can still be
+counted. It does not approve art or create a new purchase allowance.
+
+New visible-head evidence carries the measurement without changing the paid
+question. Before publication, the service reproduces it from authenticated bytes.
+An already committed visible-head PASS without the measurement is read once more
+from its exact settled all-role document, without another purchase. Its prior
+receipt is archived under the named retention version. Real measured fades flow
+through the ordinary quality refusal and existing finite repair decision, while
+historical v1 questions, image keys, bills, attempts, cycles and unknown reserves
+remain intact. Tests cover both retained passes and a genuine fade reclassified
+as FAILED without charging for the re-reading. A separate proposed window-growth
+helper is outside this release; no new composition version is authorized here.

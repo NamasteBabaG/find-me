@@ -16,6 +16,7 @@ import { sourceBodyBirthMarkerSchema } from '../../domain/generation/detectives-
 import { localPatchReturnRegion, LOCAL_PATCH_COMPOSITION_VERSION, AUTHORED_PATCH_COMPOSITION_VERSION, type PatchRectangle } from '../../domain/scene/local-patch-return-region';
 import { cropOf, maskForHide, type LocalPatchHide } from '../../domain/scene/local-patch-hides';
 import { LEGACY_PAID_JOIN_HEAD_VERSION, legacyPaidJoinHeadPlan } from '../../domain/generation/legacy-paid-join-head';
+import { measureHeadRetention } from '../../domain/generation/head-retention';
 
 type Receipt=Record<string,unknown>;
 const legacyCompositionHash=(r:Receipt)=>sha(Buffer.from(JSON.stringify({compositionVersion:r.compositionVersion,compositionSource:r.compositionSource,recoveryComposition:r.recoveryComposition})));
@@ -51,6 +52,21 @@ async function normalSourceAuthorized(db:Prisma.TransactionClient,gameId:string,
   ||p.sourceFingerprint!==paid.kept.operationFingerprint||p.sourcePayloadSha256!==paid.kept.payloadSha256||p.normalizedRawSha256!==sha(paid.normalized))
   throw Error('HEAD_RETURN: retained normal source audit differs');
 }
+const decoded=async(png:Buffer)=>{const {data,info}=await sharp(png,{limitInputPixels:8294400}).removeAlpha().raw().toBuffer({resolveWithObject:true});
+ return{data,width:info.width,height:info.height,channels:info.channels};};
+/** Measured retention of exactly these authenticated RAW and SHIPPING bytes. */
+export async function headRetentionOf(raw:Buffer,shipping:Buffer,returned:PatchRectangle){
+ return measureHeadRetention(await decoded(raw),await decoded(shipping),returned);
+}
+/** The candidate's own shipped bytes, by its row's exact receipt, never a caller URL. */
+async function authenticatedShipping(db:Prisma.TransactionClient,input:{gameId:string;imageSha256:string;judgeJson:string|null;assetId?:string}){
+ if(!input.judgeJson)return null;
+ const assetId=input.assetId??(await db.targetVariantAsset.findFirst({where:{judgeJson:input.judgeJson,targetInstance:{gameScene:{gameId:input.gameId}}},select:{assetId:true}}))?.assetId;
+ const asset=assetId?await db.asset.findUnique({where:{id:assetId}}):null;
+ if(!asset||asset.deletedAt||asset.status!=='READY'||asset.type!=='TARGET_SPRITE'||asset.providerRequestId!==input.gameId)return null;
+ const blob=await db.fileBlob.findUnique({where:{key:asset.storagePath}}),bytes=blob?Buffer.from(blob.data):null;
+ return bytes&&sha(bytes)===input.imageSha256?bytes:null;
+}
 export async function readSettledTargetRaw(db:Prisma.TransactionClient,gameId:string,key:string){
  const worldId=gameId+':board-wizard',stored=await PrismaWorldBudgetStore.forReadOnlyTransaction(db).read(worldId);
  const bill=stored?.snapshot.requests.find(b=>b.requestKey===key),kept=await new PrismaRetainedPurchaseStore(db).get(worldId,key);
@@ -84,17 +100,20 @@ export async function singleReviewHeadEvidence(db:Prisma.TransactionClient,input
   throw Error('HEAD_RETURN: legacy retained RAW differs from its actual composition');
  const returned=(legacy?.returned??object(input.receipt.crownReturn)?.returned??object(input.receipt.authoredRecovery)?.returnWindow??object(input.receipt.authoredReturn)?.local
   ??localPatchReturnRegion(cropOf(input.hide),maskForHide(input.hide),input.hide.returnRect).local) as PatchRectangle;
- const evidence=targetHeadEvidenceSchema.parse({version:targetHeadVersionOfReceipt(input.receipt),gameId:input.gameId,hideId:input.hide.id,
+ const version=targetHeadVersionOfReceipt(input.receipt);
+ const evidence=targetHeadEvidenceSchema.parse({version,gameId:input.gameId,hideId:input.hide.id,
   sourceRequestKey:key,sourceFingerprint:paid.kept.operationFingerprint,sourcePayloadSha256:paid.kept.payloadSha256,
   normalizedRawSha256:sha(paid.normalized),shippingSha256:sha(input.shipping),geometrySha256:input.geometrySha256,
   identitySha256:input.identitySha256,returned,feather:12,...(legacy?{sourceBindingVersion:LEGACY_PAID_JOIN_HEAD_VERSION,sourceCompositionSha256:legacyCompositionHash(input.receipt)}
-   :input.receipt.retainedNormalHead!==undefined?{sourceBindingVersion:RETAINED_NORMAL_HEAD_VERSION,sourceCompositionSha256:normalCompositionHash(input.receipt)}:{})});
+   :input.receipt.retainedNormalHead!==undefined?{sourceBindingVersion:RETAINED_NORMAL_HEAD_VERSION,sourceCompositionSha256:normalCompositionHash(input.receipt)}:{}),
+  // v1 questions and decisions stay byte-identical; only visible-head evidence is measured.
+  ...(version===TARGET_HEAD_VISIBLE_VERSION?{retention:await headRetentionOf(paid.normalized,input.shipping,returned)}:{})});
  return{evidence,raw:paid.normalized};
 }
 /** Re-read the retained bill and original provider bytes on publication. A
  * copied head PASS, mutable URL or caller-provided RAW cannot admit a target. */
 export async function singleReviewHeadEvidenceMatches(db:Prisma.TransactionClient,input:{gameId:string;hideId:string;imageSha256:string;attempts:number;sceneVersion:number;
- geometrySha256:string;identitySha256:string;judgeJson:string|null},evidence:TargetHeadEvidence|undefined){
+ geometrySha256:string;identitySha256:string;judgeJson:string|null;assetId?:string},evidence:TargetHeadEvidence|undefined){
  try{const parsed=targetHeadEvidenceSchema.safeParse(evidence);if(!parsed.success)return false;const p=parsed.data;
   if(p.gameId!==input.gameId||p.hideId!==input.hideId||p.shippingSha256!==input.imageSha256||p.geometrySha256!==input.geometrySha256||p.identitySha256!==input.identitySha256)return false;
   const j=JSON.parse(input.judgeJson??'null');
@@ -109,7 +128,12 @@ export async function singleReviewHeadEvidenceMatches(db:Prisma.TransactionClien
   if(p.sourceBindingVersion===LEGACY_PAID_JOIN_HEAD_VERSION&&(!legacy||legacy.rawSha256!==sha(paid.normalized)))return false;
   let returned=legacy?.returned??j?.crownReturn?.returned??j?.authoredRecovery?.returnWindow??j?.authoredReturn?.local;
   if(!returned){const context=await resolveLocalPatchBoardsForGame(db,input.gameId,input.sceneVersion),hide=context.boards.flatMap(b=>b.hides).find(h=>h.id===input.hideId);if(!hide)return false;returned=localPatchReturnRegion(cropOf(hide),maskForHide(hide),hide.returnRect).local;}
-  return paid.kept.operationFingerprint===p.sourceFingerprint&&paid.kept.payloadSha256===p.sourcePayloadSha256
-   &&sha(paid.normalized)===p.normalizedRawSha256&&JSON.stringify(returned)===JSON.stringify(p.returned);
+  if(paid.kept.operationFingerprint!==p.sourceFingerprint||paid.kept.payloadSha256!==p.sourcePayloadSha256
+   ||sha(paid.normalized)!==p.normalizedRawSha256||JSON.stringify(returned)!==JSON.stringify(p.returned))return false;
+  if(!p.retention)return true;
+  // The measurement is re-derived from the authenticated paid RAW and the shipped
+  // bytes; a copied, stale or edited reading cannot admit or refuse a target.
+  const shipping=await authenticatedShipping(db,input);
+  return !!shipping&&JSON.stringify(await headRetentionOf(paid.normalized,shipping,returned))===JSON.stringify(p.retention);
  }catch{return false;}
 }

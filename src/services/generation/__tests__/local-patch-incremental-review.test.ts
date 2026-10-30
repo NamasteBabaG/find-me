@@ -804,6 +804,61 @@ describe("Codex independent incident recovery", () => {
 });
 
 describe("Codex independent recovery deadline", () => {
+  it.each([true, false])("keeps a ready review ahead of a slow optional retained-paint scan (review owed: %s)", async owed => {
+    const s = await seed(`review-before-retained-scan-${owed}`);
+    if (!owed) await review(s);
+    s.judge.mockClear();
+    const before = (await rows(s.gameId))[0]!;
+    const worldId = boardWizardWorldId(s.gameId), prior = await boardWizardBudgetOf(c).audit(worldId);
+    expect(before.status).toBe("GENERATED");
+    expect(prior.held).toBe(false);
+    const start = Date.now(); let clock = start;
+    const now = vi.spyOn(Date, "now").mockImplementation(() => clock);
+    // The grant boundary is mocked only to exercise QA scheduling. The real
+    // owned image, review, ledger, publication proof and lease still run.
+    const completion = await import("../qa-completion-capacity");
+    const grant = vi.spyOn(completion, "readQaCompletionCapacity").mockResolvedValue({
+      worldId, capMicroUsd: 12_000_000, authorizationSha256: "a".repeat(64),
+    });
+    const recovery = await import("../retained-normal-head-recovery");
+    const scan = vi.spyOn(recovery, "restoreRetainedNormalHead").mockImplementation(async () => {
+      // Reproduces QA's 99 s no-op scan: only 175 s remains, below the
+      // unchanged 180 s review guard. Repeating this scan starves the review.
+      clock += 95_000; return false;
+    });
+    const answer = s.judge.getMockImplementation()!;
+    s.judge.mockImplementation(async request => {
+      const reply = await answer(request);
+      clock = start + 250_000; // No new drawing fits after this review.
+      return reply;
+    });
+    const nextImage = vi.fn<LocalPatchHideDeps["render"]>(async ({ requestKey, stylePng }) => {
+      const hide = BOARDS.flatMap(board => board.hides).find(h => requestKey.startsWith(`${h.id}:`))!;
+      const reply = paintedOk(await paintedCrop(stylePng, hide), bill(`priority-${s.gameId}-${requestKey}`));
+      clock = start + 250_000;
+      return reply;
+    });
+    try {
+      const result = await runLocalPatchWorldSlice(c, { ...s.deps, render: nextImage }, s.gameId, {
+        boardJudge: s.judge, hardDeadlineAt: start + 270_000, maxHides: 1,
+      });
+      expect(result).toMatchObject({ claimed: true, pending: true, attention: null });
+      expect(s.judge).toHaveBeenCalledTimes(owed ? 1 : 0);
+      expect(scan).toHaveBeenCalledTimes(owed ? 0 : 1);
+      expect(nextImage).toHaveBeenCalledTimes(owed ? 0 : 1);
+      expect(s.render).toHaveBeenCalledOnce();
+      const after = (await rows(s.gameId)).find(row => row.id === before.id)!;
+      expect(after).toMatchObject({ assetId: before.assetId, attempts: before.attempts, status: "GENERATED" });
+      expect(JSON.parse(after.judgeJson!).reviewState).toBe("board-review-complete");
+      const budget = await boardWizardBudgetOf(c).audit(worldId);
+      expect(budget.unknownRequestKeys).toEqual(prior.unknownRequestKeys);
+      expect(budget.reservedMicroUsd).toBe(prior.reservedMicroUsd);
+      expect(budget.settledMicroUsd).toBeGreaterThan(prior.settledMicroUsd);
+      expect(await db.generationJob.findUniqueOrThrow({ where: { id: `job_${s.gameId}` } }))
+        .toMatchObject({ status: "QUEUED", currentStep: "local-patch" });
+    } finally { scan.mockRestore(); grant.mockRestore(); now.mockRestore(); }
+  }, 120_000);
+
   it("yields remaining free re-reads after its hard deadline instead of starting another board reconstruction", async () => {
     const s = await dualSeed("codex-free-deadline", hideId => longAnswer(hideId, 1013, 954, 466), { count: 2 });
     for (let question = 0; question < 4; question++) await s.run();
