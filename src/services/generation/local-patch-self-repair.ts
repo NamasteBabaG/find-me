@@ -7,6 +7,7 @@ import { z } from "zod";
 import { LEGACY_PAID_JOIN_HEAD_VERSION } from "../../domain/generation/legacy-paid-join-head";
 import { targetHeadRepairContext, targetHeadRepairContextSchema, TARGET_HEAD_VISIBLE_VERSION } from "../../domain/generation/target-head-return";
 import { retainedNormalHeadSchema } from "../../domain/generation/retained-normal-head";
+import { headPixelCorrectionSchema } from "../../domain/generation/head-pixel-correction";
 import { singleReviewHeadEvidenceMatches } from "./single-review-head-evidence";
 import { qaGuidedRepairContextTransition } from "./qa-guided-repair-context";
 import { DbStorage } from "../../infra/storage/db";
@@ -98,6 +99,11 @@ export function refusedCompositionSource(previous: Record<string, unknown> | nul
     return p.success&&p.data.originalAttempt<=attempts&&p.data.sourceRequestKey===`${hide.id}:${hide.pose}:render:${p.data.originalAttempt}`
       &&p.data.shippingSha256===previous.judgedSha256?p.data.sourceRequestKey:null;
   }
+  // A free head pixel correction refused by its fresh review names its exact paid source.
+  if(previous?.headPixelCorrection!==undefined){
+    const m=headPixelCorrectionSchema.safeParse(previous.headPixelCorrection);
+    return m.success&&m.data.candidateSha256===previous.judgedSha256?m.data.sourceRequestKey:null;
+  }
   const recorded = typeof previous?.compositionSource === "string" ? previous.compositionSource : null;
   if (state?.phase === "awaiting-review" && state.decision) return recorded
     ?? (state.decision.action === "recompose-retained" ? state.decision.sourceKey : `${hide.id}:${hide.pose}:self-repair:${state.cycle}`);
@@ -161,7 +167,7 @@ export async function runLocalPatchSelfRepair(c: Container, input: { gameId: str
   demand(identity.ownerId === game.ownerId && identity.visibility === "PRIVATE" && identity.type === "IDENTITY_SHEET"
     && identity.status === "READY" && !identity.deletedAt, "Canonical identity is unavailable");
   const sheet = await c.storage.get(identity.storagePath), identitySha256 = sha256Bytes(sheet);
-  if(previous.retainedNormalHead!==undefined)demand(await singleReviewHeadEvidenceMatches(c.db,{gameId,hideId:hide.id,
+  if(previous.retainedNormalHead!==undefined||previous.headPixelCorrection!==undefined)demand(await singleReviewHeadEvidenceMatches(c.db,{gameId,hideId:hide.id,
     imageSha256:previous.judgedSha256,attempts:row.attempts,sceneVersion:scene.sceneVersion,
     geometrySha256:localPatchPublicationGeometryHash(row),identitySha256,judgeJson:row.judgeJson},previous.boardReview?.dual?.quality?.headEvidence),
     "Retained normal candidate source or head binding changed");

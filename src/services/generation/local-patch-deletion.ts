@@ -62,7 +62,8 @@ export async function deleteLocalPatchGame(c: Container, gameId: string, actor: 
       action: { startsWith: "local-patch:quality-pilot" } }, data: { metaJson: null } });
     await tx.auditLog.updateMany({ where: { entityType: "Game", entityId: gameId,
       action: { in: ["local-patch:extra-attempt", "local-patch:partial-release", "local-patch:legacy-head-source-corrected",
-        "local-patch:qa-guided-repair-context", "local-patch:visible-head-policy-corrected", "local-patch:retained-normal-head-restored"] } }, data: { metaJson: null } });
+        "local-patch:qa-guided-repair-context", "local-patch:visible-head-policy-corrected", "local-patch:retained-normal-head-restored",
+        "local-patch:head-pixel-correction"] } }, data: { metaJson: null } });
     let sharedAssetsRetained = 0;
     for (const asset of await tx.asset.findMany({ where: { id: { in: inventory.assetIds } } })) {
       demand(asset.ownerId === game.ownerId && asset.provider === LOCAL_PATCH_PROVIDER && asset.providerRequestId === gameId

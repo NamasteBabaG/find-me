@@ -15,6 +15,8 @@ import { reconcileLegacyPaidJoinHead } from "./legacy-paid-join-head-recovery";
 import { legacyHeadCorrectionCandidate } from "../../domain/generation/legacy-paid-join-head";
 import { reconcileVisibleHeadPolicy } from "./visible-head-policy-recovery";
 import { restoreRetainedNormalHead } from "./retained-normal-head-recovery";
+import { correctHeadPixels } from "./head-pixel-correction";
+import { headPixelCorrectionCandidate } from "../../domain/generation/head-pixel-correction";
 import { detectivesNativeMaskTail } from "./detectives-completion-budget";
 import { singleLowReviewAuthorization as detectivesSingleReviewAuthorization, hasSingleLowCapacity as hasDetectivesLowCapacity } from "./single-low-policy";
 import { hasLocalPatchCapability } from "../../domain/scene/local-patch-family";
@@ -597,9 +599,10 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
   if (completionAuthority && await reconcileVisibleHeadPolicy(c, gameId, rows, fence)) rows = await c.db.targetVariantAsset.findMany({
     where: { variant: LOCAL_PATCH_VARIANT, targetInstance: { gameScene: { gameId } } }, include: { targetInstance: { select: { targetId: true, gameSceneId: true } } } });
   // A slow optional scan must not spend the window reserved for deciding an
-  // already-ready image or re-reading an exact settled all-role document.
-  // Retained normal paintings still get their free recovery when neither is owed.
-  if (completionAuthority && !rows.some(row => readyReviewOwed(row) || localPatchBoundEnvelopeUndecided(row))
+  // already-ready image, re-reading an exact settled all-role document, or
+  // correcting a measured head fade on pixels already paid for.
+  // Retained normal paintings still get their free recovery when none is owed.
+  if (completionAuthority && !rows.some(row => readyReviewOwed(row) || localPatchBoundEnvelopeUndecided(row) || headPixelCorrectionCandidate(row))
     && await restoreRetainedNormalHead(c, gameId, rows, fence, deps.readBoardArt)) rows = await c.db.targetVariantAsset.findMany({
     where: { variant: LOCAL_PATCH_VARIANT, targetInstance: { gameScene: { gameId } } }, include: { targetInstance: { select: { targetId: true, gameSceneId: true } } } });
   const legacyReviewOwed = (row: typeof rows[number] | undefined) => !!completionAuthority && !!row
@@ -653,6 +656,29 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
         await c.db.$transaction(async tx => { await fence(tx); await tx.gameScene.update({ where: { id: scene.id },
           data: { generationStatus: scene.generationStatus } }); });
         await reload();
+      }
+    }
+    // One authenticated free correction per slice, after paid-answer readings
+    // and before any new diagnosis, painting or review. Yield after the write:
+    // remaining free corrections get their turn first, and the changed shipping
+    // later needs a fresh ordinary MEDIUM with its full unchanged time window.
+    if (dual && rows.some(headPixelCorrectionCandidate)) {
+      if (!reviewFits()) {
+        await c.db.$transaction(async tx => { await fence(tx); await tx.generationJob.update({ where: { id: job.id },
+          data: { status: "QUEUED", currentStep: "local-patch", lastError: null } }); });
+        return { ...empty, claimed: true, pending: true, paused: false };
+      }
+      let corrected;
+      try { corrected = await correctHeadPixels(c, gameId, rows, fence, deps.readBoardArt); }
+      catch (error) {
+        await c.db.generationJob.updateMany({ where: { id: job.id, attempts: claim, status: "RUNNING" },
+          data: { status: "FAILED", lastError: (error instanceof Error ? error.message : String(error)).slice(0, 500) } });
+        throw error;
+      }
+      if (corrected) {
+        await c.db.$transaction(async tx => { await fence(tx); await tx.generationJob.update({ where: { id: job.id },
+          data: { status: "QUEUED", currentStep: "local-patch", lastError: null } }); });
+        return { ...empty, claimed: true, pending: true, paused: false };
       }
     }
     // Every open Message Batches round, before any review: polled, cancelled at its

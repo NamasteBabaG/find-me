@@ -17,12 +17,25 @@ import { localPatchReturnRegion, LOCAL_PATCH_COMPOSITION_VERSION, AUTHORED_PATCH
 import { cropOf, maskForHide, type LocalPatchHide } from '../../domain/scene/local-patch-hides';
 import { LEGACY_PAID_JOIN_HEAD_VERSION, legacyPaidJoinHeadPlan } from '../../domain/generation/legacy-paid-join-head';
 import { measureHeadRetention } from '../../domain/generation/head-retention';
+import { HEAD_PIXEL_CORRECTION_ACTION, HEAD_PIXEL_CORRECTION_VERSION, headPixelCorrectionSchema } from '../../domain/generation/head-pixel-correction';
 
 type Receipt=Record<string,unknown>;
 const legacyCompositionHash=(r:Receipt)=>sha(Buffer.from(JSON.stringify({compositionVersion:r.compositionVersion,compositionSource:r.compositionSource,recoveryComposition:r.recoveryComposition})));
 const normalCompositionHash=(r:Receipt)=>sha(Buffer.from(JSON.stringify({compositionVersion:r.compositionVersion,authoredReturn:r.authoredReturn,retainedNormalHead:r.retainedNormalHead})));
+const correctionHash=(r:Receipt)=>sha(Buffer.from(JSON.stringify({compositionVersion:r.compositionVersion,authoredReturn:r.authoredReturn,headPixelCorrection:r.headPixelCorrection})));
+const bindingOf=(r:Receipt)=>r.retainedNormalHead!==undefined?RETAINED_NORMAL_HEAD_VERSION:r.headPixelCorrection!==undefined?HEAD_PIXEL_CORRECTION_VERSION:r.headSourceVersion??undefined;
+const compositionOf=(version:unknown,r:Receipt)=>version===RETAINED_NORMAL_HEAD_VERSION?normalCompositionHash(r):version===HEAD_PIXEL_CORRECTION_VERSION?correctionHash(r):legacyCompositionHash(r);
 const object=(v:unknown):Record<string,unknown>|null=>v&&typeof v==='object'&&!Array.isArray(v)?v as Record<string,unknown>:null;
 function sourceKey(hide:Pick<LocalPatchHide,'id'|'pose'>,attempt:number,receipt:Receipt){
+ if(receipt.headPixelCorrection!==undefined){
+  // The correction carries its own exact alias chain; the receipt keeps no second one.
+  const m=headPixelCorrectionSchema.parse(receipt.headPixelCorrection);
+  if(receipt.retainedNormalHead!==undefined||receipt.headSourceVersion!==undefined||receipt.authoredRecovery!==undefined||receipt.crownReturn!==undefined
+    ||receipt.propJoinCorrection!==undefined||targetHeadVersionOfReceipt(receipt)!==TARGET_HEAD_VISIBLE_VERSION||m.candidateSha256!==receipt.judgedSha256
+    ||(m.alias?m.sourceRequestKey!==m.alias.retainedNormalHead.sourceRequestKey:m.sourceRequestKey!==`${hide.id}:${hide.pose}:render:${attempt}`))
+   throw Error('HEAD_RETURN: invalid head pixel correction source binding');
+  return m.sourceRequestKey;
+ }
  if(receipt.retainedNormalHead!==undefined){
   const p=retainedNormalHeadSchema.parse(receipt.retainedNormalHead);
   if(p.originalAttempt>attempt||p.sourceRequestKey!==`${hide.id}:${hide.pose}:render:${p.originalAttempt}`||receipt.headSourceVersion!==undefined
@@ -51,6 +64,17 @@ async function normalSourceAuthorized(db:Prisma.TransactionClient,gameId:string,
   ||p.shippingSha256!==receipt.judgedSha256||p.geometrySha256!==receipt.geometrySha256
   ||p.sourceFingerprint!==paid.kept.operationFingerprint||p.sourcePayloadSha256!==paid.kept.payloadSha256||p.normalizedRawSha256!==sha(paid.normalized))
   throw Error('HEAD_RETURN: retained normal source audit differs');
+}
+async function correctionSourceAuthorized(db:Prisma.TransactionClient,gameId:string,receipt:Receipt,paid:Awaited<ReturnType<typeof readSettledTargetRaw>>){
+ if(receipt.headPixelCorrection===undefined)return;
+ const m=headPixelCorrectionSchema.parse(receipt.headPixelCorrection),audit=await db.auditLog.findUnique({where:{id:m.auditId}});
+ const saved=audit&&JSON.parse(audit.metaJson??'null');
+ if(!audit||audit.actorType!=='SYSTEM'||audit.actorId!==null||audit.action!==HEAD_PIXEL_CORRECTION_ACTION||audit.entityType!=='Game'||audit.entityId!==gameId
+  ||JSON.stringify(saved?.marker)!==JSON.stringify(m)||saved?.candidateSha256!==receipt.judgedSha256||m.geometrySha256!==receipt.geometrySha256
+  ||m.sourceFingerprint!==paid.kept.operationFingerprint||m.sourcePayloadSha256!==paid.kept.payloadSha256||m.normalizedRawSha256!==sha(paid.normalized))
+  throw Error('HEAD_RETURN: head pixel correction audit differs');
+ // The baseline's own alias audit still binds the ORIGINAL image, never the correction.
+ if(m.alias)await normalSourceAuthorized(db,gameId,{retainedNormalHead:m.alias.retainedNormalHead,judgedSha256:m.baselineShippingSha256,geometrySha256:m.baselineGeometrySha256},paid);
 }
 const decoded=async(png:Buffer)=>{const {data,info}=await sharp(png,{limitInputPixels:8294400}).removeAlpha().raw().toBuffer({resolveWithObject:true});
  return{data,width:info.width,height:info.height,channels:info.channels};};
@@ -93,8 +117,11 @@ export async function singleReviewHeadEvidence(db:Prisma.TransactionClient,input
  receipt:Receipt;shipping:Buffer;geometrySha256:string;identitySha256:string}){
  const key=sourceKey(input.hide,input.attempt,input.receipt),paid=await readSettledTargetRaw(db,input.gameId,key);
  await normalSourceAuthorized(db,input.gameId,input.receipt,paid);
+ await correctionSourceAuthorized(db,input.gameId,input.receipt,paid);
  if(input.receipt.retainedNormalHead!==undefined&&retainedNormalHeadSchema.parse(input.receipt.retainedNormalHead).identitySha256!==input.identitySha256)
   throw Error('HEAD_RETURN: retained normal identity differs');
+ if(input.receipt.headPixelCorrection!==undefined&&headPixelCorrectionSchema.parse(input.receipt.headPixelCorrection).identitySha256!==input.identitySha256)
+  throw Error('HEAD_RETURN: head pixel correction identity differs');
  const legacy=input.receipt.headSourceVersion===LEGACY_PAID_JOIN_HEAD_VERSION?legacyPaidJoinHeadPlan(input.receipt,input.hide,input.attempt):null;
  if(legacy&&(legacy.rawSha256!==sha(paid.normalized)||JSON.stringify(legacy.crop)!==JSON.stringify(cropOf(input.hide))))
   throw Error('HEAD_RETURN: legacy retained RAW differs from its actual composition');
@@ -105,7 +132,8 @@ export async function singleReviewHeadEvidence(db:Prisma.TransactionClient,input
   sourceRequestKey:key,sourceFingerprint:paid.kept.operationFingerprint,sourcePayloadSha256:paid.kept.payloadSha256,
   normalizedRawSha256:sha(paid.normalized),shippingSha256:sha(input.shipping),geometrySha256:input.geometrySha256,
   identitySha256:input.identitySha256,returned,feather:12,...(legacy?{sourceBindingVersion:LEGACY_PAID_JOIN_HEAD_VERSION,sourceCompositionSha256:legacyCompositionHash(input.receipt)}
-   :input.receipt.retainedNormalHead!==undefined?{sourceBindingVersion:RETAINED_NORMAL_HEAD_VERSION,sourceCompositionSha256:normalCompositionHash(input.receipt)}:{}),
+   :input.receipt.retainedNormalHead!==undefined?{sourceBindingVersion:RETAINED_NORMAL_HEAD_VERSION,sourceCompositionSha256:normalCompositionHash(input.receipt)}
+   :input.receipt.headPixelCorrection!==undefined?{sourceBindingVersion:HEAD_PIXEL_CORRECTION_VERSION,sourceCompositionSha256:correctionHash(input.receipt)}:{}),
   // v1 questions and decisions stay byte-identical; only visible-head evidence is measured.
   ...(version===TARGET_HEAD_VISIBLE_VERSION?{retention:await headRetentionOf(paid.normalized,input.shipping,returned)}:{})});
  return{evidence,raw:paid.normalized};
@@ -118,12 +146,14 @@ export async function singleReviewHeadEvidenceMatches(db:Prisma.TransactionClien
   if(p.gameId!==input.gameId||p.hideId!==input.hideId||p.shippingSha256!==input.imageSha256||p.geometrySha256!==input.geometrySha256||p.identitySha256!==input.identitySha256)return false;
   const j=JSON.parse(input.judgeJson??'null');
   if(!j||targetHeadVersionOfReceipt(j)!==p.version)return false;
-  if((j.retainedNormalHead!==undefined?RETAINED_NORMAL_HEAD_VERSION:j.headSourceVersion??undefined)!==p.sourceBindingVersion)return false;
-  if(p.sourceBindingVersion&&p.sourceCompositionSha256!==(p.sourceBindingVersion===RETAINED_NORMAL_HEAD_VERSION?normalCompositionHash(j):legacyCompositionHash(j)))return false;
+  if(bindingOf(j)!==p.sourceBindingVersion)return false;
+  if(p.sourceBindingVersion&&p.sourceCompositionSha256!==compositionOf(p.sourceBindingVersion,j))return false;
   if(!j||sourceKey({id:input.hideId,pose:j.pose},input.attempts,j)!==p.sourceRequestKey)return false;
   const paid=await readSettledTargetRaw(db,input.gameId,p.sourceRequestKey);
   await normalSourceAuthorized(db,input.gameId,j,paid);
+  await correctionSourceAuthorized(db,input.gameId,j,paid);
   if(j.retainedNormalHead!==undefined){const n=retainedNormalHeadSchema.parse(j.retainedNormalHead);if(n.identitySha256!==input.identitySha256)return false;}
+  if(j.headPixelCorrection!==undefined&&headPixelCorrectionSchema.parse(j.headPixelCorrection).identitySha256!==input.identitySha256)return false;
   const legacy=p.sourceBindingVersion===LEGACY_PAID_JOIN_HEAD_VERSION?legacyPaidJoinHeadPlan(j,{id:input.hideId,pose:j.pose},input.attempts):null;
   if(p.sourceBindingVersion===LEGACY_PAID_JOIN_HEAD_VERSION&&(!legacy||legacy.rawSha256!==sha(paid.normalized)))return false;
   let returned=legacy?.returned??j?.crownReturn?.returned??j?.authoredRecovery?.returnWindow??j?.authoredReturn?.local;

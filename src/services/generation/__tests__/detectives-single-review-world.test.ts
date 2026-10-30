@@ -7,6 +7,11 @@ import { WHOLE_SOURCE_CONTEXT_VERSION } from "../../../domain/scene/whole-source
 import { readSettledTargetRaw, singleReviewHeadEvidence, singleReviewHeadEvidenceMatches } from "../single-review-head-evidence";
 import * as headEvidenceModule from "../single-review-head-evidence";
 import * as dualPublicationModule from "../local-patch-dual-publication";
+import { correctHeadPixels } from "../head-pixel-correction";
+import { deleteLocalPatchGame } from "../local-patch-deletion";
+import { localPatchPublicationGeometryHash } from "../local-patch-publication-policy";
+import { headPixelCorrectionCandidate, HEAD_PIXEL_CORRECTION_ACTION } from "../../../domain/generation/head-pixel-correction";
+import { retainedNormalHeadRecoveryCandidate } from "../../../domain/generation/retained-normal-head";
 import { reconcileLegacyPaidJoinHead, LEGACY_HEAD_RECOVERY_ACTION } from "../legacy-paid-join-head-recovery";
 import { reconcileVisibleHeadPolicy,VISIBLE_HEAD_RECOVERY_ACTION } from "../visible-head-policy-recovery";
 import { visibleHeadPolicyRecoveryCandidate } from "../../../domain/generation/visible-head-policy-recovery";
@@ -1057,6 +1062,250 @@ it.each(['detectives','explorers'] as const)('keeps a free measured head re-read
    expect(await db.generationJob.findUniqueOrThrow({where:{id:'job_'+f.gameId}})).toMatchObject({status:'QUEUED',currentStep:'local-patch'});
    expect(fetch).not.toHaveBeenCalled();
   }finally{committed.mockRestore();scan.mockRestore();grant.mockRestore();now.mockRestore();}
+ }finally{vi.useRealTimers();}
+},300000);
+
+it.each([
+ {fresh:'pass',alias:false,original:'pass',version:12,runtime:true},
+ {fresh:'fail',alias:false,original:'pass',version:12,runtime:false},
+ {fresh:'pass',alias:true,original:'pass',version:12,runtime:false},
+ {fresh:'pass',alias:true,original:'pass',version:13,runtime:true},
+ {fresh:'held',alias:true,original:'pass',version:13,runtime:true},
+ {fresh:'pass',alias:false,original:'continuity',version:12,runtime:false},
+ {fresh:'pass',alias:false,original:'subject',version:12,runtime:false},
+ {fresh:'pass',alias:false,original:'doubt',version:12,runtime:false},
+] as const)('corrects a measured crown fade for free inside the SAME return, then only a fresh MEDIUM decides it; fresh review=$fresh alias=$alias original=$original version=$version runtime=$runtime',async({fresh,alias,original,version,runtime})=>{
+ vi.useFakeTimers({toFake:['Date']});
+ try{
+  const gameId='head-pixel-correction-synthetic-'+fresh+(alias?'-alias':'')+'-'+original+'-'+version;await newDetectiveWorld(gameId,7,true,version===12,true);
+  const context=await resolveLocalPatchBoardsForGame(db,gameId,version),board=context.boards.find(b=>b.board==='dragoncave')!,hide=board.hides[version===13?1:2]!;
+  const returned=localPatchReturnRegion(cropOf(hide),maskForHide(hide),hide.returnRect).local;
+  const figure={left:returned.left+60,top:returned.top+4,width:120,height:250},located={left:figure.left,top:figure.top,width:figure.width,height:110};
+  const render=vi.fn<LocalPatchHideDeps['render']>(async input=>paintedOk(await sharp(input.stylePng).composite([{input:await sharp({create:{width:figure.width,height:figure.height,
+   channels:4,background:'#ff00ff'}}).png().toBuffer(),left:figure.left,top:figure.top}]).png().toBuffer(),bill('pixel-correction-'+fresh+'-'+input.requestKey,50000)));
+  const deps:SelfRepairDeps={readBoardArt:readArt,renderPolicySha256:localPatchRenderPolicySha256(LOCAL_PATCH_IMAGE_POLICY),render,
+   diagnose:async()=>{throw Error('No diagnosis is bought by the free correction');},judge:async()=>{throw Error('No duplicate synchronous judge');},fence:async()=>{}};
+  expect((await runLocalPatchHide(c,deps,{gameId,board,hide})).state).toBe('generated');
+  const row=()=>db.targetVariantAsset.findFirstOrThrow({where:{variant:'A',targetInstance:{gameScene:{gameId},targetId:hide.targetId}}});
+  const scene=await db.gameScene.findFirstOrThrow({where:{gameId,sceneSlug:board.board}});
+  let crowns:'pass'|'fail'='pass';
+  const provider=controlledSol(false,false,undefined,true,false,version),retrieve=provider.fake.retrieve.bind(provider.fake);
+  provider.fake.retrieve=async id=>{
+   const response=await retrieve(id);if(response.status!=='completed')return response;
+   const answer=JSON.parse(response.reading.raw!);
+   Object.assign(answer.head,{rawHead:located,shippingHead:located,rawCrown:crowns,shippingCrown:crowns,observation:'Synthetic located crown in RAW and SHIPPING.'});
+   if(original==='continuity')Object.assign(answer.continuity.cases[0],{state:'broken',headConnection:'missing',
+    faults:[{kind:'missing-head',where:'Synthetic separate source neighbor has a missing head beside its visible collar.'}]});
+   if(original==='subject'){
+    const assessment=answer.assessment.version===SOURCE_NEIGHBOR_BUNDLE_VERSION?answer.assessment.assessment:answer.assessment;
+    assessment.subject.checks.photoLikeness=observed('fail');
+    assessment.subject.faults=[{check:'photoLikeness',where:'Synthetic target eye shape and nose differ from the pinned photograph.'}];
+   }
+   if(original==='doubt'){answer.doubt=true;answer.doubtReason='Synthetic unresolved non-head anatomy beside the return.';}
+   return{...response,reading:{...response.reading,raw:JSON.stringify(answer)}};
+  };
+  const container={...c,backgroundReview:provider.fake,visualReview:{request:async()=>{throw Error('No synchronous duplicate');}}} as Container;
+  const scope={gameId,sceneId:scene.id},reviewDeps={fence:async()=>{},readBoardArt:readArt};
+  const review=async()=>{for(let tick=0;tick<8;tick++){
+   await reviewLocalPatchBoard(container,{...scope,deadlineAt:Date.now()+270000},reviewDeps);
+   await advanceContinuityInBackground(container,gameId,{deadlineAt:Date.now()+270000});await vi.advanceTimersByTimeAsync(LEAN_RECOVERY_BACKOFF_MS+1);
+   if(JSON.parse((await row()).judgeJson!).reviewState==='board-review-complete')break;
+  }};
+  let aliasAudit:{id:string;metaJson:string|null}|null=null;
+  if(alias){
+   // A restored older normal painting, written exactly as restoreRetainedNormalHead writes it.
+   const pending=await row(),receipt=JSON.parse(pending.judgeJson!),paidRaw=await readSettledTargetRaw(db,gameId,`${hide.id}:${hide.pose}:render:1`);
+   const identity=await db.asset.findUniqueOrThrow({where:{id:'ast-sheet-'+gameId}}),auditId='aud_normal_head_'+sha256Bytes(Buffer.from(gameId)).slice(0,40);
+   const restored={version:RETAINED_NORMAL_HEAD_VERSION,auditId,authorizationSha256:'a'.repeat(64),sourceRequestKey:`${hide.id}:${hide.pose}:render:1`,
+    sourceFingerprint:paidRaw.kept.operationFingerprint,sourcePayloadSha256:paidRaw.kept.payloadSha256,normalizedRawSha256:sha256Bytes(paidRaw.normalized),
+    shippingSha256:receipt.judgedSha256,geometrySha256:receipt.geometrySha256,identitySha256:sha256Bytes(await c.storage.get(identity.storagePath)),
+    originalAttempt:1,sourceReviewRequestKey:'synthetic-older-review',sourceReviewFingerprint:'b'.repeat(64)};
+   aliasAudit=await db.auditLog.create({data:{id:auditId,actorType:'SYSTEM',action:RETAINED_NORMAL_HEAD_ACTION,entityType:'Game',entityId:gameId,
+    metaJson:JSON.stringify({version:RETAINED_NORMAL_HEAD_VERSION,retainedNormalHead:restored,candidateSha256:receipt.judgedSha256})}});
+   await db.targetVariantAsset.update({where:{id:pending.id},data:{judgeJson:JSON.stringify({...receipt,retainedNormalHead:restored})}});
+  }
+  // The ordinary measured review refuses the faded crown, with no painting bought for it.
+  await review();
+  let refused=await row(),r=JSON.parse(refused.judgeJson!);
+  if(original==='continuity'||original==='subject'){
+   // The ordinary writer already combines role failures into its verdict. This
+   // mutable projection is deliberately changed to the exact quality-only
+   // reading: C must still reject the ORIGINAL paid non-head role failure.
+   // No retained answer, bill, fingerprint or provider bytes are changed.
+   r.verdict=readQualityStage(r.boardReview.dual.quality,hide.id,version);
+   await db.targetVariantAsset.update({where:{id:refused.id},data:{judgeJson:JSON.stringify(r)}});
+   refused=await row();r=JSON.parse(refused.judgeJson!);
+  }
+  if(alias)expect(r.boardReview.dual.quality.headEvidence.sourceBindingVersion).toBe(RETAINED_NORMAL_HEAD_VERSION);
+  expect(refused.status).toBe('FAILED');expect(headPixelCorrectionCandidate(refused)).toBe(true);
+  if(fresh==='held'){
+   // Unknown charges retain their FULL reservation through free correction,
+   // but a NEW unapproved unknown must block a fresh paid review. The free
+   // correction and deletion must still work; neither waives the hold.
+   const budget=boardWizardBudgetOf(container),worldId=boardWizardWorldId(gameId);
+   await budget.reserve(worldId,{requestKey:'synthetic-head-unverified-charge',scope:'image',operationFingerprint:'d'.repeat(64),reserveMicroUsd:200000});
+   await budget.markUnknown(worldId,'synthetic-head-unverified-charge','Synthetic provider charge is unverified');
+  }
+  const worldId=boardWizardWorldId(gameId),ledger=await db.worldBudgetLedger.findUniqueOrThrow({where:{worldId}}),asked=provider.creates.length,painted=render.mock.calls.length;
+  if(original!=='pass'){
+   // A quality-only mutable verdict cannot supersede the paid continuity or
+   // subject refusal, or paid uncertainty. No new candidate/review is owed.
+   const assets=await db.asset.findMany({where:{providerRequestId:gameId},orderBy:{id:'asc'}});
+   expect(r.verdict.faults.every((f:{where:string})=>f.where.includes('measured target crown pixels'))).toBe(true);
+   expect(await correctHeadPixels(container,gameId,[refused],async()=>{},readArt)).toBe(false);
+   expect(await row()).toEqual(refused);
+   expect(await db.asset.findMany({where:{providerRequestId:gameId},orderBy:{id:'asc'}})).toEqual(assets);
+   expect((await db.worldBudgetLedger.findUniqueOrThrow({where:{worldId}})).snapshotJson).toBe(ledger.snapshotJson);
+   expect(provider.creates).toHaveLength(asked);expect(render).toHaveBeenCalledTimes(painted);
+   expect(fetch).not.toHaveBeenCalled();return;
+  }
+  // Ownership, refund, deletion and fences refuse before any write.
+  await db.order.update({where:{id:'order-'+gameId},data:{paymentStatus:'REFUNDED'}});
+  expect(await correctHeadPixels(container,gameId,[refused],async()=>{},readArt)).toBe(false);
+  await db.order.update({where:{id:'order-'+gameId},data:{paymentStatus:'PAID'}});
+  await expect(correctHeadPixels(container,gameId,[refused],async()=>{throw Error('synthetic fence');},readArt)).rejects.toThrow('synthetic fence');
+  if(version===13){
+   const owner=(await db.game.findUniqueOrThrow({where:{id:gameId}})).ownerId!,childId='chl-'+gameId,identityId='ast-sheet-'+gameId;
+   const other='usr-other-'+gameId;
+   await db.user.create({data:{id:other,email:other+'@example.invalid'}});
+   for(const [blocked,restore] of [
+    [()=>db.game.update({where:{id:gameId},data:{ownerId:other}}),()=>db.game.update({where:{id:gameId},data:{ownerId:owner}})],
+    [()=>db.childProfile.update({where:{id:childId},data:{ownerId:other}}),()=>db.childProfile.update({where:{id:childId},data:{ownerId:owner}})],
+    [()=>db.childProfile.update({where:{id:childId},data:{deletedAt:new Date()}}),()=>db.childProfile.update({where:{id:childId},data:{deletedAt:null}})],
+    [()=>db.game.update({where:{id:gameId},data:{deletedAt:new Date()}}),()=>db.game.update({where:{id:gameId},data:{deletedAt:null}})],
+    [()=>db.asset.update({where:{id:identityId},data:{deletedAt:new Date()}}),()=>db.asset.update({where:{id:identityId},data:{deletedAt:null}})],
+    [()=>db.asset.update({where:{id:identityId},data:{visibility:'GAME'}}),()=>db.asset.update({where:{id:identityId},data:{visibility:'PRIVATE'}})],
+   ] as const){await blocked();expect(await correctHeadPixels(container,gameId,[refused],async()=>{},readArt)).toBe(false);await restore();}
+   // Also recheck inside the write fence, after the initial owned reads.
+   expect(await correctHeadPixels(container,gameId,[refused],async tx=>{
+    await tx.childProfile.update({where:{id:childId},data:{deletedAt:new Date()}});
+   },readArt)).toBe(false);
+   await db.childProfile.update({where:{id:childId},data:{deletedAt:null}});
+   for(const phase of ['diagnosing','applying']){
+    await db.targetVariantAsset.update({where:{id:refused.id},data:{judgeJson:JSON.stringify({...r,selfRepair:{phase,cycle:1}})}});
+    expect(await correctHeadPixels(container,gameId,[await row()],async()=>{},readArt)).toBe(false);
+   }
+   await db.targetVariantAsset.update({where:{id:refused.id},data:{judgeJson:refused.judgeJson}});
+  }
+  const forged=structuredClone(r);forged.boardReview.dual.quality.raw=forged.boardReview.dual.quality.raw.replace(`"top":${located.top}`,`"top":${located.top+1}`);
+  await db.targetVariantAsset.update({where:{id:refused.id},data:{judgeJson:JSON.stringify(forged)}});
+  expect(await correctHeadPixels(container,gameId,[await row()],async()=>{},readArt)).toBe(false);
+  await db.targetVariantAsset.update({where:{id:refused.id},data:{judgeJson:refused.judgeJson}});
+  expect((await row()).judgeJson).toBe(refused.judgeJson);
+  // The correction: same RAW, same scene, same return; nothing bought. A stale
+  // candidate listed first is refused without starving the real one.
+  if(runtime){
+   // A C-eligible row skips the optional95s scan and is corrected before any
+   // painting or review purchase. Yield after this one free write so ordinary
+   // review starts with its unchanged180s window on the next tick.
+   const start=Date.now();let clock=start;
+   const now=vi.spyOn(Date,'now').mockImplementation(()=>clock);
+   const capacity=await import('../qa-completion-capacity');
+   const grant=vi.spyOn(capacity,'readQaCompletionCapacity').mockResolvedValue({worldId,capMicroUsd:12000000,authorizationSha256:'a'.repeat(64)});
+   const recovery=await import('../retained-normal-head-recovery');
+   const scan=vi.spyOn(recovery,'restoreRetainedNormalHead').mockImplementation(async()=>{clock+=95000;return false;});
+   try{
+    const result=await runLocalPatchWorldSlice(container,deps,gameId,{maxHides:1,hardDeadlineAt:start+270000});
+    expect(result).toMatchObject({claimed:true,pending:true,attention:null});
+    expect(scan).not.toHaveBeenCalled();
+    expect(await db.generationJob.findUniqueOrThrow({where:{id:'job_'+gameId}})).toMatchObject({status:'QUEUED',currentStep:'local-patch'});
+   }finally{scan.mockRestore();grant.mockRestore();now.mockRestore();}
+  }else expect(await correctHeadPixels(container,gameId,[{...refused,id:'tva-stale-synthetic'},refused],async()=>{},readArt)).toBe(true);
+  const corrected=await row(),k=JSON.parse(corrected.judgeJson!),marker=k.headPixelCorrection;
+  expect(corrected).toMatchObject({status:'GENERATED',attempts:refused.attempts,costCents:refused.costCents});expect(corrected.assetId).toMatch(/^ast_hpc_/);
+  expect(k).toMatchObject({reviewState:'pending-board-review',verdict:null});expect(k.boardReview).toBeUndefined();expect(k.retainedNormalHead).toBeUndefined();
+  expect(marker).toMatchObject({version:'head-pixel-correction/v1',baselineShippingSha256:r.judgedSha256,baselineAssetId:refused.assetId,returned,heads:[located,located],
+   headAnswer:{requestKey:r.boardReview.dual.quality.requestKey,fingerprint:r.boardReview.dual.quality.fingerprint}});
+  expect(JSON.parse(corrected.rejectedAssetIdsJson!)).toContain(refused.assetId);
+  if(alias){
+   // The alias moves into the correction; its own audit still binds the ORIGINAL image.
+   expect(marker.alias.retainedNormalHead).toEqual(r.retainedNormalHead);
+   expect(await db.auditLog.findUniqueOrThrow({where:{id:aliasAudit!.id}})).toMatchObject({metaJson:aliasAudit!.metaJson});
+  }else expect(marker.alias).toBeUndefined();
+  expect((await db.worldBudgetLedger.findUniqueOrThrow({where:{worldId}})).snapshotJson).toBe(ledger.snapshotJson);
+  if(fresh==='held')expect(await boardWizardBudgetOf(container).audit(worldId)).toMatchObject({held:true,unknownRequestKeys:['synthetic-head-unverified-charge'],reservedMicroUsd:200000});
+  expect(provider.creates).toHaveLength(asked);expect(render).toHaveBeenCalledTimes(painted);
+  const audit=JSON.parse((await db.auditLog.findFirstOrThrow({where:{entityId:gameId,action:HEAD_PIXEL_CORRECTION_ACTION}})).metaJson!);
+  expect(audit).toMatchObject({previousJudgeJson:refused.judgeJson,previousAssetId:refused.assetId,providerCalls:0,attemptsPreserved:true,requestsPreserved:true});
+  // Pixels: the paid head is exactly the RAW; outside the return exactly the baseline; only band pixels near the head moved.
+  const decode=async(bytes:Buffer)=>(await sharp(bytes).ensureAlpha().raw().toBuffer());
+  const asset=async(id:string)=>c.storage.get((await db.asset.findUniqueOrThrow({where:{id}})).storagePath);
+  const [shipped,baseline,raw]=await Promise.all([decode(await asset(corrected.assetId!)),decode(await asset(refused.assetId!)),
+   readSettledTargetRaw(db,gameId,marker.sourceRequestKey).then(p=>decode(p.normalized))]);
+  const at=(b:Buffer,x:number,y:number)=>[...b.subarray((y*512+x)*4,(y*512+x)*4+4)];
+  for(let y=located.top;y<located.top+located.height;y+=3)for(let x=located.left;x<located.left+located.width;x+=3)expect(at(shipped,x,y)).toEqual(at(raw,x,y));
+  let moved=0;
+  for(let y=0;y<768;y++)for(let x=0;x<512;x++){
+   const inReturn=x>=returned.left&&x<returned.left+returned.width&&y>=returned.top&&y<returned.top+returned.height;
+   const same=at(shipped,x,y).every((v,i)=>v===at(baseline,x,y)[i]);
+   if(!inReturn)expect(same).toBe(true);else if(!same){moved++;expect(Math.min(x-returned.left,y-returned.top,returned.left+returned.width-1-x,returned.top+returned.height-1-y)).toBeLessThan(12);}
+  }
+  expect(moved).toBeGreaterThan(0);
+  // Finite: the same correction cannot schedule itself, and nothing publishes before a fresh MEDIUM.
+  expect(headPixelCorrectionCandidate(corrected)).toBe(false);
+  expect(await correctHeadPixels(container,gameId,[corrected],async()=>{},readArt)).toBe(false);
+  expect(await allowedDualPublication(db,{...publicationBinding(gameId,refused),variantId:corrected.id,assetId:corrected.assetId!,imageSha256:k.judgedSha256,
+   geometrySha256:localPatchPublicationGeometryHash(corrected),judgeJson:corrected.judgeJson})).toBe(false);
+  if(fresh==='held'){
+   await review();
+   expect(provider.creates).toHaveLength(asked);expect(render).toHaveBeenCalledTimes(painted);
+   const pending=await row();expect(pending.assetId).toBe(corrected.assetId);
+   expect(await allowedDualPublication(db,{...publicationBinding(gameId,refused),sceneVersion:version,variantId:pending.id,
+    assetId:pending.assetId!,imageSha256:k.judgedSha256,geometrySha256:localPatchPublicationGeometryHash(pending),judgeJson:pending.judgeJson})).toBe(false);
+   expect(await boardWizardBudgetOf(container).audit(worldId)).toMatchObject({held:true,unknownRequestKeys:['synthetic-head-unverified-charge'],reservedMicroUsd:200000});
+   const owner=(await db.game.findUniqueOrThrow({where:{id:gameId}})).ownerId!;
+   expect(await deleteLocalPatchGame(container,gameId,{type:'USER',id:owner},owner)).toBe(true);
+   expect((await db.auditLog.findUniqueOrThrow({where:{id:marker.auditId}})).metaJson).toBeNull();
+   expect((await db.auditLog.findUniqueOrThrow({where:{id:aliasAudit!.id}})).metaJson).toBeNull();
+   expect(await boardWizardBudgetOf(container).audit(worldId)).toMatchObject({held:true,unknownRequestKeys:['synthetic-head-unverified-charge'],reservedMicroUsd:200000});
+   expect(fetch).not.toHaveBeenCalled();return;
+  }
+  crowns=fresh;await review();
+  const decided=await row(),d=JSON.parse(decided.judgeJson!);
+  expect(provider.creates).toHaveLength(asked+1);expect(render).toHaveBeenCalledTimes(painted);
+  expect(d.boardReview.dual.quality.headEvidence).toMatchObject({sourceBindingVersion:'head-pixel-correction/v1',sourceRequestKey:marker.sourceRequestKey});
+  if(fresh==='pass'){
+   expect(decided.status).toBe('GENERATED');expect(d.verdict.verdict).toBe('pass');
+   const binding={...publicationBinding(gameId,decided),sceneVersion:version};
+   expect(await allowedDualPublication(db,binding)).toBe(true);
+   const tampered=structuredClone(d);tampered.headPixelCorrection.heads[0].top+=1;
+   expect(await allowedDualPublication(db,{...binding,judgeJson:JSON.stringify(tampered)})).toBe(false);
+   const key=(await db.asset.findUniqueOrThrow({where:{id:decided.assetId!}})).storagePath,bytes=await c.storage.get(key);
+   const altered=Buffer.from(bytes);altered[altered.length-20]=altered[altered.length-20]!^1;await db.fileBlob.update({where:{key},data:{data:new Uint8Array(altered)}});
+   expect(await allowedDualPublication(db,binding)).toBe(false);
+   await db.fileBlob.update({where:{key},data:{data:new Uint8Array(bytes)}});
+   expect(await allowedDualPublication(db,binding)).toBe(true);
+   if(version===13){
+    expect(d.authoredReturn.source).toMatchObject({width:3344,height:1882});
+    expect(d.boardReview.dual.quality.sourceNeighbors).toBeDefined();
+    // The original alias remains separately authenticated after C and after
+    // its fresh ordinary all-role approval.
+    const aliasMeta=JSON.parse(aliasAudit!.metaJson!);aliasMeta.retainedNormalHead.shippingSha256='0'.repeat(64);
+    await db.auditLog.update({where:{id:aliasAudit!.id},data:{metaJson:JSON.stringify(aliasMeta)}});
+    expect(await allowedDualPublication(db,binding)).toBe(false);
+    await db.auditLog.update({where:{id:aliasAudit!.id},data:{metaJson:aliasAudit!.metaJson}});
+    expect(await allowedDualPublication(db,binding)).toBe(true);
+    // A later NEW unknown blocks further purchases, but cannot be erased by
+    // deletion after this already-settled fresh MEDIUM and its C candidate.
+    const budget=boardWizardBudgetOf(container);
+    await budget.reserve(worldId,{requestKey:'synthetic-head-unverified-charge',scope:'image',operationFingerprint:'d'.repeat(64),reserveMicroUsd:200000});
+    await budget.markUnknown(worldId,'synthetic-head-unverified-charge','Synthetic provider charge is unverified');
+    const owner=(await db.game.findUniqueOrThrow({where:{id:gameId}})).ownerId!;
+    expect(await deleteLocalPatchGame(container,gameId,{type:'USER',id:owner},owner)).toBe(true);
+    expect((await db.auditLog.findUniqueOrThrow({where:{id:marker.auditId}})).metaJson).toBeNull();
+    expect((await db.auditLog.findUniqueOrThrow({where:{id:aliasAudit!.id}})).metaJson).toBeNull();
+    expect(await allowedDualPublication(db,binding)).toBe(false);
+    expect((await db.worldBudgetLedger.findUniqueOrThrow({where:{worldId}})).snapshotJson).not.toBe('');
+    expect(await boardWizardBudgetOf(container).audit(worldId)).toMatchObject({unknownRequestKeys:['synthetic-head-unverified-charge'],reservedMicroUsd:200000});
+   }
+  }else{
+   // A failed fresh review stays failed: no second correction, no swap back to older pixels.
+   expect(decided.status).toBe('FAILED');expect(d.verdict.verdict).toBe('fail');
+   expect(headPixelCorrectionCandidate(decided)).toBe(false);expect(retainedNormalHeadRecoveryCandidate(decided)).toBe(false);
+   expect(await correctHeadPixels(container,gameId,[decided],async()=>{},readArt)).toBe(false);
+  }
+  expect((await db.worldBudgetLedger.findUniqueOrThrow({where:{worldId}})).snapshotJson).not.toBe('');
+  expect(fetch).not.toHaveBeenCalled();
  }finally{vi.useRealTimers();}
 },300000);
 

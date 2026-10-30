@@ -16,7 +16,8 @@ export const retainedNormalHeadSchema=z.object({version:z.literal(RETAINED_NORMA
 export function retainedNormalHeadRecoveryCandidate(row:GuidedFrameRow|undefined){
  if(!row||row.status!=='FAILED'||![2,3].includes(row.attempts)||!row.assetId||row.attempts===3&&!guidedFrameMarker(row))return false;
  try{const j=JSON.parse(row.judgeJson??'null'),state=j?.selfRepair;
-  return !!j&&j.retainedNormalHead===undefined&&(!state||['awaiting-review','rejected'].includes(state.phase))
+  // A refused head pixel correction stays refused: it is never swapped for older pixels.
+  return !!j&&j.retainedNormalHead===undefined&&j.headPixelCorrection===undefined&&(!state||['awaiting-review','rejected'].includes(state.phase))
    &&j.sourceBodyRepair===undefined&&j.sourceBodyBirth===undefined&&j.wholeSourceContext===undefined;
  }catch{return false;}
 }

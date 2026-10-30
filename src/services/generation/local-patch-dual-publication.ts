@@ -62,6 +62,10 @@ export async function allowedDualPublication(db: Prisma.TransactionClient, input
     if (proof.single === SINGLE_MEDIUM_VISUAL_REVIEW_VERSION && proof.quality.headEvidence?.version === TARGET_HEAD_VISIBLE_VERSION
       && proof.quality.headEvidence.retention === undefined) return false;
     if (proof.single === SINGLE_MEDIUM_VISUAL_REVIEW_VERSION && !await singleReviewHeadEvidenceMatches(db,input,proof.quality.headEvidence)) return false;
+    // A free head pixel correction publishes only as the exact reproduction of its paid sources.
+    if (receipt.headPixelCorrection !== undefined && (proof.single !== SINGLE_MEDIUM_VISUAL_REVIEW_VERSION
+      || !await (await import("./head-pixel-correction")).headPixelCorrectionPublicationMatches(db, input))) return false;
+    if (receipt.headPixelCorrection === undefined && input.assetId.startsWith("ast_hpc_")) return false;
     if (!await sourceNeighborPublicationMatches(db, input, proof.quality)) return false;
     if (!equal(proof.authoredReturn, receipt.authoredReturn) || !equal(proof.authoredRecovery, receipt.authoredRecovery)) return false;
     if (receipt.compositionVersion !== LOCAL_PATCH_COMPOSITION_VERSION && receipt.compositionVersion !== AUTHORED_PATCH_COMPOSITION_VERSION && receipt.compositionVersion !== AUTHORED_RECOVERY_COMPOSITION_VERSION && receipt.compositionVersion !== SOURCE_CROWN_COMPOSITION_VERSION) {
@@ -80,7 +84,7 @@ export async function allowedDualPublication(db: Prisma.TransactionClient, input
     if (lean && !upgrade) return false;
     if (!await verifiedDualStage(db, worldId, proof.quality, "scene-quality", { allowLean: lean, allowSingle: single, authoredReviewBinding })
       || !await verifiedDualStage(db, worldId, proof.continuity, "head-continuity", { allowBackground: !!upgrade, allowLean: lean, allowSingle: single, authoredReviewBinding })) return false;
-    if (upgrade && !await allowedSubject(db, worldId, upgrade, proof, input, lean, single)) return false;
+    if (upgrade && !await allowedDualSubject(db, worldId, upgrade, proof, input, lean, single)) return false;
     // Each answer is read by the reader its decision names, never a newer one.
     const quality = readQualityStage(proof.quality, input.hideId, input.sceneVersion);
     const continuity = readContinuityStage(proof.continuity, input.hideId, version);
@@ -95,7 +99,7 @@ export async function allowedDualPublication(db: Prisma.TransactionClient, input
  * the enrolled photograph and age, this hide's plan, and an explicit pass of every check its
  * policy decides by: all eight under v1; under v2 the five of who the child is, with no
  * collection refusal. Each stage is read only by its own policy's reader. */
-async function allowedSubject(db: Prisma.TransactionClient, worldId: string, upgrade: SubjectUpgradeReceipt, proof: DualReviewProof,
+export async function allowedDualSubject(db: Prisma.TransactionClient, worldId: string, upgrade: SubjectUpgradeReceipt, proof: DualReviewProof,
   input: LocalPatchPublicationBinding, lean = false, single = false): Promise<boolean> {
   const subject = proof.subject, plan = subjectPlanOfHide(input.hideId, input.sceneVersion);
   const crown=JSON.parse(input.judgeJson??"null")?.crownReturn;

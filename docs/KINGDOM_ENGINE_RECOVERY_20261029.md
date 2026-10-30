@@ -285,8 +285,9 @@ these private assessment archives while retaining the separate accounting ledger
 ## Ready review before optional retained-paint scans
 
 A source-bound QA completion worker defers its optional search for earlier normal
-paintings while an appearance still owes its ordinary review or an exact-bound
-free reading of an already settled all-role document. A slow
+paintings while an appearance still owes its ordinary review, an exact-bound
+free reading of an already settled all-role document, or a measured head fade
+eligible for the free pixel correction below. A slow
 no-op search can otherwise consume 95 seconds of a 270-second worker window,
 leaving less than the unchanged 180-second review guard on every invocation.
 The integration regression reproduces the lost review window before the fix,
@@ -317,4 +318,41 @@ through the ordinary quality refusal and existing finite repair decision, while
 historical v1 questions, image keys, bills, attempts, cycles and unknown reserves
 remain intact. Tests cover both retained passes and a genuine fade reclassified
 as FAILED without charging for the re-reading. A separate proposed window-growth
-helper is outside this release; no new composition version is authorized here.
+helper remains outside this release.
+
+## Free head pixels inside the same return
+
+`head-pixel-correction/v1` can derive one new candidate from an already settled
+normal RAW and its authenticated original-source composition when the sole
+quality refusal is measured head fading. It requires complete located crowns,
+passing original subject and continuity readings, no reviewer doubt, and the
+same paid document for all roles. A mutable quality-only verdict cannot hide a
+refusal in another paid role. The located head must leave at least three native
+pixels inside the immutable return so its edge ramp remains bounded.
+
+The correction preserves the paid RAW pixels inside the located head boxes and
+changes only nearby pixels in the existing twelve-pixel feather band. It does
+not segment the child, enlarge the return, warp, scale or globally blur the
+painting. All pixels outside the return and outside that band stay identical to
+the baseline. The original edge weight may increase near the head; a fresh
+ordinary all-role MEDIUM must still qualify its seam, neighbors, identity and
+whole picture. Pixel equality is not artistic approval.
+
+Its deterministic audit records the original paid question, RAW, baseline,
+return, identity and source hashes. A retained-normal alias moves verbatim into
+this correction's marker; its own prior audit continues to bind the ORIGINAL
+image. Publication reproduces the correction from these authenticated sources
+and checks its exact candidate bytes and geometry, in addition to all existing
+quality and source-neighbor guards. Old acceptance cannot approve changed pixels.
+
+The worker attempts one free write after retained-answer readings and before new
+purchases, then yields so further free work and fresh review receive a complete
+slice. The same correction cannot schedule itself again; a failed fresh review
+stays failed and cannot restore an older painting over it. No request key,
+historical attempt, repair cycle, charge or full UNKNOWN reserve is reset. The
+free write grants no budget, and its subsequent ordinary review counts against
+the unchanged world ceiling. A new unapproved UNKNOWN still blocks that paid
+review; free correction and complete deletion neither clear the hold nor erase
+its full reservation. Ownership, payment, deletion and identity are
+rechecked within its write fence. Complete deletion redacts its private audit
+and alias archive while preserving the accounting ledger.
