@@ -355,6 +355,7 @@ it.each([{mode:"clean",interrupted:false,guided:false},{mode:"transport",interru
     expect(request.reasoning).toEqual({ effort: "medium" });
     expect(request.prompt).toContain('"version":"' + SINGLE_MEDIUM_VISUAL_REVIEW_VERSION + '"');
     expect(request.prompt).toContain("HEAD_RETURN_EVIDENCE: ");
+    expect(request.prompt).toContain('"version":"' + TARGET_HEAD_VISIBLE_VERSION + '"');
     expect(request.labels.at(-2)).toContain(request.hideId + ":native-provider-raw 512x768");
     expect(request.labels.at(-1)).toContain(request.hideId + ":native-shipping-crown 512x768");
   }
@@ -373,8 +374,9 @@ it.each([{mode:"clean",interrupted:false,guided:false},{mode:"transport",interru
     expect(proof.continuity!.requestKey).toBe(proof.quality.requestKey);
     expect(receipt.boardReview.effort).toBe(born&&!crown ? "medium" : "low");
     if (kingdom) {
+      expect(receipt.headPolicyVersion).toBe(TARGET_HEAD_VISIBLE_VERSION);
       expect(proof.quality.headEvidence).toMatchObject({
-        version: "target-head-return/v1", gameId, hideId: receipt.hide,
+        version: TARGET_HEAD_VISIBLE_VERSION, gameId, hideId: receipt.hide,
         sourceRequestKey: `${receipt.hide}:${receipt.pose}:render:${row.attempts}`,
         shippingSha256: proof.imageSha256, geometrySha256: proof.geometrySha256,
         identitySha256: proof.identitySha256, returned: receipt.authoredReturn.local, feather: 12,
