@@ -1,3 +1,4 @@
+import { NATIVE_DETAIL_REPAIR_DIRECTION, nativeDetailEvidenceSchema, type NativeDetailEvidence } from "../../domain/generation/native-detail";
 import { wholeSourceContextMarkerSchema, type WholeSourceContextMarker } from "../../domain/generation/whole-source-context-purchase";
 import { assertWholeSourceContextPlan, WHOLE_SOURCE_CONTEXT_VERSION, type WholeSourceContextPlan } from "../../domain/scene/whole-source-context";
 import { prepareWholeSourceContextPixels, extractWholeSourceContextShipping } from "./whole-source-context-pixels";
@@ -148,6 +149,8 @@ export type LocalPatchAttemptInput = {
   readonly selfRepair?: { readonly cycle: number; readonly decision: SelfRepairDecision };
   /** Authenticated retained source for a v12 surface-only recovery. */
   readonly restyleSourcePng?: Buffer;
+  /** Only an explicit native-detail refusal activates this versioned addendum. */
+  readonly nativeDetailRepair?: NativeDetailEvidence;
   /** An enrolled world's subject plan for this appearance (subject-policy.ts), appended to the
    * pinned recipe and bound into the fingerprint. Absent: every historical purchase, byte for byte. */
   readonly subjectDirection?: SubjectRenderDirection & {
@@ -531,7 +534,7 @@ async function renderLocalPatchHideInner(deps: LocalPatchRenderDeps, input: Loca
     "Do not move or widen the crop/window to solve a defect. If a complete target or intact neighbour cannot fit, the result must fail independent review and return to the bounded recovery plan; this direction is never an approval.",
   ].join("\n") : "";
   /** The pinned recipe alone, or with the subject plan (and its wardrobe in place of the authored one). */
-  const promptWith = (plan: SubjectRenderDirection | undefined) => {
+  const basePromptWith = (plan: SubjectRenderDirection | undefined) => {
     if (input.wholeSourceContext) {
       if (!plan || plan.painterVersion !== SUBJECT_PAINTER_V4 || !input.ageYears) throw Error("WHOLE_SOURCE_CONTEXT: original enrolled subject plan required");
       const wardrobe = plan.wardrobe ?? authoredWardrobe;
@@ -548,6 +551,9 @@ async function renderLocalPatchHideInner(deps: LocalPatchRenderDeps, input: Loca
       "The native editor mask covers only the ORIGINAL child envelope. Remove the original target person WHOLE inside that envelope, including hair above cyan, then draw the whole new child inside cyan. The orange return-boundary band is protected.") : guide;
     return directed + '\n\n' + permission + (input.nativeMaskTail ? '\n\n'+nativeMaskTailDirections : '');
   };
+  const nativeDetailRepair=input.nativeDetailRepair ? nativeDetailEvidenceSchema.parse(input.nativeDetailRepair) : undefined;
+  const promptWith=(plan:SubjectRenderDirection|undefined)=>basePromptWith(plan)+(nativeDetailRepair
+    ? '\n\n'+NATIVE_DETAIL_REPAIR_DIRECTION+'\nNATIVE_DETAIL_REFUSED_EVIDENCE: '+JSON.stringify(nativeDetailRepair) : '');
 
   const meta = await sharp(input.composedPng, { limitInputPixels: 8_294_400 }).metadata();
   const pinnedSource = authoredReturn?.source ?? guidedReturn?.source;
@@ -590,6 +596,7 @@ async function renderLocalPatchHideInner(deps: LocalPatchRenderDeps, input: Loca
       : input.referenceMode ? { referenceMode: input.referenceMode } : {}),
     ...(isLocalPatchStrictVersion(input.contentVersion) ? { composition: "bounded-return/v1" } : {}),
     ...(authoredReturn ? { authoredReturn } : {}),
+    ...(nativeDetailRepair ? { nativeDetailRepair } : {}),
     policy: input.wholeSourceContext ? localPatchRenderPolicySha256(wholeSourceContextImagePolicy(plan?.quality === "low" ? LOCAL_PATCH_LOW_IMAGE_POLICY : LOCAL_PATCH_IMAGE_POLICY))
       : plan?.policySha256 ?? deps.renderPolicySha256,
     ...(input.wholeSourceContext ? { wholeSourceContext: { marker: input.wholeSourceContext.marker, plan: input.wholeSourceContext.plan } } : {}),

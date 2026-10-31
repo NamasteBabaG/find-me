@@ -1,3 +1,5 @@
+import { nativeDetailRepairOf } from "./native-detail-evidence";
+import { nativeDetailSubjectDirection } from "./native-detail-painter";
 import { requireWholeSourceContextPurchase } from "./whole-source-context-repair";
 import { fenceWholeSourceContextPurchase } from "./whole-source-context-pin";
 import { sourceBodyBirthForHide } from "./source-placement-release";
@@ -457,8 +459,9 @@ export async function runLocalPatchHide(c: Container, deps: LocalPatchHideDeps, 
 
   const identityReferences = await prepareLocalPatchIdentityReferences(sheet, scene.sceneVersion);
   // An enrolled world's subject plan for this appearance; absent for every other world.
-  const subjectDirection = await subjectDirectionFor(c, gameId, hide.id, scene.sceneVersion, row.judgeJson,
-    { basePolicySha256: deps.renderPolicySha256, attemptNumber: attempt });
+  const subjectDirection = nativeDetailSubjectDirection(await subjectDirectionFor(c, gameId, hide.id, scene.sceneVersion, row.judgeJson,
+    { basePolicySha256: deps.renderPolicySha256, attemptNumber: attempt }));
+  const nativeDetailRepair=repairChecks?.includes('styleMatch') ? nativeDetailRepairOf(row.judgeJson,hide.id,scene.sceneVersion) : undefined;
   const attemptResult = await renderLocalPatchHide({
     ledger: budget, store: new LocalPatchRetainedPurchaseStore(c, gameId, budget, input.deadlineAt),
     renderPolicySha256: deps.renderPolicySha256, render: deps.render, ...(deps.judge ? { judge: deps.judge } : {}),
@@ -471,6 +474,7 @@ export async function runLocalPatchHide(c: Container, deps: LocalPatchHideDeps, 
     ...(boardPeoplePng ? { boardPeoplePng } : {}),
     ageYears: child.ageYears, attempt, apiKey: deps.apiKey ?? "",
     ...(repairChecks === undefined ? {} : { repairChecks }),
+    ...(nativeDetailRepair ? { nativeDetailRepair } : {}),
     ...(extra ? { recoveryDirective: extra.directive } : {}),
     ...(guidedFrame ? { guidedFrameRecovery: guidedFrame } : {}),
     ...(placementGuide ? { placementGuide } : {}),

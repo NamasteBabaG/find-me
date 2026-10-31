@@ -356,3 +356,38 @@ review; free correction and complete deletion neither clear the hold nor erase
 its full reservation. Ownership, payment, deletion and identity are
 rechecked within its write fence. Complete deletion redacts its private audit
 and alias archive while preserving the accounting ledger.
+
+## Native detail and source sharpness, prospective v1
+
+`native-detail/v1` addresses rendering-detail differences at the painter and
+ordinary all-role review, without filtering the delivered picture. The sampled
+opaque shipping interiors reproduce RAW exactly and the exterior reproduces the
+canonical source exactly. A sharper unused RAW background is therefore not
+evidence that composition blurred the player image. Frequency ratios alone are
+not semantic blur verdicts and do not approve or reject a child.
+
+New enrolled paint directions explicitly match the original source's contour
+weight, edge softness, local contrast and brush-detail scale. The complete old
+subject-direction ancestry remains available to the existing purchase selector:
+an already-started key must match its original fingerprint, including a full
+unknown reservation. No photo, identity, placement, quality, attempt or cycle is
+reset. An absent subject plan retains its historical route.
+
+A new MEDIUM question carries an exact native512x768 original-source crop next
+to its existing same-axis RAW and SHIPPING evidence. An identical existing image
+is reused; otherwise at most one image is added. All existing roles, effort,
+output limits, input-price bounds and world ceilings remain enforced. Existing
+legacy requests in any ledger state keep their old question; this is not a
+routine second usable opinion on already-paid images.
+
+The reviewer distinguishes genuine target blur or disruptive microdetail from
+natural source softness, depth, hair pattern and harmless paint variation. A
+located `NATIVE_DETAIL:` style refusal can add a versioned direction to the next
+already-permitted painting or retained surface repair. The ordinary finite
+recovery and independent fresh approval remain mandatory. The code does not
+blur faces, sharpen backgrounds, change source art or waive a quality check.
+
+Synthetic tests prove request/provenance preservation and repair routing, not
+artistic success or commercial cost. The current QA games and the separate
+complete-game four-dollar qualification must supply actual visual and financial
+evidence before this treatment can be reported as resolved.

@@ -14,6 +14,7 @@ import { LOCAL_PATCH_PORTRAIT_ONLY_REFERENCE_MODE, localPatchImagePolicyForVersi
 import type { SelfRepairDecision } from "../../../domain/scene/local-patch-self-repair";
 import { SUBJECT_PAINTER_V2, subjectRenderDirectionV2 } from "../../../domain/generation/subject-painter";
 import { subjectPlanFor, subjectRenderDirection } from "../../../domain/generation/subject-policy";
+import { nativeDetailSubjectDirection } from "../native-detail-painter";
 
 const BOARD = { width: 3072, height: 2048 };
 const board: LocalPatchBoard = {
@@ -100,6 +101,25 @@ async function attempt(deps: LocalPatchRenderDeps, over: Record<string, unknown>
 }
 
 describe("one paid attempt at one hide", () => {
+  it.each(['settled','unknown'] as const)('preserves an exact historical %s painting when native-detail directions are introduced',async state=>{
+    const b=localPatchBoardsForVersion(12).find(b=>b.board==='newyork')!,h=b.hides[0]!,w=world(),bytes=await small();
+    const digest=(b:Buffer)=>createHash('sha256').update(b).digest('hex'),photoSha256=digest(bytes),policySha256=localPatchRenderPolicySha256(localPatchImagePolicyForVersion(12)),quality='medium' as const;
+    const text=subjectRenderDirectionV2(subjectPlanFor(b,h.id),7,[]),old={text,photoPng:bytes,photoSha256,policySha256,quality,painterVersion:SUBJECT_PAINTER_V2,
+      sha256:digest(Buffer.from(JSON.stringify([text,null,photoSha256,policySha256,quality])))};
+    const render=vi.fn(async(_input:Parameters<LocalPatchRenderDeps['render']>[0])=>({png:null,quarantined:null,rejected:'synthetic retained refusal',evidence:evidence('synthetic-native-detail-'+render.mock.calls.length),unknownReason:null}));
+    const worker=w.process({render,renderPolicySha256:policySha256}),input={worldId:'synthetic-native-detail-replay',board:b,hide:h,composedPng:await sharp({create:{width:3840,height:2160,channels:3,background:'#ccbbaa'}}).png().toBuffer(),
+      identityPng:bytes,judgeIdentityPng:bytes,contentVersion:12,paintRecipe:'scene-integration-v8' as const,referenceMode:LOCAL_PATCH_PORTRAIT_ONLY_REFERENCE_MODE,ageYears:7,attempt:2,apiKey:'synthetic-never-live'};
+    await renderLocalPatchHide(worker.deps,{...input,subjectDirection:old});
+    const key=w.at(input.worldId,`${h.id}:${h.pose}:render:2`),stored=w.rows.get(key)!;
+    if(state==='unknown'){if(stored.state!=='settled')throw Error('Expected settled synthetic fixture');const{evidence:_e,...rest}=stored;
+      w.rows.set(key,{...rest,state:'unknown',unknownReasons:['Synthetic unavailable provider charge']});w.retained.delete(key);}
+    const before=structuredClone(w.rows.get(key)!);
+    await renderLocalPatchHide(worker.deps,{...input,subjectDirection:nativeDetailSubjectDirection(old)});
+    expect(render).toHaveBeenCalledTimes(1);expect(w.rows.get(key)).toEqual(before);
+    const fresh=world().process({render,renderPolicySha256:policySha256});
+    await renderLocalPatchHide(fresh.deps,{...input,worldId:'synthetic-native-detail-new',subjectDirection:nativeDetailSubjectDirection(old)});
+    expect(render).toHaveBeenCalledTimes(2);expect(render.mock.calls[1]![0].prompt).toContain('NATIVE DETAIL MATCH native-detail/v1');
+  });
   it.each(["subject-v1", "before-enrollment", "subject-v2", "unknown-v1"] as const)("keeps %s purchases immutable and buys v2 only under new keys", async kind => {
     const b = localPatchBoardsForVersion(12).find(b => b.board === "newyork")!, h = b.hides[0]!;
     const w = world(), bytes = await small(), policySha256 = localPatchRenderPolicySha256(localPatchImagePolicyForVersion(12));

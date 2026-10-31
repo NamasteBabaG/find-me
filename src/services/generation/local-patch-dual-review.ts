@@ -1,3 +1,5 @@
+import { nativeDetailQuestion } from "./native-detail-evidence";
+import type { NativeDetailEvidence } from "../../domain/generation/native-detail";
 import { BOUND_SUBJECT_QUALITY_ENVELOPE_READER_V2 } from "../../domain/generation/bound-subject-quality-envelope";
 import { singleMediumEvidence, singleMediumPrompt, singleMediumAnatomyPrompt } from "./single-medium-evidence";
 import { publishedCrownSubjectAnchor } from "./published-crown-repair";
@@ -1127,16 +1129,28 @@ async function prepareSingleLowQuestion(c: Pick<Container, "db" | "storage">, pr
     gameId: prepared.game.id, hide: entry.hide, attempt: entry.row.attempts, receipt, shipping: entry.bytes,
     geometrySha256: binding.geometrySha256, identitySha256: binding.identitySha256 }) : undefined;
   const shared = singleVersion === SINGLE_MEDIUM_VISUAL_REVIEW_VERSION ? await singleMediumEvidence(assessment,anatomy,hideId) : undefined;
-  const question = singleVersion === SINGLE_VISUAL_REVIEW_VERSION ? lowQuestion : prepareVisualReview({ ...lowQuestion,
+  let question = singleVersion === SINGLE_VISUAL_REVIEW_VERSION ? lowQuestion : prepareVisualReview({ ...lowQuestion,
     combined: singleVersion, effort: 'medium', tier: continued ? 'default' : 'flex',
     prompt: mediumPrompt + '\nMEDIUM SHARED NATIVE EVIDENCE: the quality AFTER image contains the anatomy context at LEFT and its exact native head detail at RIGHT across the 24px white gutter. Inspect both panels for every anatomy requirement; neither is a new appearance. All four AFTER-only joins remain supplied as the RIGHT native panels of their labelled BEFORE/AFTER return comparisons. Anatomy must inspect RIGHT AFTER only; never borrow a head from LEFT BEFORE. No required pixels or inspections were removed.' + targetHeadReturnPrompt(head!.evidence), images: [...shared!.images, head!.raw, entry.bytes],
     labels: [...shared!.labels.map(label=>anchor&&label.includes(hideId+':original-photo')?'EVIDENCE_ID='+hideId+':original-photo PRIOR PHOTO-APPROVED TARGET FACE ANCHOR, NOT the deleted photograph':label), 'EVIDENCE_ID='+hideId+':native-provider-raw 512x768 WHOLE RAW TARGET HEAD, crop-local axes',
       'EVIDENCE_ID='+hideId+':native-shipping-crown 512x768 EXACT PLAYER CROP, same axes, inspect full crown at the return edge'] });
+  let nativeDetailEvidence: NativeDetailEvidence | undefined;
+  if(singleVersion === SINGLE_MEDIUM_VISUAL_REVIEW_VERSION){
+    // Any existing reservation/settlement keeps the exact historical question,
+    // even when its background intent or mutable row was interrupted. New
+    // detail evidence is prospective and never abandons paid recovery work.
+    const legacyKey='self-repair:board:'+prepared.board.board+':'+question.fingerprint;
+    if(!await prepared.budget.readRequest(prepared.worldId,legacyKey)){
+      const native=await nativeDetailQuestion(question,{hideId,
+        source:await sharp(prepared.composed).extract(entry.crop).png().toBuffer(),raw:head!.raw,shipping:entry.bytes});
+      question=native.question;nativeDetailEvidence=native.evidence;
+    }
+  }
   const requestKey = 'self-repair:board:' + prepared.board.board + ':' + question.fingerprint;
   const bound = visualReviewMaxCharge(question);
   if (!bound.ok) throw Error('SINGLE_REVIEW: unbounded prepared evidence: ' + bound.reason);
   if (bound.microUsd > 250_000) throw Error('SINGLE_REVIEW: exact request exceeds its qualified maximum');
-  return { binding, hideId, entry, receipt, sourceNeighbors, combined, question, requestKey, bound, attempt, continued, singleVersion, head, anchor };
+  return { binding, hideId, entry, receipt, sourceNeighbors, combined, question, requestKey, bound, attempt, continued, singleVersion, head, anchor, nativeDetailEvidence };
 }
 
 /** Read all roles from one existing settled question, without a reservation,
@@ -1169,7 +1183,7 @@ async function decideRetainedSingleEnvelope(c:Container,prepared:Prepared,deps:L
  * No automatic second opinion or independent second role is purchased. */
 async function singleLowReview(c: Container, prepared: Prepared, deps: LocalPatchBoardReviewDeps, version: DualVisualReviewVersion,
   subject: SubjectQuestionContext, deadlineAt?: number, retained?: {bought:Bought;prior:DualReviewProof}): Promise<Waiting | Reviewed> {
-  const { binding, hideId, entry, sourceNeighbors, combined, question, requestKey, bound, attempt, singleVersion, head, anchor } = await prepareSingleLowQuestion(c, prepared, version, subject);
+  const { binding, hideId, entry, sourceNeighbors, combined, question, requestKey, bound, attempt, singleVersion, head, anchor, nativeDetailEvidence } = await prepareSingleLowQuestion(c, prepared, version, subject);
   if(retained&&(singleVersion!==SINGLE_MEDIUM_VISUAL_REVIEW_VERSION||retained.prior.quality.requestKey!==requestKey
     ||retained.prior.quality.fingerprint!==question.fingerprint))return{kind:"waiting",outcome:{state:"pending",
       reason:"The retained question differs from the rebuilt immutable evidence",replayed:true,costCents:0}};
@@ -1192,7 +1206,7 @@ async function singleLowReview(c: Container, prepared: Prepared, deps: LocalPatc
   const base: DualStageBase = { requestKey, fingerprint: question.fingerprint, attempt, policy: question.policy, raw: wire.raw,
     model: wire.model, finishReason: wire.finishReason, wireFault: wire.wireFault, costMicroUsd: bought.evidence.amountMicroUsd,
     ...(singleVersion === SINGLE_MEDIUM_VISUAL_REVIEW_VERSION ? { envelopeReader: BOUND_SUBJECT_QUALITY_ENVELOPE_READER_V2 } : {}) };
-  const qualityStage: QualityStage = { ...base, reader: CURRENT_QUALITY_READER, subjectBundle: combined.binding, ...(sourceNeighbors ? { sourceNeighbors } : {}), ...(head ? { headEvidence: head.evidence } : {}) };
+  const qualityStage: QualityStage = { ...base, reader: CURRENT_QUALITY_READER, subjectBundle: combined.binding, ...(sourceNeighbors ? { sourceNeighbors } : {}), ...(head ? { headEvidence: head.evidence } : {}), ...(nativeDetailEvidence ? { nativeDetailEvidence } : {}) };
   const continuity: ContinuityStage = { ...base, reader: CURRENT_CONTINUITY_READER[version] };
   const subjectStage: SubjectStage = { ...base, subjectPolicy: SUBJECT_POLICY_V2, reader: SUBJECT_READER_V2,
     photoSha256: subject.upgrade.photoSha256, planSha256: subjectPlanSha256(subject.plan), combined: SUBJECT_QUALITY_BUNDLE_VERSION,

@@ -1,3 +1,5 @@
+import * as nativeDetailEvidenceModule from "../native-detail-evidence";
+import * as nativeDetailPainterModule from "../native-detail-painter";
 import { KINGDOM_DETECTIVE_PATCH_BOARDS } from "../../../../content/detectives/kingdom/runtime-release";
 import { pinDetectiveSourceScope, sealDetectiveSourceFamily } from "../source-family-scope";
 import { planWholeSourceContextRepair, stageWholeSourceContextRepair, nextWholeSourceContextWake, resumeWholeSourceContextRepair } from "../whole-source-context-repair";
@@ -514,9 +516,13 @@ it.each([{mode:"clean",interrupted:false,guided:false},{mode:"transport",interru
     await db.playSession.create({data:{id:"played-"+gameId,gameId,anonymousSessionId:"synthetic-browser",completedAt:new Date(),events:{create:[...config.scenes.flatMap(scene=>scene.targets.map(target=>({id:"found-"+gameId+"-"+scene.slug+"-"+target.id,sceneSlug:scene.slug,targetId:target.id,eventType:"target_found"}))),{id:"complete-"+gameId,eventType:"game_completed"}]}}});
     const targetRowsBefore=await db.targetInstance.findMany({where:{gameScene:{gameId}},orderBy:{id:"asc"}});
     const albumBefore=await db.adventureAlbumProgress.findUniqueOrThrow({where:{gameId}}),prefBefore=await db.passportPagePreference.findMany({where:{gameId}}),sessionBefore=await db.playSession.findMany({where:{gameId},include:{events:true}}),jobBefore=await db.generationJob.findUniqueOrThrow({where:{id:"job_"+gameId}});
-    const budget=boardWizardBudgetOf(c),before=await budget.audit(worldId),fill=before.remainingMicroUsd-239199;
+    // This synthetic old charge leaves a tight tail including native source evidence.
+    // After the first fixed-usage answer only the smaller full reserve fits;
+    // the original four-dollar cap and every protected real request stay unchanged.
+    const syntheticCrownRemainingMicroUsd=246000;
+    const budget=boardWizardBudgetOf(c),before=await budget.audit(worldId),fill=before.remainingMicroUsd-syntheticCrownRemainingMicroUsd;
     expect(fill).toBeGreaterThan(0);await budget.reserve(worldId,{requestKey:"synthetic-crown-current-budget",scope:"image",operationFingerprint:"c".repeat(64),reserveMicroUsd:fill});await budget.settle(worldId,"synthetic-crown-current-budget",bill("synthetic-crown-budget-"+gameId,fill));
-    const plan=await planPublishedCrownRepair(container,gameId);expect(plan.remainingMicroUsd).toBe(239199);const paintCount=prompts.size,reviewCount=provider.creates.length;
+    const plan=await planPublishedCrownRepair(container,gameId);expect(plan.remainingMicroUsd).toBe(syntheticCrownRemainingMicroUsd);const paintCount=prompts.size,reviewCount=provider.creates.length;
     await expect(stagePublishedCrownRepair(container,{gameId,operatorId:"wrong-owner",expectedPlanSha256:plan.planSha256})).rejects.toThrow();expect(await publishedCrownRepairOf(db,gameId)).toBeNull();
     await expect(stagePublishedCrownRepair(container,{gameId,operatorId:ownerId,expectedPlanSha256:"f".repeat(64)})).rejects.toThrow();
     const staged=await stagePublishedCrownRepair(container,{gameId,operatorId:ownerId,expectedPlanSha256:plan.planSha256});expect(await stagePublishedCrownRepair(container,{gameId,operatorId:ownerId,expectedPlanSha256:plan.planSha256})).toBe(staged);
@@ -534,7 +540,7 @@ it.each([{mode:"clean",interrupted:false,guided:false},{mode:"transport",interru
     let singleTailObserved=false;
     for(let turn=0;turn<18;turn++){const result=await tickGeneration(container,gameId,270000,270000);const state=await publishedCrownRepairOf(db,gameId);console.info("synthetic-crown-tick",{turn,...result,phase:state?.state.phase,newProviderQuestions:provider.creates.length-reviewCount});expect(state).not.toBeNull();expect(state!.state.phase).not.toBe("blocked");if(state!.state.phase==="committed")break;
       const approved=[];for(const s of plan.pin.selected){const current=await db.targetVariantAsset.findUniqueOrThrow({where:{id:s.rowId}});if(JSON.parse(current.judgeJson??"null")?.boardReview?.dual&&await hasLocalPatchPublicationPolicy(container,{...publicationBinding(gameId,current),sceneVersion:13}))approved.push(s.hideId);}
-      if(approved.length===1&&!singleTailObserved){const rebuild=vi.spyOn(dualReviewModule,"prospectiveSingleVisualReviewQuestion").mockRejectedValue(Error("A lone remaining candidate must not be prepared twice before dispatch"));
+      if(approved.length===1&&!singleTailObserved){const tailBudget=await budget.audit(worldId);expect(tailBudget.remainingMicroUsd).toBeGreaterThanOrEqual(secondReserve);expect(tailBudget.remainingMicroUsd).toBeLessThan(firstReserve);const rebuild=vi.spyOn(dualReviewModule,"prospectiveSingleVisualReviewQuestion").mockRejectedValue(Error("A lone remaining candidate must not be prepared twice before dispatch"));
         try{const tail=await publishedCrownReviewOrder(container,plan.pin);expect(tail).toHaveLength(1);expect(tail[0]!.selection.hideId).not.toBe(approved[0]);expect(tail[0]!.reserveMicroUsd).toBeNull();}
         finally{rebuild.mockRestore();}singleTailObserved=true;}
       await vi.advanceTimersByTimeAsync(60001);}
@@ -1062,6 +1068,91 @@ it.each(['detectives','explorers'] as const)('keeps a free measured head re-read
    expect(await db.generationJob.findUniqueOrThrow({where:{id:'job_'+f.gameId}})).toMatchObject({status:'QUEUED',currentStep:'local-patch'});
    expect(fetch).not.toHaveBeenCalled();
   }finally{committed.mockRestore();scan.mockRestore();grant.mockRestore();now.mockRestore();}
+ }finally{vi.useRealTimers();}
+},300000);
+
+async function nativeDetailWorldFixture(gameId:string){
+ await newDetectiveWorld(gameId,7,true,true,true);
+ const context=await resolveLocalPatchBoardsForGame(db,gameId,12),board=context.boards.find(b=>b.board==='dragoncave')!,hide=board.hides[2]!;
+ const returned=localPatchReturnRegion(cropOf(hide),maskForHide(hide),hide.returnRect).local;
+ let paintCount=0;
+ const render=vi.fn<LocalPatchHideDeps['render']>(async input=>{
+  paintCount++;
+  const figure=await sharp({create:{width:Math.min(100,returned.width-60),height:Math.min(160,returned.height-70),channels:4,
+   background:paintCount===1?'#315d87':'#346189'}}).png().toBuffer();
+  return paintedOk(await sharp(input.stylePng).composite([{input:figure,left:returned.left+30,top:returned.top+30}]).png().toBuffer(),bill('synthetic-native-detail-'+gameId+'-'+input.requestKey,50000));
+ });
+ const deps:LocalPatchHideDeps={readBoardArt:readArt,renderPolicySha256:localPatchRenderPolicySha256(LOCAL_PATCH_IMAGE_POLICY),render,
+  judge:async()=>{throw Error('No synchronous duplicate');}};
+ const provider=controlledSol(false,false,undefined,true,false,12),container={...c,backgroundReview:provider.fake,
+  visualReview:{request:async()=>{throw Error('No separate paid style opinion');}}} as Container;
+ const scene=await db.gameScene.findFirstOrThrow({where:{gameId,sceneSlug:board.board}});
+ const row=()=>db.targetVariantAsset.findFirstOrThrow({where:{variant:'A',targetInstance:{gameScene:{gameId},targetId:hide.targetId}}});
+ const review=async()=>{for(let turn=0;turn<12;turn++){
+  await reviewLocalPatchBoard(container,{gameId,sceneId:scene.id,deadlineAt:Date.now()+270000},{fence:async()=>{},readBoardArt:readArt});
+  await advanceContinuityInBackground(container,gameId,{deadlineAt:Date.now()+270000});await vi.advanceTimersByTimeAsync(LEAN_RECOVERY_BACKOFF_MS+1);
+  if(JSON.parse((await row()).judgeJson!).reviewState==='board-review-complete')break;
+ }};
+ return{gameId,board,hide,render,deps,provider,container,scene,row,review};
+}
+
+it('routes a located native-detail style refusal into one versioned next painting and one fresh ordinary assessment',async()=>{
+ vi.useFakeTimers({toFake:['Date']});try{
+  const f=await nativeDetailWorldFixture('native-detail-style-synthetic'),retrieve=f.provider.fake.retrieve;
+  let refuse=true;
+  f.provider.fake.retrieve=async id=>{const response=await retrieve(id);if(response.status!=='completed'||!refuse)return response;
+   const answer=JSON.parse(response.reading.raw!),assessment=answer.assessment.version===SOURCE_NEIGHBOR_BUNDLE_VERSION?answer.assessment.assessment:answer.assessment;
+   const verdict=assessment.quality.hides[0].verdict;
+   Object.assign(verdict,{styleMatch:'fail',verdict:'fail',reason:'Synthetic target detail visibly differs from the original source.',
+    faults:[{check:'styleMatch',where:'NATIVE_DETAIL: target eyes are smeared beside the original clear face at the same depth.'}]});
+   return{...response,reading:{...response.reading,raw:JSON.stringify(answer)}};
+  };
+  await runLocalPatchHide(f.container,f.deps,{gameId:f.gameId,board:f.board,hide:f.hide});await f.review();
+  const refused=await f.row(),receipt=JSON.parse(refused.judgeJson!);
+  expect(refused.status).toBe('FAILED');expect(receipt.boardReview.dual.quality.nativeDetailEvidence.version).toBe('native-detail/v1');
+  const budget=boardWizardBudgetOf(f.container),worldId=boardWizardWorldId(f.gameId),key=receipt.boardReview.dual.quality.requestKey;
+  const billBefore=await budget.readRequest(worldId,key);
+  expect(f.provider.creates).toHaveLength(1);expect(f.provider.creates[0]!.labels.some(s=>s.includes('native-original-source'))).toBe(true);
+  expect(f.render.mock.calls[0]![0].prompt).toContain('NATIVE DETAIL MATCH native-detail/v1');
+  refuse=false;
+  expect((await runLocalPatchHide(f.container,f.deps,{gameId:f.gameId,board:f.board,hide:f.hide})).state).toBe('generated');
+  expect(f.render).toHaveBeenCalledTimes(2);expect(f.render.mock.calls[1]![0].prompt).toContain('NATIVE DETAIL REPAIR native-detail/v1');
+  await f.review();const decided=await f.row();expect(decided.status,JSON.stringify({error:decided.lastError,verdict:JSON.parse(decided.judgeJson!).verdict})).toBe('GENERATED');expect(JSON.parse(decided.judgeJson!).verdict.verdict).toBe('pass');
+  expect(f.provider.creates).toHaveLength(2);expect(await budget.readRequest(worldId,key)).toEqual(billBefore);
+  expect(await allowedDualPublication(db,publicationBinding(f.gameId,decided))).toBe(true);
+  expect((await runLocalPatchHide(f.container,f.deps,{gameId:f.gameId,board:f.board,hide:f.hide})).state).toBe('already-generated');
+  expect(f.render).toHaveBeenCalledTimes(2);expect(f.provider.creates).toHaveLength(2);expect(fetch).not.toHaveBeenCalled();
+ }finally{vi.useRealTimers();}
+},300000);
+
+it.each(['pending','settled'] as const)('keeps a historical %s MEDIUM question exact after native-detail evidence is introduced',async state=>{
+ vi.useFakeTimers({toFake:['Date']});try{
+  const f=await nativeDetailWorldFixture('native-detail-legacy-synthetic-'+state);
+  // Emulate the historical builder before this prospective evidence existed.
+  // The actual provider intent, reserved key and paid reply remain authentic.
+  const old=vi.spyOn(nativeDetailEvidenceModule,'nativeDetailQuestion').mockImplementation(async question=>({question,evidence:undefined} as never));
+  const oldPainter=vi.spyOn(nativeDetailPainterModule,'nativeDetailSubjectDirection').mockImplementation(direction=>direction);
+  await runLocalPatchHide(f.container,f.deps,{gameId:f.gameId,board:f.board,hide:f.hide});oldPainter.mockRestore();
+  if(state==='settled')await f.review();
+  else await reviewLocalPatchBoard(f.container,{gameId:f.gameId,sceneId:f.scene.id,deadlineAt:Date.now()+270000},{fence:async()=>{},readBoardArt:readArt});
+  expect(f.provider.creates).toHaveLength(1);expect(f.provider.creates[0]!.prompt).not.toContain('NATIVE_DETAIL_EVIDENCE:');
+  old.mockRestore();
+  const worldId=boardWizardWorldId(f.gameId),budget=boardWizardBudgetOf(f.container);
+  if(state==='settled'){
+   const row=await f.row(),j=JSON.parse(row.judgeJson!),raw=j.boardReview.dual.quality.raw,key=j.boardReview.dual.quality.requestKey;
+   const ledger=await db.worldBudgetLedger.findUniqueOrThrow({where:{worldId}});
+   delete j.boardReview.dual.quality.headEvidence.retention;
+   await db.targetVariantAsset.update({where:{id:row.id},data:{judgeJson:JSON.stringify(j)}});
+   await reviewLocalPatchBoard(f.container,{gameId:f.gameId,sceneId:f.scene.id,deadlineAt:Date.now()+270000},{fence:async()=>{},readBoardArt:readArt},{decideRetained:true});
+   const after=JSON.parse((await f.row()).judgeJson!);
+   expect(after.boardReview.dual.quality).toMatchObject({raw,requestKey:key});expect(after.boardReview.dual.quality.nativeDetailEvidence).toBeUndefined();
+   expect((await db.worldBudgetLedger.findUniqueOrThrow({where:{worldId}})).snapshotJson).toBe(ledger.snapshotJson);
+  }else{
+   const pending=(await budget.audit(worldId)).pendingRequestKeys;expect(pending).toHaveLength(1);
+   const prior=await budget.readRequest(worldId,pending[0]!);await f.review();
+   const after=await budget.readRequest(worldId,pending[0]!);expect(after?.operationFingerprint).toBe(prior?.operationFingerprint);expect(after?.state).toBe('settled');
+  }
+  const final=await f.row();expect(final.status,JSON.stringify({error:final.lastError,verdict:JSON.parse(final.judgeJson!).verdict})).toBe('GENERATED');expect(f.provider.creates).toHaveLength(1);expect(f.render).toHaveBeenCalledTimes(1);expect(fetch).not.toHaveBeenCalled();
  }finally{vi.useRealTimers();}
 },300000);
 

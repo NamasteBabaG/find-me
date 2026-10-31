@@ -1,3 +1,4 @@
+import type { NativeDetailEvidence } from "../../domain/generation/native-detail";
 import { BOUND_SUBJECT_QUALITY_ENVELOPE_READER, readBoundSubjectQualityEnvelopeV2,
   readSubjectQualityEnvelopeWith, type BoundSubjectQualityEnvelopeReader } from "../../domain/generation/bound-subject-quality-envelope";
 import { targetHeadReturnDecision, TARGET_HEAD_VISIBLE_VERSION, type TargetHeadEvidence } from "../../domain/generation/target-head-return";
@@ -95,7 +96,7 @@ export type DualStageBase = { requestKey: string; fingerprint: string; attempt: 
   readFault?: ContinuityReadFault | null };
 /** Each role names the reader that decided it. Absent on stages written before readers were named. */
 export type ContinuityStage = DualStageBase & { reader?: ContinuityReader; reading?: ContinuityReReading };
-export type QualityStage = DualStageBase & { reader?: QualityReader; reading?: QualityReReading; subjectBundle?: SubjectQualityBundleBinding; sourceNeighbors?: SourceNeighborQualityEvidence; headEvidence?: TargetHeadEvidence };
+export type QualityStage = DualStageBase & { reader?: QualityReader; reading?: QualityReReading; subjectBundle?: SubjectQualityBundleBinding; sourceNeighbors?: SourceNeighborQualityEvidence; headEvidence?: TargetHeadEvidence; nativeDetailEvidence?: NativeDetailEvidence };
 /** An enrolled world's subject review (subject-policy.ts): an Opus HIGH answer about the
  * same pixels against the owned photograph and the canonical face, bound to both and to the plan.
  * A v1 stage is read by subject-read/v1 for good; a v2 stage (local-patch-subject/v2) by v2. */

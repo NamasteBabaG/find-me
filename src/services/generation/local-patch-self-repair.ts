@@ -1,3 +1,5 @@
+import { nativeDetailRepairOf } from "./native-detail-evidence";
+import { nativeDetailSubjectDirection } from "./native-detail-painter";
 import { hasLocalPatchCapability } from "../../domain/scene/local-patch-family";
 import { isCollectionVersion } from "../../domain/scene/local-patch-versions";
 import { childBodyDirection } from "../../domain/child-body";
@@ -469,8 +471,9 @@ export async function runLocalPatchSelfRepair(c: Container, input: { gameId: str
       await assertGenerationSpendAllowed(c, game.ownerId);
       const references = await prepareLocalPatchIdentityReferences(sheet, scene.sceneVersion);
       // A redraw in an enrolled world carries the appearance's subject plan; a surface-only repair keeps its own pixels.
-      const subjectDirection = decision.action === "redraw-with-new-placement"
-        ? await subjectDirectionFor(c, gameId, hide.id, scene.sceneVersion, row.judgeJson, { forceMedium: true }) : undefined;
+      const subjectDirection = nativeDetailSubjectDirection(decision.action === "redraw-with-new-placement"
+        ? await subjectDirectionFor(c, gameId, hide.id, scene.sceneVersion, row.judgeJson, { forceMedium: true }) : undefined);
+      const nativeDetailRepair=decision.cause==='paint-style' ? nativeDetailRepairOf(row.judgeJson,hide.id,scene.sceneVersion) : undefined;
       const result = await renderLocalPatchHide({ ledger: budget, store, render: deps.render, renderPolicySha256: deps.renderPolicySha256 }, {
         worldId, board, hide, composedPng: original, contentVersion: scene.sceneVersion, placementContext, ...references, ageYears: child.ageYears,
         ...(authoredReturn ? { authoredSource: { sha256: authoredReturn.source.sha256, width: authoredReturn.source.width, height: authoredReturn.source.height },
@@ -479,6 +482,7 @@ export async function runLocalPatchSelfRepair(c: Container, input: { gameId: str
         ...(paintRecipeForPinnedPrompt(row.promptVersion) ? { paintRecipe: paintRecipeForPinnedPrompt(row.promptVersion) } : {}),
         attempt: row.attempts, apiKey: deps.apiKey ?? "", selfRepair: { cycle: active.cycle, decision }, deadlineAt: input.deadlineAt,
         ...(decision.action === "restyle-retained" ? { restyleSourcePng: raw! } : {}),
+        ...(nativeDetailRepair ? { nativeDetailRepair } : {}),
         ...(subjectDirection ? { subjectDirection } : {}),
       });
       if (result.refusedBecause === "stopped") return;
