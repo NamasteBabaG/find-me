@@ -18,6 +18,7 @@ import { reconcileLegacyPaidJoinHead, LEGACY_HEAD_RECOVERY_ACTION } from "../leg
 import { reconcileVisibleHeadPolicy,VISIBLE_HEAD_RECOVERY_ACTION } from "../visible-head-policy-recovery";
 import { visibleHeadPolicyRecoveryCandidate } from "../../../domain/generation/visible-head-policy-recovery";
 import { restoreRetainedNormalHead } from "../retained-normal-head-recovery";
+import { restoreRetainedNormalHeadOnce, RETAINED_NORMAL_HEAD_SCAN_ACTION } from "../retained-normal-head-scan";
 import { RETAINED_NORMAL_HEAD_ACTION,RETAINED_NORMAL_HEAD_VERSION } from "../../../domain/generation/retained-normal-head";
 import { AUTHORED_RECOVERY_COMPOSITION_VERSION } from "../../../domain/scene/local-patch-authored-recovery";
 import { localPatchRestDecision } from "../../../domain/scene/local-patch-progress";
@@ -58,7 +59,7 @@ import { runLocalPatchHide } from "../local-patch-hide";
 import { runLocalPatchSelfRepair, type SelfRepairDeps } from "../local-patch-self-repair";
 import * as repairComposer from "../local-patch-repair-compose";
 import { expectedAuthoredLocalPatchReturn, authoredLocalPatchRecoveryEvidenceMatches } from "../local-patch-authored-return";
-import { NATIVE_SIZE_REPLAY_FAILURE, nativeSizeSelfRepairWork, type SelfRepairDecision } from "../../../domain/scene/local-patch-self-repair";
+import { NATIVE_SIZE_REPLAY_FAILURE, nativeSizeSelfRepairWork, needsSelfRepair, type SelfRepairDecision } from "../../../domain/scene/local-patch-self-repair";
 import { reviewLocalPatchBoard } from "../local-patch-board-review";
 import { advanceContinuityInBackground } from "../continuity-background";
 import { SINGLE_VISUAL_REVIEW_VERSION, SINGLE_MEDIUM_VISUAL_REVIEW_VERSION } from "../../../domain/generation/single-visual-review";
@@ -90,7 +91,8 @@ import type { Container } from "../../container";
 import { reviewBoardWizardIdentity } from "../board-wizard-identity-gate";
 import { buildBoardWizardIdentityStyle } from "../board-wizard-identity-style";
 import { readShippedBoardArt, type LocalPatchHideDeps } from "../local-patch-hide";
-import { readQualityStage, readContinuityStage, subjectStageRaw, localPatchHeadRetentionUnread, type DualReviewProof } from "../local-patch-dual-evidence";
+import { readQualityStage, readContinuityStage, subjectStageRaw, localPatchHeadRetentionUnread, localPatchVarietyExhaustedUndecided, type DualReviewProof } from "../local-patch-dual-evidence";
+import { COLLECTION_VARIETY_EXHAUSTED_VERSION } from "../../../domain/generation/collection-variety-exhausted";
 import { pinLocalPatchSourceFamily, resolveLocalPatchBoardsForGame, sourcePlacementForHide, sourcePlacementReleaseOf } from "../source-placement-release";
 import { pinIdentitySourceRelease } from "../identity-source-release";
 import { allowedDualPublication } from "../local-patch-dual-publication";
@@ -1461,6 +1463,113 @@ it.each(['detectives','explorers'] as const)('restores an older paid normal crow
   const after=JSON.parse((await db.worldBudgetLedger.findUniqueOrThrow({where:{worldId}})).snapshotJson),prior=JSON.parse(ledger.snapshotJson);
   for(const request of prior.requests)expect(after.requests.find((r:{requestKey:string})=>r.requestKey===request.requestKey)).toEqual(request);
   expect(after.requests).toHaveLength(prior.requests.length+1);
+ }finally{vi.useRealTimers();}
+},300000);
+
+it('runs an unproductive optional retained scan once per candidate state, so a 100 s scan cannot starve the 175 s paid window',async()=>{
+ vi.useFakeTimers({toFake:['Date']});
+ try{
+  // A real paid repair cycle, so the row carries an actual awaiting-review repair state.
+  const f=await legacyKingdomHeadFixture('retained-scan-livelock-synthetic','redraw-with-new-placement',false);
+  const provider=controlledSol(false,false,undefined,true,false,f.version),retrieve=provider.fake.retrieve.bind(provider.fake);
+  provider.fake.retrieve=async id=>{const response=await retrieve(id);if(response.status!=='completed')return response;
+   const p=JSON.parse(provider.creates[provider.creates.length-1]!.prompt.split('\n').find(s=>s.startsWith('HEAD_RETURN_EVIDENCE: '))!.slice('HEAD_RETURN_EVIDENCE: '.length));
+   const answer=JSON.parse(response.reading.raw!),head={...answer.head.rawHead,top:p.returned.top+6};
+   Object.assign(answer.head,{rawHead:head,shippingHead:head,rawCrown:'fail',shippingCrown:'fail',observation:'Synthetic refused normal crown.'});
+   return{...response,reading:{...response.reading,raw:JSON.stringify(answer)}};
+  };
+  const container={...c,backgroundReview:provider.fake,visualReview:{request:async()=>{throw Error('No duplicate synchronous judge');}}} as Container;
+  for(let tick=0;tick<8;tick++){
+   await reviewLocalPatchBoard(container,{gameId:f.gameId,sceneId:f.scene.id,deadlineAt:Date.now()+270000},{fence:async()=>{},readBoardArt:readArt});
+   await advanceContinuityInBackground(container,f.gameId,{deadlineAt:Date.now()+270000});await vi.advanceTimersByTimeAsync(LEAN_RECOVERY_BACKOFF_MS+1);
+   if(JSON.parse((await f.row()).judgeJson!).reviewState==='board-review-complete')break;
+  }
+  const refused=await f.row();expect(refused.status).toBe('FAILED');
+  expect(['awaiting-review','rejected']).toContain(JSON.parse(refused.judgeJson!).selfRepair?.phase);
+  await db.generationJob.update({where:{id:'job_'+f.gameId},data:{status:'FAILED',currentStep:'local-patch:recovery-exhausted',lastError:'local-patch: synthetic exhausted original third'}});
+  const game=await db.game.findUniqueOrThrow({where:{id:f.gameId}}),plan=await planQaCompletionCapacity(container,f.gameId);
+  await authorizeQaCompletionCapacity(container,{gameId:f.gameId,operatorId:game.ownerId!,expectedPlanSha256:plan.planSha256,ownerAuthorizationSha256:'b'.repeat(64)});
+  const before=await f.row(),grant=(await readQaCompletionCapacity(container,boardWizardWorldId(f.gameId)))!;
+  // Both a retained-scan candidate and owed a paid repair under the completion grant.
+  expect(retainedNormalHeadRecoveryCandidate(before)).toBe(true);expect(needsSelfRepair(before)).toBe(true);
+  const start=Date.now();let clock=start;
+  const now=vi.spyOn(Date,'now').mockImplementation(()=>clock);
+  const recovery=await import('../retained-normal-head-recovery');
+  // Reproduces QA's unproductive slice (~103 s before paid work): 170 s remain,
+  // below the 175 s paid window (150 s provider minimum + 25 s phase margin).
+  const scan=vi.spyOn(recovery,'restoreRetainedNormalHead').mockImplementation(async()=>{clock+=100000;return false;});
+  const paid=()=>f.render.mock.calls.length+f.diagnose.mock.calls.length,bought=paid();
+  try{
+   expect(await runLocalPatchWorldSlice(container,f.deps,f.gameId,{maxHides:1,hardDeadlineAt:clock+270000,diagnose:f.diagnose})).toMatchObject({claimed:true,pending:true,attention:null});
+   expect(scan).toHaveBeenCalledOnce();expect(paid()).toBe(bought);
+   // A later tick, same candidate state: no second scan; paid work gets its full window.
+   clock+=60000;
+   await runLocalPatchWorldSlice(container,f.deps,f.gameId,{maxHides:1,hardDeadlineAt:clock+270000,diagnose:f.diagnose});
+   expect(scan).toHaveBeenCalledOnce();expect(paid()).toBeGreaterThan(bought);
+   expect(await db.auditLog.count({where:{entityId:f.gameId,action:RETAINED_NORMAL_HEAD_SCAN_ACTION}})).toBe(1);
+   // Any change to a candidate re-arms the scan.
+   expect(await restoreRetainedNormalHeadOnce(container,f.gameId,grant.authorizationSha256,[{...before,judgeJson:before.judgeJson+' '}],async()=>{},readArt)).toBe(false);
+   expect(scan).toHaveBeenCalledTimes(2);
+   expect(fetch).not.toHaveBeenCalled();
+  }finally{scan.mockRestore();now.mockRestore();}
+ }finally{vi.useRealTimers();}
+},300000);
+
+it('accepts for free an exhausted appearance refused only by the collection variety rule (collection-variety-exhausted/v1)',async()=>{
+ vi.useFakeTimers({toFake:['Date']});
+ try{
+  // A real paid repair cycle whose fresh all-role MEDIUM answer passes every check.
+  const f=await legacyKingdomHeadFixture('variety-exhausted-synthetic','redraw-with-new-placement',true);
+  const provider=controlledSol(false,false,undefined,true,false,f.version);
+  const container={...c,backgroundReview:provider.fake,visualReview:{request:async()=>{throw Error('No duplicate synchronous judge');}}} as Container;
+  for(let tick=0;tick<8;tick++){
+   await reviewLocalPatchBoard(container,{gameId:f.gameId,sceneId:f.scene.id,deadlineAt:Date.now()+270000},{fence:async()=>{},readBoardArt:readArt});
+   await advanceContinuityInBackground(container,f.gameId,{deadlineAt:Date.now()+270000});await vi.advanceTimersByTimeAsync(LEAN_RECOVERY_BACKOFF_MS+1);
+   if(JSON.parse((await f.row()).judgeJson!).reviewState==='board-review-complete')break;
+  }
+  const passed=await f.row(),r=JSON.parse(passed.judgeJson!);
+  expect(passed.status).toBe('GENERATED');expect(r.verdict.verdict).toBe('pass');expect(r.selfRepair?.version).toBe('local-patch-self-repair/v1');
+  // The same paid answer as the collection refused it: the look already covered a third of the world.
+  const refusal=r.hide+' repeats a look (three-quarter, closed-smile, acting) that 9 accepted appearances of this 27-hide world already show; at most 9 may share one look';
+  const refusedAs=(cycles:number)=>JSON.stringify({...r,selfRepair:{...r.selfRepair,subjectV2Cycles:cycles},
+   verdict:{...r.verdict,verdict:'fail',faults:[{check:'childPresent',where:'SUBJECT collectionVariety: '+refusal}]},qualityDisposition:{...r.qualityDisposition,state:'retry'},
+   boardReview:{...r.boardReview,dual:{...r.boardReview.dual,subject:{...r.boardReview.dual.subject,collectionRefusal:refusal,failedChecks:['collectionVariety']}}}});
+  await db.targetVariantAsset.update({where:{id:passed.id},data:{status:'FAILED',lastError:'quality-retry: childPresent',judgeJson:refusedAs(2)}});
+  // While a repair cycle remains, variety still repaints: nothing is re-read.
+  expect(localPatchVarietyExhaustedUndecided(await f.row())).toBe(false);
+  await db.targetVariantAsset.update({where:{id:passed.id},data:{judgeJson:refusedAs(3)}});
+  await db.gameScene.update({where:{id:f.scene.id},data:{generationStatus:'NEEDS_REGENERATION'}});
+  const refused=await f.row();expect(localPatchVarietyExhaustedUndecided(refused)).toBe(true);
+  // The world parked for a service decision; the completion grant wakes it for free.
+  await db.generationJob.update({where:{id:'job_'+f.gameId},data:{status:'FAILED',currentStep:'local-patch:recovery-exhausted',lastError:'local-patch: synthetic exhausted variety'}});
+  const game=await db.game.findUniqueOrThrow({where:{id:f.gameId}}),plan=await planQaCompletionCapacity(container,f.gameId);
+  await authorizeQaCompletionCapacity(container,{gameId:f.gameId,operatorId:game.ownerId!,expectedPlanSha256:plan.planSha256,ownerAuthorizationSha256:'b'.repeat(64)});
+  await db.generationJob.update({where:{id:'job_'+f.gameId},data:{status:'FAILED',currentStep:'local-patch:recovery-exhausted',
+   lastError:'local-patch: 1 appearances spent their 3 automatic repair cycles under local-patch-subject/v2 ('+r.hide+'); nothing more is bought for them.'}});
+  expect((await planQaCompletionRecovery(container,f.gameId))?.diagnosisRows).toContain(refused.id);
+  expect(await resumeQaCompletionRecovery(container,f.gameId)).toBe(true);
+  const worldId=boardWizardWorldId(f.gameId),ledger=JSON.parse((await db.worldBudgetLedger.findUniqueOrThrow({where:{worldId}})).snapshotJson);
+  const asked=provider.creates.length,painted=f.render.mock.calls.length,diagnosed=f.diagnose.mock.calls.length;
+  // The world still holds the refused look on a third of its appearances; a last chance is not asked about it.
+  const policy=await import('../../../domain/generation/subject-policy'),collection=vi.spyOn(policy,'subjectCollectionRefusal').mockReturnValue(refusal);
+  let consulted=-1;
+  try{await runLocalPatchWorldSlice(container,f.deps,f.gameId,{maxHides:1,hardDeadlineAt:Date.now()+270000,diagnose:f.diagnose});}
+  finally{consulted=collection.mock.calls.length;collection.mockRestore();}
+  expect(consulted).toBe(0);
+  const decided=await f.row(),d=JSON.parse(decided.judgeJson!);
+  expect(decided).toMatchObject({status:'GENERATED',assetId:refused.assetId,attempts:refused.attempts});expect(d.verdict.verdict).toBe('pass');
+  expect(d.boardReview.dual.subject.collectionRefusal).toBeUndefined();expect(d.selfRepair.subjectV2Cycles).toBe(3);
+  expect(d.reviewHistory.at(-1)).toMatchObject({supersededBy:COLLECTION_VARIETY_EXHAUSTED_VERSION,lastError:'quality-retry: childPresent'});
+  // Free for this appearance: the same paid answer, no new question, painting or diagnosis for it.
+  // (The slice may go on to paint an untouched sibling of this synthetic world.)
+  expect(provider.creates).toHaveLength(asked);expect(f.diagnose).toHaveBeenCalledTimes(diagnosed);
+  expect(f.render.mock.calls.slice(painted).every(([input])=>!input.requestKey.startsWith(r.hide+':'))).toBe(true);
+  const after=JSON.parse((await db.worldBudgetLedger.findUniqueOrThrow({where:{worldId}})).snapshotJson);
+  for(const request of ledger.requests)expect(after.requests.find((x:{requestKey:string})=>x.requestKey===request.requestKey)).toEqual(request);
+  expect(after.requests.filter((x:{requestKey:string})=>!ledger.requests.some((p:{requestKey:string})=>p.requestKey===x.requestKey))
+   .every((x:{requestKey:string;scope:string})=>x.scope!=='judge'&&!x.requestKey.startsWith(r.hide+':'))).toBe(true);
+  expect(localPatchVarietyExhaustedUndecided(decided)).toBe(false);
+  expect(fetch).not.toHaveBeenCalled();
  }finally{vi.useRealTimers();}
 },300000);
 

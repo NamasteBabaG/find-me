@@ -24,6 +24,7 @@ import { parseVisualSceneVerdicts } from "./visual-review";
 import { PLAYER_REVIEW_MODE } from "./local-patch-player-review";
 import type { SUBJECT_POLICY_V2, SUBJECT_POLICY_VERSION, SUBJECT_READER, SUBJECT_READER_V2, SubjectCheck, SubjectRepairCodeV2 } from "../../domain/generation/subject-policy";
 import { SUBJECT_QUALITY_BUNDLE_VERSION, readSubjectQualityBundle, type SubjectQualityBundleBinding } from "../../domain/generation/subject-quality-bundle";
+import { collectionVarietyApplies } from "../../domain/generation/collection-variety-exhausted";
 
 import { readSourceNeighborQualityBundle, type SourceNeighborQualityBundleBinding } from "../../domain/generation/source-neighbor-quality-bundle";
 import { SOURCE_NEIGHBOR_BUNDLE_VERSION, SOURCE_NEIGHBOR_POLICY, SOURCE_NEIGHBOR_READER, type SourceNeighborContract } from "../../domain/scene/local-patch-source-neighbors";
@@ -262,8 +263,8 @@ export function readContinuityStage(stage: ContinuityStage, hideId: string, vers
  * unreadable, or its visible-head evidence predates measured retention. The
  * service still verifies the original bill, pixels and every role before
  * recording any changed decision. No new question is authorized. */
-export function localPatchBoundEnvelopeUndecided(row: { status: string; lastError?: string | null; judgeJson?: string | null }): boolean {
-  if (localPatchHeadRetentionUnread(row)) return true;
+export function localPatchBoundEnvelopeUndecided(row: { status: string; attempts?: number; lastError?: string | null; judgeJson?: string | null }): boolean {
+  if (localPatchHeadRetentionUnread(row) || localPatchVarietyExhaustedUndecided(row)) return true;
   if (row.status !== "FAILED" || !row.lastError?.startsWith("quality-unresolved:")) return false;
   try {
     const receipt = JSON.parse(row.judgeJson ?? "null"), p = receipt?.boardReview?.dual as DualReviewProof | undefined;
@@ -302,7 +303,26 @@ export function localPatchHeadRetentionUnread(row: { status: string; judgeJson?:
   } catch { return false; }
 }
 
-export function localPatchRetainedAnswerUndecided(row: { status: string; lastError?: string | null; judgeJson?: string | null }): boolean {
+/** Scheduling only (collection-variety-exhausted/v1): an appearance whose repair
+ * cycles are spent, refused ONLY by the collection's variety rule although its
+ * exact settled all-role MEDIUM answer passed every check. That paid document is
+ * read once more, free, under the rule that no longer refuses a last chance. */
+export function localPatchVarietyExhaustedUndecided(row: { status: string; attempts?: number; judgeJson?: string | null }): boolean {
+  if (row.status !== "FAILED" || typeof row.attempts !== "number") return false;
+  try {
+    const receipt = JSON.parse(row.judgeJson ?? "null"), p = receipt?.boardReview?.dual as DualReviewProof | undefined, faults: unknown = receipt?.verdict?.faults;
+    return receipt?.reviewState === "board-review-complete" && p?.single === SINGLE_MEDIUM_VISUAL_REVIEW_VERSION
+      && !!p.quality && !!p.continuity && !!p.subject && typeof p.subject.collectionRefusal === "string"
+      && JSON.stringify(p.subject.failedChecks) === JSON.stringify(["collectionVariety"])
+      && receipt.verdict?.verdict === "fail" && Array.isArray(faults) && faults.length > 0
+      && faults.every(f => typeof f?.where === "string" && f.where.startsWith("SUBJECT collectionVariety: "))
+      && p.imageSha256 === receipt.judgedSha256 && p.geometrySha256 === receipt.geometrySha256 && p.hideId === receipt.hide
+      && [p.continuity, p.subject].every(v => v.raw === p.quality.raw && v.requestKey === p.quality.requestKey && v.fingerprint === p.quality.fingerprint)
+      && !collectionVarietyApplies({ attempts: row.attempts, judgeJson: row.judgeJson ?? null });
+  } catch { return false; }
+}
+
+export function localPatchRetainedAnswerUndecided(row: { status: string; attempts?: number; lastError?: string | null; judgeJson?: string | null }): boolean {
   if (localPatchBoundEnvelopeUndecided(row)) return true;
   try {
     const receipt = JSON.parse(row.judgeJson ?? "null"), review = receipt?.boardReview, proof = review?.dual as DualReviewProof | undefined;

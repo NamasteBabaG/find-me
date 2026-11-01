@@ -47,8 +47,9 @@ import { recoverPreparedLocalPatchReview } from "./local-patch-review-interrupti
 import { needsPlayerReview, playerReviewEnabled, PLAYER_REVIEW_MODE, PLAYER_REVIEW_VERSION } from "./local-patch-player-review";
 import { hasDualVisualReview } from "./visual-review-release";
 import { buyDualLocalPatchReview } from "./local-patch-dual-review";
-import { localPatchRetainedAnswerUndecided, localPatchHeadRetentionUnread, localPatchContinuityPending, qualityStageReader } from "./local-patch-dual-evidence";
+import { localPatchRetainedAnswerUndecided, localPatchHeadRetentionUnread, localPatchVarietyExhaustedUndecided, localPatchContinuityPending, qualityStageReader } from "./local-patch-dual-evidence";
 import { HEAD_RETENTION_VERSION } from "../../domain/generation/head-retention";
+import { COLLECTION_VARIETY_EXHAUSTED_VERSION } from "../../domain/generation/collection-variety-exhausted";
 import { SUBJECT_REJUDGE_VERSION, subjectRejudgePending } from "./subject-rejudge";
 import { qualityBatchWaiting } from "./quality-batch";
 import { backgroundReviewWaiting } from "./continuity-background";
@@ -517,7 +518,8 @@ export async function reviewLocalPatchBoard(c: Container, input: { gameId: strin
           ...(Array.isArray(prior.reviewHistory) ? prior.reviewHistory : []),
           { boardReview: prior.boardReview, verdict: prior.verdict, qualityDisposition: prior.qualityDisposition, wireFault: prior.wireFault,
             ...(rejudged ? { supersededBy: SUBJECT_REJUDGE_VERSION, lastError: current.lastError } : {}),
-            ...(retainedOnly ? { supersededBy: localPatchHeadRetentionUnread(e.row) ? HEAD_RETENTION_VERSION : evaluated!.proof.quality.envelopeReader, lastError: current.lastError } : {}) },
+            ...(retainedOnly ? { supersededBy: localPatchHeadRetentionUnread(e.row) ? HEAD_RETENTION_VERSION
+              : localPatchVarietyExhaustedUndecided(e.row) ? COLLECTION_VARIETY_EXHAUSTED_VERSION : evaluated!.proof.quality.envelopeReader, lastError: current.lastError } : {}) },
         ] } : {}),
         wireFault: keep.wireFault ?? (verdicts[e.hide.id] ? null : "schema"), judgedSha256: e.imageSha256,
         ...(strict ? { qualityDisposition: disposition, compositionVersion } : {}),

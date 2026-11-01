@@ -14,7 +14,7 @@ import { readQaCompletionCapacity, resumeQaCompletionRecovery } from "./qa-compl
 import { reconcileLegacyPaidJoinHead } from "./legacy-paid-join-head-recovery";
 import { legacyHeadCorrectionCandidate } from "../../domain/generation/legacy-paid-join-head";
 import { reconcileVisibleHeadPolicy } from "./visible-head-policy-recovery";
-import { restoreRetainedNormalHead } from "./retained-normal-head-recovery";
+import { restoreRetainedNormalHeadOnce } from "./retained-normal-head-scan";
 import { correctHeadPixels } from "./head-pixel-correction";
 import { headPixelCorrectionCandidate } from "../../domain/generation/head-pixel-correction";
 import { detectivesNativeMaskTail } from "./detectives-completion-budget";
@@ -601,9 +601,11 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
   // A slow optional scan must not spend the window reserved for deciding an
   // already-ready image, re-reading an exact settled all-role document, or
   // correcting a measured head fade on pixels already paid for.
-  // Retained normal paintings still get their free recovery when none is owed.
+  // Retained normal paintings still get their free recovery when none is owed,
+  // once per exact candidate state, so an unproductive scan cannot take every
+  // slice's paid window (retained-normal-head-scan/v1).
   if (completionAuthority && !rows.some(row => readyReviewOwed(row) || localPatchBoundEnvelopeUndecided(row) || headPixelCorrectionCandidate(row))
-    && await restoreRetainedNormalHead(c, gameId, rows, fence, deps.readBoardArt)) rows = await c.db.targetVariantAsset.findMany({
+    && await restoreRetainedNormalHeadOnce(c, gameId, completionAuthority.authorizationSha256, rows, fence, deps.readBoardArt)) rows = await c.db.targetVariantAsset.findMany({
     where: { variant: LOCAL_PATCH_VARIANT, targetInstance: { gameScene: { gameId } } }, include: { targetInstance: { select: { targetId: true, gameSceneId: true } } } });
   const legacyReviewOwed = (row: typeof rows[number] | undefined) => !!completionAuthority && !!row
     && !legacyHead.continuePaidRows.includes(row.id) && legacyHeadCorrectionCandidate(row);

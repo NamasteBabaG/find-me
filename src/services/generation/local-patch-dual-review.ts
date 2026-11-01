@@ -1,4 +1,5 @@
 import { nativeDetailQuestion } from "./native-detail-evidence";
+import { collectionVarietyApplies } from "../../domain/generation/collection-variety-exhausted";
 import type { NativeDetailEvidence } from "../../domain/generation/native-detail";
 import { BOUND_SUBJECT_QUALITY_ENVELOPE_READER_V2 } from "../../domain/generation/bound-subject-quality-envelope";
 import { singleMediumEvidence, singleMediumPrompt, singleMediumAnatomyPrompt } from "./single-medium-evidence";
@@ -920,7 +921,7 @@ async function dualReview(c: Container, prepared: Prepared, deps: LocalPatchBoar
         { attempt: evidenceReviewAttempt, role: "quality", kind: reading.fault.code, code: reading.fault.code, path: reading.fault.path || null,
           strategy: qualityStrategy, at: new Date().toISOString(), imageSha256: binding.imageSha256 }, null, hideId, false);
     }
-    const world = reading.disposition === "pass" ? await acceptedWorldAppearances(c.db, game.id, hideId, subjectContext.upgrade.ageYears) : null;
+    const world = reading.disposition === "pass" && collectionVarietyApplies(entry.row) ? await acceptedWorldAppearances(c.db, game.id, hideId, subjectContext.upgrade.ageYears) : null;
     const refusal = world ? subjectCollectionRefusal({ hideId, appearance: reading.appearance }, world.accepted, world.worldSize) : null;
     if (reading.disposition !== "pass" || refusal) {
       subject.failedChecks = subjectV2RefusalCodes(reading, refusal);
@@ -1011,7 +1012,7 @@ async function dualReview(c: Container, prepared: Prepared, deps: LocalPatchBoar
       subject.readFault = reading.fault;
       return classify(next, entry.row, priorReceipt, attempt(reading.fault.code, reading.fault.code, reading.fault.path || null), null, hideId, false);
     }
-    const world = reading.disposition === "pass" ? await acceptedWorldAppearances(c.db, game.id, hideId, upgrade.ageYears) : null;
+    const world = reading.disposition === "pass" && collectionVarietyApplies(entry.row) ? await acceptedWorldAppearances(c.db, game.id, hideId, upgrade.ageYears) : null;
     const refusal = world ? subjectCollectionRefusal({ hideId, appearance: reading.appearance }, world.accepted, world.worldSize) : null;
     if (reading.disposition === "pass" && !refusal) return { ...next, evidence: null, diagnosis: null };
     subject.failedChecks = subjectV2RefusalCodes(reading, refusal);
@@ -1224,7 +1225,8 @@ async function singleLowReview(c: Container, prepared: Prepared, deps: LocalPatc
   // Missing evidence cannot grant acceptance. This stable paid key never purchases a second automatic reading.
   if (!outer || !verdict || !readSubject.ok || !readAnatomy?.ok)
     return { kind: 'reviewed', bought, wire, verdicts: {}, proof, newCostCents: 0, evidence: null, diagnosis: null, salvaged: !!retained };
-  const world = readSubject.disposition === 'pass' ? await acceptedWorldAppearances(c.db, prepared.game.id, hideId, subject.upgrade.ageYears) : null;
+  // collection-variety-exhausted/v1: on the appearance's last automatic chance its look may repeat.
+  const world = readSubject.disposition === 'pass' && collectionVarietyApplies(entry.row) ? await acceptedWorldAppearances(c.db, prepared.game.id, hideId, subject.upgrade.ageYears) : null;
   const refusal = world ? subjectCollectionRefusal({ hideId, appearance: readSubject.appearance }, world.accepted, world.worldSize) : null;
   if (readSubject.disposition !== 'pass' || refusal) {
     subjectStage.failedChecks = subjectV2RefusalCodes(readSubject, refusal); if (refusal) subjectStage.collectionRefusal = refusal;
