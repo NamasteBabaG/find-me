@@ -1431,6 +1431,10 @@ it.each(['detectives','explorers'] as const)('restores an older paid normal crow
    sourceImageSha256:oldReceipt.judgedSha256,sourceAssetId:old.assetId,sourceReviewRequestKey:oldReceipt.boardReview.dual.quality.requestKey,originalAttempts:2,repairCyclesPreserved:3,...(f.version===12?{sceneVersion:12}:{})}};
   await db.targetVariantAsset.update({where:{id:third.id},data:{judgeJson:JSON.stringify(thirdReceipt)}});
   await db.generationJob.update({where:{id:'job_'+f.gameId},data:{status:'FAILED',currentStep:'local-patch:recovery-exhausted',lastError:'local-patch: synthetic exhausted original third'}});
+  // retained-normal-head-scan/v1: a scan that exits early (no completion grant yet) is never remembered.
+  const remembered=()=>db.auditLog.count({where:{entityId:f.gameId,action:RETAINED_NORMAL_HEAD_SCAN_ACTION}});
+  expect(await restoreRetainedNormalHeadOnce(container,f.gameId,'c'.repeat(64),[await f.row()],async()=>{},readArt)).toBe(false);
+  expect(await remembered()).toBe(0);
   const game=await db.game.findUniqueOrThrow({where:{id:f.gameId}}),plan=await planQaCompletionCapacity(container,f.gameId);
   await authorizeQaCompletionCapacity(container,{gameId:f.gameId,operatorId:game.ownerId!,expectedPlanSha256:plan.planSha256,ownerAuthorizationSha256:'b'.repeat(64)});
   const before=await f.row(),worldId=boardWizardWorldId(f.gameId),ledger=await db.worldBudgetLedger.findUniqueOrThrow({where:{worldId}}),renders=f.render.mock.calls.length;
@@ -1445,7 +1449,18 @@ it.each(['detectives','explorers'] as const)('restores an older paid normal crow
   await expect(restoreRetainedNormalHead(container,f.gameId,[before],async()=>{throw Error('Synthetic lost source fence');},readArt)).rejects.toThrow('Synthetic lost source fence');
   expect((await f.row()).judgeJson).toBe(before.judgeJson);
   expect((await db.worldBudgetLedger.findUniqueOrThrow({where:{worldId}})).snapshotJson).toBe(ledger.snapshotJson);
+  // A paid answer that has not landed yet: the scan restores nothing and remembers nothing,
+  // so the same answer arriving later still restores for free.
+  const grantSha=(await readQaCompletionCapacity(container,worldId))!.authorizationSha256;
+  const intent=await db.auditLog.findFirstOrThrow({where:{entityId:f.gameId,action:'generation:sol-background-review',id:{endsWith:'_intent'},
+   metaJson:{contains:JSON.stringify(oldReceipt.boardReview.dual.quality.requestKey)}}});
+  const outcome=await db.auditLog.findUniqueOrThrow({where:{id:intent.id.replace(/_intent$/,'_outcome')}});
+  await db.auditLog.delete({where:{id:outcome.id}});
+  expect(await restoreRetainedNormalHeadOnce(container,f.gameId,grantSha,[before],async()=>{},readArt)).toBe(false);
+  expect(await remembered()).toBe(0);expect((await f.row()).judgeJson).toBe(before.judgeJson);
+  await db.auditLog.create({data:outcome});
   expect(await restoreRetainedNormalHead(container,f.gameId,[before],async()=>{},readArt)).toBe(true);
+  expect(await remembered()).toBe(0);
   const restored=await f.row(),receipt=JSON.parse(restored.judgeJson!);
   expect(restored).toMatchObject({assetId:old.assetId,attempts:3,costCents:before.costCents,status:'GENERATED'});
   expect(receipt.selfRepair).toEqual(preserved);expect(receipt.retainedNormalHead).toMatchObject({version:RETAINED_NORMAL_HEAD_VERSION,originalAttempt:2,sourceRequestKey:`${f.hide.id}:${f.hide.pose}:render:2`});
@@ -1497,7 +1512,8 @@ it('runs an unproductive optional retained scan once per candidate state, so a 1
   const recovery=await import('../retained-normal-head-recovery');
   // Reproduces QA's unproductive slice (~103 s before paid work): 170 s remain,
   // below the 175 s paid window (150 s provider minimum + 25 s phase margin).
-  const scan=vi.spyOn(recovery,'restoreRetainedNormalHead').mockImplementation(async()=>{clock+=100000;return false;});
+  const scan=vi.spyOn(recovery,'restoreRetainedNormalHead').mockImplementation(async(...args)=>{
+   clock+=100000;const report=args[5];if(report)report.complete=true;return false;});
   const paid=()=>f.render.mock.calls.length+f.diagnose.mock.calls.length,bought=paid();
   try{
    expect(await runLocalPatchWorldSlice(container,f.deps,f.gameId,{maxHides:1,hardDeadlineAt:clock+270000,diagnose:f.diagnose})).toMatchObject({claimed:true,pending:true,attention:null});

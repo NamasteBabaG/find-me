@@ -47,7 +47,11 @@ type Candidate={id:string;status:string;attempts:number;assetId:string|null;judg
  * when its original settled MEDIUM passed every other role and merely needs
  * the new close-head question. No provider interface or purchase is used. */
 export async function restoreRetainedNormalHead(c:Container,gameId:string,rows:readonly Candidate[],fence:(tx:Prisma.TransactionClient)=>Promise<void>,
- readArt:LocalPatchHideDeps['readBoardArt']=readShippedBoardArt){
+ readArt:LocalPatchHideDeps['readBoardArt']=readShippedBoardArt,
+ /** Scheduling only: complete is set true when every candidate was examined against settled, terminal evidence and none restored. */
+ scan?:{complete:boolean}){
+ if(scan)scan.complete=false;
+ let unsettled=false;
  const candidates=rows.filter(retainedNormalHeadRecoveryCandidate);if(!candidates.length)return false;
  const worldId=gameId+':board-wizard',grant=await readQaCompletionCapacity(c,worldId);if(!grant)return false;
  const authority=qaCompletionReceiptSchema.parse(JSON.parse((await c.db.auditLog.findUniqueOrThrow({where:{id:qaCompletionCapacityId(gameId)}})).metaJson!));
@@ -91,9 +95,12 @@ export async function restoreRetainedNormalHead(c:Container,gameId:string,rows:r
    for(const intent of intents){
     const event=JSON.parse(intent.metaJson??'null'),key=event?.intent?.requestKey;if(typeof key!=='string')continue;
     const round=await backgroundRoundOfKey(c.db,gameId,worldId,key),b=round?.intent?.binding;
+    // A round still running may yet answer: nothing about it is remembered.
+    if(round&&!round.terminal)unsettled=true;
     if(!round||!roundAnswered(round)||b?.variantId!==row.id||b.hideId!==hide.id||b.imageSha256!==imageSha256||b.geometrySha256!==geometrySha256
      ||b.identitySha256!==authority.state.identitySha256||b.authoredReviewBinding!==authoredBinding)continue;
     const bill=stored.snapshot.requests.find(r=>r.requestKey===key),kept=await store.get(worldId,key);
+    if(bill&&['pending','unknown'].includes(bill.state))unsettled=true;
     if(!bill||!['settled','linked'].includes(bill.state)||bill.scope!=='judge'||!('evidence' in bill)||bill.conflicts.length
      ||bill.evidence.model!=='gpt-6.1-sol'||bill.evidence.providerNamespace!=='openai:find-me-existing'||!kept?.evidence||kept.scope!=='judge'
      ||kept.operationFingerprint!==bill.operationFingerprint||round.intent?.fingerprint!==kept.operationFingerprint||!sameChargeEvidence(kept.evidence,bill.evidence))continue;
@@ -138,8 +145,10 @@ export async function restoreRetainedNormalHead(c:Container,gameId:string,rows:r
      await tx.gameScene.update({where:{id:scene.id},data:{generationStatus:'NEEDS_REGENERATION',configJson:null}});return true;
     },{isolationLevel:Prisma.TransactionIsolationLevel.Serializable,timeout:30000});
     if(changed)return true;
+    unsettled=true; // Lost a fence or revision race: not a conclusive "nothing to restore".
    }
   }
  }
+ if(scan)scan.complete=!unsettled;
  return false;
 }
