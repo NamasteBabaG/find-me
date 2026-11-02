@@ -135,6 +135,18 @@ describe("returning a locally rendered rectangle to the board", () => {
     expect(result).toMatchObject({ usable: false, compositionPermission: "refused" });
   });
 
+  it("refuses a return painted in a wider framing (the 2026-11-01 Tokyo shape) at the unchanged limit", async () => {
+    const board = await texturedBoard(), crop = { left: 100, top: 60, width: 512, height: 768 };
+    // Tokyo hide 3's authored geometry: the window is nearly the whole crop.
+    const child = { left: 18, top: 108, width: 228, height: 365 }, returnRect = { left: 0, top: 10, width: 511, height: 738 };
+    const wide = await sharp(board).extract({ left: 20, top: 0, width: 672, height: 900 }).resize(512, 768, { fit: "fill" }).png().toBuffer();
+    const result = await composeBoundedLocalPatch(board, crop, wide, child, { returnRect });
+    expect(["misaligned", "background-rewritten"]).toContain(result.report.verdict);
+    expect(result).toMatchObject({ usable: false, compositionPermission: "refused" });
+    const same = await composeBoundedLocalPatch(board, crop, await sharp(board).extract(crop).png().toBuffer(), child, { returnRect });
+    expect(same).toMatchObject({ usable: true, report: { verdict: "clean", borderMeanDiff: 0 } });
+  });
+
   it("still rejects unauthorized interior repainting even with an exactly unchanged border", async () => {
     const fixture = await boundaryFixture({ interiorShift: { dx: -2, dy: 0 } });
     const returnedPatch = await sharp(fixture.patch).extract(fixture.returned).png().toBuffer();

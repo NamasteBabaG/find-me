@@ -1,6 +1,6 @@
 import { SOURCE_BODY_REPAIR_VERSION } from '../../../domain/scene/source-body-repair';
 import { GUIDED_FRAME_RECOVERY_VERSION } from "../../../domain/generation/guided-frame-recovery";
-import { PLACEMENT_GUIDE_VERSION } from "../../../domain/generation/placement-guide";
+import { PLACEMENT_GUIDE_VERSION, PLACEMENT_GUIDE_V2_VERSION } from "../../../domain/generation/placement-guide";
 import sharp from "sharp";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import {
@@ -59,7 +59,16 @@ describe("buying one local patch", () => {
       { policy: LOCAL_PATCH_LOW_IMAGE_POLICY, fetchOnce })).rejects.toThrow(/declared quality/);
     expect(fetchOnce).not.toHaveBeenCalled();
   });
-  it.each([GUIDED_FRAME_RECOVERY_VERSION,SOURCE_BODY_REPAIR_VERSION,PLACEMENT_GUIDE_VERSION])("sends source, identity, photo and final marked source guide for %s",async version=>{
+  it.each(["two-panel guide","no-alpha mask","wide source"] as const)("refuses a v2 request whose %s breaks the single crop frame before dispatch",async kind=>{
+    const fetchOnce=vi.fn<typeof fetch>(async()=>answer()),photo=await sharp(identity).resize(200,260).png().toBuffer();
+    const guide=kind==="two-panel guide"?await sharp({create:{width:1024,height:768,channels:4,background:"#ffffff"}}).composite([{input:crop,left:0,top:0}]).png().toBuffer():crop;
+    const maskPng=kind==="no-alpha mask"?await sharp(mask).removeAlpha().png().toBuffer():mask;
+    const stylePng=kind==="wide source"?await sharp(crop).resize(770,1099,{fit:"fill"}).png().toBuffer():crop;
+    await expect(buyLocalPatch("synthetic-never-live",{...request(),stylePng,maskPng,referenceMode:LOCAL_PATCH_PHOTO_REFERENCE_MODE,subjectPhotoPng:photo,subjectQuality:"medium",
+      placementGuidePng:guide,placementGuideVersion:PLACEMENT_GUIDE_V2_VERSION},{policy:LOCAL_PATCH_IMAGE_POLICY,fetchOnce})).rejects.toThrow("PLACEMENT_GUIDE: v2");
+    expect(fetchOnce).not.toHaveBeenCalled();
+  });
+  it.each([GUIDED_FRAME_RECOVERY_VERSION,SOURCE_BODY_REPAIR_VERSION,PLACEMENT_GUIDE_VERSION,PLACEMENT_GUIDE_V2_VERSION])("sends source, identity, photo and final marked source guide for %s",async version=>{
     const fetchOnce=vi.fn<typeof fetch>(async()=>answer()),photo=await sharp(identity).resize(200,260).png().toBuffer(),guide=await sharp(crop).tint("#00b8ff").png().toBuffer();
     await buyLocalPatch("synthetic-never-live",{...request(),referenceMode:LOCAL_PATCH_PHOTO_REFERENCE_MODE,subjectPhotoPng:photo,subjectQuality:"medium",placementGuidePng:guide,placementGuideVersion:version},{policy:LOCAL_PATCH_IMAGE_POLICY,fetchOnce});
     expect(fetchOnce).toHaveBeenCalledTimes(1);const form=fetchOnce.mock.calls[0]![1]!.body as FormData,images=form.getAll("image[]") as Blob[];expect(images).toHaveLength(4);for(const [i,expected] of [crop,identity,photo,guide].entries())expect(Buffer.from(await images[i]!.arrayBuffer())).toEqual(expected);expect(Buffer.from(await (form.get("mask") as Blob).arrayBuffer())).toEqual(mask);expect(form.get("n")).toBe("1");expect(form.get("quality")).toBe("medium");

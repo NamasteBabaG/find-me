@@ -11,8 +11,8 @@ import { sourceBodyForHide, sourceBodyBirthForHide } from './source-placement-re
 import { sourceBodyBirthMarkerSchema, type SourceBodyBirthMarker } from '../../domain/generation/detectives-operational-policy';
 import { nativeMaskTailMarkerSchema, nativeMaskTailDirections, nativeMaskTailEditRegion, type NativeMaskTailMarker } from "../../domain/generation/native-mask-tail";
 import { GUIDED_FRAME_RECOVERY_VERSION, guidedFrameGeometry, guidedFrameOverlay, guidedFrameDirections, parseGuidedFrameMarker, guidedFrameVersionMatches, type GuidedFrameMarker } from '../../domain/generation/guided-frame-recovery';
-import { PLACEMENT_GUIDE_VERSION, placementGuideSchema, placementGuideDirections, type PlacementGuide } from "../../domain/generation/placement-guide";
-import { localPatchPlacementGuidePixels } from "./local-patch-placement-guide";
+import { PLACEMENT_GUIDE_V2_VERSION, placementGuideSchema, placementGuideDirections, placementGuideEditableRect, type PlacementGuide, type PlacementGuideVersion } from "../../domain/generation/placement-guide";
+import { localPatchPlacementGuidePixels, localPatchPlacementGuideV2Pixels } from "./local-patch-placement-guide";
 import { hasLocalPatchCapability } from "../../domain/scene/local-patch-family";
 import { isCollectionVersion } from "../../domain/scene/local-patch-versions";
 import { SUBJECT_PAINTER_V2, SUBJECT_PAINTER_V3, SUBJECT_PAINTER_V4, isPlanLedPainter, type SubjectPainterVersion } from "../../domain/generation/subject-painter";
@@ -90,7 +90,7 @@ export type LocalPatchRenderDeps = {
   readonly render: (input: {
     readonly worldId: string; readonly requestKey: string; readonly prompt: string;
     readonly stylePng: Buffer; readonly identityPng: Buffer; readonly maskPng: Buffer;
-    readonly placementGuidePng?: Buffer; readonly placementGuideVersion?: typeof GUIDED_FRAME_RECOVERY_VERSION | typeof SOURCE_BODY_REPAIR_VERSION | typeof WHOLE_SOURCE_CONTEXT_VERSION | typeof PLACEMENT_GUIDE_VERSION;
+    readonly placementGuidePng?: Buffer; readonly placementGuideVersion?: typeof GUIDED_FRAME_RECOVERY_VERSION | typeof SOURCE_BODY_REPAIR_VERSION | typeof WHOLE_SOURCE_CONTEXT_VERSION | PlacementGuideVersion;
     readonly wholeSourceContext?: WholeSourceContextTransport;
     readonly referenceMode?: LocalPatchReferenceMode;
     readonly subjectPhotoPng?: Buffer;
@@ -546,7 +546,7 @@ async function renderLocalPatchHideInner(deps: LocalPatchRenderDeps, input: Loca
     const directed = authoredPaint ? `${base}\n\n${authoredPaint}` : base;
     if(bodyGeometry)return directed+'\n\n'+sourceBodyDirections(bodyGeometry);
     if (!guideGeometry) return directed;
-    const guide = input.placementGuide ? placementGuideDirections(authoredMask, guideReturn!) : guidedFrameDirections(authoredMask, guideReturn!);
+    const guide = input.placementGuide ? placementGuideDirections(authoredMask, guideReturn!, input.placementGuide.version) : guidedFrameDirections(authoredMask, guideReturn!);
     const permission = input.nativeMaskTail ? guide.replace("The editor mask covers the orange context so surrounding scenery can be reconstructed coherently, but the child must stay inside cyan.",
       "The native editor mask covers only the ORIGINAL child envelope. Remove the original target person WHOLE inside that envelope, including hair above cyan, then draw the whole new child inside cyan. The orange return-boundary band is protected.") : guide;
     return directed + '\n\n' + permission + (input.nativeMaskTail ? '\n\n'+nativeMaskTailDirections : '');
@@ -567,12 +567,21 @@ async function renderLocalPatchHideInner(deps: LocalPatchRenderDeps, input: Loca
   const renderIdentityPng = restyling ? await sharp(stylePng).extract(mask).png().toBuffer() : input.identityPng;
   // Editing context and target placement differ: repaint only the existing returned context,
   // and keep the whole target within its unchanged authored envelope via the cyan guide.
-  let maskPng = bodyGeometry ? await sourceBodyMaskPng(bodyGeometry) : await poseMask(guideGeometry ? { ...hide, mask: nativeEdit ? nativeEdit.editable : guideReturn! } : recovery ? { ...hide, mask } : hide);
+  // v2 also keeps the seam band shut: the seam check reads exactly that band back.
+  const guideV2 = input.placementGuide?.version === PLACEMENT_GUIDE_V2_VERSION;
+  const guideEditable = guideV2 ? placementGuideEditableRect(authoredMask, guideReturn!) : nativeEdit ? nativeEdit.editable : guideReturn!;
+  let maskPng = bodyGeometry ? await sourceBodyMaskPng(bodyGeometry) : await poseMask(guideGeometry ? { ...hide, mask: guideEditable } : recovery ? { ...hide, mask } : hide);
   let placementGuidePng: Buffer | undefined = guideGeometry ? await sharp(stylePng).composite([...(bodyGeometry?[{input:Buffer.from(sourceBodyOverlay(bodyGeometry))}]:[]),{ input:Buffer.from(guidedFrameOverlay(authoredMask,guideReturn!)) }]).png().toBuffer() : undefined;
   if (input.placementGuide) {
     const entry = sourcePlacementForHide(input.placementContext!, hide.id);
-    placementGuidePng = await localPatchPlacementGuidePixels({ sourcePng: input.composedPng, crop, child: authoredMask,
+    placementGuidePng = await (guideV2 ? localPatchPlacementGuideV2Pixels : localPatchPlacementGuidePixels)({ sourcePng: input.composedPng, crop, child: authoredMask,
       returned: guideReturn!, heads: entry?.sourceNeighbors?.contract.neighbors.map(n => n.head) ?? [] });
+  }
+  // Refused before anything is reserved, not after: one frame for source, mask and guide.
+  if (guideV2) for (const png of [stylePng, maskPng, placementGuidePng!]) {
+    const shape = await sharp(png).metadata();
+    if (shape.width !== 512 || shape.height !== 768 || (png === maskPng && !shape.hasAlpha))
+      throw Error("PLACEMENT_GUIDE: v2 source, mask and guide must share the 512x768 crop frame");
   }
 
   if (input.wholeSourceContext) {
@@ -638,7 +647,7 @@ async function renderLocalPatchHideInner(deps: LocalPatchRenderDeps, input: Loca
     operationFingerprint: renderFingerprint, reserveMicroUsd: input.wholeSourceContext ? WHOLE_SOURCE_CONTEXT_IMAGE_RESERVE : LOCAL_PATCH_RESERVE.renderMicroUsd,
     buy: async ({ timeoutMs }) => {
       const result = await deps.render({ worldId, requestKey: renderKey, prompt, stylePng, identityPng: renderIdentityPng, maskPng,
-        ...(placementGuidePng ? { placementGuidePng, placementGuideVersion:input.placementGuide?PLACEMENT_GUIDE_VERSION:input.wholeSourceContext?WHOLE_SOURCE_CONTEXT_VERSION:bodyGeometry?SOURCE_BODY_REPAIR_VERSION:GUIDED_FRAME_RECOVERY_VERSION } : {}),
+        ...(placementGuidePng ? { placementGuidePng, placementGuideVersion:input.placementGuide?input.placementGuide.version:input.wholeSourceContext?WHOLE_SOURCE_CONTEXT_VERSION:bodyGeometry?SOURCE_BODY_REPAIR_VERSION:GUIDED_FRAME_RECOVERY_VERSION } : {}),
         ...(input.wholeSourceContext && painterNeighbors?.ok ? { wholeSourceContext: { plan: input.wholeSourceContext.plan, contract: painterNeighbors.contract, child: authoredMask } } : {}),
         ...(input.boardPeoplePng ? { boardPeoplePng: input.boardPeoplePng } : {}),
         ...(input.canonicalIdentityPng ? { canonicalIdentityPng: input.canonicalIdentityPng } : {}),

@@ -39,6 +39,42 @@ the persisted recipe and retained response. No additional attempt or money is
 authorized by this software change. Images still need independent final MEDIUM
 approval of the actual returned player pixels before all-27 publication.
 
+### v2 (2026-11-01): one frame, protected seam band
+
+The new $4 Detectives trial (`game_sy9p7w7m522d2puvdcil`, Journey boards) parked
+at 10/27: 16 hides lost both paintings to the free seam check. Two request
+defects explain the retained evidence, without proving every case:
+
+- v1 opened the whole returned window, including the 12-pixel band that
+  `analysePatchSeam` later demands back unchanged. On two retained paid returns
+  the painter kept pixels the mask protected markedly better than that open band
+  (New York 17.2 outside vs 27.0 inside; Marrakech 9.3 vs 16.2).
+- v1's second, wider context panel competes with the edited crop. One Tokyo
+  return came back in that wider framing (about 50 on both sides of the line).
+
+Across all 48 retained paintings 34 were seam refusals ($2.273169 of the
+$3.827709 conservative estimate). On 18 of those 34 the protected ring outside
+the return was under 24 and on 16 it was not, so shutting the band is one part
+of the answer, not a predicted pass rate.
+
+`local-patch-placement-guide/v2` is the only recipe for new pins. Its guide is the
+edited 512x768 crop itself (orange return, cyan whole-target frame, magenta
+registered heads that fall inside the crop, nothing beyond it); its mask opens
+the returned window minus that band (`placementGuideEditableRect`); its directions
+forbid zooming out, widening, shifting or recomposing. A registration can be the
+authored target itself (Tokyo hide 3's `source-gray-capsule-child`), so magenta
+names comparison people, not people to keep: the target is replaced whole with no
+remnant, and only people continuing outside the return or crop keep their exact
+coordinates and fragments. Source, mask and guide must
+share the 512x768 frame before anything is reserved, and again at the provider
+boundary. A pin already persisted for an attempt keeps its own version, so v1
+requests, receipts and fingerprints replay byte for byte (the v1 directions are
+pinned by hash). The composer, `SEAM_LIMITS` (24) and every identity, anatomy,
+neighbour and doubt check are unchanged; a seam pass is still only permission,
+and nothing copies source pixels over a painted border. Whether v2 lowers the
+refusal rate is decided by a separately authorized paid qualification, not by
+this change.
+
 ## Validation and remaining real-world gate
 
 Synthetic regression cases cover nested and outer echoes, zero remaining

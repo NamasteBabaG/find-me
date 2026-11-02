@@ -48,7 +48,7 @@ import { isLocalPatchAdvisoryVersion, isLocalPatchAgeVersion, isLocalPatchStrict
 import { requireLocalPatchExtraAttempt, fenceLocalPatchExtraAttempt } from "./local-patch-extra-attempt";
 import { localPatchPublicationGeometryHash } from "./local-patch-publication-policy";
 import { initialAdaptiveRecovery, prepareAdaptiveRecovery } from "./local-patch-adaptive-recovery";
-import { PLACEMENT_GUIDE_VERSION, placementGuideOf, placementGuideSchema, type PlacementGuide } from "../../domain/generation/placement-guide";
+import { PLACEMENT_GUIDE_V2_VERSION, placementGuideOf, placementGuideSchema, type PlacementGuide } from "../../domain/generation/placement-guide";
 import { expectedGuidedLocalPatchReturn } from "./local-patch-authored-return";
 import { maskForHide } from "../../domain/scene/local-patch-hides";
 import { PENDING_IMAGE_LEASE_MS } from "../../domain/generation/pending-image-lease";
@@ -407,7 +407,9 @@ export async function runLocalPatchHide(c: Container, deps: LocalPatchHideDeps, 
     const authority = await singleLowReviewAuthorization(c.db, gameId);
     if (authority?.kind === "from-birth") {
       const returned = expectedGuidedLocalPatchReturn(board, hide, scene.sceneVersion, placementContext);
-      const expected = placementGuideSchema.parse({ version: PLACEMENT_GUIDE_VERSION, hideId: hide.id, attempt, sceneVersion: scene.sceneVersion,
+      // New pins take v2; a pin already written for this attempt keeps its own version.
+      const version = priorGuide?.attempt === attempt ? priorGuide.version : PLACEMENT_GUIDE_V2_VERSION;
+      const expected = placementGuideSchema.parse({ version, hideId: hide.id, attempt, sceneVersion: scene.sceneVersion,
         sourceSha256: returned.source.sha256, reviewAuthorizationSha256: authority.authorizationSha256,
         geometrySha256: sha256Bytes(Buffer.from(JSON.stringify({ crop: cropOf(hide), child: maskForHide(hide), returned: returned.local }))) });
       if (priorGuide?.attempt === attempt) {

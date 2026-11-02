@@ -1,8 +1,8 @@
 import sharp from "sharp";
 import { guidedFrameGeometry, guidedFrameOverlay, type GuideRect } from "../../domain/generation/guided-frame-recovery";
 
-/** Supply the actual original scene beyond the crop as well as its local
- * whole-body frame. This never changes the edited source, mask or return size. */
+/** v1 (persisted pins only): the actual original scene beyond the crop as well
+ * as its local whole-body frame. This never changes the edited source, mask or return size. */
 export async function localPatchPlacementGuidePixels(input: {
   sourcePng: Buffer; crop: GuideRect; child: GuideRect; returned: GuideRect; heads: readonly GuideRect[];
 }): Promise<Buffer> {
@@ -25,4 +25,20 @@ export async function localPatchPlacementGuidePixels(input: {
   const label = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="512" height="32"><rect width="512" height="32" fill="white"/><text x="12" y="22" font-family="sans-serif" font-size="16" fill="#202020">ORIGINAL SOURCE CONTEXT - reference only</text></svg>');
   return sharp({ create: { width: 1024, height: 768, channels: 4, background: "#ffffff" } })
     .composite([{ input: local, left: 0, top: 0 }, { input: label, left: 512, top: 0 }, { input: panel, left: 512, top: 32 }]).png().toBuffer();
+}
+
+/** local-patch-placement-guide/v2: the edited crop itself, at its own scale and
+ * framing, with the whole-target frame and the registered heads that fall in it.
+ * Nothing outside the crop is shown, so there is no second framing to copy. */
+export async function localPatchPlacementGuideV2Pixels(input: {
+  sourcePng: Buffer; crop: GuideRect; child: GuideRect; returned: GuideRect; heads: readonly GuideRect[];
+}): Promise<Buffer> {
+  const { crop, child, returned } = input;
+  if (crop.width !== 512 || crop.height !== 768) throw Error("PLACEMENT_GUIDE: v2 guides the 512x768 crop only");
+  const heads = input.heads.map(h => ({ left: h.left - crop.left, top: h.top - crop.top, width: h.width, height: h.height }))
+    .filter(h => h.left < 512 && h.top < 768 && h.left + h.width > 0 && h.top + h.height > 0);
+  const outlines = '<svg xmlns="http://www.w3.org/2000/svg" width="512" height="768" viewBox="0 0 512 768">'
+    + heads.map(h => `<rect x="${h.left}" y="${h.top}" width="${h.width}" height="${h.height}" fill="none" stroke="#ff40b0" stroke-width="3"/>`).join("") + "</svg>";
+  return sharp(input.sourcePng, { limitInputPixels: 8_294_400 }).extract(crop)
+    .composite([{ input: Buffer.from(outlines) }, { input: Buffer.from(guidedFrameOverlay(child, returned)) }]).png().toBuffer();
 }

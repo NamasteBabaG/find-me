@@ -24,7 +24,7 @@ import { AUTHORED_RECOVERY_COMPOSITION_VERSION } from "../../../domain/scene/loc
 import { localPatchRestDecision } from "../../../domain/scene/local-patch-progress";
 import { nextBoundEnvelopeReconciliation, resumeBoundEnvelopeReconciliation } from "../bound-envelope-reconciliation";
 import { BOUND_SUBJECT_QUALITY_ENVELOPE_READER, BOUND_SUBJECT_QUALITY_ENVELOPE_READER_V2 } from "../../../domain/generation/bound-subject-quality-envelope";
-import { PLACEMENT_GUIDE_VERSION } from "../../../domain/generation/placement-guide";
+import { PLACEMENT_GUIDE_VERSION, PLACEMENT_GUIDE_V2_VERSION, placementGuideEditableRect } from "../../../domain/generation/placement-guide";
 import { PENDING_IMAGE_LEASE_MS } from "../../../domain/generation/pending-image-lease";
 import { ensureSingleMediumReviewPolicy } from "../single-medium-policy";
 import { planQaCompletionCapacity,authorizeQaCompletionCapacity,readQaCompletionCapacity,qaCompletionCapacityStatus,
@@ -1705,7 +1705,8 @@ it.each([["explorers", "awaiting-review", 1], ["detectives", "awaiting-review", 
 it("pins whole-target and outside-source guides before new purchases, replays them after interruption and preserves pre-upgrade pending requests", async()=>{
   const gameId="kingdom-prospective-frame-synthetic";await newDetectiveWorld(gameId,7,true,false,true);
   const context=await resolveLocalPatchBoardsForGame(db,gameId,13),board=context.boards.find(b=>b.board==="icepalace")!;
-  const [fresh,old,stale]=board.hides,claims=new Map<string,string>(),calls:string[]=[];
+  const [fresh,old,stale]=board.hides,claims=new Map<string,string>(),calls:string[]=[],v1Keys=new Set<string>();
+  const masks=new Map<string,{bandOpen:number;open:number;expected:number}>();
   const deps:LocalPatchHideDeps={readBoardArt:readArt,renderPolicySha256:localPatchRenderPolicySha256(LOCAL_PATCH_IMAGE_POLICY),
     judge:async()=>{throw Error("Synthetic framing test must never buy a synchronous review");},render:async input=>{
       calls.push(input.requestKey);const hide=board.hides.find(h=>input.requestKey.startsWith(h.id+":"))!;
@@ -1714,19 +1715,35 @@ it("pins whole-target and outside-source guides before new purchases, replays th
       claims.set(input.requestKey,pending.judgeJson!);
       const guided=hide!==old||input.requestKey.endsWith(":render:2");
       expect(!!input.placementGuidePng).toBe(guided);
-      if(guided){
-        expect(input.placementGuideVersion).toBe(PLACEMENT_GUIDE_VERSION);
-        expect(JSON.parse(pending.judgeJson!).placementGuide).toMatchObject({version:PLACEMENT_GUIDE_VERSION,hideId:hide.id,attempt:pending.attempts});
-        const meta=await sharp(input.placementGuidePng!).metadata();expect([meta.width,meta.height]).toEqual([1024,768]);
-        expect(input.prompt).toContain("RIGHT is scaled ORIGINAL SOURCE CONTEXT");
-        expect(input.prompt).toContain("never erase its torso while its original head survives outside the crop");
-      }
       const child=maskForHide(hide),returned=localPatchReturnRegion(cropOf(hide),child,hide.returnRect).local;
+      if(guided){
+        // New pins buy v2; a v1 pin persisted before the upgrade buys exactly v1.
+        const version=v1Keys.has(input.requestKey)?PLACEMENT_GUIDE_VERSION:PLACEMENT_GUIDE_V2_VERSION,v2=version===PLACEMENT_GUIDE_V2_VERSION;
+        expect(input.placementGuideVersion).toBe(version);
+        expect(JSON.parse(pending.judgeJson!).placementGuide).toMatchObject({version,hideId:hide.id,attempt:pending.attempts});
+        const meta=await sharp(input.placementGuidePng!).metadata();expect([meta.width,meta.height]).toEqual(v2?[512,768]:[1024,768]);
+        if(v2){
+          expect(input.prompt).toContain("SAME scale and framing");expect(input.prompt).not.toContain("RIGHT is scaled ORIGINAL SOURCE CONTEXT");
+          const {data}=await sharp(input.maskPng).ensureAlpha().raw().toBuffer({resolveWithObject:true});let bandOpen=0,open=0;
+          for(let y=returned.top;y<returned.top+returned.height;y++)for(let x=returned.left;x<returned.left+returned.width;x++){
+            const isOpen=data[(y*512+x)*4+3]===0;if(isOpen)open++;
+            if(isOpen&&Math.min(x-returned.left,y-returned.top,returned.left+returned.width-1-x,returned.top+returned.height-1-y)<12)bandOpen++;
+          }
+          // Recorded, not thrown: a throw inside the purchase surfaces only as "stopped".
+          masks.set(input.requestKey,{bandOpen,open,expected:(returned.width-24)*(returned.height-24)});
+        }else{
+          expect(input.prompt).toContain("RIGHT is scaled ORIGINAL SOURCE CONTEXT");
+          expect(input.prompt).toContain("never erase its torso while its original head survives outside the crop");
+        }
+      }
       const frame=guided?guidedFrameGeometry(child,returned).target:child;
       const figure=await sharp({create:{width:Math.round(frame.width*0.6),height:Math.round(frame.height*0.7),channels:4,background:"#385ca0"}}).png().toBuffer();
       return paintedOk(await sharp(input.stylePng).composite([{input:figure,left:frame.left+Math.round(frame.width*0.2),top:frame.top+Math.round(frame.height*0.2)}]).png().toBuffer(),bill("frame-"+input.requestKey));
     }};
-  const first=await runLocalPatchHide(c,deps,{gameId,board,hide:fresh!});expect(first.state).toBe("generated");
+  const first=await runLocalPatchHide(c,deps,{gameId,board,hide:fresh!});
+  const firstMask=masks.get(fresh!.id+":"+fresh!.pose+":render:1")!;
+  expect(firstMask.bandOpen).toBe(0);expect(firstMask.open).toBe(firstMask.expected);
+  expect(first.state).toBe("generated");
   const row=await db.targetVariantAsset.findFirstOrThrow({where:{targetInstance:{gameScene:{gameId},targetId:fresh!.targetId}}});
   expect(JSON.parse(row.judgeJson!).reviewState).toBe("pending-board-review");
   const ledger=await db.worldBudgetLedger.findUniqueOrThrow({where:{worldId:boardWizardWorldId(gameId)}});
@@ -1757,8 +1774,63 @@ it("pins whole-target and outside-source guides before new purchases, replays th
     provider:"local-patch",promptVersion:row.promptVersion,attempts:1,status:"PENDING",updatedAt:new Date(Date.now()-PENDING_IMAGE_LEASE_MS-1)}});
   expect(await boardWizardBudgetOf(c).readRequest(boardWizardWorldId(gameId),stale!.id+":"+stale!.pose+":render:1")).toBeNull();
   expect((await runLocalPatchHide(c,deps,{gameId,board,hide:stale!}))).toMatchObject({state:"generated",attempt:1});
-  expect(calls).toHaveLength(4);expect((await boardWizardBudgetOf(c).audit(boardWizardWorldId(gameId))).capMicroUsd).toBe(4000000);
+  expect(calls).toHaveLength(4);
+  // A pre-upgrade claim of a second painting that wrote a v1 pin and never dispatched keeps v1 byte for byte.
+  const freshClaim=JSON.parse(claims.get(fresh!.id+":"+fresh!.pose+":render:1")!),v1Pin={...freshClaim.placementGuide,version:PLACEMENT_GUIDE_VERSION,attempt:2};
+  const freshDone=await db.targetVariantAsset.findUniqueOrThrow({where:{id:row.id}});
+  await db.targetVariantAsset.update({where:{id:freshDone.id},data:{status:"PENDING",attempts:2,lastError:"quality-retry: synthetic framing defect",
+    judgeJson:JSON.stringify({...JSON.parse(freshDone.judgeJson!),placementGuide:v1Pin}),updatedAt:new Date(Date.now()-PENDING_IMAGE_LEASE_MS-1)}});
+  expect(await boardWizardBudgetOf(c).readRequest(boardWizardWorldId(gameId),fresh!.id+":"+fresh!.pose+":render:2")).toBeNull();
+  v1Keys.add(fresh!.id+":"+fresh!.pose+":render:2");
+  expect((await runLocalPatchHide(c,deps,{gameId,board,hide:fresh!}))).toMatchObject({state:"generated",attempt:2});
+  expect(calls).toHaveLength(5);expect(calls.at(-1)).toBe(fresh!.id+":"+fresh!.pose+":render:2");
+  expect([...masks.keys()].sort()).toEqual([fresh!.id+":"+fresh!.pose+":render:1",old!.id+":"+old!.pose+":render:2",stale!.id+":"+stale!.pose+":render:1"].sort());
+  for(const mask of masks.values()){expect(mask.bandOpen).toBe(0);expect(mask.open).toBe(mask.expected);}expect((await boardWizardBudgetOf(c).audit(boardWizardWorldId(gameId))).capMicroUsd).toBe(4000000);
   expect(fetch).not.toHaveBeenCalled();
+},300000);
+
+it("v2 asks for the registered Tokyo target to be replaced whole, never kept, and still protects people beyond the return",async()=>{
+  const gameId="journey-tokyo-target-role-synthetic";await newDetectiveWorld(gameId,7,true);
+  const context=await resolveLocalPatchBoardsForGame(db,gameId,13),board=context.boards.find(b=>b.board==="tokyo")!;
+  const hide=board.hides.find(h=>h.id==="tokyo-detectives-hide-3")!,crop=cropOf(hide),child=maskForHide(hide);
+  const returned=localPatchReturnRegion(crop,child,hide.returnRect).local,open=placementGuideEditableRect(child,returned);
+  type Box={left:number;top:number;width:number;height:number};
+  const local=(r:Box)=>({left:r.left-crop.left,top:r.top-crop.top,width:r.width,height:r.height});
+  const within=(a:Box,b:Box)=>a.left>=b.left&&a.top>=b.top&&a.left+a.width<=b.left+b.width&&a.top+a.height<=b.top+b.height;
+  // The actual public registration lists the authored target itself among its heads.
+  const neighbors=sourcePlacementForHide(context,hide.id)!.sourceNeighbors!.contract.neighbors;
+  const target=neighbors.find(n=>n.sourceId==="source-gray-capsule-child")!;
+  expect(local(target.head)).toEqual({left:82,top:112,width:142,height:160});expect(within(local(target.head),child)).toBe(true);
+  let seen:{prompt:string;mask:Buffer;guide:Buffer}|undefined;
+  const deps:LocalPatchHideDeps={readBoardArt:readArt,renderPolicySha256:localPatchRenderPolicySha256(LOCAL_PATCH_IMAGE_POLICY),
+    judge:async()=>{throw Error("Synthetic role test must never buy a synchronous review");},render:async input=>{
+      seen={prompt:input.prompt,mask:input.maskPng,guide:input.placementGuidePng!};
+      const frame=guidedFrameGeometry(child,returned).target;
+      const figure=await sharp({create:{width:Math.round(frame.width*0.6),height:Math.round(frame.height*0.7),channels:4,background:"#385ca0"}}).png().toBuffer();
+      return paintedOk(await sharp(input.stylePng).composite([{input:figure,left:frame.left+Math.round(frame.width*0.2),top:frame.top+Math.round(frame.height*0.2)}]).png().toBuffer(),bill("tokyo-role-"+input.requestKey));
+    }};
+  await runLocalPatchHide(c,deps,{gameId,board,hide});
+  expect(seen).toBeDefined();const {prompt}=seen!;
+  // The assembled request: source-bound data registers the target, and the guide never tells the painter to keep it.
+  expect(prompt).toContain("local-patch-authored-paint/v1");expect(prompt).toContain('"sourceId":"source-gray-capsule-child"');
+  expect(prompt).toContain(PLACEMENT_GUIDE_V2_VERSION);
+  expect(prompt).toContain("including the original authored TARGET when registered; these boxes are not a required final person count");
+  expect(prompt).toContain("Replace the authored TARGET WHOLE with the canonical child, leaving no original face, body or limb remnant");
+  expect(prompt).not.toMatch(/each of those people stays whole/i);expect(prompt).not.toMatch(/never a neighbour/i);
+  expect(prompt).toContain("a person continuing outside the return window or input crop keeps the exact original coordinates and intact visible fragments");
+  // The mask agrees: the target's whole original head is open to replacement, everything beyond the opening is shut.
+  const {data}=await sharp(seen!.mask).ensureAlpha().raw().toBuffer({resolveWithObject:true});
+  const isOpen=(x:number,y:number)=>data[(y*512+x)*4+3]===0,head=local(target.head);
+  let headShut=0,beyondOpen=0,beyond=0;
+  for(let y=head.top;y<head.top+head.height;y++)for(let x=head.left;x<head.left+head.width;x++)if(!isOpen(x,y))headShut++;
+  // Every pixel beyond the opening, so every fragment of a person continuing outside the return, stays shut.
+  for(let y=0;y<768;y++)for(let x=0;x<512;x++)if(!within({left:x,top:y,width:1,height:1},open)){beyond++;if(isOpen(x,y))beyondOpen++;}
+  expect(headShut).toBe(0);expect(beyond).toBe(512*768-open.width*open.height);expect(beyondOpen).toBe(0);
+  expect(neighbors.some(n=>!within(local(n.head),returned))).toBe(true);
+  // The guide marks the target's registered head where the cyan frame asks for the replacement.
+  const guide=await sharp(seen!.guide).removeAlpha().raw().toBuffer();let magenta=0;
+  for(let y=head.top;y<head.top+head.height;y++)for(let x=head.left;x<head.left+head.width;x++){const i=(y*512+x)*3;if(guide[i]!>200&&guide[i+1]!<100&&guide[i+2]!>140)magenta++;}
+  expect(magenta).toBeGreaterThan(100);expect(fetch).not.toHaveBeenCalled();
 },300000);
 
 it.each(["detectives","explorers"] as const)("authorizes one source-bound %s Kingdom completion frame without resetting attempts, UNKNOWN reserves or quality",async level=>{
@@ -1839,7 +1911,7 @@ it.each(["detectives","explorers"] as const)("publishes all 27 %s Kingdom hides 
   const container={...c,backgroundReview:provider.fake,visualReview:{request:forbidden}} as Container;
   const render=vi.fn<LocalPatchHideDeps["render"]>(async input=>{
     const hide=hides.find(h=>input.requestKey.startsWith(h.id+":"))!;expect(input.requestKey.endsWith(":render:1")).toBe(true);
-    expect(input.placementGuideVersion).toBe(PLACEMENT_GUIDE_VERSION);
+    expect(input.placementGuideVersion).toBe(PLACEMENT_GUIDE_V2_VERSION);
     const frame=guidedFrameGeometry(maskForHide(hide),localPatchReturnRegion(cropOf(hide),maskForHide(hide),hide.returnRect).local).target;
     const figure=await sharp({create:{width:Math.round(frame.width*0.6),height:Math.round(frame.height*0.7),channels:4,background:"#284d99"}}).png().toBuffer();
     return paintedOk(await sharp(input.stylePng).composite([{input:figure,left:frame.left+Math.round(frame.width*0.2),top:frame.top+Math.round(frame.height*0.2)}]).png().toBuffer(),bill("synthetic-completion-"+input.requestKey,50000));
@@ -2128,8 +2200,8 @@ it("resumes v3 and v4 Explorer guided thirds through one fresh MEDIUM each and n
       if (selectedIds.includes(hide.id) && attempt === 3) {
         guides++;
         // This exact historical pending checkpoint keeps its original recipe;
-        // the other unbought third receives the new source-context panel.
-        expect(placementGuideVersion).toBe(hide.id===legacy.id?GUIDED_FRAME_RECOVERY_VERSION:PLACEMENT_GUIDE_VERSION);
+        // the other unbought third receives the single-frame v2 guide.
+        expect(placementGuideVersion).toBe(hide.id===legacy.id?GUIDED_FRAME_RECOVERY_VERSION:PLACEMENT_GUIDE_V2_VERSION);
         expect(placementGuidePng).toBeDefined();
         const unchangedReturn = localPatchReturnRegion(cropOf(hide), frame, hide.returnRect).local;
         const geometry = guidedFrameGeometry(frame, unchangedReturn);
@@ -2138,9 +2210,10 @@ it("resumes v3 and v4 Explorer guided thirds through one fresh MEDIUM each and n
         const alpha = await sharp(maskPng).ensureAlpha().raw().toBuffer();
         let editable = 0;
         for (let i = 3; i < alpha.length; i += 4) if (alpha[i] === 0) editable++;
-        expect(editable).toBe(unchangedReturn.width * unchangedReturn.height);
+        expect(editable).toBe(hide.id === legacy.id ? unchangedReturn.width * unchangedReturn.height
+          : (unchangedReturn.width - 24) * (unchangedReturn.height - 24));
       } else {
-        expect(placementGuideVersion).toBe(PLACEMENT_GUIDE_VERSION);expect(placementGuidePng).toBeDefined();
+        expect(placementGuideVersion).toBe(PLACEMENT_GUIDE_V2_VERSION);expect(placementGuidePng).toBeDefined();
         frame=guidedFrameGeometry(frame,localPatchReturnRegion(cropOf(hide),frame,hide.returnRect).local).target;
       }
       const figure = await sharp({ create: { width: Math.round(frame.width * 0.6), height: Math.round(frame.height * 0.8), channels: 4,
