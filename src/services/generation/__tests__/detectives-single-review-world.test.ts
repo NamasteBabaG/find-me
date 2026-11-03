@@ -93,7 +93,7 @@ import { buildBoardWizardIdentityStyle } from "../board-wizard-identity-style";
 import { readShippedBoardArt, type LocalPatchHideDeps } from "../local-patch-hide";
 import { readQualityStage, readContinuityStage, subjectStageRaw, localPatchHeadRetentionUnread, localPatchVarietyExhaustedUndecided, type DualReviewProof } from "../local-patch-dual-evidence";
 import { COLLECTION_VARIETY_EXHAUSTED_VERSION } from "../../../domain/generation/collection-variety-exhausted";
-import { pinLocalPatchSourceFamily, resolveLocalPatchBoardsForGame, sourcePlacementForHide, sourcePlacementReleaseOf } from "../source-placement-release";
+import { pinLocalPatchSourceFamily, resolveLocalPatchBoardsForGame, sourceBodyForHide, sourcePlacementForHide, sourcePlacementReleaseOf } from "../source-placement-release";
 import { pinIdentitySourceRelease } from "../identity-source-release";
 import { allowedDualPublication } from "../local-patch-dual-publication";
 import { hasLocalPatchPublicationPolicy } from "../local-patch-publication-policy";
@@ -2109,6 +2109,245 @@ it("consumes retained LOW answers before an unaffordable guided purchase after a
  expect((await db.game.findUniqueOrThrow({where:{id:gameId}})).configJson).toBeNull();
  expect((await db.childProfile.findUniqueOrThrow({where:{id:"chl-"+gameId}})).originalPhotoAssetId).not.toBeNull();expect(fetch).not.toHaveBeenCalled();
 },1_500_000);
+
+// The 2026-11-02 QA shape (local-patch-settled-answer-first/v1): paid answers about one board settle while the lean
+// world waits for capacity, and another board's finished paintings were never asked about.
+async function settledAnswerFixture(gameId:string){
+ vi.useFakeTimers({toFake:["Date"]});
+ await newDetectiveWorld(gameId,7,true);
+ const context=await resolveLocalPatchBoardsForGame(db,gameId,13),hides=context.boards.flatMap(b=>b.hides);
+ const boardOf=(hideId:string)=>context.boards.find(b=>b.hides.some(h=>h.id===hideId))!.board;
+ const provider=controlledSol(false,false,undefined,true,true),retrieve=provider.fake.retrieve.bind(provider.fake),create=provider.fake.create.bind(provider.fake);
+ const state={released:false,stopped:false,asked:null as string|null,unasked:null as string|null,askedQuestions:0};
+ provider.fake.retrieve=async id=>state.released?retrieve(id):{status:"in_progress"};
+ provider.fake.create=async body=>{if(state.stopped)throw Error("No new question after the capacity stop");return create(body);};
+ const container={...c,backgroundReview:provider.fake,visualReview:{request:async()=>{throw Error("No synchronous review");}}} as Container;
+ const budget=boardWizardBudgetOf(container),worldId=boardWizardWorldId(gameId),painted=new Map<string,number>();
+ const render=vi.fn<NonNullable<LocalPatchHideDeps["render"]>>(async({requestKey,stylePng})=>{
+  if(state.stopped)throw Error("No painting after the capacity stop");
+  const hide=hides.find(h=>requestKey.startsWith(h.id+":"))!,board=boardOf(hide.id),mask=maskForHide(hide);
+  const figure=await sharp({create:{width:Math.round(mask.width*0.6),height:Math.round(mask.height*0.8),channels:4,background:"#1e3ca0"}}).png().toBuffer();
+  const png=await sharp(stylePng).composite([{input:figure,left:mask.left+Math.round(mask.width*0.2),top:mask.top+Math.round(mask.height*0.2)}]).png().toBuffer();
+  painted.set(board,(painted.get(board)??0)+1);
+  let amount=66500;
+  // Every painting on one board was asked about, none on another.
+  const fullyAsked=context.boards.find(b=>b.hides.every(h=>provider.creates.some(x=>x.hideId===h.id)))?.board;
+  if(!state.unasked&&fullyAsked&&!provider.creates.some(x=>boardOf(x.hideId)===board)&&painted.get(board)===3){
+   // The last painting of a second board leaves too little for any question or painting.
+   state.asked=fullyAsked;state.unasked=board;state.askedQuestions=provider.creates.length;
+   amount=(await budget.readRequest(worldId,requestKey))!.reserveMicroUsd;
+   const fill=(await budget.audit(worldId)).remainingMicroUsd-10_000;expect(fill).toBeGreaterThan(0);
+   await budget.reserve(worldId,{requestKey:"synthetic-capacity-used",scope:"image",operationFingerprint:"b".repeat(64),reserveMicroUsd:fill});
+   await budget.settle(worldId,"synthetic-capacity-used",bill("synthetic-capacity-used-"+gameId,fill));
+  }
+  return paintedOk(png,bill("paint-"+gameId+"-"+requestKey,amount));
+ });
+ const deps:LocalPatchHideDeps={readBoardArt:readArt,renderPolicySha256:localPatchRenderPolicySha256(LOCAL_PATCH_IMAGE_POLICY),render,judge:async()=>{throw Error("No synchronous review");}};
+ const diagnose=vi.fn(async()=>{throw Error("No planner");});
+ const job=()=>db.generationJob.findUniqueOrThrow({where:{id:"job_"+gameId}});
+ const rows=(board:string)=>db.targetVariantAsset.findMany({where:{variant:"A",targetInstance:{gameScene:{gameId,sceneSlug:board}}},orderBy:{id:"asc"}});
+ const reviewOf=(row:{judgeJson:string|null})=>JSON.parse(row.judgeJson!).reviewState;
+ const slice=()=>runLocalPatchWorldSlice(container,deps,gameId,{hardDeadlineAt:Date.now()+270_000,diagnose});
+ const ledger=async()=>(await db.worldBudgetLedger.findUniqueOrThrow({where:{worldId}})).snapshotJson;
+ // The engine stamps updatedAt with the real clock; place the wait exactly past its backoff, as the lean tests do.
+ const pastBackoff=()=>db.generationJob.update({where:{id:"job_"+gameId},data:{updatedAt:new Date(Date.now()-LEAN_RECOVERY_BACKOFF_MS-1000)}});
+ const replayOnly=async(hideId:string)=>{const scene=await db.gameScene.findFirstOrThrow({where:{gameId,sceneSlug:boardOf(hideId)}});
+  return reviewLocalPatchBoard(container,{gameId,sceneId:scene.id,deadlineAt:Date.now()+270_000},{fence:async()=>{},readBoardArt:readArt},{onlyHideId:hideId,replayOnly:true});};
+ const settle=async()=>{for(let i=0;i<3;i++)await advanceContinuityInBackground(container,gameId,{deadlineAt:Date.now()+270_000});};
+ for(let turn=0;turn<40&&!(state.unasked&&(await job()).currentStep==="local-patch:recovery-budget-wait");turn++)await slice();
+ expect(state.unasked).not.toBeNull();expect((await job()).currentStep).toBe("local-patch:recovery-budget-wait");
+ const asked=state.asked!,unasked=state.unasked!;
+ const askedHides=context.boards.find(b=>b.board===asked)!.hides.map(h=>h.id),unaskedHides=context.boards.find(b=>b.board===unasked)!.hides.map(h=>h.id);
+ const askedRows=await rows(asked),unaskedRows=await rows(unasked);
+ expect(askedRows.map(r=>[r.status,reviewOf(r)])).toEqual(askedRows.map(()=>["GENERATED","pending-board-review"]));
+ expect(unaskedRows.map(r=>[r.status,reviewOf(r)])).toEqual(unaskedHides.map(()=>["GENERATED","pending-board-review"]));
+ expect(provider.creates).toHaveLength(state.askedQuestions);expect(provider.creates.some(x=>unaskedHides.includes(x.hideId))).toBe(false);
+ expect((await budget.audit(worldId)).pendingRequestKeys.length).toBeGreaterThan(0);
+ state.stopped=true;
+ return {gameId,context,provider,state,container,budget,worldId,render,job,rows,reviewOf,slice,ledger,pastBackoff,replayOnly,settle,asked,unasked,askedHides,unaskedHides,unaskedRows};
+}
+/** Leaves exactly `left` micro-USD: below every question and painting reserve. */
+async function leaveCapacity(f:Awaited<ReturnType<typeof settledAnswerFixture>>,left:number){
+ const fill=(await f.budget.audit(f.worldId)).remainingMicroUsd-left;expect(fill).toBeGreaterThan(0);
+ await f.budget.reserve(f.worldId,{requestKey:"synthetic-capacity-used-after-answer",scope:"image",operationFingerprint:"d".repeat(64),reserveMicroUsd:fill});
+ await f.budget.settle(f.worldId,"synthetic-capacity-used-after-answer",bill("synthetic-capacity-used-after-answer-"+f.gameId,fill));
+ const audit=await f.budget.audit(f.worldId);
+ expect(audit.pendingRequestKeys).toEqual([]);expect(audit.unknownRequestKeys).toEqual([]);expect(audit.remainingMicroUsd).toBe(left);
+}
+
+it.each([{mode:"zero",left:0},{mode:"below-reserve",left:10_000},{mode:"antarctica",left:10_000}] as const)(
+ "applies settled board answers once after the lean backoff with no purchase capacity and never asks an unasked board; mode=$mode",async({mode,left})=>{
+ const f=await settledAnswerFixture("detective-settled-first-"+mode);
+ f.state.released=true;await f.settle();await leaveCapacity(f,left);
+ // The live shape: two siblings already approved, one appearance alone awaiting its settled answer.
+ if(mode==="antarctica"){for(const hideId of f.askedHides.slice(1))expect((await f.replayOnly(hideId)).replayed).toBe(true);
+  const reviewed=(await f.rows(f.asked)).map(f.reviewOf);expect(reviewed.filter(s=>s==="board-review-complete")).toHaveLength(2);expect(reviewed.filter(s=>s==="pending-board-review")).toHaveLength(1);}
+ const ledger=await f.ledger(),paintings=f.render.mock.calls.length;
+ // Still inside the backoff: nothing is decided.
+ const before=(await f.rows(f.asked)).map(r=>r.judgeJson);
+ await f.slice();
+ expect((await f.rows(f.asked)).map(r=>r.judgeJson)).toEqual(before);
+ // After the backoff every settled answer is applied, with no question, painting or reservation.
+ await f.pastBackoff();await f.slice();
+ const applied=await f.rows(f.asked);
+ expect(applied.map(r=>[r.status,f.reviewOf(r),JSON.parse(r.judgeJson!).verdict?.verdict])).toEqual(applied.map(()=>["GENERATED","board-review-complete","pass"]));
+ expect((await f.rows(f.unasked)).map(r=>[r.status,f.reviewOf(r)])).toEqual(f.unaskedRows.map(()=>["GENERATED","pending-board-review"]));
+ expect(f.provider.creates).toHaveLength(f.state.askedQuestions);expect(f.render).toHaveBeenCalledTimes(paintings);
+ expect(await f.ledger()).toBe(ledger);
+ // Applied once: a later slice changes nothing and still never asks about the unasked board.
+ if((await f.job()).currentStep==="local-patch:recovery-budget-wait")await f.pastBackoff();
+ await f.slice();
+ expect((await f.rows(f.asked)).map(r=>r.judgeJson)).toEqual(applied.map(r=>r.judgeJson));
+ expect((await f.rows(f.unasked)).map(r=>[r.status,f.reviewOf(r)])).toEqual(f.unaskedRows.map(()=>["GENERATED","pending-board-review"]));
+ expect(f.provider.creates).toHaveLength(f.state.askedQuestions);expect(f.render).toHaveBeenCalledTimes(paintings);
+ expect(await f.ledger()).toBe(ledger);expect(fetch).not.toHaveBeenCalled();
+},900_000);
+
+it("reads settled answers without reserving or asking even with capacity to buy, and refuses every answer it cannot prove",async()=>{
+ const f=await settledAnswerFixture("detective-settled-first-funded");
+ f.state.released=true;
+ const askedRow=(await f.rows(f.asked))[0]!,hideId=JSON.parse(askedRow.judgeJson!).hide as string;
+ // An answer still in flight is no settled answer: nothing is read, reserved or asked.
+ const inFlight=await f.ledger();
+ expect(await f.replayOnly(hideId)).toMatchObject({state:"pending",reason:"No settled paid answer to this exact question",costCents:0});
+ expect(await f.ledger()).toBe(inFlight);
+ await f.settle();
+ const audit=await f.budget.audit(f.worldId);expect(audit.pendingRequestKeys).toEqual([]);
+ expect(audit.remainingMicroUsd).toBeGreaterThan(500_000);
+ const ledger=await f.ledger(),questions=f.provider.creates.length;
+ // A painting nobody asked about is never claimed as answered, with or without capacity.
+ for(const unaskedHide of f.unaskedHides)expect(await f.replayOnly(unaskedHide)).toMatchObject({state:"pending",reason:"No settled paid answer to this exact question"});
+ // A refunded world reads nothing; neither do changed pixels, which the ordinary binding refuses outright.
+ await db.order.update({where:{id:"order-"+f.gameId},data:{paymentStatus:"REFUNDED",refundedAt:new Date()}});
+ expect(await f.replayOnly(hideId)).toMatchObject({state:"pending",reason:"The original paid world is no longer in generation"});
+ await db.order.update({where:{id:"order-"+f.gameId},data:{paymentStatus:"PAID",refundedAt:null}});
+ const receipt=JSON.parse(askedRow.judgeJson!);
+ await db.targetVariantAsset.update({where:{id:askedRow.id},data:{judgeJson:JSON.stringify({...receipt,judgedSha256:"9".repeat(64)})}});
+ await expect(f.replayOnly(hideId)).rejects.toThrow("Shipping image or geometry no longer matches its render-completion binding");
+ await db.targetVariantAsset.update({where:{id:askedRow.id},data:{judgeJson:askedRow.judgeJson}});
+ expect((await f.rows(f.asked)).map(f.reviewOf)).toEqual(f.askedHides.map(()=>"pending-board-review"));
+ expect(await f.ledger()).toBe(ledger);expect(f.provider.creates).toHaveLength(questions);
+ // With capacity to buy, the exact settled answers are read once each; no question or reservation is added.
+ for(const asked of f.askedHides)expect((await f.replayOnly(asked)).replayed).toBe(true);
+ const applied=await f.rows(f.asked);
+ expect(applied.map(r=>[f.reviewOf(r),JSON.parse(r.judgeJson!).verdict?.verdict])).toEqual(applied.map(()=>["board-review-complete","pass"]));
+ for(const asked of f.askedHides)expect(await f.replayOnly(asked)).toMatchObject({costCents:0});
+ expect((await f.rows(f.asked)).map(r=>r.judgeJson)).toEqual(applied.map(r=>r.judgeJson));
+ expect(await f.ledger()).toBe(ledger);expect(f.provider.creates).toHaveLength(questions);
+ expect((await f.rows(f.unasked)).map(r=>[r.status,f.reviewOf(r)])).toEqual(f.unaskedRows.map(()=>["GENERATED","pending-board-review"]));
+ expect(fetch).not.toHaveBeenCalled();
+},900_000);
+
+// crown-tab/v1 on real windows from the context the engine builds (2026-11-02: paid crowns drawn 11/35/45 px above
+// the whole window: New York 2 under a bench reader's knee, Paris 1 and Giza 2 on their corrected source-body windows).
+// No new painting: the paid crown is tabbed back, a fresh review decides.
+it.each([
+ {board:"newyork",hideId:"newyork-detectives-hide-2",above:11,head:{left:200,width:120,height:130},body:false},
+ {board:"paris",hideId:"paris-detectives-hide-1",above:35,head:{left:170,width:110,height:120},body:true},
+ {board:"giza",hideId:"giza-detectives-hide-2",above:45,head:{left:170,width:110,height:110},body:true},
+ // Paris 2 also carries the free prop-join correction first; the tab is over it and keeps it byte for byte.
+ {board:"paris",hideId:"paris-detectives-hide-2",above:35,head:{left:260,width:120,height:150},body:false,prop:true},
+] as const)("tabs a paid crown drawn above its window back for free and publishes it only after a fresh ordinary review; hide=$hideId",async(testCase)=>{
+ const {board,hideId,above,head,body}=testCase,prop="prop" in testCase&&testCase.prop;
+ vi.useFakeTimers({toFake:["Date"]});
+ const gameId="detective-crown-tab-synthetic-"+hideId;await newDetectiveWorld(gameId,7,true);
+ const context=await resolveLocalPatchBoardsForGame(db,gameId,13),hides=context.boards.flatMap(b=>b.hides);
+ const ny2=hides.find(h=>h.id===hideId)!,returned=ny2.returnRect!;
+ // The trusted context carries the window the engine actually composes with: the corrected body window for body hides.
+ expect(!!sourceBodyForHide(context,hideId)).toBe(body);
+ if(body)expect(returned).toEqual(sourceBodyForHide(context,hideId)!.returnRect);
+ const rawHead={...head,top:returned.top-above};
+ const provider=controlledSol(false,true,ny2.id,true,true,13,1),retrieve=provider.fake.retrieve.bind(provider.fake);
+ // The first NY2 answer locates a complete RAW crown above the window and an incomplete shipped one.
+ provider.fake.retrieve=async id=>{const reply=await retrieve(id);if(reply.status!=="completed")return reply;
+  const asked=provider.creates[Number(id.split("_").at(-1))-1]!;if(asked.hideId!==ny2.id||provider.creates.filter(x=>x.hideId===ny2.id).indexOf(asked)!==0)return reply;
+  const answer=JSON.parse(reply.reading.raw!);Object.assign(answer.head,{rawHead,shippingHead:{...rawHead,top:returned.top+2,height:rawHead.height-13},rawCrown:"pass",shippingCrown:"fail",
+   observation:"Synthetic complete RAW crown above the whole window; the shipped crown is cut at the top join."});
+  return{...reply,reading:{...reply.reading,raw:JSON.stringify(answer)}};};
+ const container={...c,backgroundReview:provider.fake,visualReview:{request:async()=>{throw Error("No synchronous review");}}} as Container;
+ const render=vi.fn<NonNullable<LocalPatchHideDeps["render"]>>(async({requestKey,stylePng})=>{
+  const hide=hides.find(h=>requestKey.startsWith(h.id+":"))!,mask=maskForHide(hide);
+  const figure=await sharp({create:{width:Math.round(mask.width*0.6),height:Math.round(mask.height*0.8),channels:4,background:"#1e3ca0"}}).png().toBuffer();
+  const layers=[{input:figure,left:mask.left+Math.round(mask.width*0.2),top:mask.top+Math.round(mask.height*0.2)}];
+  if(hide.id===ny2.id)layers.push({input:await sharp({create:{width:rawHead.width,height:rawHead.height,channels:4,background:"#5a3214"}}).png().toBuffer(),left:rawHead.left,top:rawHead.top});
+  let canvas=stylePng;
+  if(prop&&hide.id===ny2.id){
+   // The prop test's PUBLIC-source misplacement: the lower prop compressed toward its rear support.
+   const src=await sharp(stylePng).ensureAlpha().raw().toBuffer(),out=Buffer.from(src);
+   for(let y=350;y<768;y++)for(let x=200;x<512;x++){
+    const w=Math.max(0,Math.min(1,(y-350)/(727-350))),xx=Math.min(511,Math.round(200+(x-200)*(1+.4*w))),yy=Math.min(767,Math.round(y+10*w));
+    for(let ch=0;ch<4;ch++)out[(y*512+x)*4+ch]=src[(yy*512+xx)*4+ch]!;
+   }
+   canvas=await sharp(out,{raw:{width:512,height:768,channels:4}}).png().toBuffer();
+   layers.shift();
+  }
+  return paintedOk(await sharp(canvas).composite(layers).png().toBuffer(),bill("paint-"+gameId+"-"+requestKey,66500));
+ });
+ const deps:LocalPatchHideDeps={readBoardArt:readArt,renderPolicySha256:localPatchRenderPolicySha256(LOCAL_PATCH_IMAGE_POLICY),render,judge:async()=>{throw Error("No synchronous review");}};
+ const diagnose=vi.fn(async()=>{throw Error("No planner");});
+ const row=()=>db.targetVariantAsset.findFirstOrThrow({where:{variant:"A",targetInstance:{gameScene:{gameId,sceneSlug:board},targetId:ny2.targetId}}});
+ let last="";
+ for(let turn=0;turn<200;turn++){
+  const result=await runLocalPatchWorldSlice(container,deps,gameId,{hardDeadlineAt:Date.now()+270_000,diagnose});
+  const current=await db.targetVariantAsset.findFirst({where:{variant:"A",targetInstance:{gameScene:{gameId,sceneSlug:board},targetId:ny2.targetId}}});
+  const j=current?.judgeJson?JSON.parse(current.judgeJson):null;
+  if(j?.crownTab&&j.reviewState==="board-review-complete")break;
+  const step=(await db.generationJob.findUniqueOrThrow({where:{id:"job_"+gameId}}));
+  last=JSON.stringify({turn,pending:result.pending,attention:result.attention,step:step.currentStep,status:step.status,row:current&&[current.status,current.attempts,j?.reviewState,j?.lastError??current.lastError]});
+  if(!result.pending)break;
+  if(step.currentStep==="local-patch:recovery-budget-wait")
+   await db.generationJob.update({where:{id:"job_"+gameId},data:{updatedAt:new Date(Date.now()-LEAN_RECOVERY_BACKOFF_MS-1000)}});
+ }
+ const accepted=await row(),j=JSON.parse(accepted.judgeJson!);
+ expect(j.crownTab,last).toBeDefined();
+ // The refusal the tab answered, exactly as its audit archived it (the refusal and the tab may share one slice).
+ const tabAudit=JSON.parse((await db.auditLog.findUniqueOrThrow({where:{id:j.crownTab.auditId}})).metaJson!);
+ const refused={assetId:tabAudit.previousAssetId as string,attempts:accepted.attempts,judgeJson:tabAudit.previousJudgeJson as string};
+ const refusedReceipt=JSON.parse(refused.judgeJson);
+ expect(refusedReceipt.reviewState).toBe("board-review-complete");expect(refusedReceipt.verdict.verdict).toBe("fail");
+ const refusedChecks=refusedReceipt.verdict.faults.map((f:{check:string})=>f.check);
+ expect(refusedChecks).toContain("childComplete");
+ expect(refusedChecks.every((check:string)=>["childComplete","pictureWhole","severeSeam"].includes(check)),JSON.stringify(refusedReceipt.verdict.faults)).toBe(true);
+ expect(accepted).toMatchObject({status:"GENERATED",attempts:1});
+ expect(j.reviewState).toBe("board-review-complete");expect(j.verdict.verdict).toBe("pass");
+ expect(j.crownTab).toMatchObject({version:"crown-tab/v1",hideId:ny2.id,rawHead,returned,baselineAssetId:refused!.assetId,baselineShippingSha256:refusedReceipt.judgedSha256});
+ // An earlier free correction is the tab's baseline and stays part of the receipt and its proof.
+ if(prop){expect(refused!.assetId).toMatch(/^ast_prop_/);expect(refusedReceipt.propJoinCorrection).toBeDefined();expect(j.propJoinCorrection).toEqual(refusedReceipt.propJoinCorrection);}
+ if(body)expect(j.sourceBodyBirth).toEqual(refusedReceipt.sourceBodyBirth);
+ // The fresh review judged the head against the window and its tab, never the old window.
+ expect(j.boardReview.dual.quality.headEvidence.returned).toEqual({...returned,top:j.crownTab.tab.top,height:returned.top+returned.height-j.crownTab.tab.top});
+ // One painting and two reviews for NY2: the tab bought nothing.
+ expect(render.mock.calls.filter(([input])=>input.requestKey.startsWith(ny2.id+":"))).toHaveLength(1);
+ expect(provider.creates.filter(x=>x.hideId===ny2.id)).toHaveLength(2);
+ const ledger=JSON.parse((await db.worldBudgetLedger.findUniqueOrThrow({where:{worldId:boardWizardWorldId(gameId)}})).snapshotJson);
+ expect(ledger.requests.filter((r:{requestKey:string})=>r.requestKey.startsWith(ny2.id+":"))).toHaveLength(1);
+ // Pixels: the paid crown is back above the window, and nothing outside the tab changed.
+ const blob=async(assetId:string)=>{const a=await db.asset.findUniqueOrThrow({where:{id:assetId}});return sharp(Buffer.from((await db.fileBlob.findUniqueOrThrow({where:{key:a.storagePath}})).data)).ensureAlpha().raw().toBuffer();};
+ const before=await blob(refused!.assetId!),after=await blob(accepted.assetId!),tab=j.crownTab.tab;
+ const at=(b:Buffer,x:number,y:number)=>[...b.subarray((y*512+x)*4,(y*512+x)*4+3)];
+ expect(at(after,rawHead.left+60,rawHead.top+2)).toEqual([0x5a,0x32,0x14]);expect(at(before,rawHead.left+60,rawHead.top+2)).not.toEqual([0x5a,0x32,0x14]);
+ let outside=0;for(let y=0;y<768;y++)for(let x=0;x<512;x++)if(!(x>=tab.left&&x<tab.left+tab.width&&y>=tab.top&&y<tab.top+tab.height)&&at(after,x,y).join()!==at(before,x,y).join())outside++;
+ expect(outside).toBe(0);
+ const audit=await db.auditLog.findUniqueOrThrow({where:{id:j.crownTab.auditId}});
+ expect(JSON.parse(audit.metaJson!)).toMatchObject({previousAssetId:refused!.assetId,providerCalls:0,attemptsPreserved:true,requestsPreserved:true});
+ // Publication re-derives the tab; changed candidate pixels or a forged marker never publish.
+ expect(await allowedDualPublication(db,{...publicationBinding(gameId,accepted),sceneVersion:13})).toBe(true);
+ const forged={...j,crownTab:{...j.crownTab,tab:{...j.crownTab.tab,top:j.crownTab.tab.top-1,height:j.crownTab.tab.height+1}}};
+ expect(await allowedDualPublication(db,{...publicationBinding(gameId,accepted),judgeJson:JSON.stringify(forged),sceneVersion:13})).toBe(false);
+ const asset=await db.asset.findUniqueOrThrow({where:{id:accepted.assetId!}}),kept=await db.fileBlob.findUniqueOrThrow({where:{key:asset.storagePath}});
+ const changed=Buffer.from(kept.data);changed[changed.length-20]=changed[changed.length-20]!^1;
+ await db.fileBlob.update({where:{key:asset.storagePath},data:{data:changed}});
+ expect(await allowedDualPublication(db,{...publicationBinding(gameId,accepted),sceneVersion:13})).toBe(false);
+ await db.fileBlob.update({where:{key:asset.storagePath},data:{data:kept.data}});
+ // Only the tab's own verifier reads its baseline: a changed baseline never publishes the tab.
+ const baseAsset=await db.asset.findUniqueOrThrow({where:{id:refused!.assetId!}}),baseKept=await db.fileBlob.findUniqueOrThrow({where:{key:baseAsset.storagePath}});
+ const baseChanged=Buffer.from(baseKept.data);baseChanged[baseChanged.length-20]=baseChanged[baseChanged.length-20]!^1;
+ await db.fileBlob.update({where:{key:baseAsset.storagePath},data:{data:baseChanged}});
+ expect(await allowedDualPublication(db,{...publicationBinding(gameId,accepted),sceneVersion:13})).toBe(false);
+ await db.fileBlob.update({where:{key:baseAsset.storagePath},data:{data:baseKept.data}});
+ expect(await allowedDualPublication(db,{...publicationBinding(gameId,accepted),sceneVersion:13})).toBe(true);
+ expect(fetch).not.toHaveBeenCalled();
+},1_200_000);
 
 it('returns a finite gave-up result before creating a fourth from-birth marker',async()=>{
  const gameId='detective-born-finite-exhaustion';await newDetectiveWorld(gameId,7,true);

@@ -16,6 +16,8 @@ import { legacyHeadCorrectionCandidate } from "../../domain/generation/legacy-pa
 import { reconcileVisibleHeadPolicy } from "./visible-head-policy-recovery";
 import { restoreRetainedNormalHeadOnce } from "./retained-normal-head-scan";
 import { correctHeadPixels } from "./head-pixel-correction";
+import { correctCrownTabs } from "./crown-tab";
+import { crownTabCandidate } from "../../domain/generation/crown-tab";
 import { headPixelCorrectionCandidate } from "../../domain/generation/head-pixel-correction";
 import { detectivesNativeMaskTail } from "./detectives-completion-budget";
 import { singleLowReviewAuthorization as detectivesSingleReviewAuthorization, hasSingleLowCapacity as hasDetectivesLowCapacity } from "./single-low-policy";
@@ -63,7 +65,7 @@ import { LOCAL_PATCH_BOARD_REVIEW_MIN_MS, localPatchBoardAwaitsProvider, localPa
   localPatchReviewFits, localPatchReadyReviewOwed, selfRepairProgress, type LocalPatchRest } from "../../domain/scene/local-patch-progress";
 import { continueAdmittedReviewInterruptions, openAdmittedInterruptions, recoverEnrolledReviewInterruptions, resumptionAfterContinuation,
   reviewContinuationRecorded, type ContinuationWhy } from "./subject-upgrade";
-import { advanceContinuityInBackground } from "./continuity-background";
+import { advanceContinuityInBackground, backgroundReviewAnswered } from "./continuity-background";
 import { enrollLeanWorld } from "./lean-enrollment";
 import { isLeanWorld } from "./lean-release";
 import { boundLeanRecoveryHold } from "./lean-review-recovery-pin";
@@ -118,6 +120,9 @@ export const LOCAL_PATCH_QUALITY_FAILED = "local-patch:quality-failed";
 export const LOCAL_PATCH_RECOVERY_BUDGET_WAIT = "local-patch:recovery-budget-wait";
 export const LOCAL_PATCH_RECOVERY_BACKOFF_MS = 60 * 60_000;
 export const LEAN_RECOVERY_BACKOFF_MS = 3 * 60_000;
+/** local-patch-settled-answer-first/v1: below one painting's reserve plus the largest single review's bound,
+ * a world reads every settled answer before any purchase or budget stop. */
+export const SETTLED_FIRST_CAPACITY_MICRO_USD = LOCAL_PATCH_RESERVE.renderMicroUsd + 250_000;
 export const LOCAL_PATCH_EVIDENCE_RETRY_WAIT = "local-patch:evidence-retry-wait";
 /**
  * No automatic action remains within policy: every unfinished appearance has
@@ -417,6 +422,31 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
     await parkExhausted(reason);
     return { parked: reason };
   };
+  /** local-patch-settled-answer-first/v1: appearances still awaiting review whose current pixels already have an answered
+   * round with a settled charge. Each is read by its own exact question before anything is bought or a budget stop is
+   * taken; one its exact question cannot replay is left to the ordinary route (`unreplayable`, this slice only). */
+  const unreplayable = new Set<string>();
+  const settledAnswersWaiting = async () => {
+    const answered = await backgroundReviewAnswered(c.db, gameId);
+    if (!answered.size) return [];
+    const budget = boardWizardBudgetOf(c), worldId = boardWizardWorldId(gameId);
+    const current = await c.db.targetVariantAsset.findMany({ where: { variant: LOCAL_PATCH_VARIANT, status: "GENERATED", targetInstance: { gameScene: { gameId } } },
+      include: { targetInstance: { select: { gameSceneId: true } } } });
+    const waiting: { sceneId: string; hideId: string; key: string }[] = [];
+    for (const row of current) {
+      let receipt: { reviewState?: unknown; judgedSha256?: unknown; hide?: unknown } | null;
+      try { receipt = JSON.parse(row.judgeJson ?? "null"); } catch { continue; }
+      if (receipt?.reviewState !== "pending-board-review" || typeof receipt.judgedSha256 !== "string" || typeof receipt.hide !== "string") continue;
+      const key = `${row.id}:${receipt.judgedSha256}`;
+      if (unreplayable.has(key)) continue;
+      for (const requestKey of answered.get(key) ?? []) {
+        if ((await budget.readRequest(worldId, requestKey))?.state !== "settled") continue;
+        waiting.push({ sceneId: row.targetInstance.gameSceneId, hideId: receipt.hide, key });
+        break;
+      }
+    }
+    return waiting;
+  };
 
   // local-patch-lean/v1: a lean world enrolls itself in the subject policy before anything is painted, and
   // never paints without it: a refusal parks the world with its reason, having bought nothing.
@@ -558,7 +588,7 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
   // is timed by board so a slow one shows in the logs. A board whose questions only await their provider is not rebuilt.
   let longestReviewMs = 0;
   const reviewFits = () => options.hardDeadlineAt === undefined || localPatchReviewFits(options.hardDeadlineAt - Date.now(), longestReviewMs);
-  const timedReview = async <T extends { readonly state: string }>(board: string, kind: "retained" | "first" | "complete", review: () => Promise<T>) => {
+  const timedReview = async <T extends { readonly state: string }>(board: string, kind: "retained" | "settled" | "first" | "complete", review: () => Promise<T>) => {
     const started = Date.now();
     let state = "failed";
     try { const outcome = await review(); state = outcome.state; return outcome; }
@@ -683,6 +713,19 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
         return { ...empty, claimed: true, pending: true, paused: false };
       }
     }
+    // crown-tab/v1: the same one free correction per slice for a paid crown drawn above its authored
+    // window, before any new painting replaces it; the tabbed shipping needs a fresh ordinary MEDIUM.
+    if (dual && rows.some(crownTabCandidate)) {
+      if (!reviewFits()) return yieldToContinue();
+      let tabbed;
+      try { tabbed = await correctCrownTabs(c, gameId, rows, fence, deps.readBoardArt); }
+      catch (error) {
+        await c.db.generationJob.updateMany({ where: { id: job.id, attempts: claim, status: "RUNNING" },
+          data: { status: "FAILED", lastError: (error instanceof Error ? error.message : String(error)).slice(0, 500) } });
+        throw error;
+      }
+      if (tabbed) return yieldToContinue();
+    }
     // Every open Message Batches round, before any review: polled, cancelled at its
     // deadline, or settled and linked once its batch has ended. Nothing is bought.
     // A round it cannot advance stops the slice with its reason, as a review does.
@@ -695,6 +738,41 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
         throw error;
       }
     }
+    // local-patch-settled-answer-first/v1: every answer already paid for is read before any new question, painting or
+    // budget stop (2026-11-02: a world parked on an unasked board's question with three settled answers unread).
+    // Each is its own exact question, replayed only; out of time, the claim is handed back with the rest runnable.
+    // Decisions it writes keep the existing cadence: a refusal that leads to a purchase (a repair, a next
+    // painting) yields the slice, so that purchase starts in the next one, as when the ordinary review decided
+    // it. An acceptance or a board still waiting on its siblings leads to nothing bought and keeps the slice.
+    // Only a world short of capacity needs it: with room for a painting and its review, the ordinary review loop
+    // reads the same settled answers before anything it cannot afford, exactly as before.
+    let settledLeadsToPurchase = false;
+    const settledFirst = dual && (await boardWizardBudgetOf(c).audit(boardWizardWorldId(gameId))).remainingMicroUsd < SETTLED_FIRST_CAPACITY_MICRO_USD;
+    if (settledFirst) for (let turn = 0; turn < 3 * game.scenes.length; turn++) {
+      const next = (await settledAnswersWaiting())[0];
+      if (!next) break;
+      if (!reviewFits()) return yieldToContinue();
+      const scene = game.scenes.find(s => s.id === next.sceneId);
+      if (!scene) { unreplayable.add(next.key); continue; }
+      let review;
+      try {
+        review = await timedReview(scene.sceneSlug, "settled", () => reviewLocalPatchBoard(c, { gameId, sceneId: scene.id, deadlineAt: options.hardDeadlineAt },
+          { fence, apiKey: deps.apiKey, judge: options.boardJudge, readBoardArt: deps.readBoardArt }, { onlyHideId: next.hideId, replayOnly: true }));
+      } catch (error) {
+        await c.db.generationJob.updateMany({ where: { id: job.id, attempts: claim, status: "RUNNING" },
+          data: { status: "FAILED", lastError: (error instanceof Error ? error.message : String(error)).slice(0, 500) } });
+        throw error;
+      }
+      await reload();
+      // Not decided by its exact settled question: the ordinary route keeps it, as before.
+      if ((await settledAnswersWaiting()).some(w => w.key === next.key)) { unreplayable.add(next.key); continue; }
+      reviewedScenes.add(scene.id);
+      if (review.state !== "done" && review.state !== "pending") settledLeadsToPurchase = true;
+      scene.generationStatus = review.state === "done" ? "GENERATED" : "NEEDS_REGENERATION";
+      await c.db.$transaction(async tx => { await fence(tx); await tx.gameScene.update({ where: { id: scene.id },
+        data: { generationStatus: scene.generationStatus } }); });
+    }
+    if (settledLeadsToPurchase) return yieldToContinue();
     // A first image and a first review for every appearance outrank another
     // question about a picture that already had one, so the budget can still
     // finish the other appearances before it pays for a second round.
@@ -865,7 +943,16 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
     // A new failure after recovery returns here with its actual review evidence.
     // The engine diagnoses again; no terminal quality status or parent gate.
     let repairsStarted = 0;
+    // crown-tab/v1 before any repurchase: a paid crown cut above its window is tabbed back for free first,
+    // whenever its refusal was decided; only a tab refused here leaves the ordinary repair or painting.
+    const tabbedInstead = async (item: (typeof work)[number]) => {
+      const row = stateOf(item.sceneId, item.hide.targetId);
+      if (!row || !crownTabCandidate(row) || !await correctCrownTabs(c, gameId, [row], fence, deps.readBoardArt)) return false;
+      game.scenes.find(scene => scene.id === item.sceneId)!.generationStatus = "NEEDS_REGENERATION";
+      return true;
+    };
     const repairOne = async (item: (typeof work)[number]) => {
+      if (await tabbedInstead(item)) return;
       try {
         await runLocalPatchSelfRepair(c, { gameId, ...item, deadlineAt: options.hardDeadlineAt },
           { ...deps, fence, diagnose: options.diagnose });
@@ -893,6 +980,7 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
       }
       if (outcomes.length >= limit) { if (ordered) continue; break; }
       if (options.hardDeadlineAt !== undefined && options.hardDeadlineAt - Date.now() < minHideMs) break;
+      if (await tabbedInstead(item)) continue;
       let outcome: LocalPatchHideOutcome;
       try { outcome = await runLocalPatchHide(c, { ...deps, fence }, { gameId, board: item.board, hide: item.hide,
         finalRepair: contextPainting(stateOf(item.sceneId,item.hide.targetId)) || bodyPainting(stateOf(item.sceneId,item.hide.targetId)) || !!extraPlan || plan.finalRepair || leanThirdPainting(stateOf(item.sceneId, item.hide.targetId)) || guidedThirdPainting(stateOf(item.sceneId, item.hide.targetId)) || nativeFourthPainting(stateOf(item.sceneId, item.hide.targetId)),
@@ -927,6 +1015,9 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
       if (outcome.state === "stopped") break;
     }
   } catch (error) {
+    // No budget stop while an answer already paid for still awaits its reading (local-patch-settled-answer-first/v1).
+    if (automatic && error instanceof WorldBudgetError && error.code === "cap_exceeded" && (await settledAnswersWaiting()).length)
+      return { ...await yieldToContinue(), outcomes, blocked };
     const deferred = error instanceof GenerationPaused ? null : await deferBudget(error);
     if (error instanceof GenerationPaused) paused = true;
     else if (deferred) return { ...empty, pending: !deferred.parked, claimed: true, paused: false, attention: deferred.parked, outcomes, blocked };
@@ -1090,6 +1181,7 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
       return repair && repairCheckpoints.get(row.id) !== JSON.stringify(selfRepairOf(row))
         && (repair.decision!.action === "recompose-retained" || currentBudget.remainingMicroUsd >= LOCAL_PATCH_RESERVE.renderMicroUsd);
     })) return { ...await yieldToContinue(), outcomes, blocked };
+    if (deferredBudgetError && automatic && (await settledAnswersWaiting()).length) return { ...await yieldToContinue(), outcomes, blocked };
     const deferred = deferredBudgetError ? await deferBudget(deferredBudgetError) : null;
     if (deferred) return { gameId, pending: !deferred.parked, claimed: true, paused: false, attention: deferred.parked, outcomes, blocked };
     // What is left when nothing automatic remains to start for any of it: appearances whose repair cycles under

@@ -104,6 +104,18 @@ export async function backgroundReviewWaiting(db: Pick<Prisma.TransactionClient,
   return waitingRows;
 }
 
+/** Every appearance (`variantId:imageSha256`) with a round the provider answered, and those rounds' request keys,
+ * read from the record alone (local-patch-settled-answer-first/v1). Settlement is the ledger's to state. */
+export async function backgroundReviewAnswered(db: Pick<Prisma.TransactionClient, "auditLog">, gameId: string): Promise<Map<string, string[]>> {
+  const answered = new Map<string, string[]>();
+  for (const { round } of await recordedRounds(db, gameId)) {
+    if (round.terminal?.kind !== "outcome" || providerEndedFailed(round)) continue;
+    const key = `${round.intent.binding.variantId}:${round.intent.binding.imageSha256}`;
+    answered.set(key, [...(answered.get(key) ?? []), round.intent.requestKey]);
+  }
+  return answered;
+}
+
 /** Every round recorded for this game, each read whole, with the moment its intent was written. */
 async function recordedRounds(db: Pick<Prisma.TransactionClient, "auditLog">, gameId: string): Promise<{ round: BackgroundReviewRound; at: number }[]> {
   const rows = await db.auditLog.findMany({ where: { action: SOL_BACKGROUND_ACTION, entityType: "Game", entityId: gameId },

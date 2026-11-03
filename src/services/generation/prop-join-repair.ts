@@ -174,14 +174,16 @@ export async function propJoinPublicationMatches(db:Prisma.TransactionClient,inp
    ||proof.authorizationSha256!==ctx.authority.authorizationSha256||proof.identitySha256!==ctx.authority.identitySha256
    ||proof.imageSha256!==j.judgedSha256||proof.geometrySha256!==j.geometrySha256||!same(j.authoredReturn,ctx.expected))return false;
   const row=await db.targetVariantAsset.findUnique({where:{id:proof.rowId}}),audit=await db.auditLog.findUnique({where:{id:auditId(input.gameId,proof.attempt)}});
-  if(!row||row.attempts!==proof.attempt||!row.assetId||input.assetId!==undefined&&row.assetId!==input.assetId||!audit||audit.actorType!=="SYSTEM"||audit.actorId!==null||audit.entityId!==input.gameId||audit.entityType!=="Game"||audit.action!==ACTION)return false;
+  // A crown tab over this correction keeps it as its baseline; the tab's own verifier checks the rest.
+  const tabbedFrom=(assetId:string)=>{try{return JSON.parse(row?.judgeJson??"null")?.crownTab?.baselineAssetId===assetId;}catch{return false;}};
+  if(!row||row.attempts!==proof.attempt||!row.assetId||input.assetId!==undefined&&row.assetId!==input.assetId&&!tabbedFrom(input.assetId)||!audit||audit.actorType!=="SYSTEM"||audit.actorId!==null||audit.entityId!==input.gameId||audit.entityType!=="Game"||audit.action!==ACTION)return false;
   const recorded=JSON.parse(audit.metaJson??"null");if(recorded.kind!=="derived-pixels"||!same(recorded.proof,proof)||recorded.approvalTransferred!==false)return false;
   const paid=await paidRaw(db,input.gameId,proof.requestKey);
   if(proof.requestKey!==`${ctx.hide.id}:${ctx.hide.pose}:render:${row.attempts}`||paid.kept.operationFingerprint!==proof.operationFingerprint
    ||paid.kept.payloadSha256!==proof.payloadSha256||sha(paid.raw)!==proof.rawPngSha256||!same(paid.wire.authoredReturn,ctx.expected))return false;
   const before=await (await import("./local-patch-hide")).readShippedBoardArt(ctx.board.art,contract.sourceSha256),result=await composeRegisteredProp(before,paid.raw,contract);
   if(!result||!Object.entries(result.proof).every(([k,v])=>(proof as unknown as Record<string,unknown>)[k]===v))return false;
-  const asset=await db.asset.findUnique({where:{id:row.assetId}}),blob=asset?await db.fileBlob.findUnique({where:{key:asset.storagePath}}):null;
+  const asset=await db.asset.findUnique({where:{id:input.assetId??row.assetId}}),blob=asset?await db.fileBlob.findUnique({where:{key:asset.storagePath}}):null;
   return !!asset&&asset.ownerId===ctx.ownerId&&asset.providerRequestId===input.gameId&&asset.status==="READY"&&!asset.deletedAt&&!!blob&&sha(Buffer.from(blob.data))===proof.imageSha256;
  }catch{return false;}
 }

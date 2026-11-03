@@ -65,7 +65,7 @@ export function headPixelCorrectionCandidate(row: { status: string; assetId?: st
     if (!j || j.reviewState !== 'board-review-complete' || j.headPixelCorrection !== undefined || proof?.single !== 'single-sol-medium/v1'
       || state && !['awaiting-review', 'rejected'].includes(String(state.phase))
       || !['bounded-return/v3-head-safe-axis', 'bounded-return/v4-authored-source-boundaries'].includes(String(j.compositionVersion))
-      || ['authoredRecovery', 'crownReturn', 'propJoinCorrection', 'sourceBodyRepair', 'sourceBodyBirth', 'wholeSourceContext', 'headSourceVersion', 'foreground']
+      || ['authoredRecovery', 'crownReturn', 'crownTab', 'propJoinCorrection', 'sourceBodyRepair', 'sourceBodyBirth', 'wholeSourceContext', 'headSourceVersion', 'foreground']
         .some(field => j[field] !== undefined)
       || head?.version !== 'target-head-return/v2-visible-completeness' || head.retention === undefined
       || verdict?.verdict !== 'fail' || !Array.isArray(verdict.faults) || !verdict.faults.length

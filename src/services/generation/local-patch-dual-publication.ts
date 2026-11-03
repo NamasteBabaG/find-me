@@ -66,6 +66,10 @@ export async function allowedDualPublication(db: Prisma.TransactionClient, input
     if (receipt.headPixelCorrection !== undefined && (proof.single !== SINGLE_MEDIUM_VISUAL_REVIEW_VERSION
       || !await (await import("./head-pixel-correction")).headPixelCorrectionPublicationMatches(db, input))) return false;
     if (receipt.headPixelCorrection === undefined && input.assetId.startsWith("ast_hpc_")) return false;
+    // A free crown tab publishes only as the exact reproduction of its paid sources over its baseline.
+    if (receipt.crownTab !== undefined && (proof.single !== SINGLE_MEDIUM_VISUAL_REVIEW_VERSION
+      || !await (await import("./crown-tab")).crownTabPublicationMatches(db, input))) return false;
+    if (receipt.crownTab === undefined && input.assetId.startsWith("ast_ctab_")) return false;
     if (!await sourceNeighborPublicationMatches(db, input, proof.quality)) return false;
     if (!equal(proof.authoredReturn, receipt.authoredReturn) || !equal(proof.authoredRecovery, receipt.authoredRecovery)) return false;
     if (receipt.compositionVersion !== LOCAL_PATCH_COMPOSITION_VERSION && receipt.compositionVersion !== AUTHORED_PATCH_COMPOSITION_VERSION && receipt.compositionVersion !== AUTHORED_RECOVERY_COMPOSITION_VERSION && receipt.compositionVersion !== SOURCE_CROWN_COMPOSITION_VERSION) {

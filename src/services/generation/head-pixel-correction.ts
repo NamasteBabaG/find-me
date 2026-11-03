@@ -35,7 +35,7 @@ type Candidate = { id: string; status: string; assetId: string | null; judgeJson
 /** C fixes only head blending. Read every other role from its immutable paid
  * document even if a mutable row verdict no longer carries that role's refusal.
  * The same subject reader and enrollment fences also protect publication. */
-async function otherPaidRolesPass(db: Prisma.TransactionClient, binding: LocalPatchPublicationBinding, proof: DualReviewProof): Promise<boolean> {
+export async function otherPaidRolesPass(db: Prisma.TransactionClient, binding: LocalPatchPublicationBinding, proof: DualReviewProof): Promise<boolean> {
   if (proof.single !== SINGLE_MEDIUM_VISUAL_REVIEW_VERSION || !proof.continuity || !proof.subject
     || readSingleVisualReview(proof.quality.raw)?.doubt !== false
     || ![proof.continuity, proof.subject].every(stage => stage.requestKey === proof.quality.requestKey

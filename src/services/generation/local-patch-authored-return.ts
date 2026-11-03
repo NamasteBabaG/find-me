@@ -1,4 +1,5 @@
 import { SOURCE_CROWN_COMPOSITION_VERSION, sourceCrownReturned, sourceCrownCorrectionSchema } from "../../domain/scene/source-crown-return";
+import { crownTabSchema } from "../../domain/generation/crown-tab";
 import { hasLocalPatchCapability } from "../../domain/scene/local-patch-family";
 import { createHash } from "node:crypto";
 import type { Prisma } from "@prisma/client";
@@ -157,6 +158,12 @@ export async function authoredLocalPatchRecoveryEvidenceMatches(db: Prisma.Trans
   board: LocalPatchBoard; hide: LocalPatchHide; sceneVersion: number; receipt: AuthoredLocalPatchReceipt;
   placementContext: TrustedSourcePlacementContext; promptVersion: string | null; beforePng?: Buffer }): Promise<boolean> {
   const { receipt, placementContext, board, hide } = input;
+  // A crown tab changes only its own rows: every authored proof holds for the baseline it was derived from.
+  if ((receipt as Record<string, unknown>).crownTab !== undefined) {
+    const marker = crownTabSchema.safeParse((receipt as Record<string, unknown>).crownTab);
+    const base = marker.success ? await (await import("./crown-tab")).crownTabBaseline(db, input.gameId, marker.data) : null;
+    return !!base && base.previous?.crownTab === undefined && await authoredLocalPatchRecoveryEvidenceMatches(db, { ...input, receipt: base.previous });
+  }
   if(receipt.crownReturn!==undefined){const p=sourceCrownCorrectionSchema.safeParse(receipt.crownReturn);if(!p.success)return false;const row=await db.targetVariantAsset.findUnique({where:{id:p.data.rowId},select:{assetId:true}});return !!row?.assetId&&await (await import("./source-crown-pixels")).sourceCrownCompositionMatches(db,{gameId:input.gameId,hideId:hide.id,sceneVersion:input.sceneVersion,variantId:p.data.rowId,assetId:row.assetId,identitySha256:p.data.identitySha256,judgeJson:JSON.stringify(receipt)});}
   const body=sourceBodyForHide(placementContext,hide.id);
   if(body){const before=input.beforePng??await (await import('./local-patch-hide')).readShippedBoardArt(board.art,body.sourceSha256);
@@ -214,6 +221,18 @@ export async function authoredLocalPatchRecoveryEvidenceMatches(db: Prisma.Trans
 export async function authoredLocalPatchPublicationMatches(db: Prisma.TransactionClient,
   input: { gameId: string; sceneVersion: number; hideId: string; judgeJson: string | null; variantId?: string; assetId?: string }): Promise<boolean> {
   try {
+    // A crown tab changes only its own rows (its own verifier checks them): every other authored
+    // proof is checked against the authenticated baseline the tab was derived from.
+    let claimed: unknown;
+    try { claimed = JSON.parse(input.judgeJson ?? "null")?.crownTab; } catch { claimed = undefined; }
+    if (claimed !== undefined) {
+      const marker = crownTabSchema.safeParse(claimed);
+      const base = marker.success ? await (await import("./crown-tab")).crownTabBaseline(db, input.gameId, marker.data) : null;
+      if (!marker.success || !base || base.previous?.crownTab !== undefined || input.assetId !== undefined && input.assetId !== base.assetId
+        || input.variantId !== undefined && input.variantId !== base.variantId) return false;
+      return authoredLocalPatchPublicationMatches(db, Object.assign({}, input, { judgeJson: base.previousJudgeJson, assetId: marker.data.baselineAssetId,
+        imageSha256: marker.data.baselineShippingSha256, geometrySha256: marker.data.baselineGeometrySha256 }));
+    }
     const placementContext = await resolveLocalPatchBoardsForGame(db, input.gameId, input.sceneVersion);
     let receipt: AuthoredLocalPatchReceipt | null;
     try { receipt = JSON.parse(input.judgeJson ?? "null"); } catch { return !placementContext.release; }

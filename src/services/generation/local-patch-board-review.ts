@@ -392,11 +392,14 @@ export async function reviewLocalPatchBoard(c: Container, input: { gameId: strin
      * reservation, provider or spend switch is involved, because nothing is bought. */
     decideRetained?: boolean;
     /** An internal repair may review only its immutable selected appearance. */
-    onlyHideId?: string } = {}): Promise<LocalPatchBoardReviewOutcome> {
+    onlyHideId?: string;
+    /** Read only an answer already settled for this exact question: nothing is reserved, asked or bought. */
+    replayOnly?: boolean } = {}): Promise<LocalPatchBoardReviewOutcome> {
   const { identityRevisionPending } = await import("./identity-source-revision-state");
   demand(!await identityRevisionPending(c.db, input.gameId), "reference revision blocks new board review purchases");
   const dual = await hasDualVisualReview(c.db, input.gameId);
   if (options.decideRetained && !dual) return { state: "pending", reason: "Only dual review answers have a corrected reading", replayed: true, costCents: 0 };
+  if (options.replayOnly && (!dual || !options.onlyHideId)) return { state: "pending", reason: "A replay-only reading needs one dual-review appearance", replayed: true, costCents: 0 };
   const calibrated = dual || playerReviewEnabled();
   const preparation = { includePlayerCandidates: calibrated, skipApprovedEvidence: true, ...(options.onlyHideId ? { onlyHideId: options.onlyHideId } : {}), ...(options.decideRetained ? { decideRetained: true } : {}) };
   let prepared = await prepareLocalPatchBoardReview(c, input, deps, { ...preparation, ...(dual ? { playerReview: true } : {}) });
@@ -419,7 +422,7 @@ export async function reviewLocalPatchBoard(c: Container, input: { gameId: strin
   if ((recovering || hasLocalPatchCapability(scene.sceneVersion, "integratedQuality")) && protectedRows.size === entries.length)
     return { state: boardComplete ? "done" : "pending", reason: boardComplete ? null : "Other appearances await generation or review", costCents: 0, replayed: true };
   demand(game.ownerId, "A review requires its verified owner");
-  if (!options.decideRetained) {
+  if (!options.decideRetained && !options.replayOnly) {
     demand(dual ? c.visualReview : deps.judge || deps.apiKey?.trim(), "Configured visual review providers are required");
     // Unlike a replay, a new dispatch must consult the current kill switch/owner.
     await assertGenerationSpendAllowed(c, game.ownerId);
@@ -430,7 +433,7 @@ export async function reviewLocalPatchBoard(c: Container, input: { gameId: strin
     .map(e => ({ hideId: e.hide.id, binding: authoredLocalPatchReviewBinding({ hideId: e.hide.id, imageSha256: e.imageSha256,
       geometrySha256: e.geometrySha256, identitySha256: sha256Bytes(sheet), authoredReturn: JSON.parse(e.row.judgeJson!).authoredReturn,
       ...(JSON.parse(e.row.judgeJson!).authoredRecovery ? { authoredRecovery: JSON.parse(e.row.judgeJson!).authoredRecovery } : {}) })! })) : [];
-  const evaluated = dual ? await buyDualLocalPatchReview(c, prepared, deps, input.deadlineAt, { decideRetained: options.decideRetained }) : null;
+  const evaluated = dual ? await buyDualLocalPatchReview(c, prepared, deps, input.deadlineAt, { decideRetained: options.decideRetained, replayOnly: options.replayOnly }) : null;
   if (evaluated?.kind === "waiting") return evaluated.outcome;
   const bought = evaluated?.bought ?? await purchaseOnce({ ledger: budget, store: new LocalPatchRetainedPurchaseStore(c, game.id, budget) }, {
     worldId, requestKey, scope: "judge", operationFingerprint: fingerprint,

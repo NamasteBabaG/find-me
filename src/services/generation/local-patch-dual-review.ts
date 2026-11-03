@@ -288,8 +288,8 @@ function classify(result: Omit<Reviewed, "evidence" | "diagnosis">, row: Prepare
  * receipt, price policy and reservation; a restart reuses the finished role.
  * `decideRetained` never buys: it only re-reads an answer already paid for. */
 export async function buyDualLocalPatchReview(c: Container, prepared: Prepared, deps: LocalPatchBoardReviewDeps, deadlineAt?: number,
-  options: { decideRetained?: boolean } = {}): Promise<Waiting | (Reviewed & { asked: Prepared["request"] })> {
-  if (!options.decideRetained && !c.visualReview) throw Error("Both HIGH visual-review providers must be configured before any reservation");
+  options: { decideRetained?: boolean; replayOnly?: boolean } = {}): Promise<Waiting | (Reviewed & { asked: Prepared["request"] })> {
+  if (!options.decideRetained && !options.replayOnly && !c.visualReview) throw Error("Both HIGH visual-review providers must be configured before any reservation");
   if (!hasLocalPatchCapability(prepared.scene.sceneVersion, "readyOnlyDualReview") || prepared.extraPlan || prepared.request.reviewScope !== "ready-only/v1"
     || prepared.request.hides.length !== 1) throw Error("Dual review requires one ready v12 appearance");
   const version = await dualVisualReviewVersion(c.db, prepared.game.id);
@@ -653,8 +653,9 @@ async function carriedLeanAnswers(c: Container, prepared: Prepared, version: Dua
 }
 
 async function dualReview(c: Container, prepared: Prepared, deps: LocalPatchBoardReviewDeps, version: DualVisualReviewVersion, deadlineAt: number | undefined,
-  options: { decideRetained?: boolean }): Promise<Waiting | Reviewed> {
+  options: { decideRetained?: boolean; replayOnly?: boolean }): Promise<Waiting | Reviewed> {
   const { request, game, budget, worldId, evidenceReviewAttempt } = prepared;
+  const replayRefused = (reason: string): Waiting => ({ kind: "waiting", outcome: { state: "pending", reason, replayed: true, costCents: 0 } });
   // Historical separate-role answers keep their existing free reading. A
   // retained single MEDIUM answer can carry all mandatory roles for free only
   // when they are literally the same settled immutable paid document.
@@ -667,6 +668,7 @@ async function dualReview(c: Container, prepared: Prepared, deps: LocalPatchBoar
     try { subjectContext = { upgrade, plan, photoPng: await loadSubjectPhoto(c, prepared, upgrade) }; }
     catch (error) {
       if (!(error instanceof SubjectEvidenceUnavailable)) throw error;
+      if (options.replayOnly) return replayRefused(error.message);
       return { kind: "waiting", outcome: { state: "held", reason: error.message, replayed: false, costCents: 0 } };
     }
   }
@@ -678,7 +680,8 @@ async function dualReview(c: Container, prepared: Prepared, deps: LocalPatchBoar
     return decideRetainedSingleEnvelope(c,prepared,deps,version,subjectContext,deadlineAt);
   }
   if (subjectContext && singleAuthority)
-    return singleLowReview(c, prepared, deps, version, subjectContext, deadlineAt);
+    return singleLowReview(c, prepared, deps, version, subjectContext, deadlineAt, undefined, options.replayOnly);
+  if (options.replayOnly) return replayRefused("A replay-only reading applies only to one single-review answer");
   const makeKey = (question: PreparedVisualReview) => `self-repair:board:${prepared.board.board}:${question.fingerprint}`;
   // local-patch-lean/v1: Sol HIGH answers both questions in the background, on Flex; a Flex question whose create
   // the provider refused (documented: nothing created, nothing billed) is asked once more at the default tier.
@@ -1183,8 +1186,19 @@ async function decideRetainedSingleEnvelope(c:Container,prepared:Prepared,deps:L
 /** One single-review question per immutable image. Later slices poll or replay this exact key.
  * No automatic second opinion or independent second role is purchased. */
 async function singleLowReview(c: Container, prepared: Prepared, deps: LocalPatchBoardReviewDeps, version: DualVisualReviewVersion,
-  subject: SubjectQuestionContext, deadlineAt?: number, retained?: {bought:Bought;prior:DualReviewProof}): Promise<Waiting | Reviewed> {
+  subject: SubjectQuestionContext, deadlineAt?: number, retained?: {bought:Bought;prior:DualReviewProof}, replayOnly = false): Promise<Waiting | Reviewed> {
   const { binding, hideId, entry, sourceNeighbors, combined, question, requestKey, bound, attempt, singleVersion, head, anchor, nativeDetailEvidence } = await prepareSingleLowQuestion(c, prepared, version, subject);
+  // local-patch-settled-answer-first/v1: only an answer already settled for this exact question is read; nothing is reserved or asked.
+  if (replayOnly && !retained) {
+    const refused = (reason: string): Waiting => ({ kind: "waiting", outcome: { state: "pending", reason, replayed: true, costCents: 0 } });
+    const live = await c.db.game.findUnique({ where: { id: prepared.game.id }, include: { orders: true } });
+    if (!live || live.status !== "TARGETS_GENERATING" || live.deletedAt || live.ownerId !== prepared.game.ownerId
+      || !live.orders.some(o => o.userId === live.ownerId && o.paymentStatus === "PAID" && o.paidAt && !o.refundedAt)
+      || live.orders.some(o => o.paymentStatus === "REFUNDED" || o.refundedAt)) return refused("The original paid world is no longer in generation");
+    const kept = await prepared.budget.readRequest(prepared.worldId, requestKey);
+    if (kept?.state !== "settled" || kept.scope !== "judge" || kept.operationFingerprint !== question.fingerprint)
+      return refused("No settled paid answer to this exact question");
+  }
   if(retained&&(singleVersion!==SINGLE_MEDIUM_VISUAL_REVIEW_VERSION||retained.prior.quality.requestKey!==requestKey
     ||retained.prior.quality.fingerprint!==question.fingerprint))return{kind:"waiting",outcome:{state:"pending",
       reason:"The retained question differs from the rebuilt immutable evidence",replayed:true,costCents:0}};
@@ -1195,12 +1209,12 @@ async function singleLowReview(c: Container, prepared: Prepared, deps: LocalPatc
       reserveMicroUsd: bound.microUsd, fence: deps.fence, ...(deadlineAt === undefined ? {} : { deadlineAt }),
       binding: { hideId, variantId: entry.row.id, imageSha256: binding.imageSha256, geometrySha256: binding.geometrySha256,
         identitySha256: binding.identitySha256, ...(binding.authoredReturn ? { authoredReviewBinding: authoredLocalPatchReviewBinding(binding)! } : {}) } });
-    if (gate.kind !== 'proceed') return { kind: 'waiting', outcome: { state: gate.kind === 'held' ? 'held' : 'pending', reason: gate.reason, replayed: false, costCents: 0 } };
+    if (gate.kind !== 'proceed') return { kind: 'waiting', outcome: { state: gate.kind === 'held' && !replayOnly ? 'held' : 'pending', reason: gate.reason, replayed: false, costCents: 0 } };
   }
   const bought = retained?.bought ?? await purchaseOnce({ ledger: prepared.budget, store: new LocalPatchRetainedPurchaseStore(c, prepared.game.id, prepared.budget) }, {
     worldId: prepared.worldId, requestKey, operationFingerprint: question.fingerprint, scope: 'judge', reserveMicroUsd: bound.microUsd,
     buy: async () => { throw Error('SINGLE_REVIEW: background answer must only replay its retained purchase'); } });
-  if (bought.kind !== 'bought') return { kind: 'waiting', outcome: { state: bought.kind === 'unresolved' ? 'held' : 'pending', reason: bought.reason, replayed: false, costCents: 0 } };
+  if (bought.kind !== 'bought') return { kind: 'waiting', outcome: { state: bought.kind === 'unresolved' && !replayOnly ? 'held' : 'pending', reason: bought.reason, replayed: false, costCents: 0 } };
   const wire = JSON.parse(bought.bytes.toString()) as LocalPatchJudgeResult;
   if (binding.authoredReturn && JSON.parse(bought.bytes.toString()).authoredReviewBinding !== authoredLocalPatchReviewBinding(binding))
     throw Error('SINGLE_REVIEW: retained answer differs from dispatched authored candidate');
