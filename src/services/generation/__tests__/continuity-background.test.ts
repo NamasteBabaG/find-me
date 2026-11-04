@@ -19,6 +19,8 @@ import { providerFailureRefusal } from "../local-patch-review-interruption-recov
 import { LOCAL_PATCH_LEAN_ACTION, leanReleaseAuditId, leanReleaseReceipt } from "../lean-release";
 import { LEAN_REVIEW_RECOVERY_ACTION, leanNewWorldRecoveryReceipt, leanReviewRecoveryAuditId } from "../../../domain/generation/lean-review-recovery";
 import { seedApprovedGame } from "./local-patch-fixtures";
+import { SINGLE_MEDIUM_VISUAL_REVIEW_VERSION } from "../../../domain/generation/single-visual-review";
+import { recordSingleTransportFaults } from "../single-transport-continuation";
 
 vi.mock("../../../lib/env", () => ({ env: () => ({ APP_ENV: "qa", GENERATION_ENABLED: "on", GENERATION_DAILY_CENTS: 0, GENERATION_PROVIDER: "openai" }),
   spendGuard: () => ({ appEnv: "qa", realGeneration: true, testers: [] }), flag: () => false, adminEmails: () => [] }));
@@ -483,6 +485,62 @@ describe("a lean world's background questions (local-patch-lean/v1)", () => {
 
 
 describe("authored v4 background attestation", () => {
+  it("logs a failed single round only after its matching charge settles, never from a pending or UNKNOWN reservation",async()=>{
+    const {fake,calls}=transport(async()=>({responseId:"resp_synthetic"}),[async()=>({status:"failed",reading:{responseId:"resp_synthetic",raw:null,
+      usage:{input_tokens:0,output_tokens:0},model:"gpt-6.1-sol",finishReason:"failed",serviceTier:"flex",providerError:{code:"server_error",message:null}}})]);
+    const s=await setup("bg-single-settlement-fence",fake),rowId="tva-single-settlement-fence";
+    const question=prepareVisualReview({role:"scene-quality",effort:"medium",judge:"gpt-6.1-sol",transport:"responses-background",tier:"flex",
+      combined:SINGLE_MEDIUM_VISUAL_REVIEW_VERSION,images:[Buffer.from("synthetic-png")],labels:["CASE newyork-v12-1:people"],prompt:"Synthetic combined MEDIUM settlement check."});
+    const ask={...s.ask,question,requestKey:`self-repair:board:newyork:${question.fingerprint}`,reserveMicroUsd:210000,binding:{...s.ask.binding,variantId:rowId}};
+    expect(await askContinuityInBackground(s.c,ask)).toEqual({kind:"proceed"});
+    const scene=await db.gameScene.findFirstOrThrow({where:{gameId:ask.gameId}});
+    const instance=await db.targetInstance.create({data:{id:"tgt-single-settlement-fence",gameSceneId:scene.id,targetId:"synthetic-target",targetType:"child",slotAId:"synthetic-a",slotBId:"synthetic-b"}});
+    const judgeJson=JSON.stringify({reviewState:"board-review-complete",verdict:null,wireFault:"http",judgedSha256:ask.binding.imageSha256,
+      boardReview:{evidenceReviewAttempt:1,dual:{single:SINGLE_MEDIUM_VISUAL_REVIEW_VERSION,imageSha256:ask.binding.imageSha256,quality:{requestKey:ask.requestKey,raw:null}}}});
+    const row=await db.targetVariantAsset.create({data:{id:rowId,targetInstanceId:instance.id,variant:"A",slotId:"synthetic-a",provider:"openai",promptVersion:"synthetic",
+      status:"FAILED",attempts:1,lastError:"quality-unresolved: integration-review-unreadable",judgeJson}});
+    const ledger=await db.worldBudgetLedger.findUniqueOrThrow({where:{worldId:s.worldId}}),original=ledger.snapshotJson;
+    expect(JSON.parse(original).requests.find((r:{requestKey:string})=>r.requestKey===ask.requestKey).state).toBe("settled");
+    for(const mode of ["pending","unknown","missing","wrong-operation","wrong-response"]){
+      const snapshot=JSON.parse(original),request=snapshot.requests.find((r:{requestKey:string})=>r.requestKey===ask.requestKey);
+      if(mode==="pending"||mode==="unknown"){request.state=mode;delete request.evidence;if(mode==="unknown")request.unknownReasons=["Synthetic unresolved bill"];}
+      else if(mode==="missing")snapshot.requests=snapshot.requests.filter((r:{requestKey:string})=>r.requestKey!==ask.requestKey);
+      else if(mode==="wrong-operation")request.operationFingerprint="f".repeat(64);
+      else request.evidence.providerRequestId="resp_different";
+      const mutated=JSON.stringify(snapshot);await db.worldBudgetLedger.update({where:{worldId:s.worldId},data:{snapshotJson:mutated}});
+      expect(await recordSingleTransportFaults(s.c,ask.gameId,[row],async()=>{}),mode).toBe(false);
+      expect((await db.targetVariantAsset.findUniqueOrThrow({where:{id:rowId}})).judgeJson,mode).toBe(judgeJson);
+      expect((await db.worldBudgetLedger.findUniqueOrThrow({where:{worldId:s.worldId}})).snapshotJson,mode).toBe(mutated);
+    }
+    await db.worldBudgetLedger.update({where:{worldId:s.worldId},data:{snapshotJson:original}});
+    expect(await db.auditLog.count({where:{entityId:ask.gameId,action:"generation:single-transport-continuation/v1"}})).toBe(0);
+    expect(await recordSingleTransportFaults(s.c,ask.gameId,[row],async()=>{})).toBe(true);
+    const logged=await db.targetVariantAsset.findUniqueOrThrow({where:{id:rowId}});
+    expect(await recordSingleTransportFaults(s.c,ask.gameId,[logged],async()=>{})).toBe(false);
+    expect((await db.worldBudgetLedger.findUniqueOrThrow({where:{worldId:s.worldId}})).snapshotJson).toBe(original);
+    expect(calls).toEqual({create:1,retrieve:1,cancel:0});
+  });
+  it.each([false,true])("pins the prospective MEDIUM Flex wait without rewriting a historical intent; historical=%s",async historical=>{
+    vi.useFakeTimers({toFake:["Date"]});
+    try {
+      const {fake,calls}=transport(async()=>({responseId:"resp_synthetic"}),Array.from({length:6},()=>async()=>({status:"in_progress" as const})));
+      const s=await setup(`bg-medium-wait-${historical}`,fake);
+      const question=prepareVisualReview({role:"scene-quality",effort:"medium",judge:"gpt-6.1-sol",transport:"responses-background",tier:"flex",
+        combined:SINGLE_MEDIUM_VISUAL_REVIEW_VERSION,images:[Buffer.from("synthetic-png")],labels:["CASE newyork-v12-1:people"],prompt:"Synthetic combined MEDIUM question."});
+      const ask={...s.ask,question,requestKey:`self-repair:board:newyork:${question.fingerprint}`,reserveMicroUsd:210000};
+      expect(await askContinuityInBackground(s.c,ask)).toMatchObject({kind:"waiting"});
+      const row=await db.auditLog.findFirstOrThrow({where:{entityId:ask.gameId,id:{endsWith:"_intent"}}});
+      const meta=JSON.parse(row.metaJson!);
+      expect(meta.intent.cancelPolicy).toBe("single-medium-flex-wait/v1");
+      if(historical){delete meta.intent.cancelPolicy;await db.auditLog.update({where:{id:row.id},data:{metaJson:JSON.stringify(meta)}});}
+      const frozen=(await db.auditLog.findUniqueOrThrow({where:{id:row.id}})).metaJson;
+      await vi.advanceTimersByTimeAsync(11*60000);
+      expect(await askContinuityInBackground(s.c,ask)).toMatchObject({kind:"waiting"});
+      expect(calls.cancel).toBe(historical?1:0);expect(calls.create).toBe(1);
+      expect((await db.auditLog.findUniqueOrThrow({where:{id:row.id}})).metaJson).toBe(frozen);
+      if(!historical){await vi.advanceTimersByTimeAsync(15*60000);await askContinuityInBackground(s.c,ask);expect(calls.cancel).toBe(1);}
+    } finally {vi.useRealTimers();}
+  });
   it.each([false, true])("preserves the frozen intent through a poll-only sweep, authored=%s", async authored => {
     const { fake, calls } = transport(async () => ({ responseId: "resp_synthetic" }), [
       async () => ({ status: "in_progress" }), async () => completed("{\"cases\":[]}")]);

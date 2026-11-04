@@ -1,4 +1,5 @@
 import { isSingleVisualReviewVersion } from "../../domain/generation/single-visual-review";
+import { singleTransportContinuation } from "../../domain/generation/single-transport-continuation";
 import {
   LOCAL_PATCH_EVIDENCE_ROUND_CAP, LOCAL_PATCH_EVIDENCE_TRANSPORT_BACKOFF_MS, nextLocalPatchEvidenceStep,
   type EvidenceAttempt, type EvidenceFaultKind, type EvidenceRole, type EvidenceStep, type EvidenceStrategy,
@@ -64,9 +65,14 @@ export function localPatchEvidenceRecovery(row: { status: string; lastError?: st
     if (row.status !== "FAILED" || !row.lastError?.startsWith("quality-unresolved:")
       || receipt?.reviewState !== "board-review-complete" || !receipt.boardReview
       || !(receipt.wireFault || receipt.verdict === null)) return null;
-    // A single-answer experiment never turns an unusable reply into a routine second paid review.
-    if (isSingleVisualReviewVersion(receipt.boardReview.dual?.single)) return { attempt: 1, nextAttempt: 2, retry: false,
-      waiting: false, exhausted: true, retryAt: Infinity, role: null, strategy: null, step: null };
+    // A single-answer experiment never turns an unusable reply into a routine second paid review, with one exception
+    // (single-transport-continuation/v1): a round that ended in transit, logged, is asked once more on its pixels.
+    if (isSingleVisualReviewVersion(receipt.boardReview.dual?.single)) {
+      const continuation = singleTransportContinuation(receipt);
+      if (continuation) return { attempt: continuation.asked, nextAttempt: continuation.asked + 1, retry: true, waiting: false,
+        exhausted: false, retryAt: now, role: "quality", strategy: "standard/v1", step: null };
+      return { attempt: 1, nextAttempt: 2, retry: false, waiting: false, exhausted: true, retryAt: Infinity, role: null, strategy: null, step: null };
+    }
     const stored = receipt.boardReview.evidenceReviewAttempt ?? 1;
     const history = safeAttempt(stored) ? localPatchEvidenceHistory(receipt, row.updatedAt) : [];
     // A corrupt counter never authorizes a dispatch; it is not a fresh start either.

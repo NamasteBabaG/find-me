@@ -21,7 +21,7 @@
  *     polled on; whatever it ends as is recorded honestly. One the provider no
  *     longer has (expired, never read) is `missing`: unknown, held.
  */
-import { leanReviewPolicyOf } from "./visual-review-policy";
+import { isSingleMediumReviewPolicy, leanReviewPolicyOf } from "./visual-review-policy";
 
 export const BACKGROUND_REVIEW_ROUND_VERSION = "sol-background-round/v1" as const;
 export const BACKGROUND_REVIEW_TRANSPORT = "openai-responses-background/v1" as const;
@@ -35,8 +35,20 @@ export const BACKGROUND_CANCEL_AFTER_MS = 25 * 60_000;
  * appearance's evidence question is asked again, so a stalled answer costs one appearance minutes, not half an hour.
  */
 export const LEAN_FLEX_CANCEL_AFTER_MS = 10 * 60_000;
+/** Prospective single-MEDIUM rounds get the full wait before abandoning paid reasoning.
+ * Recorded rounds without this marker retain their original ten-minute Flex deadline. */
+export const SINGLE_MEDIUM_FLEX_WAIT_VERSION = "single-medium-flex-wait/v1" as const;
+export function prospectiveBackgroundCancelPolicy(policyVersion: string | undefined) {
+  const policy = policyVersion === undefined ? null : leanReviewPolicyOf(policyVersion);
+  return policy && policy.serviceTier === "flex" && isSingleMediumReviewPolicy(policy) ? SINGLE_MEDIUM_FLEX_WAIT_VERSION : undefined;
+}
 /** The cancel deadline of the policy a round was created with: a lean Flex question's, else the historical one. */
-export function backgroundCancelAfterMs(intent: Pick<BackgroundReviewIntent, "policyVersion">): number {
+export function backgroundCancelAfterMs(intent: Pick<BackgroundReviewIntent, "policyVersion" | "cancelPolicy">): number {
+  if (intent.cancelPolicy !== undefined) {
+    if (intent.cancelPolicy !== SINGLE_MEDIUM_FLEX_WAIT_VERSION || prospectiveBackgroundCancelPolicy(intent.policyVersion) !== intent.cancelPolicy)
+      throw Error("BACKGROUND_REVIEW: a cancel policy must name its exact single MEDIUM Flex contract");
+    return BACKGROUND_CANCEL_AFTER_MS;
+  }
   return intent.policyVersion !== undefined && leanReviewPolicyOf(intent.policyVersion)?.serviceTier === "flex"
     ? LEAN_FLEX_CANCEL_AFTER_MS : BACKGROUND_CANCEL_AFTER_MS;
 }
@@ -51,6 +63,8 @@ export type BackgroundReviewIntent = {
   readonly binding: BackgroundReviewBinding;
   /** A lean world's question (local-patch-lean/v1) names its exact policy; absent on every Sol continuity round before it. */
   readonly policyVersion?: string;
+  /** Only new intents opt in; replay preserves this field's presence and value. */
+  readonly cancelPolicy?: typeof SINGLE_MEDIUM_FLEX_WAIT_VERSION;
 };
 export type BackgroundOutcomeState = "answered" | "unusable" | "unpriced" | "missing";
 export type BackgroundReviewEvent =
@@ -79,6 +93,7 @@ export type BackgroundReviewRound = {
 export function backgroundRoundOf(events: readonly BackgroundReviewEvent[]): BackgroundReviewRound {
   const first = events[0];
   if (!first || first.kind !== "intent") throw Error("BACKGROUND_REVIEW: a round starts with its intent");
+  backgroundCancelAfterMs(first.intent);
   const once = (kind: BackgroundReviewEvent["kind"]) => {
     const found = events.filter(e => e.kind === kind);
     if (found.length > 1) throw Error(`BACKGROUND_REVIEW: ${kind} recorded twice`);

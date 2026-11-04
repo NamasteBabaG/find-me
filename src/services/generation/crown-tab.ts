@@ -3,7 +3,7 @@ import sharp from "sharp";
 import type { Container } from "../container";
 import { DbStorage } from "../../infra/storage/db";
 import { PrismaWorldBudgetStore } from "../../infra/db/prisma-world-budget-store";
-import { CROWN_TAB_ACTION, CROWN_TAB_VERSION, composeCrownTab, crownTabAuthorityFor, crownTabCandidate, crownTabRect, crownTabSchema, crownTabSeam,
+import { CROWN_TAB_ACTION, CROWN_TAB_VERSION, CROWN_TAB_CONTINUITY_REPAIR_VERSION, composeCrownTab, crownTabAuthorityFor, crownTabCandidate, crownTabContinuityCut, crownTabQualityCut, crownTabRect, crownTabSchema, crownTabSeam,
   type CrownTab, type CrownTabAuthority } from "../../domain/generation/crown-tab";
 import { targetHeadAnswerSchema, type TargetHeadEvidence } from "../../domain/generation/target-head-return";
 import { cropOf, maskForHide, type LocalPatchHide } from "../../domain/scene/local-patch-hides";
@@ -14,7 +14,7 @@ import { sceneBySlug } from "../scene-catalog.service";
 import { localPatchGeometry } from "./local-patch-geometry";
 import { localPatchPublicationGeometryHash } from "./local-patch-publication-policy";
 import { authoredLocalPatchReviewBinding } from "./local-patch-authored-return";
-import { readQualityStage, verifiedDualStage, type DualReviewProof } from "./local-patch-dual-evidence";
+import { readContinuityStage, readQualityStage, verifiedDualStage, type DualReviewProof } from "./local-patch-dual-evidence";
 import { otherPaidRolesPass } from "./head-pixel-correction";
 import { readSettledTargetRaw, singleReviewHeadEvidenceMatches } from "./single-review-head-evidence";
 import { fenceLocalPatchImages } from "./local-patch-lifecycle";
@@ -96,7 +96,16 @@ async function tabOne(c: Container, gameId: string, candidate: Candidate, fence:
   const continuity = await verifiedDualStage(c.db, gameId + ":board-wizard", proof.continuity!, "head-continuity", options);
   const subject = await verifiedDualStage(c.db, gameId + ":board-wizard", proof.subject!, "scene-quality", options);
   if (!paid || !continuity || !subject || !paid.bytes.equals(continuity.bytes) || !paid.bytes.equals(subject.bytes)) return false;
-  if (!await otherPaidRolesPass(c.db, binding, proof) || JSON.stringify(readQualityStage(proof.quality, hide.id, scene.sceneVersion)) !== JSON.stringify(j.verdict)) return false;
+  let continuityRepair: CrownTab["continuityRepair"];
+  if (!await otherPaidRolesPass(c.db, binding, proof)) {
+    // The old continuity answer can identify the very crown cut this candidate repairs.
+    // All subject/binding guards remain; the corrected pixels still owe a new ordinary review.
+    if (!crownTabContinuityCut(readContinuityStage(proof.continuity!, hide.id, proof.version))
+      || !await otherPaidRolesPass(c.db, binding, proof, CROWN_TAB_CONTINUITY_REPAIR_VERSION)) return false;
+    continuityRepair = { version: CROWN_TAB_CONTINUITY_REPAIR_VERSION, sourceRawSha256: sha256Bytes(Buffer.from(proof.quality.raw ?? "")) };
+  }
+  const qualityVerdict = readQualityStage(proof.quality, hide.id, scene.sceneVersion);
+  if (continuityRepair ? !crownTabQualityCut(qualityVerdict) : JSON.stringify(qualityVerdict) !== JSON.stringify(j.verdict)) return false;
   const answer = locatedCrown(proof), tab = crownTabRect(evidence.returned, answer.rawHead, registeredHeads(context, hide));
   if (typeof tab === "string") return false;
   const raw = await readSettledTargetRaw(c.db, gameId, evidence.sourceRequestKey);
@@ -115,6 +124,7 @@ async function tabOne(c: Container, gameId: string, candidate: Candidate, fence:
     baselineGeometrySha256: j.geometrySha256, boardArtSha256: sha256Bytes(art), returned: evidence.returned, rawHead: answer.rawHead, tab,
     band: LOCAL_PATCH_RETURN_FEATHER, seam: { borderMeanDiff: shipped.seam.borderMeanDiff, shift: shipped.seam.shift },
     headAnswer: { requestKey: proof.quality.requestKey, fingerprint: proof.quality.fingerprint, rawSha256: sha256Bytes(Buffer.from(proof.quality.raw ?? "")) },
+    ...(continuityRepair ? { continuityRepair } : {}),
     candidateSha256, geometrySha256: localPatchPublicationGeometryHash(geometry), identitySha256 });
   const assetId = "ast_ctab_" + hash([gameId, hide.id, CROWN_TAB_VERSION, candidateSha256]).slice(0, 24), key = `game/${assetId}.png`;
   const worldId = gameId + ":board-wizard", stored = await PrismaWorldBudgetStore.forReadOnlyTransaction(c.db).read(worldId);
@@ -140,7 +150,7 @@ async function tabOne(c: Container, gameId: string, candidate: Candidate, fence:
       || current.costCents !== row.costCents || !ledger || ledger.revision !== stored.revision || hash(ledger.snapshot) !== hash(stored.snapshot)
       || held.deletedAt || held.status !== "READY" || !heldBlob || sha256Bytes(Buffer.from(heldBlob.data)) !== j.judgedSha256
       || await tx.auditLog.findUnique({ where: { id: auditId } })) return false;
-    if (!await singleReviewHeadEvidenceMatches(tx, binding, evidence) || !await otherPaidRolesPass(tx, binding, proof)) return false;
+    if (!await singleReviewHeadEvidenceMatches(tx, binding, evidence) || !await otherPaidRolesPass(tx, binding, proof, continuityRepair?.version)) return false;
     const cas = await tx.worldBudgetLedger.updateMany({ where: { worldId, revision: stored.revision }, data: { revision: { increment: 1 } } });
     if (cas.count !== 1) return false;
     const saved = await tx.asset.upsert({ where: { id: assetId }, update: {}, create: { id: assetId, ownerId: game.ownerId, type: "TARGET_SPRITE",
@@ -193,6 +203,19 @@ export async function crownTabPublicationMatches(db: Prisma.TransactionClient, i
       authoredReviewBinding: authoredLocalPatchReviewBinding({ hideId: input.hideId, imageSha256: base.previous.judgedSha256, geometrySha256: base.previous.geometrySha256,
         identitySha256: input.identitySha256, authoredReturn: proof.authoredReturn }) });
     if (!paid) return false;
+    if (marker.continuityRepair) {
+      const row = await db.targetVariantAsset.findUnique({ where: { id: base.variantId } });
+      const game = await db.game.findUnique({ where: { id: input.gameId }, include: { childProfile: true } });
+      if (!row || !game?.childProfile?.identityAssetId) return false;
+      if (marker.continuityRepair.sourceRawSha256 !== marker.headAnswer.rawSha256
+        || !crownTabCandidate({ status: "FAILED", assetId: marker.baselineAssetId, judgeJson: base.previousJudgeJson })
+        || !crownTabQualityCut(readQualityStage(proof.quality, input.hideId, input.sceneVersion))
+        || !proof.continuity || !crownTabContinuityCut(readContinuityStage(proof.continuity, input.hideId, proof.version))
+        || !await otherPaidRolesPass(db, { ...input, variantId: base.variantId, attempts: row.attempts,
+          identityAssetId: game.childProfile.identityAssetId, imageSha256: marker.baselineShippingSha256,
+          geometrySha256: marker.baselineGeometrySha256, assetId: marker.baselineAssetId, judgeJson: base.previousJudgeJson },
+          proof, CROWN_TAB_CONTINUITY_REPAIR_VERSION)) return false;
+    }
     const raw = await readSettledTargetRaw(db, input.gameId, marker.sourceRequestKey);
     if (raw.kept.operationFingerprint !== marker.sourceFingerprint || raw.kept.payloadSha256 !== marker.sourcePayloadSha256
       || sha256Bytes(raw.normalized) !== marker.normalizedRawSha256) return false;

@@ -2263,6 +2263,9 @@ it.each([
   const asked=provider.creates[Number(id.split("_").at(-1))-1]!;if(asked.hideId!==ny2.id||provider.creates.filter(x=>x.hideId===ny2.id).indexOf(asked)!==0)return reply;
   const answer=JSON.parse(reply.reading.raw!);Object.assign(answer.head,{rawHead,shippingHead:{...rawHead,top:returned.top+2,height:rawHead.height-13},rawCrown:"pass",shippingCrown:"fail",
    observation:"Synthetic complete RAW crown above the whole window; the shipped crown is cut at the top join."});
+  if(prop)Object.assign(answer.continuity.cases[0],{state:"broken",visibleBody:true,headConnection:"connected",
+   headTrace:"The synthetic shipping crown has a hard cut while the visible head remains connected.",
+   faults:[{kind:"hard-cut",where:"Synthetic target crown at the top return."}]});
   return{...reply,reading:{...reply.reading,raw:JSON.stringify(answer)}};};
  const container={...c,backgroundReview:provider.fake,visualReview:{request:async()=>{throw Error("No synchronous review");}}} as Container;
  const render=vi.fn<NonNullable<LocalPatchHideDeps["render"]>>(async({requestKey,stylePng})=>{
@@ -2286,11 +2289,17 @@ it.each([
  const deps:LocalPatchHideDeps={readBoardArt:readArt,renderPolicySha256:localPatchRenderPolicySha256(LOCAL_PATCH_IMAGE_POLICY),render,judge:async()=>{throw Error("No synchronous review");}};
  const diagnose=vi.fn(async()=>{throw Error("No planner");});
  const row=()=>db.targetVariantAsset.findFirstOrThrow({where:{variant:"A",targetInstance:{gameScene:{gameId,sceneSlug:board},targetId:ny2.targetId}}});
- let last="";
+ let last="",unreviewedTabSeen=false;
  for(let turn=0;turn<200;turn++){
   const result=await runLocalPatchWorldSlice(container,deps,gameId,{hardDeadlineAt:Date.now()+270_000,diagnose});
   const current=await db.targetVariantAsset.findFirst({where:{variant:"A",targetInstance:{gameScene:{gameId,sceneSlug:board},targetId:ny2.targetId}}});
   const j=current?.judgeJson?JSON.parse(current.judgeJson):null;
+  if(j?.crownTab&&j.reviewState==="pending-board-review"){
+   unreviewedTabSeen=true;
+   expect(await allowedDualPublication(db,{gameId,sceneVersion:13,hideId:ny2.id,variantId:current!.id,attempts:current!.attempts,
+    identityAssetId:'ast-sheet-'+gameId,identitySha256:j.crownTab.identitySha256,assetId:current!.assetId!,
+    imageSha256:j.judgedSha256,geometrySha256:j.geometrySha256,judgeJson:current!.judgeJson})).toBe(false);
+  }
   if(j?.crownTab&&j.reviewState==="board-review-complete")break;
   const step=(await db.generationJob.findUniqueOrThrow({where:{id:"job_"+gameId}}));
   last=JSON.stringify({turn,pending:result.pending,attention:result.attention,step:step.currentStep,status:step.status,row:current&&[current.status,current.attempts,j?.reviewState,j?.lastError??current.lastError]});
@@ -2299,11 +2308,13 @@ it.each([
    await db.generationJob.update({where:{id:"job_"+gameId},data:{updatedAt:new Date(Date.now()-LEAN_RECOVERY_BACKOFF_MS-1000)}});
  }
  const accepted=await row(),j=JSON.parse(accepted.judgeJson!);
- expect(j.crownTab,last).toBeDefined();
+ expect(j.crownTab,last).toBeDefined();expect(unreviewedTabSeen).toBe(true);
  // The refusal the tab answered, exactly as its audit archived it (the refusal and the tab may share one slice).
  const tabAudit=JSON.parse((await db.auditLog.findUniqueOrThrow({where:{id:j.crownTab.auditId}})).metaJson!);
  const refused={assetId:tabAudit.previousAssetId as string,attempts:accepted.attempts,judgeJson:tabAudit.previousJudgeJson as string};
  const refusedReceipt=JSON.parse(refused.judgeJson);
+ if(prop)expect(j.crownTab.continuityRepair).toMatchObject({version:"crown-tab-continuity-repair/v1",sourceRawSha256:j.crownTab.headAnswer.rawSha256});
+ else expect(j.crownTab.continuityRepair).toBeUndefined();
  expect(refusedReceipt.reviewState).toBe("board-review-complete");expect(refusedReceipt.verdict.verdict).toBe("fail");
  const refusedChecks=refusedReceipt.verdict.faults.map((f:{check:string})=>f.check);
  expect(refusedChecks).toContain("childComplete");
@@ -2348,6 +2359,28 @@ it.each([
  expect(await allowedDualPublication(db,{...publicationBinding(gameId,accepted),sceneVersion:13})).toBe(true);
  expect(fetch).not.toHaveBeenCalled();
 },1_200_000);
+
+it('refuses a source-body third painting before reserving when its assessment cannot fit, without blocking an already generated row',async()=>{
+ const gameId='detective-born-capacity-preflight';await newDetectiveWorld(gameId,7,true);
+ const context=await resolveLocalPatchBoardsForGame(db,gameId,13),board=context.boards.find(b=>b.board==='giza')!,hide=board.hides[1]!;
+ const scene=await db.gameScene.findFirstOrThrow({where:{gameId,sceneSlug:'giza'}}),target=sceneBySlug('giza',13).targets.find(t=>t.id===hide.targetId)!;
+ const instance=await db.targetInstance.create({data:{id:'tgt-born-capacity',gameSceneId:scene.id,targetId:target.id,targetType:target.targetType,spriteKind:'image',slotAId:target.slots[0].id,slotBId:target.slots[1].id}});
+ const pin=(await detectivesOperationalPolicyOf(db,gameId))!,rowId='tva-born-capacity';
+ const receipt=JSON.stringify({sourceBodyBirth:sourceBodyBirthMarkerFor(pin,rowId,hide.id,2)});
+ await db.targetVariantAsset.create({data:{id:rowId,targetInstanceId:instance.id,variant:'A',slotId:target.slots[0].id,provider:'openai',promptVersion:'local-patch-fixed-scenery/v19',status:'FAILED',attempts:2,lastError:'Synthetic rejected second image',judgeJson:receipt}});
+ const budget=boardWizardBudgetOf(c),worldId=boardWizardWorldId(gameId),room=await budget.audit(worldId);
+ const fill=room.remainingMicroUsd-330000;
+ await budget.reserve(worldId,{requestKey:'synthetic-body-capacity-used',scope:'image',operationFingerprint:'c'.repeat(64),reserveMicroUsd:fill});
+ await budget.settle(worldId,'synthetic-body-capacity-used',bill('synthetic-body-capacity-used',fill));
+ const before=await budget.audit(worldId),forbidden=vi.fn(async()=>{throw Error('A painting without assessment capacity must not be bought');});
+ const deps={render:forbidden,judge:forbidden,renderPolicySha256:localPatchRenderPolicySha256(LOCAL_PATCH_IMAGE_POLICY)};
+ await expect(runLocalPatchHide(c,deps,{gameId,board,hide,finalRepair:true})).rejects.toThrow('Source-body painting requires capacity');
+ expect(forbidden).not.toHaveBeenCalled();expect(await budget.audit(worldId)).toEqual(before);
+ expect(await db.targetVariantAsset.findUniqueOrThrow({where:{id:rowId}})).toMatchObject({status:'FAILED',attempts:2,judgeJson:receipt});
+ await db.targetVariantAsset.update({where:{id:rowId},data:{status:'GENERATED'}});
+ expect(await runLocalPatchHide(c,deps,{gameId,board,hide,finalRepair:true})).toMatchObject({state:'already-generated',attempts:2});
+ expect(forbidden).not.toHaveBeenCalled();expect(await budget.audit(worldId)).toEqual(before);
+},180000);
 
 it('returns a finite gave-up result before creating a fourth from-birth marker',async()=>{
  const gameId='detective-born-finite-exhaustion';await newDetectiveWorld(gameId,7,true);
@@ -2790,3 +2823,107 @@ it.each(["pass", "crown-fail"] as const)("native whole-source context preserves2
     expect(diagnose).not.toHaveBeenCalled();expect(synchronous).not.toHaveBeenCalled();expect(fetch).not.toHaveBeenCalled();
   }finally{vi.useRealTimers();}
 },1500000);
+
+/** Game 3's transport shapes on the real Detective engine: a question cancelled at its Flex deadline (settled at the
+ * provider's explicit zero, or billed), and a provider failure that is permanent. `plan` names each hide's FIRST question. */
+function transitSol(plan: Record<string, "cancel" | "cancel-billed" | "invalid">, guidedHideId?: string) {
+  const base = controlledSol(false, !!guidedHideId, guidedHideId, true, true);
+  const special = new Map<string, { mode: "cancel" | "cancel-billed" | "invalid"; cancelled: boolean }>(), first = new Set<string>();
+  const fake: BackgroundReviewTransport = { namespace: base.fake.namespace,
+    create: async body => { const created = await base.fake.create(body), hideId = base.creates.at(-1)!.hideId;
+      if (plan[hideId] && !first.has(hideId)) { first.add(hideId); special.set(created.responseId, { mode: plan[hideId]!, cancelled: false }); }
+      return created; },
+    retrieve: async responseId => {
+      const s = special.get(responseId); if (!s) return base.fake.retrieve(responseId);
+      if (s.mode === "invalid") return { status: "failed", reading: { responseId, raw: null, usage: { input_tokens: 0, output_tokens: 0 }, model: "gpt-6.1-sol",
+        finishReason: null, serviceTier: "flex", providerError: { code: "invalid_prompt", message: "Synthetic permanent invalid request" } } };
+      if (!s.cancelled) return { status: "in_progress" };
+      return { status: "cancelled", reading: { responseId, raw: null, usage: s.mode === "cancel-billed" ? { input_tokens: 19113, output_tokens: 3200 } : { input_tokens: 0, output_tokens: 0 },
+        model: "gpt-6.1-sol", finishReason: null, serviceTier: "flex" } };
+    },
+    cancel: async responseId => { const s = special.get(responseId); if (s) s.cancelled = true; } };
+  return { fake, creates: base.creates, special };
+}
+async function runTransitWorld(gameId: string, provider: ReturnType<typeof transitSol>, guidedHideId?: string) {
+  const context = await resolveLocalPatchBoardsForGame(db, gameId, 13), hides = context.boards.flatMap(board => board.hides);
+  const container = { ...c, backgroundReview: provider.fake, visualReview: { request: async () => { throw Error("No synchronous review"); } } } as Container;
+  const renders: string[] = [];
+  const deps: LocalPatchHideDeps = { readBoardArt: readArt, renderPolicySha256: localPatchRenderPolicySha256(LOCAL_PATCH_IMAGE_POLICY),
+    judge: async () => { throw Error("Historical per-hide judge forbidden"); },
+    render: async ({ requestKey, stylePng, placementGuidePng }) => {
+      const hide = hides.find(h => requestKey.startsWith(h.id + ":")); if (!hide) throw Error("Unregistered Detective painter request");
+      if (hide.id !== guidedHideId) expect(requestKey.endsWith(":render:1")).toBe(true);
+      renders.push(requestKey);
+      const mask = placementGuidePng ? guidedFrameGeometry(maskForHide(hide), localPatchReturnRegion(cropOf(hide), maskForHide(hide), hide.returnRect).local).target : maskForHide(hide);
+      const rect = { left: mask.left + Math.round(mask.width * 0.2), top: mask.top + Math.round(mask.height * 0.2), width: Math.round(mask.width * 0.6), height: Math.round(mask.height * 0.8) };
+      const figure = await sharp({ create: { width: rect.width, height: rect.height, channels: 4, background: "#1e3ca0" } }).png().toBuffer();
+      return paintedOk(await sharp(stylePng).composite([{ input: figure, left: rect.left, top: rect.top }]).png().toBuffer(), bill("paint-" + gameId + "-" + requestKey, 66500));
+    } };
+  const diagnose = vi.fn(async () => { throw Error("No diagnosis in a transport fixture"); });
+  let result = { pending: true, attention: null as string | null }, ticks = 0;
+  for (; ticks < 400 && result.pending; ticks++) {
+    result = await runLocalPatchWorldSlice(container, deps, gameId, { hardDeadlineAt: Date.now() + 270_000, diagnose });
+    const job = await db.generationJob.findUniqueOrThrow({ where: { id: "job_" + gameId } });
+    if (job.currentStep === "local-patch:recovery-budget-wait") await vi.advanceTimersByTimeAsync(LEAN_RECOVERY_BACKOFF_MS + 1);
+    // Model the provider queue: a question still running when its Flex deadline passes.
+    if ([...provider.special.values()].some(s => s.mode !== "invalid" && !s.cancelled)) await vi.advanceTimersByTimeAsync(11 * 60_000);
+  }
+  return { result, ticks, renders, diagnose };
+}
+
+it("single-transport-continuation/v1: a question cancelled at its Flex deadline is asked once more on its pixels, and the world completes", async () => {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  try {
+    const gameId = "detective-transit-cancelled"; await newDetectiveWorld(gameId, 7, true);
+    const provider = transitSol({ "amazon-detectives-hide-1": "cancel", "newyork-detectives-hide-2": "cancel-billed" });
+    const { result, ticks, renders, diagnose } = await runTransitWorld(gameId, provider);
+    expect(result).toMatchObject({ pending: false, attention: null }); expect(ticks).toBeLessThan(400);
+    expect((await db.game.findUniqueOrThrow({ where: { id: gameId } })).status).toMatch(/READY|DELIVERED/);
+    // 27 first questions and exactly two continuations: the same pixels, a new key, the default tier.
+    expect(provider.creates).toHaveLength(29); expect(renders).toHaveLength(27);
+    const continued = provider.creates.filter(create => create.tier === "default");
+    expect(continued.map(create => create.hideId).sort()).toEqual(["amazon-detectives-hide-1", "newyork-detectives-hide-2"]);
+    for (const create of continued) expect(create.prompt).toContain("UNANSWERED TRANSPORT CONTINUATION 2");
+    const audits = await db.auditLog.findMany({ where: { entityId: gameId, action: "generation:single-transport-continuation/v1" } });
+    expect(audits).toHaveLength(2);
+    for (const audit of audits) expect(JSON.parse(audit.metaJson!)).toMatchObject({ providerStatus: "cancelled", providerCalls: 0, chargesChanged: false,
+      entry: { kind: "transport", code: "cancelled-at-deadline", attempt: 1 } });
+    // The cancelled rounds stay as the provider billed them: an explicit zero, and the billed one in full.
+    const ledger = (await boardWizardBudgetOf(c).audit(boardWizardWorldId(gameId)));
+    expect(ledger.unknownRequestKeys ?? []).toEqual([]);
+    const rows = await db.targetVariantAsset.findMany({ where: { variant: "A", targetInstance: { gameScene: { gameId } } } });
+    expect(rows.every(row => row.status === "GENERATED" && row.attempts === 1)).toBe(true);
+    for (const row of rows.filter(r => ["amazon-detectives-hide-1", "newyork-detectives-hide-2"].includes(JSON.parse(r.judgeJson!).hide)))
+      expect(JSON.parse(row.judgeJson!).evidenceAttempts).toEqual([expect.objectContaining({ attempt: 1, code: "cancelled-at-deadline", single: SINGLE_MEDIUM_VISUAL_REVIEW_VERSION })]);
+    expect(diagnose).not.toHaveBeenCalled();
+  } finally { vi.useRealTimers(); }
+}, 1_500_000);
+
+it("local-patch-no-route-rest/v1: permanent failures rest four first pictures, giza 2 still gets its third painting, and the world parks with names", async () => {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  try {
+    const gameId = "detective-transit-permanent"; await newDetectiveWorld(gameId, 7, true);
+    const invalid = ["amazon-detectives-hide-1", "amazon-detectives-hide-3", "newyork-detectives-hide-2", "newyork-detectives-hide-3"];
+    const provider = transitSol(Object.fromEntries(invalid.map(hideId => [hideId, "invalid" as const])), "giza-detectives-hide-2");
+    const { result, ticks, renders } = await runTransitWorld(gameId, provider, "giza-detectives-hide-2");
+    // Never an idle loop: the world stops on its own, with every remaining name.
+    expect(result.pending).toBe(false); expect(ticks).toBeLessThan(400);
+    // The historical single-reason words (local-patch-progress.ts keeps them verbatim); the rows below carry the names.
+    expect(result.attention).toBe("local-patch: 4 appearances have no automatic evidence question left (unclassified); no image is redrawn for an unreadable answer."
+      + " A service decision is required; no parent approval is requested.");
+    // The painting the old plan could never reach: its third picture was bought and decided.
+    expect(renders.filter(key => key.startsWith("giza-detectives-hide-2:"))).toEqual(["giza-detectives-hide-2:standing:render:1",
+      "giza-detectives-hide-2:standing:render:2", "giza-detectives-hide-2:standing:render:3"]);
+    const rows = await db.targetVariantAsset.findMany({ where: { variant: "A", targetInstance: { gameScene: { gameId } } } });
+    const byHide = new Map(rows.map(row => [JSON.parse(row.judgeJson!).hide as string, row]));
+    expect(byHide.get("giza-detectives-hide-2")).toMatchObject({ status: "GENERATED", attempts: 3 });
+    for (const hideId of invalid) expect(byHide.get(hideId)).toMatchObject({ status: "FAILED", attempts: 1 });
+    // A permanent failure is never asked again, never logged as transit, never continued.
+    expect(provider.creates.filter(create => create.tier === "default")).toHaveLength(0);
+    expect(await db.auditLog.count({ where: { entityId: gameId, action: "generation:single-transport-continuation/v1" } })).toBe(0);
+    const restAudit=await db.auditLog.findFirstOrThrow({where:{entityId:gameId,action:"local-patch:rest-diagnostics/v1"}});
+    const rests=JSON.parse(restAudit.metaJson!).hides;
+    expect(rests.map((r:{hideId:string})=>r.hideId).sort()).toEqual([...invalid].sort());
+    expect(rests.every((r:{rest:string})=>r.rest==="evidence")).toBe(true);
+  } finally { vi.useRealTimers(); }
+}, 1_500_000);

@@ -64,7 +64,7 @@ export const localPatchBoardAwaitsProvider = (keys: readonly (string | null)[], 
   keys.length > 0 && keys.every(key => key !== null && awaiting.has(key));
 
 /** Why a remaining appearance has nothing automatic left to start, or null when it still has work. */
-export type LocalPatchRest = { readonly hideId: string; readonly rest: "spent" | "evidence" | "waiting" | null; readonly evidenceKind?: string };
+export type LocalPatchRest = { readonly hideId: string; readonly rest: "spent" | "evidence" | "waiting" | "unroutable" | null; readonly evidenceKind?: string };
 
 /** What a world knows about one remaining appearance when it decides whether that appearance is at rest. */
 export type LocalPatchRestFacts = {
@@ -75,6 +75,9 @@ export type LocalPatchRestFacts = {
   readonly reviewOwed: boolean;
   /** Its repair cycles under local-patch-subject/v2 are spent, so another cycle may not start. */
   readonly repairSpent: boolean;
+  /** local-patch-no-route-rest/v1: this slice asked the painter for it and the attempt plan left it no painting
+   * ("gave-up"), with nothing bought and no budget stop. Absent on every world before it. */
+  readonly noRoute?: boolean;
 };
 
 /**
@@ -88,7 +91,7 @@ export function localPatchRestOf(facts: LocalPatchRestFacts): LocalPatchRest {
   if (facts.reviewOwed || evidence?.retry) return { hideId, rest: null };
   if (evidence?.waiting) return { hideId, rest: "waiting" };
   if (evidence?.exhausted) return { hideId, rest: "evidence", ...(evidence.kind ? { evidenceKind: evidence.kind } : {}) };
-  return { hideId, rest: facts.repairSpent ? "spent" : null };
+  return { hideId, rest: facts.repairSpent ? "spent" : facts.noRoute ? "unroutable" : null };
 }
 
 /**
@@ -103,7 +106,13 @@ export function localPatchRestDecision(rests: readonly LocalPatchRest[]): { read
   const kinds = [...new Set(unanswered.map(r => r.evidenceKind ?? "unclassified"))];
   const spentText = `spent their ${SUBJECT_V2_REPAIR_CYCLES} automatic repair cycles under local-patch-subject/v2 (${spent.map(r => r.hideId).join(", ")}); nothing more is bought for them`;
   const evidenceText = `no automatic evidence question left (${kinds.join(", ")}); no image is redrawn for an unreadable answer`;
-  const reason = !unanswered.length ? `local-patch: ${spent.length} appearances ${spentText}.`
+  const unroutable = rests.filter(r => r.rest === "unroutable");
+  const reason = unroutable.length ? `local-patch: nothing automatic is left for ${rests.length} appearances: ${[
+      ...(spent.length ? [`${spent.length} ${spentText}`] : []),
+      ...(unanswered.length ? [`${unanswered.length} have ${evidenceText} (${unanswered.map(r => r.hideId).join(", ")})`] : []),
+      `${unroutable.length} have no painting their attempt plan can start (${unroutable.map(r => r.hideId).join(", ")}); nothing more is bought for them`,
+    ].join("; ")}.`
+    : !unanswered.length ? `local-patch: ${spent.length} appearances ${spentText}.`
     : !spent.length ? `local-patch: ${rests.length} appearances have ${evidenceText}.`
     : `local-patch: nothing automatic is left for ${rests.length} appearances: ${spent.length} ${spentText}; ${unanswered.length} have ${evidenceText} (${unanswered.map(r => r.hideId).join(", ")}).`;
   return { action: "park", reason: `${reason} A service decision is required; no parent approval is requested.` };

@@ -1,4 +1,5 @@
 import { readWholeSourceContextPin, wholeSourceContextCandidate } from "./whole-source-context-pin";
+import { boardConditioningHash } from "./board-conditioned-source";
 import { wholeSourceContextExhausted } from "../../domain/generation/whole-source-context-purchase";
 import { wholeSourceContextImagePolicy } from "../../infra/generation/openai-local-patch";
 import { resumeBoundEnvelopeReconciliation } from "./bound-envelope-reconciliation";
@@ -17,6 +18,7 @@ import { reconcileVisibleHeadPolicy } from "./visible-head-policy-recovery";
 import { restoreRetainedNormalHeadOnce } from "./retained-normal-head-scan";
 import { correctHeadPixels } from "./head-pixel-correction";
 import { correctCrownTabs } from "./crown-tab";
+import { recordSingleTransportFaults } from "./single-transport-continuation";
 import { crownTabCandidate } from "../../domain/generation/crown-tab";
 import { headPixelCorrectionCandidate } from "../../domain/generation/head-pixel-correction";
 import { detectivesNativeMaskTail } from "./detectives-completion-budget";
@@ -390,8 +392,13 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
     await tx.game.update({ where: { id: gameId }, data: { lastError: reason, configJson: null } });
     await tx.generationJob.update({ where: { id: job.id }, data: { status: "DONE", currentStep: LOCAL_PATCH_QUALITY_FAILED, lastError: reason } });
   });
-  const parkExhausted = async (reason: string) => c.db.$transaction(async tx => {
+  const parkExhausted = async (reason: string, rests?: readonly LocalPatchRest[]) => c.db.$transaction(async tx => {
     await fence(tx);
+    if (rests?.length) await tx.auditLog.create({ data: {
+      id: "aud_rest_" + boardConditioningHash([gameId, job.id, claim, rests]).slice(0, 40), actorType: "SYSTEM",
+      action: "local-patch:rest-diagnostics/v1", entityType: "Game", entityId: gameId,
+      metaJson: JSON.stringify({ version: "local-patch-rest-diagnostics/v1", reason, hides: rests, providerCalls: 0 }),
+    } });
     await tx.generationJob.update({ where: { id: job.id }, data: { status: "FAILED", currentStep: LOCAL_PATCH_RECOVERY_EXHAUSTED, lastError: reason.slice(0, 500) } });
   });
   /** A refused reservation either waits for capacity that can still appear, or
@@ -690,6 +697,9 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
         await reload();
       }
     }
+    // single-transport-continuation/v1: a single question that ended in transit is logged on its pixels (free),
+    // so evidence recovery asks its one continuation instead of resting the appearance as unreadable.
+    if (dual && await recordSingleTransportFaults(c, gameId, rows, fence)) await reload();
     // One authenticated free correction per slice, after paid-answer readings
     // and before any new diagnosis, painting or review. Yield after the write:
     // remaining free corrections get their turn first, and the changed shipping
@@ -868,7 +878,12 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
   const settledHide = (row: typeof rows[number] | undefined) => extraPlan
     ? !row || !extraRows.has(row.id) || localPatchSettled(row, 4)
     : bodyPainting(row)?false:localPatchSettled(row, nativeFourthPainting(row) ? 4 : attemptLimit);
-  const plan = localPatchAttemptPlan(work.map(item => stateOf(item.sceneId, item.hide.targetId)), allowRepair);
+  // local-patch-no-route-rest/v1: an appearance with no automatic evidence question left is never painted again,
+  // so it no longer holds the whole world in the normal phase; others' final repairs may start (2026-11-03: four such
+  // rows at attempt 1 kept giza 2's third painting unreachable and the world idle).
+  const planState = (row: (typeof rows)[number] | undefined) => automatic && row && localPatchEvidenceRecovery(row)?.exhausted
+    ? { status: row.status, attempts: LOCAL_PATCH_MAX_ATTEMPTS } : row;
+  const plan = localPatchAttemptPlan(work.map(item => planState(stateOf(item.sceneId, item.hide.targetId))), allowRepair);
   const normalReviewsPending = strict && game.scenes.some(scene => scene.generationStatus !== "GENERATED"
     && boardFor(scene.sceneSlug, scene.sceneVersion)?.hides.every(hide => stateOf(scene.id, hide.targetId)?.status === "GENERATED"));
   // A rendered but not reviewed normal candidate may still require attempt2.
@@ -1188,6 +1203,8 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
     // local-patch-subject/v2 are spent (local-patch-progress/v1), appearances with no evidence question left, or
     // a transport outage still being waited out. Any mixture of the first two stops the world with every name
     // and its reason; nothing more is bought for them.
+    // local-patch-no-route-rest/v1: the painter's own "no attempt left" for an appearance this slice asked it to paint.
+    const gaveUp = new Set(outcomes.filter(outcome => outcome.state === "gave-up").map(outcome => outcome.hideId));
     const rests: LocalPatchRest[] = left.map(item => {
       const row = after.find(r => r.targetInstance.gameSceneId === item.sceneId && r.targetInstance.targetId === item.hide.targetId);
       const recovery = automatic && row ? localPatchEvidenceRecovery(row) : null, diagnosis = recovery?.step?.diagnosis;
@@ -1195,6 +1212,9 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
         evidence: recovery ? { retry: recovery.retry, waiting: recovery.waiting, exhausted: recovery.exhausted,
           ...(diagnosis ? { kind: `${diagnosis.role} ${diagnosis.kind}` } : {}) } : null,
         reviewOwed: legacyReviewOwed(row) || !!row && (progress && readyReviewOwed(row) || rejudgePending(row) || playerReviewEnabled() && needsPlayerReview(row)),
+        // Legacy worlds still owe their historical end-of-world third attempt:
+        // a normal-phase gave-up there must not park them before that pass.
+        noRoute: automatic && gaveUp.has(item.hide.id),
         repairSpent: !legacyReviewOwed(row) && (contextExhausted(row) || progress && !!row && !contextPainting(row) && !bodyPainting(row) && !nativeFourthPainting(row) && (bodyExhausted(row) || !!sourceBodyBirthMarker(row) && row.attempts>=LOCAL_PATCH_MAX_ATTEMPTS || guidedFrameExhausted(row) && !completionRepair(row) && !mechanicalRepair(row) || nativeMaskTailExhausted(row) || needsSelfRepair(row) && selfRepairProgress(selfRepairOf(row), row.attempts).exhausted && !mechanicalRepair(row))) });
     });
     const rest = pendingReviews ? null : localPatchRestDecision(rests);
@@ -1206,7 +1226,7 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
       return { gameId, pending: true, claimed: true, paused: false, attention: null, outcomes, blocked };
     }
     if (rest?.action === "park") {
-      await parkExhausted(rest.reason);
+      await parkExhausted(rest.reason, rests);
       return { gameId, pending: false, claimed: true, paused: false, attention: rest.reason, outcomes, blocked };
     }
     await c.db.generationJob.updateMany({ where: { id: job.id, attempts: claim, status: "RUNNING", currentStep: "local-patch" },

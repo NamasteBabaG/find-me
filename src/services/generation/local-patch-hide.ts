@@ -362,6 +362,11 @@ export async function runLocalPatchHide(c: Container, deps: LocalPatchHideDeps, 
   if (exhausted) {
     return { ...base, attempt: row.attempts, state: "gave-up", reason: row.lastError ?? `gave up after ${row.attempts} attempts` };
   }
+  if (bodyBirth && !await budget.readRequest(worldId, `${hide.id}:${hide.pose}:render:${attempt}`)) {
+    const room = await budget.audit(worldId);
+    if (room.held || room.remainingMicroUsd < GUIDED_FRAME_MIN_CAPACITY_MICRO_USD)
+      throw new WorldBudgetError("cap_exceeded", "Source-body painting requires capacity for its image and one bounded assessment");
+  }
 
   // A stored recipe is a constraint, not a label to overwrite on success.
   // Historical recipes require their original scene/reference contract; do

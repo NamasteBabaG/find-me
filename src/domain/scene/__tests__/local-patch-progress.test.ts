@@ -106,4 +106,33 @@ describe("a world with nothing automatic left to start", () => {
       + `${SUBJECT_V2_REPAIR_CYCLES} automatic repair cycles under local-patch-subject/v2 (tokyo-v12-1); nothing more is bought for them; 1 have no automatic `
       + `evidence question left (continuity shape); no image is redrawn for an unreadable answer (paris-v12-2).${TAIL}` });
   });
+
+  it("local-patch-no-route-rest/v1: rests an appearance the painter gave up on, only when nothing else is owed on it", () => {
+    const facts = (over: Partial<Parameters<typeof localPatchRestOf>[0]>) => ({ hideId: "giza-detectives-hide-2", evidence: null, reviewOwed: false, repairSpent: false, ...over });
+    expect(localPatchRestOf(facts({ noRoute: true }))).toEqual({ hideId: "giza-detectives-hide-2", rest: "unroutable" });
+    // Owed work, an outage, exhausted evidence and spent cycles all keep their own, earlier precedence.
+    expect(localPatchRestOf(facts({ noRoute: true, reviewOwed: true }))).toEqual({ hideId: "giza-detectives-hide-2", rest: null });
+    expect(localPatchRestOf(facts({ noRoute: true, evidence: { retry: true, waiting: false, exhausted: false } })).rest).toBeNull();
+    expect(localPatchRestOf(facts({ noRoute: true, evidence: { retry: false, waiting: true, exhausted: false } })).rest).toBe("waiting");
+    expect(localPatchRestOf(facts({ noRoute: true, repairSpent: true })).rest).toBe("spent");
+    // Absent on every world before it: the historical null.
+    expect(localPatchRestOf(facts({})).rest).toBeNull();
+  });
+
+  it("parks game 3's shape (4 evidence, 1 unroutable, 3 spent) with every name, and still waits out an outage first", () => {
+    const rests = [
+      ...["amazon-detectives-hide-1", "amazon-detectives-hide-3", "newyork-detectives-hide-2", "newyork-detectives-hide-3"].map(hideId => ({ hideId, rest: "evidence" as const, evidenceKind: "quality transport" })),
+      { hideId: "giza-detectives-hide-2", rest: "unroutable" as const },
+      ...["amazon-detectives-hide-2", "greatwall-detectives-hide-1", "paris-detectives-hide-2"].map(hideId => ({ hideId, rest: "spent" as const })),
+    ];
+    expect(localPatchRestDecision(rests)).toEqual({ action: "park", reason: "local-patch: nothing automatic is left for 8 appearances: 3 spent their "
+      + `${SUBJECT_V2_REPAIR_CYCLES} automatic repair cycles under local-patch-subject/v2 (amazon-detectives-hide-2, greatwall-detectives-hide-1, paris-detectives-hide-2); `
+      + "nothing more is bought for them; 4 have no automatic evidence question left (quality transport); no image is redrawn for an unreadable answer "
+      + "(amazon-detectives-hide-1, amazon-detectives-hide-3, newyork-detectives-hide-2, newyork-detectives-hide-3); 1 have no painting their attempt plan can start "
+      + `(giza-detectives-hide-2); nothing more is bought for them.${TAIL}` });
+    expect(localPatchRestDecision([{ hideId: "giza-detectives-hide-2", rest: "unroutable" }])).toEqual({ action: "park", reason:
+      `local-patch: nothing automatic is left for 1 appearances: 1 have no painting their attempt plan can start (giza-detectives-hide-2); nothing more is bought for them.${TAIL}` });
+    expect(localPatchRestDecision([{ hideId: "giza-detectives-hide-2", rest: "unroutable" }, { hideId: "b", rest: "waiting" }])).toEqual({ action: "wait" });
+    expect(localPatchRestDecision([{ hideId: "giza-detectives-hide-2", rest: "unroutable" }, { hideId: "b", rest: null }])).toBeNull();
+  });
 });

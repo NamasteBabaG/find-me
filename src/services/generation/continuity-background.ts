@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { Prisma } from "@prisma/client";
 import type { Container } from "../container";
 import {
-  BACKGROUND_REVIEW_ROUND_VERSION, BACKGROUND_REVIEW_TRANSPORT, backgroundEventName, backgroundRoundOf, nextBackgroundStep,
+  BACKGROUND_REVIEW_ROUND_VERSION, BACKGROUND_REVIEW_TRANSPORT, backgroundEventName, backgroundRoundOf, nextBackgroundStep, prospectiveBackgroundCancelPolicy,
   type BackgroundOutcomeState, type BackgroundReviewBinding, type BackgroundReviewEvent, type BackgroundReviewIntent, type BackgroundReviewRound,
 } from "../../domain/generation/background-review-round";
 import { isBackgroundReviewPolicy, isLeanReviewPolicy, leanReviewPolicyOf, visualReviewPolicy, type VisualReviewPolicy } from "../../domain/generation/visual-review-policy";
@@ -454,11 +454,12 @@ export async function askContinuityInBackground(c: Container, ask: BackgroundAsk
     throw Error("BACKGROUND_REVIEW: v1 records only the pinned Sol HIGH background contract");
   const ctx: Ctx = { ...ask, c, roundId: backgroundRoundIdOf(ask.worldId, ask.requestKey) };
   const body = solBackgroundReviewBody(question);
+  let events = await readEvents(c.db, ask.gameId, ctx.roundId);
+  const cancelPolicy = events.length ? backgroundRoundOf(events).intent.cancelPolicy : prospectiveBackgroundCancelPolicy(lean?.version);
   const intent: BackgroundReviewIntent = { version: BACKGROUND_REVIEW_ROUND_VERSION, roundId: ctx.roundId, gameId: ask.gameId, worldId: ask.worldId,
     requestKey: ask.requestKey, fingerprint: question.fingerprint, bodySha256: sha(JSON.stringify(body)), reserveMicroUsd: ask.reserveMicroUsd, binding: ask.binding,
-    ...(lean ? { policyVersion: lean.version } : {}) };
+    ...(lean ? { policyVersion: lean.version } : {}), ...(cancelPolicy ? { cancelPolicy } : {}) };
   const transport = c.backgroundReview;
-  let events = await readEvents(c.db, ask.gameId, ctx.roundId);
   if (!events.length) {
     if (!transport) return held("the background transport is not configured; nothing was reserved or sent");
     const existing = await boardWizardBudgetOf(c).readRequest(ask.worldId, ask.requestKey);

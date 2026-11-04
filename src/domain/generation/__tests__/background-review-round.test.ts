@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   BACKGROUND_CANCEL_AFTER_MS, BACKGROUND_CREATE_GRACE_MS, BACKGROUND_REVIEW_ROUND_VERSION, LEAN_FLEX_CANCEL_AFTER_MS, backgroundCancelAfterMs,
-  backgroundRoundOf, nextBackgroundStep, type BackgroundReviewEvent,
+  backgroundRoundOf, nextBackgroundStep, prospectiveBackgroundCancelPolicy, SINGLE_MEDIUM_FLEX_WAIT_VERSION, type BackgroundReviewEvent,
 } from "../background-review-round";
-import { leanReviewPolicy } from "../visual-review-policy";
+import { leanReviewPolicy, singleMediumReviewPolicy, singleLowReviewPolicy } from "../visual-review-policy";
 
 const intent: BackgroundReviewEvent = { kind: "intent", intent: { version: BACKGROUND_REVIEW_ROUND_VERSION, roundId: "sbsynthetic", gameId: "game-synthetic",
   worldId: "game-synthetic:board-wizard", requestKey: `self-repair:board:newyork:${"a".repeat(64)}`, fingerprint: "a".repeat(64), bodySha256: "b".repeat(64),
@@ -11,6 +11,19 @@ const intent: BackgroundReviewEvent = { kind: "intent", intent: { version: BACKG
 const T = 1_800_000_000_000;
 
 describe("one background question, one create, polled by its id", () => {
+  it("waits twenty-five minutes only for newly marked single MEDIUM Flex intents, preserving historical deadlines", () => {
+    const medium = singleMediumReviewPolicy("flex").version;
+    expect(prospectiveBackgroundCancelPolicy(medium)).toBe(SINGLE_MEDIUM_FLEX_WAIT_VERSION);
+    expect(prospectiveBackgroundCancelPolicy(singleLowReviewPolicy("flex").version)).toBeUndefined();
+    expect(prospectiveBackgroundCancelPolicy(singleMediumReviewPolicy("default").version)).toBeUndefined();
+    expect(backgroundCancelAfterMs({ policyVersion: medium })).toBe(LEAN_FLEX_CANCEL_AFTER_MS);
+    const marked = { ...(intent as Extract<BackgroundReviewEvent, {kind:"intent"}>).intent,
+      policyVersion: medium, cancelPolicy: SINGLE_MEDIUM_FLEX_WAIT_VERSION };
+    const round = backgroundRoundOf([{kind:"intent",intent:marked},{kind:"claim",at:T},{kind:"submitted",responseId:"resp_patience",at:T}]);
+    expect(nextBackgroundStep(round,T+LEAN_FLEX_CANCEL_AFTER_MS)).toMatchObject({cancelDue:false});
+    expect(nextBackgroundStep(round,T+BACKGROUND_CANCEL_AFTER_MS)).toMatchObject({cancelDue:true});
+    expect(() => backgroundCancelAfterMs({policyVersion:singleLowReviewPolicy("flex").version,cancelPolicy:SINGLE_MEDIUM_FLEX_WAIT_VERSION})).toThrow("cancel policy");
+  });
   it("creates once, then only polls the known response, and cancels once past its deadline", () => {
     expect(nextBackgroundStep(backgroundRoundOf([intent]), T)).toEqual({ step: "create" });
     const submitted = backgroundRoundOf([intent, { kind: "claim", at: T }, { kind: "submitted", responseId: "resp_one", at: T }]);

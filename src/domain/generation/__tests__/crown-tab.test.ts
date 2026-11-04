@@ -1,8 +1,34 @@
 import { describe, expect, it } from 'vitest';
 import { SOURCE_BODY_REPAIR_MANIFEST } from '../../../../content/detectives/source-body-repair';
 import runtime from '../../../../content/detectives/runtime-v1.json';
-import { composeCrownTab, crownTabAuthorityFor, crownTabCandidate, crownTabRect, crownTabSeam, crownTabWeight, crownTabWindow,
+import { composeCrownTab, crownTabAuthorityFor, crownTabCandidate, crownTabContinuityCut, crownTabQualityCut, crownTabRect, crownTabSeam, crownTabWeight, crownTabWindow,
   CROWN_TAB_AUTHORITY, CROWN_TAB_MAX_RAISE, type CrownTabPixels } from '../crown-tab';
+import { readLocalPatchBodyContinuity, CONTINUITY_READER_BOUNDED } from '../../scene/local-patch-body-continuity';
+
+it('admits a connected single hard-cut only as a new crown candidate and refuses unrelated continuity failures',()=>{
+  const person={id:'synthetic:people',state:'broken',visibleBody:true,headConnection:'connected',
+    headTrace:'The synthetic target has a connected visible head.',bodyTrace:'The synthetic limbs remain connected and supported.',
+    occlusion:'The test uses no unknown occlusion.',faults:[{kind:'hard-cut',where:'Synthetic cut inside the located crown.'}]};
+  const read=(over:Record<string,unknown>)=>readLocalPatchBodyContinuity(JSON.stringify({cases:[{...person,...over}]}),['synthetic:people'],CONTINUITY_READER_BOUNDED);
+  expect(crownTabContinuityCut(read({}))).toBe(true);
+  expect(crownTabContinuityCut(read({headConnection:'disconnected'}))).toBe(false);
+  expect(crownTabContinuityCut(read({faults:[...person.faults,...person.faults]}))).toBe(false);
+  expect(crownTabContinuityCut(read({visibleBody:false}))).toBe(false);
+  expect(crownTabContinuityCut(null)).toBe(false);
+  const reading=read({});
+  if(!reading.ok)throw Error('Synthetic reading is invalid');
+  expect(crownTabContinuityCut({...reading,people:[{...reading.people[0]!,role:'bystander'}]})).toBe(false);
+});
+
+it('checks the immutable quality verdict and rejects unrelated faults even if a mutable row omitted them',()=>{
+  const cut={verdict:'fail',faults:[{check:'childComplete'},{check:'pictureWhole'},{check:'severeSeam'}]};
+  expect(crownTabQualityCut(cut)).toBe(true);
+  expect(crownTabQualityCut({...cut,faults:[...cut.faults,{check:'identity'}]})).toBe(false);
+  expect(crownTabQualityCut({...cut,verdict:'pass'})).toBe(false);
+  expect(crownTabQualityCut({...cut,faults:[]})).toBe(false);
+  expect(crownTabQualityCut({...cut,faults:[null]})).toBe(false);
+  expect(crownTabQualityCut(null)).toBe(false);
+});
 
 // Synthetic public pixels over the real authored New York 2, Paris 2 and Giza 2 windows: a textured
 // scene, a painted child whose crown the 2026-11-02 paintings drew 11, 35 and 45 px above the window.

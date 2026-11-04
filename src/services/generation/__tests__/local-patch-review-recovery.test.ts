@@ -89,3 +89,15 @@ it('single LOW mode preserves an unusable answer without buying a routine second
   expect(localPatchEvidenceRecovery({...row,judgeJson:JSON.stringify(receipt)},now)).toMatchObject({attempt:1,retry:false,waiting:false,exhausted:true});
   expect(localPatchEvidenceRecovery({...row,judgeJson:JSON.stringify(receipt)},now+100*LOCAL_PATCH_EVIDENCE_RETRY_BACKOFF_MS)).toMatchObject({retry:false,exhausted:true});
 });
+
+it('single-transport-continuation/v1: a logged transit round is asked once more; every other single receipt rests as before', () => {
+  const single='single-sol-medium/v1', key='self-repair:board:amazon:'+'b'.repeat(64);
+  const entry=(attempt:number,code='cancelled-at-deadline')=>({attempt,role:'quality',kind:'transport',code,path:null,strategy:'standard/v1',at:new Date(now).toISOString(),imageSha256:IMAGE,single});
+  const row=(attempts:unknown[],asked=1)=>({status:'FAILED',lastError:'quality-unresolved: integration-review-unreadable',judgeJson:JSON.stringify({reviewState:'board-review-complete',
+    wireFault:'http',verdict:null,judgedSha256:IMAGE,...(attempts.length?{evidenceAttempts:attempts}:{}),boardReview:{evidenceReviewAttempt:asked,raw:null,dual:{single,imageSha256:IMAGE,quality:{requestKey:key,raw:null}}}})});
+  expect(localPatchEvidenceRecovery(row([entry(1)]),now)).toMatchObject({retry:true,waiting:false,exhausted:false,attempt:1,nextAttempt:2,role:'quality',strategy:'standard/v1'});
+  expect(localPatchEvidenceRecovery(row([entry(1,'provider-failed:server_error')]),now)).toMatchObject({retry:true,nextAttempt:2});
+  expect(localPatchEvidenceRecovery(row([]),now)).toMatchObject({retry:false,exhausted:true});
+  expect(localPatchEvidenceRecovery(row([entry(1),entry(2)],2),now)).toMatchObject({retry:false,exhausted:true});
+  expect(localPatchEvidenceRecovery(row([entry(1,'timeout')]),now)).toMatchObject({retry:false,exhausted:true});
+});

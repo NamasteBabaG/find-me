@@ -8,6 +8,7 @@ import { HEAD_PIXEL_CORRECTION_ACTION, HEAD_PIXEL_CORRECTION_VERSION, MEASURED_H
 import { targetHeadAnswerSchema, targetHeadReturnDecision, type TargetHeadEvidence } from "../../domain/generation/target-head-return";
 import { readSingleVisualReview, SINGLE_MEDIUM_VISUAL_REVIEW_VERSION } from "../../domain/generation/single-visual-review";
 import { localPatchRuntimeContinuityVerdict } from "../../domain/scene/local-patch-body-continuity";
+import { CROWN_TAB_CONTINUITY_REPAIR_VERSION, crownTabContinuityCut } from "../../domain/generation/crown-tab";
 import { retainedNormalHeadSchema } from "../../domain/generation/retained-normal-head";
 import { cropOf } from "../../domain/scene/local-patch-hides";
 import { LOCAL_PATCH_RETURN_FEATHER } from "../../domain/scene/local-patch-return-region";
@@ -35,7 +36,8 @@ type Candidate = { id: string; status: string; assetId: string | null; judgeJson
 /** C fixes only head blending. Read every other role from its immutable paid
  * document even if a mutable row verdict no longer carries that role's refusal.
  * The same subject reader and enrollment fences also protect publication. */
-export async function otherPaidRolesPass(db: Prisma.TransactionClient, binding: LocalPatchPublicationBinding, proof: DualReviewProof): Promise<boolean> {
+export async function otherPaidRolesPass(db: Prisma.TransactionClient, binding: LocalPatchPublicationBinding, proof: DualReviewProof,
+  continuityRepair?: typeof CROWN_TAB_CONTINUITY_REPAIR_VERSION): Promise<boolean> {
   if (proof.single !== SINGLE_MEDIUM_VISUAL_REVIEW_VERSION || !proof.continuity || !proof.subject
     || readSingleVisualReview(proof.quality.raw)?.doubt !== false
     || ![proof.continuity, proof.subject].every(stage => stage.requestKey === proof.quality.requestKey
@@ -44,7 +46,8 @@ export async function otherPaidRolesPass(db: Prisma.TransactionClient, binding: 
   const version = await dualVisualReviewVersion(db, binding.gameId);
   if (!version || proof.version !== version) return false;
   const continuity = readContinuityStage(proof.continuity, binding.hideId, version);
-  if (!continuity || localPatchRuntimeContinuityVerdict(continuity).disposition !== "pass") return false;
+  if (!continuity || localPatchRuntimeContinuityVerdict(continuity).disposition !== "pass"
+    && !(continuityRepair === CROWN_TAB_CONTINUITY_REPAIR_VERSION && crownTabContinuityCut(continuity))) return false;
   const upgrade = await subjectUpgradeOf(db, binding.gameId);
   return !!upgrade && allowedDualSubject(db, binding.gameId + ":board-wizard", upgrade, proof, binding,
     await isLeanWorld(db, binding.gameId), true);

@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { LOCAL_PATCH_RETURN_FEATHER } from '../scene/local-patch-return-region';
+import type { ContinuityReading } from '../scene/local-patch-body-continuity';
 
 /** A free correction of an already-paid painting whose located crown was drawn ABOVE
  * its whole return window, where the ordinary composition restored the original scene
@@ -10,6 +11,15 @@ import { LOCAL_PATCH_RETURN_FEATHER } from '../scene/local-patch-return-region';
  * scale, segmentation or approval: a fresh ordinary review decides the candidate. */
 export const CROWN_TAB_VERSION = 'crown-tab/v1' as const;
 export const CROWN_TAB_ACTION = 'local-patch:crown-tab';
+/** A new candidate-admission contract; existing tabs without it keep the original gate.
+ * It changes no paid verdict and never transfers approval to corrected pixels. */
+export const CROWN_TAB_CONTINUITY_REPAIR_VERSION = 'crown-tab-continuity-repair/v1' as const;
+export function crownTabContinuityCut(reading: ContinuityReading | null): boolean {
+  if (!reading?.ok || reading.people.length !== 1) return false;
+  const person = reading.people[0]!;
+  return person.role !== 'bystander' && person.state === 'broken' && person.visibleBody && person.headConnection === 'connected'
+    && person.faults.length === 1 && person.faults[0]!.kind === 'hard-cut';
+}
 /** The farthest a located crown may sit above its whole return window. */
 export const CROWN_TAB_MAX_RAISE = 64;
 /** Columns kept either side of the located head: wider than the feather, so the
@@ -19,6 +29,15 @@ export const CROWN_TAB_SIDE_MARGIN = 16;
 export const CROWN_TAB_CROWN_CLEARANCE = 4;
 /** The only faults a crown cut can explain; any other refusal keeps its own route. */
 export const CROWN_TAB_FAULT_CHECKS = Object.freeze(['childComplete', 'pictureWhole', 'severeSeam'] as const);
+
+/** The immutable quality answer may refuse the crown, but no unrelated defect.
+ * The combined row verdict can also contain the separately judged continuity
+ * cut, so this check reads the authenticated quality stage itself. */
+export function crownTabQualityCut(value: unknown): boolean {
+  const verdict = object(value);
+  return verdict?.verdict === 'fail' && Array.isArray(verdict.faults) && verdict.faults.length > 0
+    && verdict.faults.every(f => (CROWN_TAB_FAULT_CHECKS as readonly string[]).includes(String(object(f)?.check)));
+}
 
 type Rect = { left: number; top: number; width: number; height: number };
 
@@ -74,6 +93,7 @@ export const crownTabSchema = z.object({ version: z.literal(CROWN_TAB_VERSION), 
   returned: rect, rawHead: rect, tab: rect, band: z.literal(LOCAL_PATCH_RETURN_FEATHER),
   seam: z.object({ borderMeanDiff: z.number().nonnegative(), shift: z.object({ dx: z.number().int(), dy: z.number().int() }).strict() }).strict(),
   headAnswer: z.object({ requestKey: key, fingerprint: digest, rawSha256: digest }).strict(),
+  continuityRepair: z.object({ version: z.literal(CROWN_TAB_CONTINUITY_REPAIR_VERSION), sourceRawSha256: digest }).strict().optional(),
   candidateSha256: digest, geometrySha256: digest, identitySha256: digest }).strict();
 export type CrownTab = z.infer<typeof crownTabSchema>;
 
@@ -185,8 +205,7 @@ export function crownTabCandidate(row: { status: string; assetId?: string | null
       || ['crownTab', 'headPixelCorrection', 'retainedNormalHead', 'authoredRecovery', 'crownReturn', 'sourceBodyRepair', 'wholeSourceContext', 'headSourceVersion', 'foreground']
         .some(field => j[field] !== undefined)
       || head?.version !== 'target-head-return/v2-visible-completeness'
-      || verdict?.verdict !== 'fail' || !Array.isArray(verdict.faults) || !verdict.faults.length
-      || !verdict.faults.every(f => (CROWN_TAB_FAULT_CHECKS as readonly string[]).includes(String(object(f)?.check)))) return false;
+      || !crownTabQualityCut(verdict)) return false;
     const answer = object(object(JSON.parse(String(quality?.raw ?? 'null').trim().replace(/^```(?:json)?[\t ]*\r?\n([\s\S]*?)\r?\n```$/i, '$1')))?.head);
     const returned = rect.safeParse(head.returned), rawHead = rect.safeParse(answer?.rawHead);
     return answer?.rawCrown === 'pass' && answer.shippingCrown === 'fail' && returned.success && rawHead.success
