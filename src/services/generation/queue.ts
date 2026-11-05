@@ -12,6 +12,7 @@ import { LEASE_MS as PIPELINE_LEASE_MS, RESUMABLE_STATUSES, runGenerationPipelin
 import { FIXED_WORLD_STYLE_PREFIX, isFixedWorldStyle } from "./fixed-world-stage-record";
 import { BOARD_WIZARD_STYLE, boardWizardEnabled, runBoardConditionedWizardSlice } from "./board-conditioned-wizard";
 import { LOCAL_PATCH_LEASE_MS, LOCAL_PATCH_NEEDS_RELEASE, LOCAL_PATCH_QUALITY_FAILED, LOCAL_PATCH_RECOVERY_EXHAUSTED, LOCAL_PATCH_RECOVERY_BUDGET_WAIT, LOCAL_PATCH_RECOVERY_BACKOFF_MS, LEAN_RECOVERY_BACKOFF_MS, LOCAL_PATCH_EVIDENCE_RETRY_WAIT, LOCAL_PATCH_STYLE, localPatchPainterForGame, runLocalPatchWorldSlice } from "./local-patch-world";
+import { generationWorkMode, REVIEW_EXISTING_WORK_MODE, type GenerationWorkMode } from '../../domain/generation/work-mode';
 import { LOCAL_PATCH_EVIDENCE_RETRY_BACKOFF_MS } from "./local-patch-review-recovery";
 import { LOCAL_PATCH_SPEND_PAUSED, LOCAL_PATCH_SPEND_PAUSE_RECHECK_MS, pauseLocalPatchForSpendGuard } from "./local-patch-spend-pause";
 import { claimParkedWake, nextParkedWake } from "./local-patch-parked-wake";
@@ -115,8 +116,28 @@ export async function nextPendingGame(c: Container): Promise<string | null> {
  * Do as much of one game as fits in `budgetMs`, then return. Safe to call
  * concurrently: every step is idempotent and a finished hiding spot is skipped.
  */
-export async function tickGeneration(c: Container, gameId: string | null, budgetMs: number, hardMs = 270_000): Promise<TickResult> {
+export async function tickGeneration(c: Container, gameId: string | null, budgetMs: number, hardMs = 270_000,
+  control: { readonly workMode?: GenerationWorkMode } = {}): Promise<TickResult> {
   const now = Date.now();
+  const workMode = generationWorkMode(control.workMode);
+  if (workMode === REVIEW_EXISTING_WORK_MODE) {
+    // Do not enter cron selection, identity/source revision or any other engine.
+    // The narrower turn can only review one named, already generating local world.
+    if (!gameId) return { gameId: null, status: null, pending: false };
+    const before = await c.db.game.findUnique({ where: { id: gameId }, select: {
+      status: true, styleVersion: true, deletedAt: true, scenes: { select: { sceneVersion: true } },
+    } });
+    if (!before || before.deletedAt || before.styleVersion !== LOCAL_PATCH_STYLE || before.status !== 'TARGETS_GENERATING')
+      return { gameId, status: before ? statusOf(before) : null, pending: false };
+    const painter = await localPatchPainterForGame(c, gameId, before.scenes[0]?.sceneVersion);
+    if (!painter) return { gameId, status: statusOf(before), pending: false };
+    const paused = await pauseLocalPatchForSpendGuard(c, gameId, LOCAL_PATCH_LEASE_MS,
+      [LOCAL_PATCH_NEEDS_RELEASE, LOCAL_PATCH_RECOVERY_EXHAUSTED, LOCAL_PATCH_QUALITY_FAILED]);
+    if (paused) return { gameId, status: statusOf(before), pending: false, attention: paused };
+    const result = await runLocalPatchWorldSlice(c, painter, gameId, { hardDeadlineAt: now + hardMs, workMode });
+    const after = await c.db.game.findUnique({ where: { id: gameId }, select: { status: true } });
+    return { gameId, status: after ? statusOf(after) : null, pending: result.pending, attention: result.attention };
+  }
   const crownRepair=await nextPublishedCrownRepair(c,gameId);
   if(crownRepair)return tickPublishedCrownRepair(c,crownRepair,now+hardMs);
   const referenceRepair = await nextIdentitySourceRevision(c, gameId, now);

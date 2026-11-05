@@ -37,6 +37,8 @@ import type { BackgroundReviewState, BackgroundReviewTransport } from "../../../
 import { localPatchHideEvidenceIds } from "../local-patch-judge";
 import { allowedDualPublication } from "../local-patch-dual-publication";
 import { hasLocalPatchPublicationPolicy } from "../local-patch-publication-policy";
+import { runLocalPatchWorldSlice } from "../local-patch-world";
+import { REVIEW_EXISTING_WORK_MODE } from '../../../domain/generation/work-mode';
 
 const settings = vi.hoisted(() => ({ testers: [] as string[] }));
 vi.mock("../../../lib/env", () => ({ env: () => ({ APP_ENV: "qa", LOCAL_PATCH_PROMPT_RELEASE: "v19", LOCAL_PATCH_PLAYER_REVIEW: "on",
@@ -158,6 +160,22 @@ async function reviewRecovered(s: Awaited<ReturnType<typeof seed>>) {
 }
 
 describe("authored companion autonomous recovery through the actual services", () => {
+  it('review-existing skips a real queued diagnosis after two retained failed paintings, without consuming its next normal turn',async()=>{
+    const s=await seed('authored-review-existing-diagnosis');
+    await s.step();
+    expect(JSON.parse((await s.row()).judgeJson!).selfRepair.phase).toBe('diagnosing');
+    expect(s.render).toHaveBeenCalledTimes(2);expect(s.diagnose).not.toHaveBeenCalled();
+    const worldId=boardWizardWorldId(s.gameId),ledgerBefore=await db.worldBudgetLedger.findUniqueOrThrow({where:{worldId}}),before=await s.row();
+    const result=await runLocalPatchWorldSlice(c,{...s.deps,readBoardArt:readShippedBoardArt},s.gameId,
+      {workMode:REVIEW_EXISTING_WORK_MODE,maxHides:99,diagnose:s.diagnose});
+    expect(result).toMatchObject({claimed:true,pending:true,outcomes:[],attention:null});
+    expect(s.render).toHaveBeenCalledTimes(2);expect(s.diagnose).not.toHaveBeenCalled();
+    expect(await s.row()).toEqual(before);
+    expect((await db.worldBudgetLedger.findUniqueOrThrow({where:{worldId}})).snapshotJson).toBe(ledgerBefore.snapshotJson);
+    await s.step();
+    expect(s.diagnose).toHaveBeenCalledOnce();expect(s.render).toHaveBeenCalledTimes(2);
+    expect(JSON.parse((await s.row()).judgeJson!).selfRepair.phase).toBe('applying');
+  },180_000);
   it("after two visual refusals buys one bound redraw, reproduces it and admits the actual new window for independent review", async () => {
     const s = await seed("authored-recovery-valid"), refused = await s.row(), original = JSON.parse(refused.judgeJson!);
     await s.step(); expect(s.diagnose).not.toHaveBeenCalled(); expect(s.render).toHaveBeenCalledTimes(2);

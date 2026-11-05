@@ -31,6 +31,7 @@ import { bill, paintedCrop, paintedOk, seedApprovedGame } from "./local-patch-fi
 import { asDeployedReaderRefusal, atEvidenceRound, boundHide, dualReviewer, longAnswer, prose, spendTo } from "./local-patch-dual-fixtures";
 import { localPatchEvidenceRecovery } from "../local-patch-review-recovery";
 import { localPatchRetainedAnswerUndecided } from "../local-patch-dual-evidence";
+import { REVIEW_EXISTING_WORK_MODE } from '../../../domain/generation/work-mode';
 
 const fakes = vi.hoisted(() => ({ testers: [] as string[], release: "v15" as "v15" | "v16" }));
 vi.mock("../../../lib/env", () => ({ env: () => ({ APP_ENV: "qa", GENERATION_ENABLED: "on", GENERATION_DAILY_CENTS: 0, LOCAL_PATCH_PLAYER_REVIEW: "on",
@@ -99,6 +100,37 @@ const rowOf = (all: Awaited<ReturnType<typeof rows>>, hideId: string) => all.fin
 const published = (gameId: string) => db.auditLog.count({ where: { entityId: gameId, action: LOCAL_PATCH_PUBLICATION_ACTION } });
 
 describe("a whole v12 world under two independent HIGH reviews", () => {
+  it('review-existing buys ordinary assessments of saved pictures while leaving all unpainted siblings untouched',async()=>{
+    const gameId='dual-world-review-existing';await world(gameId);
+    const renders:string[]=[],deps=painter(gameId,renders),first=BOARDS[0]!;
+    for(const hide of first.hides)await runLocalPatchHide(c,deps,{gameId,board:first,hide});
+    const beforeImages=[...renders],beforeRows=await rows(gameId),worldId=boardWizardWorldId(gameId);
+    expect(HIDES).toHaveLength(27);expect(beforeRows).toHaveLength(3);
+    const unpainted=HIDES.filter(h=>!first.hides.some(painted=>painted.id===h.id)).map(h=>h.id);
+    expect(unpainted).toHaveLength(24);
+    const imageRequests=async()=>{
+      const snapshot=JSON.parse((await db.worldBudgetLedger.findUniqueOrThrow({where:{worldId}})).snapshotJson) as
+        {requests:{requestKey:string;scope:string}[]};
+      return snapshot.requests.filter(r=>r.scope==='image');
+    };
+    const beforePurchases=await imageRequests();expect(beforePurchases).toHaveLength(3);
+    const request=dualReviewer(gameId,(hideId,call)=>{const [head,body,occlusion]=OBSERVED[call%3]!;return longAnswer(hideId,head,body,occlusion);});
+    const noNewImages:LocalPatchHideDeps={...deps,render:async()=>{throw Error('No image may be dispatched in review-existing');}};
+    const diagnose=vi.fn(async()=>{throw Error('No diagnosis may be dispatched in review-existing');});
+    const container={...c,visualReview:{request}} as Container;
+    for(let turn=0;turn<8&&await published(gameId)<first.hides.length;turn++)
+      expect(await runLocalPatchWorldSlice(container,noNewImages,gameId,{workMode:REVIEW_EXISTING_WORK_MODE,maxHides:99,diagnose}))
+        .toMatchObject({claimed:true,pending:true,attention:null});
+    expect(request).toHaveBeenCalled();expect(await published(gameId)).toBe(first.hides.length);
+    expect(renders).toEqual(beforeImages);expect(diagnose).not.toHaveBeenCalled();
+    const after=await rows(gameId);
+    expect(after).toHaveLength(3);
+    expect(unpainted.every(id=>rowOf(after,id)===undefined)).toBe(true);
+    expect(await imageRequests()).toEqual(beforePurchases);
+    expect(after.filter(r=>r.attempts>0)).toHaveLength(first.hides.length);
+    expect((await boardWizardBudgetOf(c).audit(boardWizardWorldId(gameId))).pendingRequestKeys).toEqual([]);
+    expect(fetch).not.toHaveBeenCalled();
+  },300_000);
   it("delivers 27 appearances from long complete answers and repaints exactly the two real defects, counting every provider call", async () => {
     const gameId = "dual-world-full"; await world(gameId);
     const budget = boardWizardBudgetOf(c), worldId = boardWizardWorldId(gameId), seeded = (await budget.audit(worldId)).settledMicroUsd;

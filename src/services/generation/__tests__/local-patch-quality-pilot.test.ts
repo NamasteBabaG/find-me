@@ -20,6 +20,7 @@ import { runLocalPatchHide, type LocalPatchHideDeps } from "../local-patch-hide"
 import { sha256Bytes } from "../fixed-sprite";
 import { readLocalPatchQualityPilot, runLocalPatchQualityPilot, resumeLocalPatchAfterQualityPilot, stageLocalPatchQualityPilot, LOCAL_PATCH_QUALITY_PILOT_ACTION } from "../local-patch-quality-pilot";
 import { bill, boardPng, paintedCrop, paintedOk, seedApprovedGame } from "./local-patch-fixtures";
+import { REVIEW_EXISTING_WORK_MODE } from '../../../domain/generation/work-mode';
 
 const fakes = vi.hoisted(() => ({ testers: [] as string[] }));
 vi.mock("../../../lib/env", () => ({ env: () => ({ APP_ENV: "qa", GENERATION_ENABLED: "on", GENERATION_DAILY_CENTS: 0,
@@ -88,6 +89,18 @@ async function seed(gameId: string, count = 2) {
 }
 
 describe("durable one-hide v9 quality pilot, real SQLite + retained purchases + queue", () => {
+  it('review-existing cannot dispatch a separately authorized queued pilot painting',async()=>{
+    const s=await seed('pilot-review-existing',1);await stageLocalPatchQualityPilot(c,s.input);
+    const beforeRows=await rows(s.gameId),beforeCost=await ledger(s.gameId),beforePlan=await readLocalPatchQualityPilot(c,s.gameId);
+    expect(await runLocalPatchWorldSlice(c,s.deps,s.gameId,{workMode:REVIEW_EXISTING_WORK_MODE,maxHides:45}))
+      .toMatchObject({claimed:true,pending:true,outcomes:[],attention:null});
+    expect(s.render).not.toHaveBeenCalled();expect(s.judge).not.toHaveBeenCalled();
+    expect(await rows(s.gameId)).toEqual(beforeRows);expect(await readLocalPatchQualityPilot(c,s.gameId)).toEqual(beforePlan);
+    expect((await ledger(s.gameId)).committedMicroUsd).toBe(beforeCost.committedMicroUsd);
+    expect((await ledger(s.gameId)).pendingRequestKeys).toEqual(beforeCost.pendingRequestKeys);
+    expect(await runLocalPatchWorldSlice(c,s.deps,s.gameId)).toMatchObject({pending:false});
+    expect(s.render).toHaveBeenCalledOnce();
+  },180_000);
   it("stages for free, buys only the selected next image with the named concern, then parks across fresh clients", async () => {
     const s = await seed("pilot-one"); const before = await ledger(s.gameId), oldRows = await rows(s.gameId);
     const staged = await stageLocalPatchQualityPilot(c, s.input);

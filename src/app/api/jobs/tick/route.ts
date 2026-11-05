@@ -11,6 +11,7 @@ import { sweepQualityBatches } from "@/services/generation/quality-batch";
 import { env } from "@/lib/env";
 import { currentUser, draftTokenFromCookie, isAdminEmail } from "@/lib/server/session";
 import { safeEqual } from "@/lib/ids";
+import { REVIEW_EXISTING_WORK_MODE } from '@/domain/generation/work-mode';
 
 export const runtime = "nodejs";
 /** Generating one hiding spot is ~55s, so the slice needs room for at least one. */
@@ -60,9 +61,13 @@ export async function POST(req: Request) {
     const denied = await qaAccessDenied(req, true);
     if (denied) return denied;
     const c = getContainer();
-    const gameId = new URL(req.url).searchParams.get("gameId");
+    const query = new URL(req.url).searchParams;
+    const gameId = query.get("gameId"), requestedMode = query.get('mode');
     enter("authorization");
     if (!(await isAllowed(req, gameId))) return NextResponse.json({ error: "forbidden" }, { status: 403 });
+    if (requestedMode !== null && (requestedMode !== 'review-existing' || !gameId || env().APP_ENV !== 'qa' || c.storage.id !== 'db'))
+      return NextResponse.json({ error: 'unsupported-work-mode' }, { status: 400 });
+    const workMode = requestedMode === 'review-existing' ? REVIEW_EXISTING_WORK_MODE : undefined;
     // A source repair needs one full provider window. Optional chores must not starve it every minute.
     const referenceRepair = !gameId ? await nextIdentitySourceRevision(c, null) : null;
     if (referenceRepair && hardDeadlineAt - Date.now() >= 230_000) {
@@ -88,7 +93,9 @@ export async function POST(req: Request) {
       return NextResponse.json({ pending: true, deferred: true }, { status: 202, headers: { "Cache-Control": "no-store", "Retry-After": "30" } });
     }
     enter("generation");
-    const result = await tickGeneration(c, gameId, SLICE_MS, Math.max(0, hardDeadlineAt - Date.now()));
+    const remainingMs = Math.max(0, hardDeadlineAt - Date.now());
+    const result = workMode === undefined ? await tickGeneration(c, gameId, SLICE_MS, remainingMs)
+      : await tickGeneration(c, gameId, SLICE_MS, remainingMs, { workMode });
     // Retention rides only the cron, with room for its database operations.
     enter("retention");
     const retention = gameId || hardDeadlineAt - Date.now() < 30_000 ? null : await runRetentionIfDue(c).catch(() => {

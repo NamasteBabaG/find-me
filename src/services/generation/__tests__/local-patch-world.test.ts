@@ -30,6 +30,7 @@ import type { LocalPatchJudgeResult } from "../local-patch-judge";
 import { WORLD_LOCAL_PATCH_HIDES, cropOf, maskOf } from "../../../domain/scene/local-patch-hides";
 import { retainedPurchaseKeysFor } from "../../../infra/db/prisma-retained-purchase-store";
 import { LOCAL_PATCH_SCENE_VERSION } from "../../../../content/scenes/local-patch-release";
+import { REVIEW_EXISTING_WORK_MODE } from '../../../domain/generation/work-mode';
 import {
   bill, boardPng, clearWorld, paintedCrop, paintedOk, PASSING_ANSWER, reply, seedApprovedGame,
 } from "./local-patch-fixtures";
@@ -111,6 +112,31 @@ const jobOf = (gameId: string) => db.generationJob.findUniqueOrThrow({ where: { 
 const done = (gameId: string) => db.targetVariantAsset.count({ where: { status: "GENERATED", targetInstance: { gameScene: { gameId } } } });
 
 describe("a world of hides, one slice at a time", () => {
+  it('review-existing cannot reserve or paint fresh hides, and the next normal turn remains runnable',async()=>{
+    const {gameId}=await seed(),w=worker(),budget=boardWizardBudgetOf(c),worldId=boardWizardWorldId(gameId);
+    const before=await budget.audit(worldId),diagnose=vi.fn(async()=>{throw Error('No diagnosis may be purchased');});
+    const result=await runLocalPatchWorldSlice(c,w.deps,gameId,{workMode:REVIEW_EXISTING_WORK_MODE,maxHides:99,diagnose});
+    expect(result).toMatchObject({claimed:true,pending:true,outcomes:[]});
+    expect(w.dispatched).toEqual([]);expect(diagnose).not.toHaveBeenCalled();expect(await done(gameId)).toBe(0);
+    const after=await budget.audit(worldId);expect(after.committedMicroUsd).toBe(before.committedMicroUsd);
+    expect(after.pendingRequestKeys).toEqual(before.pendingRequestKeys);expect(after.unknownRequestKeys).toEqual(before.unknownRequestKeys);
+    expect((await jobOf(gameId)).status).toBe('QUEUED');
+    const normal=await runLocalPatchWorldSlice(c,w.deps,gameId);
+    expect(normal.outcomes).toHaveLength(1);expect(await done(gameId)).toBe(1);expect(w.dispatched.length).toBeGreaterThan(0);
+  },180_000);
+  it('review-existing never enters identity generation or cron selection',async()=>{
+    expect(await tickGeneration({} as Container,null,30_000,270_000,{workMode:REVIEW_EXISTING_WORK_MODE}))
+      .toEqual({gameId:null,status:null,pending:false});
+    const {gameId}=await seed();await db.game.update({where:{id:gameId},data:{status:'PAID'}});
+    const before=await jobOf(gameId),wire=vi.spyOn(globalThis,'fetch').mockImplementation(async()=>{throw Error('No identity provider');});
+    try {expect(await tickGeneration(c,gameId,30_000,270_000,{workMode:REVIEW_EXISTING_WORK_MODE})).toMatchObject({gameId,status:'PAID',pending:false});
+      expect(await jobOf(gameId)).toEqual(before);expect(wire).not.toHaveBeenCalled();
+    }finally{wire.mockRestore();}
+  });
+  it('an unknown work mode cannot fall back to a painting turn',async()=>{
+    await expect(runLocalPatchWorldSlice({} as Container,{} as LocalPatchHideDeps,'synthetic',
+      {workMode:'unrecognised' as never})).rejects.toThrow('GENERATION_WORK_MODE');
+  });
   it("never selects or re-enters identity for a terminal v8 quality failure", async () => {
     const failed = await seed({ gameId: "game-terminal-quality", scenes: [{ slug: "sydney", version: 8 }] });
     await db.game.update({ where: { id: failed.gameId }, data: { status: "GENERATION_FAILED", paidAt: new Date(0) } });

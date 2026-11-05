@@ -1,5 +1,6 @@
 import { readWholeSourceContextPin, wholeSourceContextCandidate } from "./whole-source-context-pin";
 import { windowStoppedRows } from './repeat-window-stop';
+import { generationWorkMode, REVIEW_EXISTING_WORK_MODE, type GenerationWorkMode } from '../../domain/generation/work-mode';
 import { boardConditioningHash } from "./board-conditioned-source";
 import { wholeSourceContextExhausted } from "../../domain/generation/whole-source-context-purchase";
 import { wholeSourceContextImagePolicy } from "../../infra/generation/openai-local-patch";
@@ -239,12 +240,15 @@ export function subjectStageCurrent(row: { judgeJson: string | null }, expectedI
 export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHideDeps, gameId: string, options: {
   readonly hardDeadlineAt?: number;
   readonly maxHides?: number;
+  /** Ordinary reviews and free retained recovery only; no render or diagnosis. */
+  readonly workMode?: GenerationWorkMode;
   /** Synthetic provider injection; production uses the same existing credential. */
   readonly boardJudge?: LocalPatchBoardReviewDeps["judge"];
   /** Synthetic correction review; production still uses the existing key. */
   readonly repairJudge?: Parameters<typeof runLocalPatchPaidRepair>[2]["judge"];
   readonly diagnose?: SelfRepairDeps["diagnose"];
 } = {}): Promise<LocalPatchSliceResult> {
+  const workMode = generationWorkMode(options.workMode);
   const empty = { gameId, outcomes: [], blocked: [] as { boardId: string; reason: string }[], attention: null as string | null };
   const game = await c.db.game.findUnique({ where: { id: gameId }, include: { scenes: { orderBy: { orderIndex: "asc" } } } });
   if (!game || game.deletedAt || game.styleVersion !== LOCAL_PATCH_STYLE) return { ...empty, pending: false, claimed: false, paused: false };
@@ -476,7 +480,9 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
   // failure, a rejected sibling, or an interrupted tick fall into image retries.
   try {
     const { runLocalPatchQualityPilot } = await import("./local-patch-quality-pilot");
-    const pilot = await runLocalPatchQualityPilot(c, gameId, { ...deps, fence }, options.hardDeadlineAt);
+    const pilot = workMode === REVIEW_EXISTING_WORK_MODE
+      ? await runLocalPatchQualityPilot(c, gameId, { ...deps, fence }, options.hardDeadlineAt, workMode)
+      : await runLocalPatchQualityPilot(c, gameId, { ...deps, fence }, options.hardDeadlineAt);
     if (pilot) {
       if (pilot.pending) await c.db.$transaction(async tx => { await fence(tx); await tx.generationJob.update({ where: { id: job.id },
         data: { status: "QUEUED", currentStep: "local-patch", lastError: null } }); });
@@ -943,7 +949,11 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
     return row?.status === "PENDING" && (bodyPainting(row) || nativeFourthPainting(row) || row.attempts === LOCAL_PATCH_MAX_ATTEMPTS);
   });
   const outcomes: LocalPatchHideOutcome[] = [];
-  const limit = Math.max(1, options.maxHides ?? (advisory ? 5 : LOCAL_PATCH_HIDES_PER_SLICE));
+  // The review-existing turn reaches the same ordinary readers and free pixel
+  // corrections above, then skips BOTH paid diagnosis/repair and render queues.
+  // maxHides:0 cannot express this: the historical image limit clamps to one.
+  const limit = workMode === REVIEW_EXISTING_WORK_MODE ? 0
+    : Math.max(1, options.maxHides ?? (advisory ? 5 : LOCAL_PATCH_HIDES_PER_SLICE));
   let paused = false;
   let attention: string | null = null;
 

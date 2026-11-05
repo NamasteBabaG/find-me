@@ -15,6 +15,7 @@ import { localPatchPublicationGeometryHash } from "./local-patch-publication-pol
 import { localPatchBoardReviewKey } from "./local-patch-board-review";
 import { LOCAL_PATCH_COMPOSITION_VERSION } from "./local-patch-seam";
 import { LOCAL_PATCH_PROVIDER, LOCAL_PATCH_VARIANT, runLocalPatchHide, type LocalPatchHideDeps } from "./local-patch-hide";
+import { generationWorkMode, REVIEW_EXISTING_WORK_MODE, type GenerationWorkMode } from '../../domain/generation/work-mode';
 import { LOCAL_PATCH_RESERVE } from "./local-patch-render";
 import { LocalPatchRetainedPurchaseStore } from "./local-patch-lifecycle";
 import { sameChargeEvidence } from "./world-budget";
@@ -163,7 +164,9 @@ export async function stageLocalPatchQualityPilot(c: Container, input: OperatorI
 
 /** Called before any ordinary work. A concluded row after a lost acknowledgment
  * is parked, not interpreted as permission to buy the next numbered image. */
-export async function runLocalPatchQualityPilot(c: Container, gameId: string, deps: LocalPatchHideDeps & { fence(tx: Prisma.TransactionClient): Promise<void> }, deadlineAt?: number) {
+export async function runLocalPatchQualityPilot(c: Container, gameId: string, deps: LocalPatchHideDeps & { fence(tx: Prisma.TransactionClient): Promise<void> }, deadlineAt?: number,
+  requestedWorkMode?: GenerationWorkMode) {
+  const workMode = generationWorkMode(requestedWorkMode);
   const plan = await readPlan(c, gameId);
   if (!plan || plan.state === "resumed") return null;
   const proof = await identity(c, gameId);
@@ -174,6 +177,9 @@ export async function runLocalPatchQualityPilot(c: Container, gameId: string, de
     && ["PENDING", "GENERATED", "FAILED"].includes(row.status), "Pilot attempt high-water changed");
   let outcome: Awaited<ReturnType<typeof runLocalPatchHide>> | undefined;
   if (plan.state === "queued" && (row.attempts === plan.originalAttempt || row.status === "PENDING")) {
+    // An explicitly staged pilot may own a future painting, but a narrower
+    // review-existing turn cannot dispatch it or fall through to other hides.
+    if (workMode === REVIEW_EXISTING_WORK_MODE) return { pending: true, attention: null, outcomes: [] };
     const board = localPatchBoardForVersion(plan.boardId, 9)!, hide = board.hides.find(h => h.id === plan.hideId)!;
     outcome = await runLocalPatchHide(c, deps, { gameId, board, hide, finalRepair: plan.authorizedAttempt === 3, repairChecks: [plan.concern],
       ...(deadlineAt === undefined ? {} : { deadlineAt }) });
