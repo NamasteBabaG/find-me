@@ -64,7 +64,7 @@ export const localPatchBoardAwaitsProvider = (keys: readonly (string | null)[], 
   keys.length > 0 && keys.every(key => key !== null && awaiting.has(key));
 
 /** Why a remaining appearance has nothing automatic left to start, or null when it still has work. */
-export type LocalPatchRest = { readonly hideId: string; readonly rest: "spent" | "evidence" | "waiting" | "unroutable" | null; readonly evidenceKind?: string };
+export type LocalPatchRest = { readonly hideId: string; readonly rest: "spent" | "evidence" | "waiting" | "unroutable" | "window" | null; readonly evidenceKind?: string };
 
 /** What a world knows about one remaining appearance when it decides whether that appearance is at rest. */
 export type LocalPatchRestFacts = {
@@ -78,6 +78,8 @@ export type LocalPatchRestFacts = {
   /** local-patch-no-route-rest/v1: this slice asked the painter for it and the attempt plan left it no painting
    * ("gave-up"), with nothing bought and no budget stop. Absent on every world before it. */
   readonly noRoute?: boolean;
+  /** Prospective stop from two distinct settled located window refusals. */
+  readonly windowStopped?: boolean;
 };
 
 /**
@@ -91,6 +93,7 @@ export function localPatchRestOf(facts: LocalPatchRestFacts): LocalPatchRest {
   if (facts.reviewOwed || evidence?.retry) return { hideId, rest: null };
   if (evidence?.waiting) return { hideId, rest: "waiting" };
   if (evidence?.exhausted) return { hideId, rest: "evidence", ...(evidence.kind ? { evidenceKind: evidence.kind } : {}) };
+  if(facts.windowStopped)return {hideId,rest:'window'};
   return { hideId, rest: facts.repairSpent ? "spent" : facts.noRoute ? "unroutable" : null };
 }
 
@@ -102,6 +105,8 @@ export function localPatchRestOf(facts: LocalPatchRestFacts): LocalPatchRest {
 export function localPatchRestDecision(rests: readonly LocalPatchRest[]): { readonly action: "wait" } | { readonly action: "park"; readonly reason: string } | null {
   if (!rests.length || rests.some(r => r.rest === null)) return null;
   if (rests.some(r => r.rest === "waiting")) return { action: "wait" };
+  const windows=rests.filter(r=>r.rest==='window');
+  if(windows.length)return {action:'park',reason:`local-patch: repeated located window defect (${windows.map(r=>r.hideId).join(', ')}); no third painting with unchanged geometry. Other remaining appearances: ${rests.filter(r=>r.rest!=='window').map(r=>`${r.hideId} (${r.rest})`).join(', ')||'none'}. All hides remain required; no parent approval is requested.`};
   const spent = rests.filter(r => r.rest === "spent"), unanswered = rests.filter(r => r.rest === "evidence");
   const kinds = [...new Set(unanswered.map(r => r.evidenceKind ?? "unclassified"))];
   const spentText = `spent their ${SUBJECT_V2_REPAIR_CYCLES} automatic repair cycles under local-patch-subject/v2 (${spent.map(r => r.hideId).join(", ")}); nothing more is bought for them`;

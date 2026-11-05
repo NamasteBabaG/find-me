@@ -4,6 +4,7 @@
  */
 import { SCENE_CATALOG, DETECTIVE_SCENES, KINGDOM_DETECTIVE_SCENES } from "../content/scenes";
 import { BODY_TEMPLATES } from "../content/body-templates";
+import { assertJourneyWindowRelease } from '../content/detectives/journey-window-release-v1';
 
 let failed = false;
 for (const { scene, warnings } of [...SCENE_CATALOG,...[...DETECTIVE_SCENES,...KINGDOM_DETECTIVE_SCENES].map(scene=>({scene,warnings:[]}))]) {
@@ -16,4 +17,5 @@ for (const { scene, warnings } of [...SCENE_CATALOG,...[...DETECTIVE_SCENES,...K
   }
   for (const w of warnings) console.log(`    ⚠ ${w}`);
 }
+console.log('Prospective window companion:',assertJourneyWindowRelease());
 if (failed) process.exit(1);

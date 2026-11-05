@@ -1,4 +1,5 @@
 import { publishedCrownRepairOf } from "./published-crown-repair";
+import { recordWindowFailure } from './repeat-window-stop';
 import { SOURCE_CROWN_COMPOSITION_VERSION, sourceCrownReturned } from "../../domain/scene/source-crown-return";
 import { identityApprovedForDisplay, identityGateReceiptOf, validateIdentityGateBill } from "./board-wizard-identity-gate";
 import { wholeSourceContextPublicationAuthorized } from "./whole-source-context-pin";
@@ -556,6 +557,7 @@ export async function reviewLocalPatchBoard(c: Container, input: { gameId: strin
         status: "FAILED", lastError: `quality-${disposition.state}: ${disposition.faults.join("; ") || "Required quality evidence is unresolved"}${note}`.slice(0, 500),
         rejectedAssetIdsJson: JSON.stringify([...new Set([...retainedIds, e.asset.id])]),
       } : reviewOnly || evidenceOnly || retainedOnly ? { status: "GENERATED", lastError: null } : {}) } });
+      if(rejected)await recordWindowFailure(tx,game.id,{id:e.row.id,status:'FAILED',attempts:current.attempts,judgeJson});
       if (rejected) await tx.targetInstance.update({ where: { id: e.row.targetInstanceId }, data: { status: "FAILED" } });
       else if (reviewOnly || evidenceOnly || retainedOnly) await tx.targetInstance.update({ where: { id: e.row.targetInstanceId }, data: { status: "GENERATED" } });
       if (!rejected) await recordLocalPatchPublicationPolicy(tx, { gameId: game.id, sceneVersion: scene.sceneVersion, hideId: e.hide.id,

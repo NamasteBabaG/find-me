@@ -1,4 +1,5 @@
 import path from "node:path";
+import { JOURNEY_WINDOW_RELEASE } from '../../content/detectives/journey-window-release-v1';
 import { EXPLORERS_OPERATIONAL_RELEASE, type ExplorersOperationalRelease } from "../domain/generation/explorers-operational-policy";
 import { DETECTIVES_OPERATIONAL_RELEASE, detectivesOperationalQualified, type DetectivesOperationalRelease } from "../domain/generation/detectives-operational-policy";
 import { adminEmails, env, flag } from "@/lib/env";
@@ -80,6 +81,7 @@ export interface Container {
   leanRelease?: LocalPatchLeanRelease;
   /** Prospective Detective drafts only; existing games retain every pinned contract. */
   detectivesOperationalRelease?: DetectivesOperationalRelease;
+  detectivesWindowRelease?: typeof JOURNEY_WINDOW_RELEASE;
   /** Prospective Explorers use the same single LOW judge, with their own source binding. */
   explorersOperationalRelease?: ExplorersOperationalRelease;
   /** Message Batches, for games pinned to it. Kept whenever credentials exist, so a
@@ -101,6 +103,9 @@ export function deliverWithProblemsOf(qaAutoApprove: boolean, appEnv: string | u
 
 function build(): Container {
   const e = env();
+  const qualifiedDetectives=detectivesOperationalQualified({appEnv:e.APP_ENV,promptRelease:e.LOCAL_PATCH_PROMPT_RELEASE,identitySource:e.LOCAL_PATCH_IDENTITY_SOURCE,
+    reviewRelease:e.LOCAL_PATCH_VISUAL_REVIEW==='dual-high-v3'?DUAL_VISUAL_REVIEW_V3:undefined,leanRelease:e.LOCAL_PATCH_LEAN==='lean-v1'?LOCAL_PATCH_LEAN_RELEASE:undefined});
+  if(e.DETECTIVES_WINDOW_RELEASE==='v1'&&(!qualifiedDetectives||e.STORAGE_PROVIDER!=='db'))throw Error('DETECTIVES_WINDOW_RELEASE requires the qualified QA engine and DB storage');
   const storageRoot = path.resolve(process.cwd(), e.STORAGE_LOCAL_DIR);
 
   // A provider that is named but not built must never fall back silently: that is
@@ -152,7 +157,8 @@ function build(): Container {
     ...(e.LOCAL_PATCH_PAINTER === "low-v1" ? { localPatchPainter: LOCAL_PATCH_LOW_PAINTER } : {}),
     ...(e.LOCAL_PATCH_QUALITY_CHANNEL === "anthropic-batch-v1" ? { qualityChannel: QUALITY_BATCH_CHANNEL } : {}),
     ...(e.LOCAL_PATCH_LEAN === "lean-v1" ? { leanRelease: LOCAL_PATCH_LEAN_RELEASE } : {}),
-    ...(detectivesOperationalQualified({appEnv:e.APP_ENV,promptRelease:e.LOCAL_PATCH_PROMPT_RELEASE,identitySource:e.LOCAL_PATCH_IDENTITY_SOURCE,reviewRelease:e.LOCAL_PATCH_VISUAL_REVIEW==="dual-high-v3"?DUAL_VISUAL_REVIEW_V3:undefined,leanRelease:e.LOCAL_PATCH_LEAN==="lean-v1"?LOCAL_PATCH_LEAN_RELEASE:undefined}) ? {detectivesOperationalRelease:DETECTIVES_OPERATIONAL_RELEASE,explorersOperationalRelease:EXPLORERS_OPERATIONAL_RELEASE}:{}),
+    ...(qualifiedDetectives ? {detectivesOperationalRelease:DETECTIVES_OPERATIONAL_RELEASE,explorersOperationalRelease:EXPLORERS_OPERATIONAL_RELEASE,
+      ...(e.DETECTIVES_WINDOW_RELEASE==='v1'?{detectivesWindowRelease:JOURNEY_WINDOW_RELEASE}:{})}:{}),
     ...(e.GENERATION_PROVIDER === "openai" && e.ANTHROPIC_API_KEY?.trim() ? { qualityBatch: new AnthropicMessageBatches(e.ANTHROPIC_API_KEY) } : {}),
     // Kept whenever the credential exists, so an enrolled world is never stranded mid-poll.
     ...(e.GENERATION_PROVIDER === "openai" && e.OPENAI_API_KEY?.trim() ? { backgroundReview: new OpenAiBackgroundReviews(e.OPENAI_API_KEY) } : {}),

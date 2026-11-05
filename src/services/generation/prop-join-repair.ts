@@ -2,6 +2,8 @@ import { Prisma } from "@prisma/client";
 import type { Container } from "../container";
 import { env } from "../../lib/env";
 import { DETECTIVE_PROP_JOIN as contract } from "../../../content/detectives/prop-joins";
+import { JOURNEY_WINDOW_PROP_JOIN } from '../../../content/detectives/journey-window-release-v1';
+import { journeyWindowReleaseOf } from './journey-window-release';
 import { PROP_JOIN_VERSION,propJoinProofSchema,conclusivePropJoinRefusal } from "../../domain/generation/prop-join";
 import { boardConditioningHash as hash } from "./board-conditioned-source";
 import { sha256Bytes as sha } from "./fixed-sprite";
@@ -44,10 +46,11 @@ async function context(db:Reader,gameId:string,liveOnly=true){
  const placement=await resolveLocalPatchBoardsForGame(db,gameId,13),board=placement.boards.find(b=>b.board===contract.boardId),hide=board?.hides.find(h=>h.id===contract.hideId);
  const scene=game.scenes.find(s=>s.sceneSlug===contract.boardId);
  if(!board||!hide||!scene)return null;
+ const selectedContract=await journeyWindowReleaseOf(db,gameId)?JOURNEY_WINDOW_PROP_JOIN:contract;
  const expected=expectedAuthoredLocalPatchReturn(board,hide,13,placement);
- if(!expected||expected.source.sha256!==contract.sourceSha256||!rectSame(expected.crop,contract.crop)
-  ||!rectSame(expected.child,contract.child)||!rectSame(expected.local,contract.returned))return null;
- return {authority,game,child,ownerId:game.ownerId,scene,board,hide,expected};
+ if(!expected||expected.source.sha256!==selectedContract.sourceSha256||!rectSame(expected.crop,selectedContract.crop)
+  ||!rectSame(expected.child,selectedContract.child)||!rectSame(expected.local,selectedContract.returned))return null;
+ return {authority,game,child,ownerId:game.ownerId,scene,board,hide,expected,contract:selectedContract};
 }
 const candidate=(row:{status:string;attempts:number;judgeJson:string|null},allowFresh:boolean)=>{
  let j;try{j=JSON.parse(row.judgeJson??"null");}catch{return false;}
@@ -100,7 +103,7 @@ export async function resumePropJoinRepair(c:Container,gameId:string):Promise<bo
    data:{status:"QUEUED",currentStep:"local-patch",lastError:null}});
   if(changed.count!==1)return false;
   await tx.auditLog.create({data:{id:wakeId(gameId),actorType:"SYSTEM",action:ACTION,entityType:"Game",entityId:gameId,
-   metaJson:JSON.stringify({version:PROP_JOIN_VERSION,kind:"software-wake",contractSha256:hash(contract),rowId:row.id,previousHoldSha256:hash(job),attemptsPreserved:true,capPreserved:true,providerCalls:0})}});
+   metaJson:JSON.stringify({version:PROP_JOIN_VERSION,kind:"software-wake",contractSha256:hash(ctx.contract),rowId:row.id,previousHoldSha256:hash(job),attemptsPreserved:true,capPreserved:true,providerCalls:0})}});
   return true;
  });
 }
@@ -131,12 +134,12 @@ export async function applyPropJoinRepair(c:Container,gameId:string,hideId:strin
  if(identity.ownerId!==ctx.ownerId||identity.visibility!=="PRIVATE"||identity.type!=="IDENTITY_SHEET"||identity.status!=="READY"||identity.deletedAt
   ||sha(await c.storage.get(identity.storagePath))!==ctx.authority.identitySha256||oldAsset.ownerId!==ctx.ownerId||oldAsset.providerRequestId!==gameId||oldAsset.deletedAt||oldAsset.visibility!=="GAME"||oldAsset.type!=="TARGET_SPRITE"||oldAsset.status!=="READY"||oldAsset.provider!=="local-patch"
   ||sha(await c.storage.get(oldAsset.storagePath))!==j.judgedSha256)throw Error("PROP_JOIN: owned identity or current image changed");
- const before=await (deps.readBoardArt??(await import("./local-patch-hide")).readShippedBoardArt)(ctx.board.art,contract.sourceSha256);
- const result=await composeRegisteredProp(before,paid.raw,contract);
+ const before=await (deps.readBoardArt??(await import("./local-patch-hide")).readShippedBoardArt)(ctx.board.art,ctx.contract.sourceSha256);
+ const result=await composeRegisteredProp(before,paid.raw,ctx.contract);
  if(!result||result.proof.beforeImageSha256!==j.judgedSha256)return null;
  const definition=sceneBySlug(ctx.scene.sceneSlug,13),measured=await localPatchGeometry({hide:ctx.hide,boardPng:before,patchPng:result.shipping,board:definition.art,contentVersion:13});
  const geometry={rectJson:JSON.stringify(measured.geometry.rect),hitRectJson:JSON.stringify(measured.geometry.hitRect),headAnchorJson:JSON.stringify(measured.geometry.anchor)};
- const proof=propJoinProofSchema.parse({version:PROP_JOIN_VERSION,contractSha256:hash(contract),gameId,rowId:row.id,attempt:row.attempts,
+ const proof=propJoinProofSchema.parse({version:PROP_JOIN_VERSION,contractSha256:hash(ctx.contract),gameId,rowId:row.id,attempt:row.attempts,
   requestKey,operationFingerprint:paid.kept.operationFingerprint,payloadSha256:paid.kept.payloadSha256,rawPngSha256:sha(paid.raw),
   authorizationSha256:ctx.authority.authorizationSha256,identitySha256:ctx.authority.identitySha256,geometrySha256:localPatchPublicationGeometryHash(geometry),...result.proof});
  const assetId="ast_prop_"+hash([gameId,ctx.hide.id,requestKey,proof.imageSha256]).slice(0,28),key="game/"+assetId+".png";
@@ -170,7 +173,7 @@ export async function propJoinPublicationMatches(db:Prisma.TransactionClient,inp
  try{
   const j=JSON.parse(input.judgeJson??"null");if(j?.propJoinCorrection===undefined)return true;
   const proof=propJoinProofSchema.parse(j.propJoinCorrection),ctx=await context(db,input.gameId,false);
-  if(!ctx||input.hideId!==contract.hideId||proof.gameId!==input.gameId||proof.rowId!==input.variantId||proof.contractSha256!==hash(contract)
+  if(!ctx||input.hideId!==contract.hideId||proof.gameId!==input.gameId||proof.rowId!==input.variantId||proof.contractSha256!==hash(ctx.contract)
    ||proof.authorizationSha256!==ctx.authority.authorizationSha256||proof.identitySha256!==ctx.authority.identitySha256
    ||proof.imageSha256!==j.judgedSha256||proof.geometrySha256!==j.geometrySha256||!same(j.authoredReturn,ctx.expected))return false;
   const row=await db.targetVariantAsset.findUnique({where:{id:proof.rowId}}),audit=await db.auditLog.findUnique({where:{id:auditId(input.gameId,proof.attempt)}});
@@ -181,7 +184,7 @@ export async function propJoinPublicationMatches(db:Prisma.TransactionClient,inp
   const paid=await paidRaw(db,input.gameId,proof.requestKey);
   if(proof.requestKey!==`${ctx.hide.id}:${ctx.hide.pose}:render:${row.attempts}`||paid.kept.operationFingerprint!==proof.operationFingerprint
    ||paid.kept.payloadSha256!==proof.payloadSha256||sha(paid.raw)!==proof.rawPngSha256||!same(paid.wire.authoredReturn,ctx.expected))return false;
-  const before=await (await import("./local-patch-hide")).readShippedBoardArt(ctx.board.art,contract.sourceSha256),result=await composeRegisteredProp(before,paid.raw,contract);
+  const before=await (await import("./local-patch-hide")).readShippedBoardArt(ctx.board.art,ctx.contract.sourceSha256),result=await composeRegisteredProp(before,paid.raw,ctx.contract);
   if(!result||!Object.entries(result.proof).every(([k,v])=>(proof as unknown as Record<string,unknown>)[k]===v))return false;
   const asset=await db.asset.findUnique({where:{id:input.assetId??row.assetId}}),blob=asset?await db.fileBlob.findUnique({where:{key:asset.storagePath}}):null;
   return !!asset&&asset.ownerId===ctx.ownerId&&asset.providerRequestId===input.gameId&&asset.status==="READY"&&!asset.deletedAt&&!!blob&&sha(Buffer.from(blob.data))===proof.imageSha256;

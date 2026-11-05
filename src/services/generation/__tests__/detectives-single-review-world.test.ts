@@ -1,4 +1,8 @@
 import * as nativeDetailEvidenceModule from "../native-detail-evidence";
+import { PrismaWorldBudgetStore } from '../../../infra/db/prisma-world-budget-store';
+import { JOURNEY_WINDOW_RELEASE } from '../../../../content/detectives/journey-window-release-v1';
+import { pinJourneyWindowRelease } from '../journey-window-release';
+import { windowStoppedRows } from '../repeat-window-stop';
 import * as nativeDetailPainterModule from "../native-detail-painter";
 import { KINGDOM_DETECTIVE_PATCH_BOARDS } from "../../../../content/detectives/kingdom/runtime-release";
 import { pinDetectiveSourceScope, sealDetectiveSourceFamily } from "../source-family-scope";
@@ -134,7 +138,7 @@ afterAll(async () => {
   if (path.dirname(directory) === realpathSync(tmpdir()) && path.basename(directory).startsWith("findme-detective-world-")) rmSync(directory, { recursive: true });
 });
 
-async function newDetectiveWorld(gameId: string, ageYears=8, born=false, explorer=false, kingdom=false) {
+async function newDetectiveWorld(gameId: string, ageYears=8, born=false, explorer=false, kingdom=false, windows=false) {
   const version = explorer ? 12 : 13, level = explorer ? "explorers" : "detectives";
   const journey = new Set(boardsOfWorlds(["journey"]));
   const kingdomBoards=new Set(boardsOfWorlds(["kingdom"]));
@@ -147,21 +151,22 @@ async function newDetectiveWorld(gameId: string, ageYears=8, born=false, explore
   fixture.testers.push(seeded.email); c.adminEmails!.push(seeded.email);
   if(born)await db.childProfile.update({where:{id:"chl-"+gameId},data:{originalPhotoAssetId:null}});
   const profile = await db.childProfile.findUniqueOrThrow({where:{id:"chl-"+gameId}});
-  if(kingdom) await db.childProfile.update({where:{id:profile.id},data:{identityAssetId:null,avatarAssetId:null}});
+  if(kingdom||windows) await db.childProfile.update({where:{id:profile.id},data:{identityAssetId:null,avatarAssetId:null}});
   await db.$transaction(async tx => {
     await pinVisualReviewRelease(tx, gameId, DUAL_VISUAL_REVIEW_V3);
     await pinLeanRelease(tx, gameId, LOCAL_PATCH_LEAN_RELEASE);
     await pinIdentitySourceRelease(tx, gameId);
-    if(kingdom&&!explorer){
+    if((kingdom||windows)&&!explorer){
       await pinDetectiveSourceScope(tx,gameId,DETECTIVES_OPERATIONAL_RELEASE,c.storage.id);
+      if(windows)await pinJourneyWindowRelease(tx,gameId,JOURNEY_WINDOW_RELEASE);
       await tx.game.update({where:{id:gameId},data:{status:"PACKAGE_SELECTED"}});
       await tx.childProfile.update({where:{id:profile.id},data:{originalPhotoAssetId:"ast-photo-"+gameId}});
       await sealDetectiveSourceFamily(tx,gameId);
     } else await pinLocalPatchSourceFamily(tx, gameId, { sceneVersion: version, searchLevel: level });
     if(born && explorer) await pinExplorersOperationalPolicy(tx,gameId,EXPLORERS_OPERATIONAL_RELEASE,c.storage.id);
-    else if(born && !kingdom)await pinDetectivesOperationalPolicy(tx,gameId,DETECTIVES_OPERATIONAL_RELEASE,c.storage.id);
+    else if(born && !kingdom && !windows)await pinDetectivesOperationalPolicy(tx,gameId,DETECTIVES_OPERATIONAL_RELEASE,c.storage.id);
   });
-  if(kingdom) await db.childProfile.update({where:{id:profile.id},data:{identityAssetId:profile.identityAssetId,avatarAssetId:profile.avatarAssetId}});
+  if(kingdom||windows) await db.childProfile.update({where:{id:profile.id},data:{identityAssetId:profile.identityAssetId,avatarAssetId:profile.avatarAssetId}});
   if(born)await db.childProfile.update({where:{id:"chl-"+gameId},data:{originalPhotoAssetId:"ast-photo-"+gameId}});
   await db.game.update({ where: { id: gameId }, data: { status: "TARGETS_GENERATING" } });
   await db.generationJob.create({ data: { id: "job_" + gameId, gameId, status: "QUEUED" } });
@@ -251,9 +256,64 @@ function controlledSol(interrupted = false, guided = false, guidedHideId?: strin
   return { fake, creates };
 }
 
-it.each([{mode:"clean",interrupted:false,guided:false},{mode:"transport",interrupted:true,guided:false},{mode:"guided",interrupted:false,guided:true},{mode:"tail",interrupted:false,guided:true},{mode:"body",interrupted:false,guided:true}].map(v=>({...v,born:false})).concat([{mode:"born-clean",interrupted:false,guided:false,born:true},{mode:"born-guided",interrupted:false,guided:true,born:true},{mode:"born-transport",interrupted:true,guided:false,born:true},{mode:"born-crown",interrupted:false,guided:false,born:true},{mode:"kingdom-clean",interrupted:false,guided:false,born:true},{mode:"kingdom-transport",interrupted:true,guided:false,born:true},{mode:"kingdom-guided",interrupted:false,guided:true,born:true}]).map(testCase => ({ ...testCase, reviewEffort: testCase.born && testCase.mode !== "born-crown" ? "MEDIUM" : "LOW" })))("completes 27 hides with bounded $reviewEffort review and no extra planner; mode=$mode", async ({mode,interrupted,guided,born}) => {
+it('prospective window stop serves the other26, permits a different-edge repair, and parks honestly without a third identical buy',async()=>{
+  vi.useFakeTimers({toFake:['Date']});const gameId='synthetic-prospective-window-stop';
+  await newDetectiveWorld(gameId,7,true,false,false,true);
+  const context=await resolveLocalPatchBoardsForGame(db,gameId,13),hides=context.boards.flatMap(b=>b.hides);
+  const stop='paris-detectives-hide-2',retry='amazon-detectives-hide-2',provider=controlledSol(false,true,[stop,retry],true,true);
+  const transport:BackgroundReviewTransport={...provider.fake,retrieve:async responseId=>{
+    const state=await provider.fake.retrieve(responseId);if(state.status!=='completed'||!state.reading.raw)return state;
+    const created=provider.creates[Number(responseId.split('_').at(-1))-1]!,doc=JSON.parse(state.reading.raw);
+    if(created.hideId===stop){const line=created.prompt.split('\n').find(s=>s.startsWith('HEAD_RETURN_EVIDENCE: '))!,r=JSON.parse(line.slice('HEAD_RETURN_EVIDENCE: '.length)).returned;
+      doc.head.rawHead.top=r.top-8;doc.head.shippingHead.top=r.top+2;doc.head.shippingHead.height-=10;
+      doc.head.rawCrown='pass';doc.head.shippingCrown='fail';
+    }
+    if(created.hideId===retry&&provider.creates.filter(c=>c.hideId===retry).length===2){
+      const a=doc.assessment.version===SOURCE_NEIGHBOR_BUNDLE_VERSION?doc.assessment.assessment:doc.assessment;
+      a.quality.hides[0].verdict.boundaryIntegrity.top.status='pass';a.quality.hides[0].verdict.boundaryIntegrity.right.status='fail';
+    }
+    return {...state,reading:{...state.reading,raw:JSON.stringify(doc)}};
+  }};
+  const container={...c,backgroundReview:transport,visualReview:{request:async()=>{throw Error('No synchronous or real provider');}}} as Container;
+  const paintings:string[]=[],deps:LocalPatchHideDeps={apiKey:'synthetic-never-live',renderPolicySha256:localPatchRenderPolicySha256(LOCAL_PATCH_IMAGE_POLICY),readBoardArt:readArt,render:async({requestKey,stylePng,placementGuidePng})=>{
+    paintings.push(requestKey);const hide=hides.find(h=>requestKey.startsWith(h.id+':'))!;
+    const mask=placementGuidePng?guidedFrameGeometry(maskForHide(hide),localPatchReturnRegion(cropOf(hide),maskForHide(hide),hide.returnRect).local).target:maskForHide(hide);
+    const rect={left:mask.left+Math.round(mask.width*.2),top:mask.top+Math.round(mask.height*.2),width:Math.round(mask.width*.6),height:Math.round(mask.height*.8)};
+    const block=await sharp({create:{width:rect.width,height:rect.height,channels:4,background:requestKey.endsWith(':2')?'#304f91':'#1e3ca0'}}).png().toBuffer();
+    const png=await sharp(stylePng).composite([{input:block,left:rect.left,top:rect.top}]).png().toBuffer();return paintedOk(png,bill('paint-'+gameId+'-'+requestKey,66500));
+  }};
+  let result={pending:true,attention:null as string|null};
+  for(let tick=0;tick<300&&result.pending;tick++){
+    result=await runLocalPatchWorldSlice(container,deps,gameId,{hardDeadlineAt:Date.now()+270000,diagnose:async()=>{throw Error('No new paid diagnosis for repeated window');}});
+    await vi.advanceTimersByTimeAsync(LEAN_RECOVERY_BACKOFF_MS+1);
+  }
+  expect(result.pending).toBe(false);expect(result.attention).toContain(stop);expect(result.attention).toContain('no third painting');
+  const rows=await db.targetVariantAsset.findMany({where:{variant:'A',targetInstance:{gameScene:{gameId}}}});
+  expect(rows).toHaveLength(27);const stopped=rows.find(r=>JSON.parse(r.judgeJson??'null')?.hide===stop)!;
+  expect(stopped).toMatchObject({status:'FAILED',attempts:2});expect(await windowStoppedRows(db,gameId,rows)).toEqual(new Set([stopped.id]));
+  expect(rows.filter(r=>r.status==='GENERATED')).toHaveLength(26);
+  expect(rows.find(r=>JSON.parse(r.judgeJson??'null')?.hide===retry)).toMatchObject({status:'GENERATED',attempts:3});
+  expect(paintings.filter(k=>k.startsWith(stop+':'))).toHaveLength(2);expect(paintings.some(k=>k===stop+':standing:render:3')).toBe(false);
+  expect((await db.game.findUniqueOrThrow({where:{id:gameId}})).status).not.toBe('READY');
+  // Ledger truth overrides old positive facts; an unknown bill is never zero.
+  const ledger=await boardWizardBudgetOf(container).audit(boardWizardWorldId(gameId));expect(ledger.unknownRequestKeys).toHaveLength(0);
+  const stored=await PrismaWorldBudgetStore.forReadOnlyTransaction(db).read(boardWizardWorldId(gameId));expect(stored).not.toBeNull();
+  const refusedKey=JSON.parse(stopped.judgeJson!).boardReview.dual.quality.requestKey;
+  for(const state of ['pending','unknown','fingerprint','conflict'] as const){const snapshot=structuredClone(stored!);
+    const bill=snapshot.snapshot.requests.find(r=>r.requestKey===refusedKey)!;
+    if(state==='fingerprint')Object.assign(bill,{operationFingerprint:'f'.repeat(64)});else if(state==='conflict')Object.assign(bill,{conflicts:[{kind:'synthetic'}]});
+    else Object.assign(bill,{state,evidence:undefined});
+    // Corrupt/unknown evidence is injected below the store solely to challenge
+    // the stop's positive settlement fence, not to alter a real ledger.
+    const spy=vi.spyOn(PrismaWorldBudgetStore,'forReadOnlyTransaction').mockReturnValue({read:async()=>snapshot} as unknown as ReturnType<typeof PrismaWorldBudgetStore.forReadOnlyTransaction>);
+    expect(await windowStoppedRows(db,gameId,rows),state).toEqual(new Set());spy.mockRestore();
+  }
+  expect(await boardWizardBudgetOf(container).audit(boardWizardWorldId(gameId))).toEqual(ledger);
+},1500000);
+
+it.each([{mode:"clean",interrupted:false,guided:false},{mode:"transport",interrupted:true,guided:false},{mode:"guided",interrupted:false,guided:true},{mode:"tail",interrupted:false,guided:true},{mode:"body",interrupted:false,guided:true}].map(v=>({...v,born:false})).concat([{mode:"born-clean",interrupted:false,guided:false,born:true},{mode:"born-guided",interrupted:false,guided:true,born:true},{mode:"born-transport",interrupted:true,guided:false,born:true},{mode:"born-crown",interrupted:false,guided:false,born:true},{mode:"kingdom-clean",interrupted:false,guided:false,born:true},{mode:"kingdom-transport",interrupted:true,guided:false,born:true},{mode:"kingdom-guided",interrupted:false,guided:true,born:true},{mode:"window-clean",interrupted:false,guided:false,born:true}]).map(testCase => ({ ...testCase, reviewEffort: testCase.born && testCase.mode !== "born-crown" ? "MEDIUM" : "LOW" })))("completes 27 hides with bounded $reviewEffort review and no extra planner; mode=$mode", async ({mode,interrupted,guided,born}) => {
   vi.useFakeTimers({ toFake: ["Date"] });
-  const kingdom=mode.startsWith("kingdom-"),crown=mode==="born-crown",body=mode==="body";const gameId = "detective-single-world-synthetic-" + mode; await newDetectiveWorld(gameId,body||born?7:8,born,false,kingdom);
+  const kingdom=mode.startsWith("kingdom-"),crown=mode==="born-crown",body=mode==="body";const gameId = "detective-single-world-synthetic-" + mode; await newDetectiveWorld(gameId,body||born?7:8,born,false,kingdom,mode==='window-clean');
   const context = await resolveLocalPatchBoardsForGame(db, gameId, 13), hides = context.boards.flatMap(board => board.hides);
   expect(context.boards).toHaveLength(9); expect(hides).toHaveLength(27);
   // Simulate the actual older deployment: genuine LOW purchases under the

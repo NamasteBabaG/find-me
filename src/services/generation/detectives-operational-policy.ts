@@ -1,4 +1,5 @@
 import type { Prisma } from '@prisma/client';
+import { journeyWindowReleaseOf } from './journey-window-release';
 import { detectiveSourceScopeOf, DETECTIVE_FAMILY_V2 } from './source-family-scope';
 import { env } from '../../lib/env';
 import { boardConditioningHash as hash } from './board-conditioned-source';
@@ -25,7 +26,8 @@ async function expected(db: Reader, gameId: string) {
     } else {
         assertSourceBodyManifest();
         demand(family?.manifestSha256 === SOURCE_BODY_REPAIR_MANIFEST.parentManifestSha256, 'Journey body parent differs');
-        bodyManifestSha256 = SOURCE_BODY_REPAIR_MANIFEST_SHA256;
+        const windows=await journeyWindowReleaseOf(db,gameId);
+        bodyManifestSha256 = windows?.bodyManifestSha256 ?? SOURCE_BODY_REPAIR_MANIFEST_SHA256;
     }
     const body = { version: DETECTIVES_OPERATIONAL_RELEASE, gameId, worldId: gameId + ':board-wizard', sourceFamilySha256: hash(record!.metaJson), sourcePlacementManifestSha256: family!.manifestSha256, sourceBodyManifestSha256: bodyManifestSha256, reviewMode: SINGLE_VISUAL_REVIEW_VERSION, model: 'gpt-6.1-sol' as const, effort: 'low' as const, initialTier: 'flex' as const, oneUsableAssessmentPerImage: true as const, normalImageAttemptLimit: 3 as const, worldCapMicroUsd: 4000000 as const, automaticBudgetExtension: false as const };
     return detectivesOperationalReceiptSchema.parse({ ...body, authorizationSha256: hash(body) });

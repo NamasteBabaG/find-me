@@ -3,6 +3,7 @@ import { nativeDetailSubjectDirection } from "./native-detail-painter";
 import { requireWholeSourceContextPurchase } from "./whole-source-context-repair";
 import { fenceWholeSourceContextPurchase } from "./whole-source-context-pin";
 import { sourceBodyBirthForHide } from "./source-placement-release";
+import { windowStoppedRows,recordWindowAttemptSource } from './repeat-window-stop';
 import { sourceBodyBirthMarkerFor, fenceSourceBodyBirthPurchase } from "./detectives-operational-policy";
 import { requireSourceBodyPurchase } from './source-body-repair';
 import { fenceSourceBodyPurchase } from './source-body-repair-pin';
@@ -359,6 +360,8 @@ export async function runLocalPatchHide(c: Container, deps: LocalPatchHideDeps, 
   if (row.status === "GENERATED" || row.status === "APPROVED") {
     return { ...base, attempt: row.attempts, state: "already-generated", reason: null };
   }
+  if(attempt===3&&!exhausted&&(await windowStoppedRows(c.db,gameId,[row])).has(row.id))
+    return {...base,state:'gave-up',reason:'repeat-window-stop/v1: two distinct settled judgments locate the same window defect; unchanged third painting is not bought'};
   if (exhausted) {
     return { ...base, attempt: row.attempts, state: "gave-up", reason: row.lastError ?? `gave up after ${row.attempts} attempts` };
   }
@@ -461,6 +464,7 @@ export async function runLocalPatchHide(c: Container, deps: LocalPatchHideDeps, 
       ...((adaptiveRecovery || wholeContext || guidedFrame || placementGuide || bodyRepair || bodyBirth) ? { judgeJson: JSON.stringify({ ...JSON.parse(row.judgeJson ?? "{}"), ...guidedHistory, ...(adaptiveRecovery ? { adaptiveRecovery } : {}) }) } : {}),
     } });
     demand(claimed.count === 1, "Painting row changed before its recipe could be pinned");
+    await recordWindowAttemptSource(tx,gameId,row,attempt);
   });
   const started = { ...base, attempts: attempt };
 

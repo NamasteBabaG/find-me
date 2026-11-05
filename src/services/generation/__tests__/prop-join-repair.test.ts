@@ -9,6 +9,9 @@ import { DbStorage } from "../../../infra/storage/db";
 import type { Container } from "../../container";
 import { DETECTIVE_PATCH_BOARDS } from "../../../../content/detectives/runtime-release";
 import { DETECTIVE_PROP_JOIN as contract } from "../../../../content/detectives/prop-joins";
+import { JOURNEY_WINDOW_RELEASE,JOURNEY_WINDOW_PROP_JOIN } from '../../../../content/detectives/journey-window-release-v1';
+import { pinDetectiveSourceScope,sealDetectiveSourceFamily } from '../source-family-scope';
+import { pinJourneyWindowRelease } from '../journey-window-release';
 import { PROP_JOIN_VERSION,conclusivePropJoinRefusal } from "../../../domain/generation/prop-join";
 import { SINGLE_VISUAL_REVIEW_VERSION } from "../../../domain/generation/single-visual-review";
 import { DETECTIVES_OPERATIONAL_RELEASE } from "../../../domain/generation/detectives-operational-policy";
@@ -64,10 +67,16 @@ function refusal(hideId:string){
  const pass=["childPresent","childOnlyOnce","childComplete","styleMatch","scaleRight","groundContact","faceLikeness","faceReadable","ageAppropriate","lightingMatch","neighborsIntact"];
  return {version:SINGLE_VISUAL_REVIEW_VERSION,assessment:{version:"quality-source-neighbor-answer/v1",assessment:{version:"quality-subject-answer/v1",quality:{hides:[{hideId,verdict:{...Object.fromEntries(pass.map(k=>[k,"pass"])),pictureWhole:"fail",severeSeam:"fail",verdict:"fail",reason:"The lower retained wheel and the repainted fork do not meet.",faults:[{check:"pictureWhole",where:"The lower public return joins two different steering positions."},{check:"severeSeam",where:"The wheel and fork are visibly disconnected at the return."}]}}]},subject:{hideId,checks:{photoLikeness:obs("pass"),canonicalAgreement:obs("pass"),faceVisible:obs("pass"),perceivedAge:{...obs("pass"),estimatedMinYears:6,estimatedMaxYears:8},requiredWardrobe:obs("not-required")},faults:[]}},sourceNeighbors:{neighbors:[{sourceId:"public-source-neighbor",status:"pass"}]}},continuity:{cases:[{state:"coherent",visibleBody:true,headConnection:"connected",faults:[]}]},doubt:false,doubtReason:null};
 }
-async function seed(id:string,attempts=3,fresh=false){
+async function seed(id:string,attempts=3,fresh=false,windows=false){
  const f=await seedApprovedGame(c,db,{gameId:id,approved:false,styleVersion:"local-patch-world-v1",status:"DRAFT",scenes:DETECTIVE_PATCH_BOARDS.map(b=>({slug:b.board,version:13}))});
  fixture.testers.push(f.email);await db.game.update({where:{id},data:{searchLevel:"detectives"}});await db.childProfile.update({where:{id:"chl-"+id},data:{originalPhotoAssetId:null,ageYears:7}});
- await db.$transaction(async tx=>{await pinVisualReviewRelease(tx,id,DUAL_VISUAL_REVIEW_V3);await pinLeanRelease(tx,id,LOCAL_PATCH_LEAN_RELEASE);await pinIdentitySourceRelease(tx,id);await pinLocalPatchSourceFamily(tx,id,{sceneVersion:13,searchLevel:"detectives"});await pinDetectivesOperationalPolicy(tx,id,DETECTIVES_OPERATIONAL_RELEASE,"db");});
+ const profile=await db.childProfile.findUniqueOrThrow({where:{id:'chl-'+id}});
+ if(windows)await db.childProfile.update({where:{id:profile.id},data:{identityAssetId:null,avatarAssetId:null}});
+ await db.$transaction(async tx=>{await pinVisualReviewRelease(tx,id,DUAL_VISUAL_REVIEW_V3);await pinLeanRelease(tx,id,LOCAL_PATCH_LEAN_RELEASE);await pinIdentitySourceRelease(tx,id);
+   if(windows){await pinDetectiveSourceScope(tx,id,DETECTIVES_OPERATIONAL_RELEASE,'db');await pinJourneyWindowRelease(tx,id,JOURNEY_WINDOW_RELEASE);
+     await tx.game.update({where:{id},data:{status:'PACKAGE_SELECTED'}});await tx.childProfile.update({where:{id:profile.id},data:{originalPhotoAssetId:'ast-photo-'+id}});await sealDetectiveSourceFamily(tx,id);
+   }else{await pinLocalPatchSourceFamily(tx,id,{sceneVersion:13,searchLevel:'detectives'});await pinDetectivesOperationalPolicy(tx,id,DETECTIVES_OPERATIONAL_RELEASE,'db');}});
+ if(windows)await db.childProfile.update({where:{id:profile.id},data:{identityAssetId:profile.identityAssetId,avatarAssetId:profile.avatarAssetId}});
  await db.childProfile.update({where:{id:"chl-"+id},data:{originalPhotoAssetId:"ast-photo-"+id}});await c.storage.put("private/photo-"+id+".jpg",f.sheet,"image/png");
  await db.game.update({where:{id},data:{status:"TARGETS_GENERATING"}});await db.order.create({data:{id:"ord-"+id,gameId:id,userId:f.userId,provider:"mock",packageTier:"ONE_WORLD",amountAgorot:3900,paymentStatus:"PAID",paidAt:new Date()}});
  await db.generationJob.create({data:{id:"job_"+id,gameId:id,status:fresh?"RUNNING":"FAILED",currentStep:fresh?"local-patch":"local-patch:recovery-exhausted",attempts:10,lastError:fresh?null:"Conclusive prop failure after three ordinary images"}});
@@ -77,7 +86,8 @@ async function seed(id:string,attempts=3,fresh=false){
  expect(identityReview.approved).toBe(true);
  expect(await enrollLeanWorld(c,id,async()=>{})).toMatchObject({state:"enrolled"});
  const placement=await resolveLocalPatchBoardsForGame(db,id,13),board=placement.boards.find(b=>b.board===contract.boardId)!,hide=board.hides.find(h=>h.id===contract.hideId)!,expected=expectedAuthoredLocalPatchReturn(board,hide,13,placement)!;
- const normalized=await sharp(misplacedRaw).resize(512,768).png().toBuffer(),composed=await composeBoundedLocalPatch(before,contract.crop,normalized,contract.child,{playerReview:true,returnRect:contract.returned}),shipping=await sharp(composed.candidate).extract(contract.crop).png().toBuffer();
+ const active=windows?JOURNEY_WINDOW_PROP_JOIN:contract;
+ const normalized=await sharp(misplacedRaw).resize(512,768).png().toBuffer(),composed=await composeBoundedLocalPatch(before,active.crop,normalized,active.child,{playerReview:true,returnRect:active.returned}),shipping=await sharp(composed.candidate).extract(active.crop).png().toBuffer();
  const measured=await localPatchGeometry({hide,boardPng:before,patchPng:shipping,board:sceneBySlug("paris",13).art,contentVersion:13}),geometry={rectJson:JSON.stringify(measured.geometry.rect),hitRectJson:JSON.stringify(measured.geometry.hitRect),headAnchorJson:JSON.stringify(measured.geometry.anchor)};
  const budget=boardWizardBudgetOf(c),worldId=id+":board-wizard",store=new PrismaRetainedPurchaseStore(db);
  for(let n=1;n<=attempts;n++){
@@ -141,6 +151,21 @@ describe("paid lineage, finite software wake and publication",()=>{
   const f=await seed("prop-fresh",1,true),old=await f.budget.audit(f.worldId);
   expect(await applyPropJoinRepair(c,f.id,contract.hideId,{fence:f.fence})).toMatch(/^ast_prop_/);expect(await f.budget.audit(f.worldId)).toEqual(old);
   const row=await db.targetVariantAsset.findUniqueOrThrow({where:{id:"row-"+f.id}});expect(row.attempts).toBe(1);expect(JSON.parse(row.judgeJson!).boardReview).toBeUndefined();
+ },180000);
+ it('binds the new Paris window through prop derivation and publication without transferring approval',async()=>{
+  const f=await seed('prop-new-windows',1,true,true),budget=await f.budget.audit(f.worldId);
+  expect(await applyPropJoinRepair(c,f.id,contract.hideId,{fence:f.fence})).toMatch(/^ast_prop_/);
+  const row=await db.targetVariantAsset.findUniqueOrThrow({where:{id:'row-'+f.id}}),j=JSON.parse(row.judgeJson!);
+  expect(j.authoredReturn.local).toEqual(JOURNEY_WINDOW_PROP_JOIN.returned);
+  expect(j.propJoinCorrection.contractSha256).toBe(hash(JOURNEY_WINDOW_PROP_JOIN));
+  expect(j.propJoinCorrection.contractSha256).not.toBe(hash(contract));
+  const input={gameId:f.id,hideId:contract.hideId,variantId:row.id,assetId:row.assetId!,judgeJson:row.judgeJson};
+  expect(await propJoinPublicationMatches(db,input)).toBe(true);
+  expect(await allowedDualPublication(db,{...input,sceneVersion:13,identityAssetId:'ast-sheet-'+f.id,identitySha256:j.propJoinCorrection.identitySha256,
+    imageSha256:j.judgedSha256,geometrySha256:j.geometrySha256,attempts:1})).toBe(false);
+  expect(await f.budget.audit(f.worldId)).toEqual(budget);
+  const forged={...j,propJoinCorrection:{...j.propJoinCorrection,contractSha256:hash(contract)}};
+  expect(await propJoinPublicationMatches(db,{...input,judgeJson:JSON.stringify(forged)})).toBe(false);
  },180000);
  it("does not trust a modified old refusal and never spends another image",async()=>{
   const f=await seed("prop-tampered");const row=await db.targetVariantAsset.findUniqueOrThrow({where:{id:"row-"+f.id}}),j=JSON.parse(row.judgeJson!);j.boardReview.dual.quality.raw=j.boardReview.dual.quality.raw.replace("lower retained wheel","upper invented wheel");j.boardReview.dual.continuity=j.boardReview.dual.quality;j.boardReview.dual.subject=j.boardReview.dual.quality;

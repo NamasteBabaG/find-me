@@ -12,6 +12,7 @@ import type { CropBox } from "@/infra/generation/types";
 import { pick, type Locale } from "@/i18n/config";
 import { flowError, type FlowResult } from "@/i18n/errors";
 import type { Container } from "./container";
+import { pinJourneyWindowRelease } from './generation/journey-window-release';
 import { checkPhoto, deleteAsset, storeAsset } from "./asset.service";
 import { GameStatusConflict, transitionGame, statusOf } from "./game-status";
 import { activeScenes, sceneBySlug } from "./scene-catalog.service";
@@ -84,6 +85,7 @@ export async function createDraft(c: Container, ownerId: string | null, locale: 
       if (lean || selectedLevel === "detectives") {
         if (selectedVersion === null || selectedVersion === undefined) throw Error("A local-patch source family requires its exact scene version");
         const scoped = selectedVersion === 13 && await pinDetectiveSourceScope(tx, created.id, c.detectivesOperationalRelease, c.storage.id);
+        if(scoped)await pinJourneyWindowRelease(tx,created.id,c.detectivesWindowRelease);
         if (!scoped) await pinLocalPatchSourceFamily(tx, created.id, { sceneVersion: selectedVersion, searchLevel: selectedLevel });
         if(selectedVersion===13 && !scoped)await pinDetectivesOperationalPolicy(tx,created.id,c.detectivesOperationalRelease,c.storage.id);
         if(selectedVersion===12)await pinExplorersOperationalPolicy(tx,created.id,c.explorersOperationalRelease,c.storage.id);

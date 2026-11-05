@@ -3,6 +3,8 @@ import { detectivePlacementFamily } from "../../../content/detectives/family-rel
 import { createHash } from "node:crypto";
 import { detectivesOperationalPolicyOf } from "./detectives-operational-policy";
 import type { DetectivesOperationalReceipt } from "../../domain/generation/detectives-operational-policy";
+import { journeyWindowReleaseOf, type JourneyWindowPin } from './journey-window-release';
+import { JOURNEY_WINDOW_MANIFEST, JOURNEY_WINDOW_BODY_MANIFEST } from '../../../content/detectives/journey-window-release-v1';
 import { readSourceBodyRepairPin } from './source-body-repair-pin';
 import { SOURCE_BODY_REPAIR_MANIFEST, SOURCE_BODY_REPAIR_MANIFEST_SHA256 } from '../../../content/detectives/source-body-repair';
 import { validateSourceBodyGeometry, type SourceBodyGeometry } from '../../domain/scene/source-body-repair';
@@ -205,7 +207,7 @@ export type TrustedSourcePlacementContext = {
   readonly release: SourcePlacementReleasePin | null;
   readonly manifestSha256: string | null;
 };
-type ContextProof = { digest: string; contracts: Map<string, SourcePlacementHideContract>; bodies: Map<string, SourceBodyGeometry>; birthPin: DetectivesOperationalReceipt|null };
+type ContextProof = { digest: string; contracts: Map<string, SourcePlacementHideContract>; bodies: Map<string, SourceBodyGeometry>; birthPin: DetectivesOperationalReceipt|null; windows:JourneyWindowPin|null };
 const trustedContexts = new WeakMap<object, ContextProof>();
 function freeze<T>(value: T): T {
   if (value !== null && typeof value === "object") {
@@ -258,12 +260,16 @@ export async function resolveLocalPatchBoardsForGame(db: Reader, gameId: string,
   const bodies=new Map<string,SourceBodyGeometry>();
   const bodyPin=sceneVersion===13 ? await readSourceBodyRepairPin(db,gameId) : null;
   const birthPin=sceneVersion===13?await detectivesOperationalPolicyOf(db,gameId):null;
+  const prospective=sceneVersion===13?await journeyWindowReleaseOf(db,gameId):null;
+  const windows=prospective&&release?.manifestSha256===JOURNEY_WINDOW_MANIFEST.parentManifestSha256?prospective:null;
+  const bodyManifest=windows?JOURNEY_WINDOW_BODY_MANIFEST:SOURCE_BODY_REPAIR_MANIFEST;
   demand(release?.version!==DETECTIVE_FAMILY_V2 || birthPin,"sealed Detective family requires its original operational policy");
   demand(!(bodyPin&&birthPin),"Historical repair and from-birth source policy cannot overlap");
-  const bodySelections:readonly {hideId:string}[]=bodyPin?.selected??(birthPin && release?.manifestSha256===SOURCE_BODY_REPAIR_MANIFEST.parentManifestSha256?SOURCE_BODY_REPAIR_MANIFEST.entries:[]);
+  demand(!windows||birthPin?.sourceBodyManifestSha256===windows.bodyManifestSha256&&!bodyPin,'Prospective windows require their own from-birth body policy');
+  const bodySelections:readonly {hideId:string}[]=bodyPin?.selected??(birthPin && release?.manifestSha256===bodyManifest.parentManifestSha256?bodyManifest.entries:[]);
   if(bodySelections.length){
     demand(release?.manifestSha256===SOURCE_BODY_REPAIR_MANIFEST.parentManifestSha256,'Body repair parent family changed');
-    for(const selected of bodySelections){const geometry=SOURCE_BODY_REPAIR_MANIFEST.entries.find(e=>e.hideId===selected.hideId),entry=contracts.get(selected.hideId);
+    for(const selected of bodySelections){const geometry=bodyManifest.entries.find(e=>e.hideId===selected.hideId),entry=contracts.get(selected.hideId);
       demand(geometry&&entry?.sourceNeighbors,'Body repair requires original annotated public geometry');
       const parent=authoredLocalPatchReturnContract({contentVersion:13,boardId:entry!.boardId,hideId:entry!.hideId,source:entry!.source,crop:entry!.effective.crop,child:entry!.effective.child,authored:entry!.effective.returnRect,sourcePlacement:{manifestSha256:release!.manifestSha256,basePlacementSha256:entry!.basePlacementSha256}});
       const g=freeze(validateSourceBodyGeometry(geometry,parent,entry!.sourceNeighbors!.contract.neighbors));bodies.set(g.hideId,g);
@@ -273,9 +279,29 @@ export async function resolveLocalPatchBoardsForGame(db: Reader, gameId: string,
     }
     boards=freeze(boards.map(b=>LocalPatchBoardSchema.parse({...b,hides:b.hides.map(h=>bodies.has(h.id)?{...h,returnRect:bodies.get(h.id)!.returnRect}:h)})));
   }
+  if(windows){
+    for(const change of JOURNEY_WINDOW_MANIFEST.entries){const entry=contracts.get(change.hideId);
+      demand(entry?.sourceNeighbors,'Prospective window requires complete original neighbours');
+      const active=entry!.effective.returnRect;
+      demand(sourcePlacementCanonical(active)===sourcePlacementCanonical(change.parent)
+        ||bodies.has(change.hideId)&&sourcePlacementCanonical(active)===sourcePlacementCanonical(change.returned),'Window parent geometry differs');
+      const effective={...entry!.effective,returnRect:change.returned};
+      const context={boardId:entry!.boardId,hideId:entry!.hideId,source:entry!.source,crop:effective.crop,returnRect:change.returned};
+      const prepared=prepareSourceNeighborContract({...entry!.sourceNeighbors!.contract,...context},context);
+      demand(prepared.ok,'Prospective window crosses an original head');
+      contracts.set(change.hideId,freeze({...entry!,effective,sourceNeighbors:prepared.ok?{contract:prepared.contract,contractSha256:prepared.contractSha256}:null}));
+    }
+    boards=freeze(boards.map(b=>LocalPatchBoardSchema.parse({...b,hides:b.hides.map(h=>{
+      const change=JOURNEY_WINDOW_MANIFEST.entries.find(c=>c.hideId===h.id);
+      if(!change)return h;
+      const wardrobe='wardrobeReplacement'in change?(()=>{demand(h.wardrobe?.includes(change.wardrobeReplacement.from),'Public wardrobe parent differs');
+        return h.wardrobe!.replace(change.wardrobeReplacement.from,change.wardrobeReplacement.to);})():null;
+      return {...h,returnRect:change.returned,...(wardrobe?{wardrobe}:{})};
+    })})));
+  }
   const context: TrustedSourcePlacementContext = Object.freeze({ [contextBrand]: true as const, gameId, sceneVersion,
     boards, release: release ? freeze(release) : null, manifestSha256: release?.manifestSha256 ?? null });
-  trustedContexts.set(context, { digest: contextDigest(context), contracts, bodies, birthPin:birthPin?freeze(birthPin):null });
+  trustedContexts.set(context, { digest: contextDigest(context), contracts, bodies, birthPin:birthPin?freeze(birthPin):null, windows });
   return context;
 }
 
@@ -295,6 +321,8 @@ export async function resolveLocalPatchBoardForGame(db: Reader, gameId: string, 
 }
 
 export function sourceBodyForHide(context:TrustedSourcePlacementContext,hideId:string){assertTrustedSourcePlacementContext(context);return trustedContexts.get(context)!.bodies.get(hideId)??null;}
-export function sourcePlacementManifestForHide(context:TrustedSourcePlacementContext,hideId:string){return sourceBodyForHide(context,hideId)?SOURCE_BODY_REPAIR_MANIFEST_SHA256:context.manifestSha256;}
+export function sourcePlacementManifestForHide(context:TrustedSourcePlacementContext,hideId:string){assertTrustedSourcePlacementContext(context);const pin=trustedContexts.get(context)!.windows;
+ return sourceBodyForHide(context,hideId)?pin?.bodyManifestSha256??SOURCE_BODY_REPAIR_MANIFEST_SHA256
+   :pin&&JOURNEY_WINDOW_MANIFEST.entries.some(e=>e.hideId===hideId)?pin.manifestSha256:context.manifestSha256;}
 
 export function sourceBodyBirthForHide(context:TrustedSourcePlacementContext,hideId:string){assertTrustedSourcePlacementContext(context);const proof=trustedContexts.get(context)!;return proof.bodies.has(hideId)?proof.birthPin:null;}

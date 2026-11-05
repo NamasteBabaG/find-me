@@ -40,6 +40,8 @@ const EnvSchema = z.object({
   /** Full original photo, painted facial volume and strict HIGH reference review; pinned only on fresh QA drafts. */
   LOCAL_PATCH_IDENTITY_SOURCE: z.enum(["legacy", "full-source-v1"]).prefault("legacy"),
   LOCAL_PATCH_PROMPT_RELEASE: z.enum(["v15", "v16", "v17", "v18", "v19"]).prefault("v15"),
+  /** Explicit QA opt-in, pinned before the photo. Never changes an existing game. */
+  DETECTIVES_WINDOW_RELEASE: z.enum(["off", "v1"]).prefault("off"),
   /** Painting quality for NEW local-patch drafts, pinned per game when the draft
    * is created; a game keeps its pin, and a game without one keeps its content
    * version's own quality (MEDIUM for v12). low-v1 is qualified only on QA with

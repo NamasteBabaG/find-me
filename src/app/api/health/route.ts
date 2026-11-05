@@ -1,6 +1,7 @@
 import { EXPLORERS_OPERATIONAL_RELEASE } from "@/domain/generation/explorers-operational-policy";
 import { DETECTIVES_OPERATIONAL_RELEASE, detectivesOperationalQualified } from "@/domain/generation/detectives-operational-policy";
 import { SOURCE_BODY_REPAIR_MANIFEST_SHA256 } from "../../../../content/detectives/source-body-repair";
+import { JOURNEY_WINDOW_RELEASE,JOURNEY_WINDOW_MANIFEST_SHA256,JOURNEY_WINDOW_BODY_SHA256 } from '../../../../content/detectives/journey-window-release-v1';
 import { promises as dns } from "node:dns";
 import { qaAccessDenied } from "@/lib/server/qa-access";
 import { NextResponse } from "next/server";
@@ -51,9 +52,10 @@ export async function GET(req: Request) {
   const leanQualified = !leanRequested || leanReleaseQualified({ appEnv: e.APP_ENV, promptRelease: e.LOCAL_PATCH_PROMPT_RELEASE,
     reviewRelease: e.LOCAL_PATCH_VISUAL_REVIEW === "dual-high-v3" ? DUAL_VISUAL_REVIEW_V3 : undefined });
   const detectivesNewPolicy = e.STORAGE_PROVIDER === "db" && detectivesOperationalQualified({appEnv:e.APP_ENV,promptRelease:e.LOCAL_PATCH_PROMPT_RELEASE,identitySource:e.LOCAL_PATCH_IDENTITY_SOURCE,reviewRelease:e.LOCAL_PATCH_VISUAL_REVIEW==="dual-high-v3"?DUAL_VISUAL_REVIEW_V3:undefined,leanRelease:leanRequested?"local-patch-lean/v1":undefined});
+  const windowsRequested=e.DETECTIVES_WINDOW_RELEASE==='v1',windowsEnabled=windowsRequested&&detectivesNewPolicy;
   const leanConfigured = !leanRequested || (e.GENERATION_PROVIDER === "openai" && !!e.OPENAI_API_KEY?.trim());
   const ok = db.ok && !(e.APP_ENV === "qa" && e.LOCAL_PATCH_VISUAL_REVIEW !== "legacy" && !dualConfigured) && !painterUnqualified
-    && batchQualified && batchConfigured && leanQualified && leanConfigured;
+    && batchQualified && batchConfigured && leanQualified && leanConfigured && (!windowsRequested||windowsEnabled);
   const body = {
     ok,
     db,
@@ -68,7 +70,9 @@ export async function GET(req: Request) {
       quality: { model: visualReviewPolicy("scene-quality").model, effort: "high" },
       continuity: { model: visualReviewPolicy("head-continuity").model, effort: "high" },
       explorersNewGames: detectivesNewPolicy ? {version:EXPLORERS_OPERATIONAL_RELEASE,reviewMode:"single-sol-medium/v1",model:"gpt-6.1-sol",effort:"medium",birthReviewMode:"single-sol-low/v1",birthEffort:"low",nativeHeadReturnEvidence:true,initialTier:"flex",oneUsableAssessmentPerImage:true,normalImageAttemptLimit:3,worldCapMicroUsd:4000000,automaticBudgetExtension:false} : null,
-      detectivesNewGames: detectivesNewPolicy ? {version:DETECTIVES_OPERATIONAL_RELEASE,reviewMode:"single-sol-medium/v1",model:"gpt-6.1-sol",effort:"medium",birthReviewMode:"single-sol-low/v1",birthEffort:"low",nativeHeadReturnEvidence:true,initialTier:"flex",oneUsableAssessmentPerImage:true,normalImageAttemptLimit:3,worldCapMicroUsd:4000000,automaticBudgetExtension:false,sourceBodyManifestSha256:SOURCE_BODY_REPAIR_MANIFEST_SHA256} : null },
+      detectivesNewGames: detectivesNewPolicy ? {version:DETECTIVES_OPERATIONAL_RELEASE,reviewMode:"single-sol-medium/v1",model:"gpt-6.1-sol",effort:"medium",birthReviewMode:"single-sol-low/v1",birthEffort:"low",nativeHeadReturnEvidence:true,initialTier:"flex",oneUsableAssessmentPerImage:true,normalImageAttemptLimit:3,worldCapMicroUsd:4000000,automaticBudgetExtension:false,
+        sourceBodyManifestSha256:windowsEnabled?JOURNEY_WINDOW_BODY_SHA256:SOURCE_BODY_REPAIR_MANIFEST_SHA256,
+        ...(windowsEnabled?{journeyWindowRelease:{version:JOURNEY_WINDOW_RELEASE,manifestSha256:JOURNEY_WINDOW_MANIFEST_SHA256,prospectiveOnly:true,repeatWindowStop:'repeat-window-stop/v1'}}:{})} : null },
     // Which wording NEW hides and identities receive; stored ones keep their own.
     promptRelease: e.LOCAL_PATCH_PROMPT_RELEASE,
     // The painting quality NEW local-patch drafts are pinned to; existing games keep their own.

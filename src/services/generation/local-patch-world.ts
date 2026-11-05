@@ -1,4 +1,5 @@
 import { readWholeSourceContextPin, wholeSourceContextCandidate } from "./whole-source-context-pin";
+import { windowStoppedRows } from './repeat-window-stop';
 import { boardConditioningHash } from "./board-conditioned-source";
 import { wholeSourceContextExhausted } from "../../domain/generation/whole-source-context-purchase";
 import { wholeSourceContextImagePolicy } from "../../infra/generation/openai-local-patch";
@@ -866,6 +867,7 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
   }
 
   const allowRepair = localPatchFinalRepairAllowed(env().APP_ENV, strict);
+  const windowStops=await windowStoppedRows(c.db,gameId,rows);
   const attemptLimit = allowRepair ? LOCAL_PATCH_MAX_ATTEMPTS : LOCAL_PATCH_NORMAL_ATTEMPTS;
   const extraRows = new Set(extraPlan?.selected.map(entry => entry.rowId));
   if (extraPlan && extraPlan.others.some(entry => rows.find(row => row.id === entry.rowId)?.status === "FAILED")) {
@@ -881,7 +883,7 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
   // local-patch-no-route-rest/v1: an appearance with no automatic evidence question left is never painted again,
   // so it no longer holds the whole world in the normal phase; others' final repairs may start (2026-11-03: four such
   // rows at attempt 1 kept giza 2's third painting unreachable and the world idle).
-  const planState = (row: (typeof rows)[number] | undefined) => automatic && row && localPatchEvidenceRecovery(row)?.exhausted
+  const planState = (row: (typeof rows)[number] | undefined) => row && (windowStops.has(row.id)||automatic && localPatchEvidenceRecovery(row)?.exhausted)
     ? { status: row.status, attempts: LOCAL_PATCH_MAX_ATTEMPTS } : row;
   const plan = localPatchAttemptPlan(work.map(item => planState(stateOf(item.sceneId, item.hide.targetId))), allowRepair);
   const normalReviewsPending = strict && game.scenes.some(scene => scene.generationStatus !== "GENERATED"
@@ -900,6 +902,7 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
   const repairCheckpoints = new Map(rows.map(row => [row.id, JSON.stringify(selfRepairOf(row) ?? null)]));
   const automaticWork = automatic && !extraPlan ? work.filter(item => {
     const row = stateOf(item.sceneId, item.hide.targetId);
+    if(row&&windowStops.has(row.id))return false;
     return needsSelfRepair(row) && !legacyReviewOwed(row) && !contextPainting(row) && !contextExhausted(row) && !sourceBodyBirthMarker(row!) && !bodyPainting(row) && !bodyExhausted(row) && !(row && (guidedFrameExhausted(row) && !completionRepair(row) && !mechanicalRepair(row) || nativeMaskTailExhausted(row))) && !leanThirdPainting(row) && !guidedThirdPainting(row) && !(hasLocalPatchCapability(game.scenes.find(scene => scene.id === item.sceneId)?.sceneVersion, "integratedQuality")
       && (localPatchEvidenceRecovery(row!) || playerReviewEnabled() && needsPlayerReview(row!)))
       // Re-asked under v2 about the same pixels before any repair (subject-rejudge/v1).
@@ -925,6 +928,7 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
     : plan.indices.map(index => work[index]!)).filter(item => {
     if (automaticWork.includes(item)) return false;
     const candidate = stateOf(item.sceneId, item.hide.targetId);
+    if(candidate&&windowStops.has(candidate.id))return false;
     if (legacyReviewOwed(candidate)) return false;
     if(contextPainting(candidate))return true;
     if(contextExhausted(candidate))return false;
@@ -1209,6 +1213,7 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
       const row = after.find(r => r.targetInstance.gameSceneId === item.sceneId && r.targetInstance.targetId === item.hide.targetId);
       const recovery = automatic && row ? localPatchEvidenceRecovery(row) : null, diagnosis = recovery?.step?.diagnosis;
       return localPatchRestOf({ hideId: item.hide.id,
+        windowStopped:!!row&&windowStops.has(row.id),
         evidence: recovery ? { retry: recovery.retry, waiting: recovery.waiting, exhausted: recovery.exhausted,
           ...(diagnosis ? { kind: `${diagnosis.role} ${diagnosis.kind}` } : {}) } : null,
         reviewOwed: legacyReviewOwed(row) || !!row && (progress && readyReviewOwed(row) || rejudgePending(row) || playerReviewEnabled() && needsPlayerReview(row)),

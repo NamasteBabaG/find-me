@@ -4,6 +4,8 @@ vi.mock("@/lib/server/qa-access", () => ({ qaAccessDenied: async () => null }));
 vi.mock("@/lib/env", () => ({ env: () => f.environment }));
 vi.mock("@/services/container", () => ({ getContainer: () => ({ db: { $queryRaw: async () => [{ value: 1 }] } }), deliverWithProblemsOf: () => false }));
 import { GET } from "../route";
+import { JOURNEY_WINDOW_MANIFEST_SHA256,JOURNEY_WINDOW_BODY_SHA256 } from '../../../../../content/detectives/journey-window-release-v1';
+import { SOURCE_BODY_REPAIR_MANIFEST_SHA256 } from '../../../../../content/detectives/source-body-repair';
 beforeEach(() => { f.environment = { APP_ENV: "qa", STORAGE_PROVIDER: "db", LOCAL_PATCH_PROMPT_RELEASE: "v19", LOCAL_PATCH_PAINTER: "low-v1",
   LOCAL_PATCH_QUALITY_CHANNEL: "anthropic-batch-v1", LOCAL_PATCH_VISUAL_REVIEW: "dual-high-v3", GENERATION_PROVIDER: "openai",
   OPENAI_API_KEY: "synthetic", ANTHROPIC_API_KEY: "synthetic" }; });
@@ -46,6 +48,18 @@ describe("health reports how new drafts' Opus quality questions are delivered", 
 
 
 describe('health reports the prospective Detective judge separately from historical policies',()=>{
+ it('reports the selected authoring companion and its body hash only after explicit qualified opt-in',async()=>{
+  Object.assign(f.environment,{LOCAL_PATCH_LEAN:'lean-v1',LOCAL_PATCH_IDENTITY_SOURCE:'full-source-v1'});
+  const old=await health();expect(old.body.visualReview.detectivesNewGames.sourceBodyManifestSha256).toBe(SOURCE_BODY_REPAIR_MANIFEST_SHA256);
+  expect(old.body.visualReview.detectivesNewGames.journeyWindowRelease).toBeUndefined();
+  Object.assign(f.environment,{DETECTIVES_WINDOW_RELEASE:'v1'});
+  const next=await health();expect(next.status).toBe(200);expect(next.body.visualReview.detectivesNewGames).toMatchObject({sourceBodyManifestSha256:JOURNEY_WINDOW_BODY_SHA256,
+    journeyWindowRelease:{version:'journey-window-release/v1',manifestSha256:JOURNEY_WINDOW_MANIFEST_SHA256,prospectiveOnly:true,repeatWindowStop:'repeat-window-stop/v1'},worldCapMicroUsd:4000000,automaticBudgetExtension:false});
+ });
+ it.each([{APP_ENV:'production'},{LOCAL_PATCH_IDENTITY_SOURCE:'legacy'},{LOCAL_PATCH_LEAN:'off'},{STORAGE_PROVIDER:'local'}])('fails health when the window flag cannot enroll drafts: %j',async change=>{
+  Object.assign(f.environment,{LOCAL_PATCH_LEAN:'lean-v1',LOCAL_PATCH_IDENTITY_SOURCE:'full-source-v1',DETECTIVES_WINDOW_RELEASE:'v1'},change);
+  expect((await health()).status).toBe(503);
+ });
  it('identifies one combined SOL LOW answer and the ordinary 4m cap for qualified new Detectives',async()=>{
   Object.assign(f.environment,{LOCAL_PATCH_LEAN:'lean-v1',LOCAL_PATCH_IDENTITY_SOURCE:'full-source-v1'});
   expect((await health()).body.visualReview.detectivesNewGames).toMatchObject({version:'detectives-operational/v1',reviewMode:'single-sol-medium/v1',model:'gpt-6.1-sol',effort:'medium',birthReviewMode:'single-sol-low/v1',birthEffort:'low',nativeHeadReturnEvidence:true,oneUsableAssessmentPerImage:true,normalImageAttemptLimit:3,worldCapMicroUsd:4000000,automaticBudgetExtension:false});
