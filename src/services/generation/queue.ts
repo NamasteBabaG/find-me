@@ -6,6 +6,7 @@ import { nextPropJoinRepair } from "./prop-join-repair";
 import { nextIdentitySourceRevision, tickIdentitySourceRevision } from "./identity-source-revision-queue";
 import { resumeIdentityReasonHold } from "./identity-reason-recovery";
 import { resumeSourceHeadRecovery } from './source-head-recovery';
+import { resumeSourceHeadJoinRecovery } from './source-head-join-recovery';
 import { statusOf } from "../game-status";
 import { nextDetectivesCompletionWake } from "./detectives-completion-budget";
 import type { Container } from "../container";
@@ -164,6 +165,8 @@ export async function tickGeneration(c: Container, gameId: string | null, budget
   if (!before) return { gameId: id, status: null, pending: false };
   if (before.styleVersion === LOCAL_PATCH_STYLE) {
     const terminal = await c.db.generationJob.findUnique({ where: { id: `job_${id}` }, select: { currentStep: true, lastError: true } });
+    if(before.status==='TARGETS_GENERATING'&&terminal?.currentStep===LOCAL_PATCH_RECOVERY_EXHAUSTED&&await resumeSourceHeadJoinRecovery(c,id))
+      return {gameId:id,status:statusOf(before),pending:true,attention:null};
     if(before.status==='TARGETS_GENERATING'&&terminal?.currentStep===LOCAL_PATCH_RECOVERY_EXHAUSTED&&await resumeSourceHeadRecovery(c,id))
       return {gameId:id,status:statusOf(before),pending:true,attention:null};
     if (terminal?.currentStep === LOCAL_PATCH_QUALITY_FAILED) {

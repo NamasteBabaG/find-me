@@ -2,6 +2,7 @@ import { NATIVE_DETAIL_REPAIR_DIRECTION, nativeDetailEvidenceSchema, type Native
 import { sourceHeadMarkerSchema, sourceHeadAuthorityForPlacement, sourceHeadHash, sourceHeadPaintDirection,
   type SourceHeadMarker, type SourceHeadAuthority } from '../../domain/generation/source-head-recovery';
 import { sourceHeadMaskPng, applySourceHeadPixels } from './source-head-pixels';
+import { sourceHeadJoinMarkerSchema, type SourceHeadJoinMarker } from '../../domain/generation/source-head-join';
 import { wholeSourceContextMarkerSchema, type WholeSourceContextMarker } from "../../domain/generation/whole-source-context-purchase";
 import { assertWholeSourceContextPlan, WHOLE_SOURCE_CONTEXT_VERSION, type WholeSourceContextPlan } from "../../domain/scene/whole-source-context";
 import { prepareWholeSourceContextPixels, extractWholeSourceContextShipping } from "./whole-source-context-pixels";
@@ -133,7 +134,7 @@ export type LocalPatchAttemptInput = {
   readonly nativeMaskTail?: NativeMaskTailMarker;
   readonly sourceBodyRepair?: SourceBodyMarker;
   readonly sourceBodyBirth?: SourceBodyBirthMarker;
-  readonly sourceHeadRecovery?: { readonly marker: SourceHeadMarker; readonly authority: SourceHeadAuthority };
+  readonly sourceHeadRecovery?: { readonly marker: SourceHeadMarker; readonly authority: SourceHeadAuthority; readonly join?:SourceHeadJoinMarker };
   readonly wholeSourceContext?: { readonly marker: WholeSourceContextMarker; readonly plan: WholeSourceContextPlan; readonly sourceFile: Buffer };
   readonly identityPng: Buffer;
   readonly referenceMode?: LocalPatchReferenceMode;
@@ -403,6 +404,9 @@ export async function renderLocalPatchHide(deps: LocalPatchRenderDeps, input: Lo
       ||input.guidedFrameRecovery||input.placementGuide||input.nativeMaskTail||input.sourceBodyRepair||input.sourceBodyBirth
       ||input.wholeSourceContext||input.selfRepair||input.adaptiveRecovery||input.recoveryDirective)
       throw Error('SOURCE_HEAD: exact finite native MEDIUM head purchase required');
+    if(sourceHead.join){const join=sourceHeadJoinMarkerSchema.parse(sourceHead.join);
+      if(join.recoveryAuthorizationSha256!==marker.authorizationSha256||join.authoritySha256!==marker.authoritySha256
+        ||join.sourceRequestKey!==marker.requestKey)throw Error('SOURCE_HEAD_JOIN: finite replay binding differs');}
   }
   if (authoredReturn && input.selfRepair) {
     assertAuthoredLocalPatchRecoveryGeometry(authoredReturn, input.placementContext, input.selfRepair.decision);
@@ -673,6 +677,7 @@ async function renderLocalPatchHideInner(deps: LocalPatchRenderDeps, input: Loca
     worldId, requestKey: renderKey, scope: "image",
     operationFingerprint: renderFingerprint, reserveMicroUsd: input.wholeSourceContext ? WHOLE_SOURCE_CONTEXT_IMAGE_RESERVE : LOCAL_PATCH_RESERVE.renderMicroUsd,
     buy: async ({ timeoutMs }) => {
+      if(sourceHead?.join)throw Error('SOURCE_HEAD_JOIN: free replay cannot dispatch a painting');
       const result = await deps.render({ worldId, requestKey: renderKey, prompt, stylePng, identityPng: renderIdentityPng, maskPng,
         ...(placementGuidePng ? { placementGuidePng, placementGuideVersion:input.placementGuide?input.placementGuide.version:input.wholeSourceContext?WHOLE_SOURCE_CONTEXT_VERSION:bodyGeometry?SOURCE_BODY_REPAIR_VERSION:GUIDED_FRAME_RECOVERY_VERSION } : {}),
         ...(input.wholeSourceContext && painterNeighbors?.ok ? { wholeSourceContext: { plan: input.wholeSourceContext.plan, contract: painterNeighbors.contract, child: authoredMask } } : {}),
@@ -718,6 +723,8 @@ async function renderLocalPatchHideInner(deps: LocalPatchRenderDeps, input: Loca
     throw Error("WHOLE_SOURCE_CONTEXT: retained native mapping changed");
   if(sourceHead&&JSON.stringify(painted.sourceHeadRecovery)!==JSON.stringify(sourceHead.marker))
     throw Error('SOURCE_HEAD: retained native source-head permission changed');
+  if(sourceHead?.join&&(sourceHead.join.sourceFingerprint!==renderFingerprint||sourceHead.join.sourcePayloadSha256!==sha(bought.bytes)))
+    throw Error('SOURCE_HEAD_JOIN: already-paid request fingerprint or payload differs');
   const patchPng = input.wholeSourceContext && painterNeighbors?.ok
     ? await extractWholeSourceContextShipping(Buffer.from(painted.bytesBase64, "base64"), input.wholeSourceContext.plan, painterNeighbors.contract, authoredMask)
     : await sharp(Buffer.from(painted.bytesBase64, "base64")).resize(LOCAL_PATCH_CROP.width, LOCAL_PATCH_CROP.height, { fit: "fill" }).png().toBuffer();
@@ -726,7 +733,7 @@ async function renderLocalPatchHideInner(deps: LocalPatchRenderDeps, input: Loca
     await sharp(input.composedPng, { limitInputPixels: 8_294_400 }).extract(crop).png().toBuffer(), foreground) : null;
   const bodyApplied=bodyGeometry?await applySourceBodyPixels(input.composedPng,patchPng,bodyGeometry):null;
   let headApplied:Awaited<ReturnType<typeof applySourceHeadPixels>>|null=null;
-  if(sourceHead){try{headApplied=await applySourceHeadPixels(input.composedPng,patchPng,sourceHead.authority);}
+  if(sourceHead){try{headApplied=await applySourceHeadPixels(input.composedPng,patchPng,sourceHead.authority,sourceHead.join?.version);}
     catch(error){if(!(error instanceof Error)||!error.message.startsWith('SOURCE_HEAD: new head boundary'))throw error;
       return {...refusedRender('quality-seam: '+error.message,renderCents),patchPng,replayed:bought.replayed};}}
   const restored = (shipping: Buffer) => ({...(occluded ? { foreground: foregroundRecord(foreground!, occluded.restoredPixels, sha(shipping)) } : {}),...(bodyApplied?{sourceBodyComposition:bodyApplied.proof}:{}),...(headApplied?{sourceHeadComposition:headApplied.proof}:{})});

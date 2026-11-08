@@ -2,6 +2,8 @@ import * as nativeDetailEvidenceModule from "../native-detail-evidence";
 import { resumeSourceHeadRecovery, sourceHeadRecoveryPinOf, sourceHeadRecoveryId, sourceHeadCompositionEvidenceMatches } from '../source-head-recovery';
 import { SOURCE_HEAD_RECOVERY_AUTHORITIES } from '../../../../content/adventures/source-head-recovery-v1';
 import { sourceHeadAlpha, sourceHeadHash } from '../../../domain/generation/source-head-recovery';
+import { resumeSourceHeadJoinRecovery, sourceHeadJoinId } from '../source-head-join-recovery';
+import { SOURCE_HEAD_JOIN_VERSION } from '../../../domain/generation/source-head-join';
 import { PrismaWorldBudgetStore } from '../../../infra/db/prisma-world-budget-store';
 import { JOURNEY_WINDOW_RELEASE } from '../../../../content/detectives/journey-window-release-v1';
 import { pinJourneyWindowRelease } from '../journey-window-release';
@@ -266,10 +268,10 @@ function controlledSol(interrupted = false, guided = false, guidedHideId?: strin
   return { fake, creates };
 }
 
-it('source-head recovery preserves26 paid Explorer appearances and the legacy contract, buys one finite MEDIUM head, and requires a fresh ordinary verdict',async()=>{
+it.each([{joinReplay:false,label:'original v1'},{joinReplay:true,label:'already-paid v2 replay'}])('source-head recovery $label preserves26 paid Explorer appearances and the legacy contract, buys one finite MEDIUM head, and requires a fresh ordinary verdict',async({joinReplay})=>{
  vi.useFakeTimers({toFake:['Date']});
  try{
-  const gameId='source-head-original-explorer-synthetic';await newDetectiveWorld(gameId,7,true,true,true);
+  const gameId='source-head-original-explorer-synthetic-'+(joinReplay?'join':'v1');await newDetectiveWorld(gameId,7,true,true,true);
   // The older fixture creates a settled mock order but leaves the game's
   // webhook timestamp empty. This stricter strategy requires both records.
   const payment=await db.order.findUniqueOrThrow({where:{id:'order-'+gameId}});
@@ -312,6 +314,14 @@ it('source-head recovery preserves26 paid Explorer appearances and the legacy co
     expect(badMask).toBe(0);
     const newHead=await sharp({create:{width:60,height:65,channels:4,background:'#416783'}}).png().toBuffer();
     const badCounter=await sharp({create:{width:180,height:90,channels:4,background:'#ff00ff'}}).png().toBuffer();
+    if(joinReplay){
+      // A complete replacement hairstyle reaches the permitted edit edge.
+      // v1 must refuse this colour change before any ordinary assessment.
+      const pixels=await sharp(input.stylePng).ensureAlpha().raw().toBuffer();
+      for(let i=0;i<alpha.length;i++)if(alpha[i]){pixels[i*4]=210;pixels[i*4+1]=20;pixels[i*4+2]=30;}
+      const wholeHead=await sharp(pixels,{raw:{width:512,height:768,channels:4}}).png().toBuffer();
+      return paintedOk(await sharp(wholeHead).composite([{input:badCounter,left:150,top:510}]).png().toBuffer(),bill('synthetic-new-source-head',50000));
+    }
     return paintedOk(await sharp(input.stylePng).composite([{input:newHead,left:220,top:280},{input:badCounter,left:150,top:510}]).png().toBuffer(),bill('synthetic-new-source-head',50000));
    }
    const returned=localPatchReturnRegion(cropOf(h),maskForHide(h),h.returnRect).local;
@@ -381,6 +391,38 @@ it('source-head recovery preserves26 paid Explorer appearances and the legacy co
    }
    if(result.pending)await vi.advanceTimersByTimeAsync(LEAN_RECOVERY_BACKOFF_MS+1);
   }
+  if(joinReplay){
+    const refused=await row();expect(refused).toMatchObject({status:'FAILED',attempts:4,assetId:before.assetId});
+    expect(JSON.parse(refused.judgeJson!).renderFault).toBe('quality-seam: SOURCE_HEAD: new head boundary exceeds unchanged seam/alignment limits');
+    expect(ordinaryHeadQuestions).toBe(0);expect(seenUnreviewed).toBe(false);
+    const paidLedger=await db.worldBudgetLedger.findUniqueOrThrow({where:{worldId}}),paidRequests=JSON.parse(paidLedger.snapshotJson).requests;
+    const kept=await db.fileBlob.findUniqueOrThrow({where:{key:retainedPurchaseKey(worldId,pin.requestKey)}});
+    await db.fileBlob.delete({where:{key:kept.key}});expect(await resumeSourceHeadJoinRecovery(container,gameId)).toBe(false);
+    expect(render.mock.calls.length-oldRenderCount).toBe(1);await db.fileBlob.create({data:kept});
+    await db.order.update({where:{id:payment.id},data:{paymentStatus:'REFUNDED'}});expect(await resumeSourceHeadJoinRecovery(container,gameId)).toBe(false);
+    await db.order.update({where:{id:payment.id},data:{paymentStatus:'PAID'}});
+    const refusal:string[]=[];expect(await resumeSourceHeadJoinRecovery(container,gameId,r=>refusal.push(r)),refusal.join(',')).toBe(true);
+    expect(await resumeSourceHeadJoinRecovery(container,gameId)).toBe(false);
+    expect((await row()).attempts).toBe(4);expect((await row()).status).toBe('PENDING');
+    expect((await db.worldBudgetLedger.findUniqueOrThrow({where:{worldId}})).snapshotJson).toBe(paidLedger.snapshotJson);
+    const joinAudit=await db.auditLog.findUniqueOrThrow({where:{id:sourceHeadJoinId(gameId)}}),joinPin=JSON.parse(joinAudit.metaJson!);
+    expect(joinPin.previousJudgeJson).toBe(refused.judgeJson);expect(joinPin.originalRequests).toHaveLength(paidRequests.length);
+    expect((await db.auditLog.findUniqueOrThrow({where:{id:audit.id}})).metaJson).toBe(audit.metaJson);
+    result={pending:true,attention:null};
+    for(let turn=0;result.pending&&turn<80;turn++){
+      result=await runLocalPatchWorldSlice(container,deps,gameId,{hardDeadlineAt:Date.now()+270000,diagnose});
+      const current=await row(),j=JSON.parse(current.judgeJson!);
+      if(j.sourceHeadJoin&&j.reviewState==='pending-board-review'){
+        expect(current.costCents).toBe(refused.costCents);
+        seenUnreviewed=true;expect(await allowedDualPublication(db,{gameId,sceneVersion:12,hideId:hide.id,variantId:current.id,
+          attempts:current.attempts,identityAssetId:'ast-sheet-'+gameId,identitySha256:pin.identitySha256,assetId:current.assetId!,
+          imageSha256:j.judgedSha256,geometrySha256:j.geometrySha256,judgeJson:current.judgeJson})).toBe(false);
+      }
+      if(result.pending)await vi.advanceTimersByTimeAsync(LEAN_RECOVERY_BACKOFF_MS+1);
+    }
+    const finalJoinLedger=JSON.parse((await db.worldBudgetLedger.findUniqueOrThrow({where:{worldId}})).snapshotJson);
+    for(const paidRequest of paidRequests)expect(finalJoinLedger.requests.find((r:{requestKey:string})=>r.requestKey===paidRequest.requestKey)).toEqual(paidRequest);
+  }
   const after=await row(),receipt=JSON.parse(after.judgeJson!);expect(headBought).toBe(true);expect(seenUnreviewed).toBe(true);
   expect(after).toMatchObject({attempts:4,status:'GENERATED'});expect(receipt.selfRepair).toEqual(previous.selfRepair);
   expect(receipt.authoredReturn).toBeUndefined();expect(receipt.guidedFrameRecovery).toEqual(previous.guidedFrameRecovery);
@@ -388,6 +430,14 @@ it('source-head recovery preserves26 paid Explorer appearances and the legacy co
   expect(receipt.sourceHeadComposition).toMatchObject({outsideMaskChangedPixels:0,sourceBodyChangedPixels:0,protectedHeadChangedPixels:0});
   expect(await sourceHeadCompositionEvidenceMatches(db,{gameId,hideId:hide.id,receipt},readArt)).toBe(true);
   expect(await allowedDualPublication(db,{...publicationBinding(gameId,after),sceneVersion:12})).toBe(true);
+  if(joinReplay){
+    expect(receipt.sourceHeadComposition).toMatchObject({version:SOURCE_HEAD_JOIN_VERSION,paidHeadChangedPixels:0,shift:{dx:0,dy:0}});
+    const joinAudit=await db.auditLog.findUniqueOrThrow({where:{id:sourceHeadJoinId(gameId)}});
+    await db.auditLog.delete({where:{id:joinAudit.id}});expect(await allowedDualPublication(db,{...publicationBinding(gameId,after),sceneVersion:12})).toBe(false);
+    await db.auditLog.create({data:joinAudit});
+    const missingJoin={...receipt};delete missingJoin.sourceHeadJoin;
+    expect(await sourceHeadCompositionEvidenceMatches(db,{gameId,hideId:hide.id,receipt:missingJoin},readArt)).toBe(false);
+  }
   const beforePng=await readArt(a.source.art,a.source.sha256),source=await sharp(beforePng).extract(a.crop).ensureAlpha().raw().toBuffer();
   const asset=await db.asset.findUniqueOrThrow({where:{id:after.assetId!}}),pixels=await sharp(await c.storage.get(asset.storagePath)).ensureAlpha().raw().toBuffer();
   const alpha=sourceHeadAlpha(a);let changedProtected=0,changedEditable=0;

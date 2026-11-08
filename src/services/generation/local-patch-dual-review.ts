@@ -1145,6 +1145,9 @@ async function prepareSingleLowQuestion(c: Pick<Container, "db" | "storage">, pr
       +'No approval transfers from old paid questions. Never excuse a residual original ponytail, cut hair, halo, blur, anatomical break or wrong age. '
       +'The unchanged subject reader requires a narrow estimated age range containing the stated age; for age7, a passing range cannot extend above8 or below5 or span more than3years. '
       +'Report genuine wider or unresolved visual age evidence as unsure; do not narrow estimates merely to obtain a pass.';
+    if(receipt.sourceHeadJoin!==undefined)mediumPrompt+='\nSOURCE HEAD JOIN source-head-join/v2: this free composition reuses the SAME already-paid RAW at native axes, without translating, scaling, fading or restyling its head pixels. '
+      +'The public permitted head/hair footprint is copied from RAW and every outside pixel is the unchanged SOURCE body/background. Any RAW-only background motion is discarded, not a shifted player body. '
+      +'Inspect the ENTIRE hair silhouette and neck against RAW for actual clipping at the internal head mask as well as at the outer return. Require painted style and native sharpness to agree with SOURCE people; a protected background or preserved pixels cannot excuse photographic face texture, a cut hairstyle, old hair, a broken neck or wrong age.';
   }
   if (singleVersion === SINGLE_MEDIUM_VISUAL_REVIEW_VERSION && continued)
     mediumPrompt = mediumPrompt.replace('Use doubt=true only', '\nUNANSWERED TRANSPORT CONTINUATION '+attempt+': the earlier provider request ended without text or usage. This is the first usable assessment of these unchanged pixels, not a second opinion.Use doubt=true only');

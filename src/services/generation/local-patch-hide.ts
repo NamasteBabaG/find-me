@@ -354,7 +354,7 @@ export async function runLocalPatchHide(c: Container, deps: LocalPatchHideDeps, 
   const birthPolicy=sourceBodyBirthForHide(placementContext,hide.id),bodyBirth=birthPolicy&&!exhausted?sourceBodyBirthMarkerFor(birthPolicy,row.id,hide.id,attempt):null;
   if(bodyBirth)demand(!bodyRepair&&!guidedFrame&&!nativeMaskTail&&!extra&&scene.sceneVersion===13,'From-birth footprints keep normal finite image attempts');
   const original=bodyRepair||headRecovery?JSON.parse(row.judgeJson??'{}'):{};
-  let guidedHistory: Record<string, unknown>=headRecovery?{sourceHeadRecovery:headRecovery.marker,...(original.selfRepair?{selfRepair:original.selfRepair}:{}),...(original.guidedFrameRecovery?{guidedFrameRecovery:original.guidedFrameRecovery}:{})}:wholeContext?{wholeSourceContext:wholeContext.marker}:bodyBirth?{sourceBodyBirth:bodyBirth}:bodyRepair?{sourceBodyRepair:bodyRepair.marker,...(original.selfRepair?{selfRepair:original.selfRepair}:{}),...(original.guidedFrameRecovery?{guidedFrameRecovery:original.guidedFrameRecovery}:{}),...(original.nativeMaskTail?{nativeMaskTail:original.nativeMaskTail}:{})}:guidedFrame?{guidedFrameRecovery:guidedFrame,selfRepair:JSON.parse(row.judgeJson!).selfRepair,...(nativeMaskTail?{nativeMaskTail}:{})}:{};
+  let guidedHistory: Record<string, unknown>=headRecovery?{sourceHeadRecovery:headRecovery.marker,...(headRecovery.join?{sourceHeadJoin:headRecovery.join}:{}),...(original.selfRepair?{selfRepair:original.selfRepair}:{}),...(original.guidedFrameRecovery?{guidedFrameRecovery:original.guidedFrameRecovery}:{})}:wholeContext?{wholeSourceContext:wholeContext.marker}:bodyBirth?{sourceBodyBirth:bodyBirth}:bodyRepair?{sourceBodyRepair:bodyRepair.marker,...(original.selfRepair?{selfRepair:original.selfRepair}:{}),...(original.guidedFrameRecovery?{guidedFrameRecovery:original.guidedFrameRecovery}:{}),...(original.nativeMaskTail?{nativeMaskTail:original.nativeMaskTail}:{})}:guidedFrame?{guidedFrameRecovery:guidedFrame,selfRepair:JSON.parse(row.judgeJson!).selfRepair,...(nativeMaskTail?{nativeMaskTail}:{})}:{};
   // judgeJson is intentionally kept while PENDING: clearing lastError must not
   // change the prompt/fingerprint when attempt 2/3 resumes after an interruption.
   // v8 corrects its own located defect on the very next attempt. The old paid
@@ -504,7 +504,7 @@ export async function runLocalPatchHide(c: Container, deps: LocalPatchHideDeps, 
     ...(nativeMaskTail ? { nativeMaskTail } : {}),
     ...(bodyRepair?{sourceBodyRepair:bodyRepair.marker}:{}),
     ...(bodyBirth?{sourceBodyBirth:bodyBirth}:{}),
-    ...(headRecovery?{sourceHeadRecovery:{marker:headRecovery.marker,authority:headRecovery.authority}}:{}),
+    ...(headRecovery?{sourceHeadRecovery:{marker:headRecovery.marker,authority:headRecovery.authority,...(headRecovery.join?{join:headRecovery.join}:{})}}:{}),
     ...(wholeContext?{wholeSourceContext:{marker:wholeContext.marker,plan:wholeContext.pin.selected.plan,sourceFile:contextSourceFile!}}:{}),
     ...(attempt === 3 && adaptiveRecovery?.plan ? { adaptiveRecovery: adaptiveRecovery.plan } : {}),
     ...(input.deadlineAt === undefined ? {} : { deadlineAt: input.deadlineAt }),
@@ -512,7 +512,9 @@ export async function runLocalPatchHide(c: Container, deps: LocalPatchHideDeps, 
   });
 
   const money = {
-    renderCents: attemptResult.renderCents, judgeCents: attemptResult.judgeCents,
+    // The concluded v1 refusal already recorded the fourth painting's cost.
+    // A free join replay preserves that row total and the real ledger bill.
+    renderCents: headRecovery?.join?0:attemptResult.renderCents, judgeCents: attemptResult.judgeCents,
     costUnknown: attemptResult.costUnknown, replayed: attemptResult.replayed,
   };
 
@@ -553,7 +555,7 @@ export async function runLocalPatchHide(c: Container, deps: LocalPatchHideDeps, 
       });
       await tx.targetVariantAsset.update({ where: { id: row.id }, data: {
       status: "FAILED", lastError: reason.slice(0, 500),
-      costCents: Math.round(row.costCents + attemptResult.renderCents + attemptResult.judgeCents),
+      costCents: Math.round(row.costCents + money.renderCents + attemptResult.judgeCents),
       rejectedAssetIdsJson: rejectedIds.length ? JSON.stringify(rejectedIds) : null,
       judgeJson: JSON.stringify({ ...guidedHistory, ...(adaptiveRecovery ? { adaptiveRecovery, judgedSha256: attemptResult.judgedSha256 } : {}), verdict: attemptResult.verdict, wireFault: attemptResult.wireFault, seam: attemptResult.seam, promptVersion: attemptResult.promptVersion,
         ...(isLocalPatchStrictVersion(scene.sceneVersion) ? { renderFault: attemptResult.renderFault, compositionPermission: attemptResult.compositionPermission,
@@ -582,7 +584,7 @@ export async function runLocalPatchHide(c: Container, deps: LocalPatchHideDeps, 
   await keepHidePicture(c, {
     id: assetId, gameId, ownerId: game.ownerId, buffer: shipping,
     type: "TARGET_SPRITE", visibility: "GAME",
-    width: crop.width, height: crop.height, costCents: attemptResult.renderCents,
+    width: crop.width, height: crop.height, costCents: money.renderCents,
   });
 
   await c.db.$transaction(async tx => {
@@ -613,7 +615,7 @@ export async function runLocalPatchHide(c: Container, deps: LocalPatchHideDeps, 
       assetId,
       ...geometry,
       status: "GENERATED", lastError: null,
-      costCents: Math.round(row.costCents + attemptResult.renderCents + attemptResult.judgeCents),
+      costCents: Math.round(row.costCents + money.renderCents + attemptResult.judgeCents),
       promptVersion: attemptResult.promptVersion, provider: LOCAL_PATCH_PROVIDER,
       ...(headRecovery?{rejectedAssetIdsJson:JSON.stringify([...new Set([...readIds(row.rejectedAssetIdsJson),...(row.assetId?[row.assetId]:[])])])}:{}),
       judgeJson,

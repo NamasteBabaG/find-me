@@ -17,6 +17,7 @@ import { localPatchPublicationGeometryHash, hasLocalPatchPublicationPolicy } fro
 import { singleMediumReviewPolicyOf } from './single-medium-policy';
 import { readSettledTargetRaw } from './single-review-head-evidence';
 import { reproduceSourceHeadShipping } from './source-head-pixels';
+import { sourceHeadJoinMarkerSchema } from '../../domain/generation/source-head-join';
 import { sha256Bytes as sha } from './fixed-sprite';
 import { fenceLocalPatchImages } from './local-patch-lifecycle';
 import type { LocalPatchHideDeps } from './local-patch-hide';
@@ -36,7 +37,9 @@ type Row={id:string;status:string;attempts:number;judgeJson:string|null;assetId:
 const rowKeys=['id','targetInstanceId','variant','status','attempts','assetId','rectJson','hitRectJson','headAnchorJson','judgeJson',
   'promptVersion','provider','model','costCents','rejectedAssetIdsJson','lastError'];
 const rowHash=(row:Row)=>hash(rowKeys.map(k=>[k,row[k]??null]));
+export const sourceHeadRecoveryRowHash=rowHash;
 const invariantHash=(row:Row)=>hash(rowKeys.filter(k=>!['status','attempts','judgeJson','lastError'].includes(k)).map(k=>[k,row[k]??null]));
+export const sourceHeadRecoveryRowInvariant=invariantHash;
 type Db=Prisma.TransactionClient;
 type ReadArt=NonNullable<LocalPatchHideDeps['readBoardArt']>;
 const sourceArt:ReadArt=async(art,sha)=>(await import('./local-patch-hide')).readShippedBoardArt(art,sha);
@@ -67,7 +70,13 @@ export async function sourceHeadRecoveryPinOf(db:Db,gameId:string):Promise<Sourc
 export function sourceHeadRecoveryCandidate(p:SourceHeadPin,row:Row){
   if(row.id!==p.rowId)return false;
   if(row.status==='FAILED'&&row.attempts===3)return rowHash(row)===p.previousRowSha256;
-  return row.status==='PENDING'&&row.attempts===4&&invariantHash(row)===p.rowInvariantSha256&&same(sourceHeadMarker(row),sourceHeadRecoveryMarkerFor(p));
+  if(row.status!=='PENDING'||row.attempts!==4||!same(sourceHeadMarker(row),sourceHeadRecoveryMarkerFor(p)))return false;
+  if(invariantHash(row)===p.rowInvariantSha256)return true;
+  // A concluded fourth failure already recorded its cost. The additive free
+  // replay pin carries that POST-settlement invariant; it never resets cost.
+  const join=sourceHeadJoinMarkerSchema.safeParse(JSON.parse(row.judgeJson??'null')?.sourceHeadJoin);
+  return join.success&&join.data.recoveryAuthorizationSha256===p.authorizationSha256&&join.data.authoritySha256===p.authoritySha256
+    &&join.data.sourceRequestKey===p.requestKey&&invariantHash(row)===join.data.replayRowInvariantSha256;
 }
 export const sourceHeadRecoveryMarkerFor=(p:SourceHeadPin):SourceHeadMarker=>sourceHeadMarkerSchema.parse({version:SOURCE_HEAD_RECOVERY_VERSION,
   authorizationSha256:p.authorizationSha256,authoritySha256:p.authoritySha256,rowId:p.rowId,hideId:p.hideId,originalAttempts:3,
@@ -140,17 +149,23 @@ export async function requireSourceHeadPurchase(c:Container,gameId:string,rowId:
   check(p&&row&&sourceHeadRecoveryCandidate(p,row),'no current finite source-head purchase');
   const context=await resolveLocalPatchBoardsForGame(c.db,gameId,12),board=context.boards.find(b=>b.hides.some(h=>h.id===p!.hideId)),hide=board?.hides.find(h=>h.id===p!.hideId);
   const a=sourceHeadAuthorityForPlacement(sourcePlacementForHide(context,p!.hideId));
-  check(a&&board&&hide&&hide.pose===a.pose,'public source-head geometry changed');return {pin:p!,marker:sourceHeadRecoveryMarkerFor(p!),authority:a!};
+  check(a&&board&&hide&&hide.pose===a.pose,'public source-head geometry changed');
+  const join=await (await import('./source-head-join-recovery')).sourceHeadJoinForRow(c.db,gameId,row!,p!);
+  return {pin:p!,marker:sourceHeadRecoveryMarkerFor(p!),authority:a!,...(join?{join:join.marker}:{})};
 }
 export async function fenceSourceHeadPurchase(db:Db,gameId:string,rowId:string,marker:SourceHeadMarker){
   const p=await sourceHeadRecoveryPinOf(db,gameId),row=await db.targetVariantAsset.findUnique({where:{id:rowId}});
   check(p&&row&&same(marker,sourceHeadRecoveryMarkerFor(p))&&sourceHeadRecoveryCandidate(p,row),'finite source-head checkpoint changed');
   const siblings=await db.targetVariantAsset.findMany({where:{id:{in:p!.protectedRows.map(r=>r.id)}}});
   check(siblings.length===26&&p!.protectedRows.every(r=>siblings.some(s=>s.id===r.id&&rowHash(s)===r.sha256)),'protected original appearances changed');
+  await (await import('./source-head-join-recovery')).sourceHeadJoinForRow(db,gameId,row!,p!);
 }
 export async function sourceHeadPublicationAuthorized(db:Db,input:{gameId:string;variantId:string;hideId:string;attempts:number;sceneVersion:number;judgeJson:string|null}){
-  try{const p=await sourceHeadRecoveryPinOf(db,input.gameId),m=sourceHeadMarker(input);return !!p&&!!m&&input.sceneVersion===12
-    &&input.variantId===p.rowId&&input.hideId===p.hideId&&input.attempts===4&&same(m,sourceHeadRecoveryMarkerFor(p));}catch{return false;}
+  try{const p=await sourceHeadRecoveryPinOf(db,input.gameId),m=sourceHeadMarker(input);
+    if(!p||!m||input.sceneVersion!==12||input.variantId!==p.rowId||input.hideId!==p.hideId||input.attempts!==4||!same(m,sourceHeadRecoveryMarkerFor(p)))return false;
+    await (await import('./source-head-join-recovery')).sourceHeadJoinForRow(db,input.gameId,{id:input.variantId,attempts:input.attempts,judgeJson:input.judgeJson},p);
+    return true;
+  }catch{return false;}
 }
 export async function sourceHeadCompositionEvidenceMatches(db:Db,input:{gameId:string;hideId:string;receipt:Record<string,any>;beforePng?:Buffer},readArt:ReadArt=sourceArt){
   try{
@@ -162,7 +177,9 @@ export async function sourceHeadCompositionEvidenceMatches(db:Db,input:{gameId:s
     if(!a||!same(input.receipt.authoredReturn,parent??undefined)||input.receipt.authoredRecovery!==undefined||input.receipt.sourceBodyRepair!==undefined)return false;
     const paid=await readSettledTargetRaw(db,input.gameId,p.requestKey);
     if(!same(paid.wire.authoredReturn,parent??undefined)||!same(paid.wire.sourceHeadRecovery,m))return false;
-    const before=input.beforePng??await readArt(a.source.art,a.source.sha256),made=await reproduceSourceHeadShipping(before,paid.normalized,a);
+    const join=await (await import('./source-head-join-recovery')).sourceHeadJoinForRow(db,input.gameId,row,p);
+    const before=input.beforePng??await readArt(a.source.art,a.source.sha256),made=await reproduceSourceHeadShipping(before,paid.normalized,a,join?.marker.version);
+    if(join&&sha(made.png)!==join.pin.candidateSha256)return false;
     const measured=await (await import('./local-patch-geometry')).localPatchGeometry({hide:hide!,boardPng:before,patchPng:made.png,board:a.source,contentVersion:12});
     const geometry={rectJson:JSON.stringify(measured.geometry.rect),hitRectJson:JSON.stringify(measured.geometry.hitRect),headAnchorJson:JSON.stringify(measured.geometry.anchor)};
     if(localPatchPublicationGeometryHash(geometry)!==input.receipt.geometrySha256||localPatchPublicationGeometryHash(row)!==input.receipt.geometrySha256)return false;
