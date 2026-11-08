@@ -28,6 +28,12 @@ import { AUTHORED_RECOVERY_COMPOSITION_VERSION } from "../../../domain/scene/loc
 import { localPatchRestDecision } from "../../../domain/scene/local-patch-progress";
 import { nextBoundEnvelopeReconciliation, resumeBoundEnvelopeReconciliation } from "../bound-envelope-reconciliation";
 import { BOUND_SUBJECT_QUALITY_ENVELOPE_READER, BOUND_SUBJECT_QUALITY_ENVELOPE_READER_V2 } from "../../../domain/generation/bound-subject-quality-envelope";
+import { BOUND_SOURCE_NEIGHBOR_READER } from '../../../domain/generation/bound-source-neighbor-envelope';
+import { REVIEW_EXISTING_WORK_MODE } from '../../../domain/generation/work-mode';
+import { authenticateBoundSourceNeighborReading } from '../bound-source-neighbor-reading';
+import { correctSourceFigureReturn, sourceFigurePublicationMatches } from '../source-figure-return';
+import { SOURCE_FIGURE_ACTION, SOURCE_FIGURE_RETURN_VERSION, sourceFigureAuditId, sourceFigureHash } from '../../../domain/generation/source-figure-return';
+import { KINGDOM_FIGURE_RETURNS } from '../../../../content/detectives/kingdom/figure-return-v1';
 import { PLACEMENT_GUIDE_VERSION, PLACEMENT_GUIDE_V2_VERSION, placementGuideEditableRect } from "../../../domain/generation/placement-guide";
 import { PENDING_IMAGE_LEASE_MS } from "../../../domain/generation/pending-image-lease";
 import { ensureSingleMediumReviewPolicy } from "../single-medium-policy";
@@ -740,10 +746,10 @@ it.each(["recompose-retained", "redraw-with-new-placement", "restyle-retained"] 
   } finally { vi.useRealTimers(); }
 }, 300000);
 
-async function legacyKingdomHeadFixture(gameId: string, action: "redraw-with-new-placement" | "recompose-retained", explorer = true, normalOnly = false) {
+async function legacyKingdomHeadFixture(gameId: string, action: "redraw-with-new-placement" | "recompose-retained", explorer = true, normalOnly = false, wholeFigure = false) {
   await newDetectiveWorld(gameId, 7, true, explorer, true);
   await ensureSingleMediumReviewPolicy(c, gameId, async () => {});
-  const version = explorer ? 12 : 13, context = await resolveLocalPatchBoardsForGame(db, gameId, version), board = context.boards.find(b => b.board === "dragoncave")!, hide = board.hides[2]!;
+  const version = explorer ? 12 : 13, context = await resolveLocalPatchBoardsForGame(db, gameId, version), board = context.boards.find(b => b.board === (wholeFigure ? 'cloudcity' : "dragoncave"))!, hide = board.hides[wholeFigure ? 0 : 2]!;
   const parent = expectedAuthoredLocalPatchReturn(board, hide, version, context);
   if (explorer) expect(parent).toBeNull(); else expect(parent?.source).toMatchObject({ width: 3344, height: 1882 });
   const decision: SelfRepairDecision = { cause: "composition-clipping", action,
@@ -755,7 +761,18 @@ async function legacyKingdomHeadFixture(gameId: string, action: "redraw-with-new
     decision.protectedCore = { left: parent.child.left + 20, top: parent.child.top + 20, width: parent.child.width - 40, height: parent.child.height - 40 };
     decision.faceRect = { left: decision.protectedCore.left + 10, top: decision.protectedCore.top + 10, width: 40, height: 40 };
   }
+  if (wholeFigure) {
+    decision.returnWindow = KINGDOM_FIGURE_RETURNS[0]!.baselineReturned;
+    decision.protectedCore = { left: 92, top: 230, width: 232, height: 304 };
+    decision.faceRect = { left: 160, top: 236, width: 80, height: 76 };
+  }
   const render = vi.fn<LocalPatchHideDeps["render"]>(async input => {
+    if (wholeFigure) {
+      const head = await sharp({ create: { width: 140, height: 170, channels: 4, background: '#88663d' } }).png().toBuffer();
+      const body = await sharp({ create: { width: 148, height: 362, channels: 4, background: '#294c93' } }).png().toBuffer();
+      return paintedOk(await sharp(input.stylePng).composite([{ input: head, left: 154, top: 184 }, { input: body, left: 154, top: 222 }]).png().toBuffer(),
+        bill('synthetic-whole-figure-' + gameId + '-' + input.requestKey, 50000));
+    }
     const figure = await sharp({ create: { width: parent ? Math.min(120, decision.protectedCore.width - 20) : 120, height: parent ? Math.min(250, decision.protectedCore.height - 20) : 250, channels: 4,
       background: input.requestKey.includes(":self-repair:") ? input.requestKey.endsWith(":2") ? "#88663d" : "#916944"
         : input.requestKey.endsWith(":render:2") ? "#913857" : "#294c93" } }).png().toBuffer();
@@ -788,6 +805,134 @@ async function legacyKingdomHeadFixture(gameId: string, action: "redraw-with-new
   const shipping = await c.storage.get(asset.storagePath), identitySha256 = sha256Bytes(await c.storage.get(identity.storagePath));
   return { gameId, version, board, hide, scene, deps, render, diagnose, row, candidate, receipt, shipping, identitySha256, decision };
 }
+
+it.each(['free-candidate', 'free-candidate-no-unknown', 'orphan-reservation'] as const)('source-figure-return/v1: %s preserves the old paid recipe, whole body, neighbors, questions and full reserves', async mode => {
+  vi.useFakeTimers({ toFake: ['Date'] });
+  try {
+    const f = await legacyKingdomHeadFixture('source-figure-synthetic-' + mode, 'redraw-with-new-placement', false, false, true);
+    const game = await db.game.findUniqueOrThrow({ where: { id: f.gameId } });
+    const worldId = boardWizardWorldId(f.gameId), budget = boardWizardBudgetOf(c);
+    if (mode === 'free-candidate') {
+      // This pre-existing UNKNOWN is explicitly retained by the subsequent
+      // original completion grant; a newly grown UNKNOWN would stop dispatch.
+      await budget.reserve(worldId, { requestKey: 'synthetic-figure-unknown', scope: 'judge', operationFingerprint: 'a'.repeat(64), reserveMicroUsd: 250000 });
+      await budget.markUnknown(worldId, 'synthetic-figure-unknown', 'Synthetic full historical unknown');
+    }
+    await db.generationJob.update({ where: { id: 'job_' + f.gameId }, data: { status: 'FAILED', currentStep: 'local-patch:recovery-exhausted', lastError: 'Synthetic unasked original figure' } });
+    const plan = await planQaCompletionCapacity(c, f.gameId);
+    await authorizeQaCompletionCapacity(c, { gameId: f.gameId, operatorId: game.ownerId!, expectedPlanSha256: plan.planSha256, ownerAuthorizationSha256: 'b'.repeat(64) });
+    const provider = controlledSol(false, false, undefined, true), originalRetrieve = provider.fake.retrieve.bind(provider.fake);
+    provider.fake.retrieve = async id => {
+      const answer = await originalRetrieve(id);
+      if (answer.status !== 'completed') return answer;
+      const raw = JSON.parse(answer.reading.raw!);
+      raw.head.rawHead = raw.head.shippingHead = { left: 154, top: 184, width: 140, height: 170 };
+      return { ...answer, reading: { ...answer.reading, raw: JSON.stringify(raw) } };
+    };
+    const container = { ...c, backgroundReview: provider.fake, visualReview: { request: async () => { throw Error('No synchronous figure opinion'); } } } as Container;
+    const before = await f.row(), beforeJ = JSON.parse(before.judgeJson!);
+    const oldBytes = await c.storage.get((await db.asset.findUniqueOrThrow({ where: { id: before.assetId! } })).storagePath);
+    const rawBefore = await readSettledTargetRaw(db, f.gameId, beforeJ.authoredRecovery.source.requestKey);
+    if (mode === 'orphan-reservation') {
+      const prepared = await (await import('../local-patch-board-review')).prepareLocalPatchBoardReview(container, { gameId: f.gameId, sceneId: f.scene.id }, { readBoardArt: readArt }, { onlyHideId: f.hide.id, playerReview: true });
+      expect(prepared.ready).toBe(true); if (!prepared.ready) throw Error('Synthetic figure preparation failed');
+      const question = await dualReviewModule.prospectiveSingleVisualReviewQuestion(container, prepared);
+      await budget.reserve(worldId, { requestKey: question.requestKey, scope: 'judge', operationFingerprint: question.fingerprint, reserveMicroUsd: question.reserveMicroUsd });
+      await budget.settle(worldId, question.requestKey, bill('synthetic-orphan-figure-question-' + f.gameId, 1000));
+      const ledger = await db.worldBudgetLedger.findUniqueOrThrow({ where: { worldId } });
+      expect(await correctSourceFigureReturn(container, f.gameId, [before], async () => {}, readArt)).toBe(false);
+      expect(await f.row()).toEqual(before);
+      expect(await db.worldBudgetLedger.findUniqueOrThrow({ where: { worldId } })).toEqual(ledger);
+      expect(provider.creates).toHaveLength(0); expect(fetch).not.toHaveBeenCalled(); return;
+    }
+    // A historical UNKNOWN is not free budget: retain its full reserve.
+    const ledger = await db.worldBudgetLedger.findUniqueOrThrow({ where: { worldId } });
+    const deniedRender = vi.fn(async () => { throw Error('No new painting in free figure turn'); });
+    await runLocalPatchWorldSlice(container, { ...f.deps, render: deniedRender }, f.gameId,
+      { hardDeadlineAt: Date.now() + 270000, workMode: REVIEW_EXISTING_WORK_MODE });
+    const candidate = await f.row(), j = JSON.parse(candidate.judgeJson!), marker = j.sourceFigureReturn;
+    expect(marker).toMatchObject({ version: SOURCE_FIGURE_RETURN_VERSION, attempts: before.attempts,
+      sourceRequestKey: beforeJ.authoredRecovery.source.requestKey, baselineAssetId: before.assetId });
+    expect(candidate).toMatchObject({ status: 'GENERATED', attempts: before.attempts, costCents: before.costCents });
+    expect(j.authoredRecovery).toEqual(beforeJ.authoredRecovery); expect(j.selfRepair).toEqual(beforeJ.selfRepair);
+    expect(j.recoveryComposition).toEqual(beforeJ.recoveryComposition); expect(j.boardReview).toBeUndefined();
+    expect(j.reviewState).toBe('pending-board-review'); expect(provider.creates, 'one free figure correction must yield before a question').toHaveLength(0); expect(deniedRender).not.toHaveBeenCalled();
+    expect(JSON.parse(candidate.rejectedAssetIdsJson!)).toContain(before.assetId);
+    const afterLedger = await db.worldBudgetLedger.findUniqueOrThrow({ where: { worldId } });
+    expect(afterLedger.snapshotJson, 'one free figure correction must yield before a question').toBe(ledger.snapshotJson); expect(afterLedger.revision).toBe(ledger.revision + 1);
+    const savedAudit = await db.auditLog.findFirstOrThrow({ where: { entityId: f.gameId, action: SOURCE_FIGURE_ACTION } });
+    expect(JSON.parse(savedAudit.metaJson!)).toMatchObject({ previousJudgeJson: before.judgeJson, providerCalls: 0, attemptsPreserved: true, cyclesPreserved: true, approvalTransferred: false });
+    const sameRaw = await readSettledTargetRaw(db, f.gameId, marker.sourceRequestKey);
+    expect(sameRaw.kept.bytes.equals(rawBefore.kept.bytes)).toBe(true);
+    expect(sameRaw.normalized.equals(rawBefore.normalized)).toBe(true);
+    const shipped = await c.storage.get((await db.asset.findUniqueOrThrow({ where: { id: candidate.assetId! } })).storagePath);
+    const pixels = async (png: Buffer, rect: { left: number; top: number; width: number; height: number }) => sharp(png).extract(rect).ensureAlpha().raw().toBuffer();
+    for (const rect of [{ left: 154, top: 184, width: 140, height: 170 }, KINGDOM_FIGURE_RETURNS[0]!.replacedSourceLowerBody])
+      expect((await pixels(shipped, rect)).equals(await pixels(rawBefore.normalized, rect))).toBe(true);
+    expect(oldBytes.equals(await c.storage.get((await db.asset.findUniqueOrThrow({ where: { id: before.assetId! } })).storagePath))).toBe(true);
+    const hit = JSON.parse(candidate.hitRectJson!), a = KINGDOM_FIGURE_RETURNS[0]!;
+    expect(hit.y * a.source.height - a.crop.top).toBeLessThanOrEqual(184);
+    expect((hit.y + hit.h) * a.source.height - a.crop.top).toBeGreaterThanOrEqual(584);
+    const binding = { gameId: f.gameId, hideId: f.hide.id, variantId: candidate.id, assetId: candidate.assetId!, sceneVersion: 13,
+      identityAssetId: 'ast-sheet-' + f.gameId, identitySha256: f.identitySha256, attempts: candidate.attempts,
+      imageSha256: j.judgedSha256, geometrySha256: j.geometrySha256, judgeJson: candidate.judgeJson };
+    expect(await sourceFigurePublicationMatches(db, binding)).toBe(true);
+    expect(await allowedDualPublication(db, binding)).toBe(false); // Fresh ordinary review still owed.
+    expect(await correctSourceFigureReturn(container, f.gameId, [candidate], async () => {}, readArt)).toBe(false);
+    if (mode === 'free-candidate') {
+      const held = await reviewLocalPatchBoard(container, { gameId: f.gameId, sceneId: f.scene.id, deadlineAt: Date.now() + 270000 }, { fence: async () => {}, readBoardArt: readArt });
+      expect(held.reason).toContain('world ledger is held'); expect(provider.creates).toHaveLength(0);
+      // Only this synthetic provider now resolves its UNKNOWN with an explicit
+      // nonzero bill. No live reserve is cleared or inferred from missing text.
+      await budget.settle(worldId, 'synthetic-figure-unknown', bill('synthetic-confirmed-figure-unknown-' + f.gameId, 25000));
+    }
+    for (let tick = 0; tick < 10; tick++) {
+      const ordinary = await reviewLocalPatchBoard(container, { gameId: f.gameId, sceneId: f.scene.id, deadlineAt: Date.now() + 270000 }, { fence: async () => {}, readBoardArt: readArt });
+      await advanceContinuityInBackground(container, f.gameId, { deadlineAt: Date.now() + 270000 });
+      if (!provider.creates.length) throw Error('Synthetic ordinary figure review did not dispatch: ' + ordinary.reason);
+      await vi.advanceTimersByTimeAsync(LEAN_RECOVERY_BACKOFF_MS + 1);
+      if (JSON.parse((await f.row()).judgeJson!).reviewState === 'board-review-complete') break;
+    }
+    const accepted = await f.row(), final = JSON.parse(accepted.judgeJson!);
+    expect(final.verdict, JSON.stringify({ status: accepted.status, lastError: accepted.lastError, reviewState: final.reviewState,
+      wireFault: final.wireFault, raw: final.boardReview?.dual?.quality.raw, creates: provider.creates.length })).not.toBeNull();
+    expect(accepted.status).toBe('GENERATED'); expect(final.verdict.verdict).toBe('pass');
+    expect(final.boardReview.dual.quality.headEvidence.sourceBindingVersion).toBe(SOURCE_FIGURE_RETURN_VERSION);
+    expect(provider.creates).toHaveLength(1); expect(provider.creates[0]!.reasoning).toMatchObject({ effort: 'medium' });
+    expect(provider.creates[0]!.prompt).toContain('The bounding head-inspection rectangle is NOT an editable rectangle');
+    expect(provider.creates[0]!.prompt).toContain('Neither extra sharpness nor blur is an automatic pass');
+    expect(await allowedDualPublication(db, { ...publicationBinding(f.gameId, accepted), sceneVersion: 13 })).toBe(true);
+    // A fully self-consistent forged asset, marker, row and SYSTEM audit still
+    // cannot substitute pixels that the authenticated paid recipe never made.
+    const replacement = await sharp({ create: { width: 8, height: 8, channels: 4, background: '#ff00ff' } }).png().toBuffer();
+    const forgedPng = await sharp(shipped).composite([{ input: replacement, left: 200, top: 240 }]).png().toBuffer();
+    const forgedMarker = { ...marker, candidateSha256: sha256Bytes(forgedPng) };
+    forgedMarker.auditId = sourceFigureAuditId(forgedMarker);
+    const forgedId = 'ast_fgr_' + sourceFigureHash([f.gameId, f.hide.id, forgedMarker.candidateSha256]).slice(0, 24), forgedKey = `game/${forgedId}.png`;
+    await db.asset.create({ data: { id: forgedId, ownerId: game.ownerId, type: 'TARGET_SPRITE', visibility: 'GAME', status: 'READY', provider: 'local-patch',
+      providerRequestId: f.gameId, storagePath: forgedKey, mimeType: 'image/png', width: 512, height: 768, bytes: forgedPng.length } });
+    await c.storage.put(forgedKey, forgedPng, 'image/png');
+    await db.auditLog.create({ data: { id: forgedMarker.auditId, actorType: 'SYSTEM', action: SOURCE_FIGURE_ACTION, entityType: 'Game', entityId: f.gameId,
+      metaJson: JSON.stringify({ ...JSON.parse(savedAudit.metaJson!), marker: forgedMarker, assetId: forgedId }) } });
+    const forgedReceipt = { ...final, sourceFigureReturn: forgedMarker, judgedSha256: forgedMarker.candidateSha256 };
+    await db.targetVariantAsset.update({ where: { id: accepted.id }, data: { assetId: forgedId, judgeJson: JSON.stringify(forgedReceipt) } });
+    expect(await sourceFigurePublicationMatches(db, { ...binding, assetId: forgedId, judgeJson: JSON.stringify(forgedReceipt) })).toBe(false);
+    await db.targetVariantAsset.update({ where: { id: accepted.id }, data: { assetId: accepted.assetId, judgeJson: accepted.judgeJson } });
+    const corrupt = JSON.parse(accepted.judgeJson!); corrupt.sourceFigureReturn.geometrySha256 = beforeJ.geometrySha256;
+    expect(await allowedDualPublication(db, { ...publicationBinding(f.gameId, accepted), sceneVersion: 13, judgeJson: JSON.stringify(corrupt) })).toBe(false);
+    await db.order.update({ where: { id: 'order-' + f.gameId }, data: { paymentStatus: 'REFUNDED', refundedAt: new Date() } });
+    expect(await sourceFigurePublicationMatches(db, { ...publicationBinding(f.gameId, accepted), sceneVersion: 13 })).toBe(false);
+    expect(f.diagnose).toHaveBeenCalledTimes(1); expect(f.render).toHaveBeenCalledTimes(3); expect(deniedRender).not.toHaveBeenCalled(); expect(fetch).not.toHaveBeenCalled();
+    const financial = await db.worldBudgetLedger.findUniqueOrThrow({ where: { worldId } });
+    expect(await deleteLocalPatchGame(container, f.gameId, { type: 'USER', id: game.ownerId! }, game.ownerId!)).toBe(true);
+    for (const id of [before.assetId!, accepted.assetId!]) {
+      const a = await db.asset.findUniqueOrThrow({ where: { id } }); expect(a.status).toBe('DELETED');
+      expect(await db.fileBlob.findUnique({ where: { key: a.storagePath } })).toBeNull();
+    }
+    expect((await db.auditLog.findUniqueOrThrow({ where: { id: marker.auditId } })).metaJson).toBeNull();
+    expect((await db.worldBudgetLedger.findUniqueOrThrow({ where: { worldId } })).snapshotJson).toBe(financial.snapshotJson);
+  } finally { vi.useRealTimers(); }
+}, 600000);
 
 it.each(["redraw-with-new-placement", "recompose-retained"] as const)("binds the MEDIUM head check to the actual paid legacy Kingdom repair; action=%s", async action => {
   vi.useFakeTimers({ toFake: ["Date"] });
@@ -2723,6 +2868,113 @@ it.each((["outer", "nested"] as const).flatMap(location => (["pass","semantic-fa
   expect((await budget.audit(worldId)).capMicroUsd).toBe(4000000);
 },300000);
 
+
+it.each([55,65])('re-reads a malformed %i-character source-neighbor echo from its original settled question without a new purchase', async length => {
+  vi.useFakeTimers({toFake:['Date']});
+  const gameId='explorer-source-echo-synthetic-'+length;
+  await newDetectiveWorld(gameId,8,true,true);
+  await ensureSingleMediumReviewPolicy(c,gameId,async()=>{});
+  const context=await resolveLocalPatchBoardsForGame(db,gameId,12),board=context.boards.find(b=>b.board==='greatwall')!;
+  const hide=board.hides.find(h=>h.id==='greatwall-v12-2')!;
+  expect(sourcePlacementForHide(context,hide.id)?.sourceNeighbors).toBeDefined();
+  const scene=await db.gameScene.findFirstOrThrow({where:{gameId,sceneSlug:board.board}});
+  const provider=controlledSol(false,false,undefined,false,false,12),retrieve=provider.fake.retrieve;
+  let corruptedReplies=0;
+  provider.fake.retrieve=async responseId=>{
+    const state=await retrieve(responseId);if(state.status!=='completed')return state;
+    const outer=JSON.parse(state.reading.raw!);
+    if(outer.assessment.version!==SOURCE_NEIGHBOR_BUNDLE_VERSION)return state;
+    outer.assessment.sourceNeighbors.candidateSha256='c'.repeat(length);
+    corruptedReplies++;
+    return {...state,reading:{...state.reading,raw:JSON.stringify(outer)}};
+  };
+  const forbidden=vi.fn(async()=>{throw Error('No new synchronous question or diagnosis is permitted');});
+  const container={...c,backgroundReview:provider.fake,visualReview:{request:forbidden}} as Container;
+  const render=vi.fn<LocalPatchHideDeps['render']>(async input=>{
+    expect(board.hides.some(h=>input.requestKey.startsWith(h.id+':'))).toBe(true);
+    return paintedOk(input.stylePng,bill('synthetic-neighbor-echo-'+input.requestKey,50000));
+  });
+  const deps:LocalPatchHideDeps={readBoardArt:readArt,renderPolicySha256:localPatchRenderPolicySha256(LOCAL_PATCH_IMAGE_POLICY),render,judge:forbidden};
+  expect((await runLocalPatchHide(container,deps,{gameId,board,hide})).state).toBe('generated');
+  let row=await db.targetVariantAsset.findFirstOrThrow({where:{variant:'A',targetInstance:{gameSceneId:scene.id,targetId:hide.targetId}}});
+  for(let turn=0;turn<4&&JSON.parse(row.judgeJson!).boardReview?.dual?.single!==SINGLE_MEDIUM_VISUAL_REVIEW_VERSION;turn++){
+    await reviewLocalPatchBoard(container,{gameId,sceneId:scene.id},{fence:async()=>{},readBoardArt:readArt});
+    await advanceContinuityInBackground(container,gameId,{deadlineAt:Date.now()+270000});
+    row=await db.targetVariantAsset.findUniqueOrThrow({where:{id:row.id}});
+    vi.setSystemTime(Date.now()+31000);
+  }
+  expect(corruptedReplies).toBe(1);expect(row.status).toBe('FAILED');expect(row.lastError).toMatch(/^quality-unresolved:/);
+  const previous=JSON.parse(row.judgeJson!),questionKey=previous.boardReview.dual.quality.requestKey;
+  const worldId=boardWizardWorldId(gameId),budget=boardWizardBudgetOf(container);
+  const siblingHide=board.hides.find(h=>h.id!==hide.id)!;
+  expect((await runLocalPatchHide(container,deps,{gameId,board,hide:siblingHide})).state).toBe('generated');
+  const sibling=await db.targetVariantAsset.findFirstOrThrow({where:{variant:'A',targetInstance:{gameSceneId:scene.id,targetId:siblingHide.targetId}}});
+  expect(JSON.parse(sibling.judgeJson!).reviewState).toBe('pending-board-review');
+  if(length===65){
+    await budget.reserve(worldId,{requestKey:'synthetic-unknown-full-reserve',scope:'image',operationFingerprint:'a'.repeat(64),
+      reserveMicroUsd:(await budget.audit(worldId)).remainingMicroUsd});
+    await budget.markUnknown(worldId,'synthetic-unknown-full-reserve','Synthetic missing provider usage remains fully reserved');
+  }else expect((await budget.audit(worldId)).remainingMicroUsd).toBeGreaterThan(370000);
+  const ledger=await db.worldBudgetLedger.findUniqueOrThrow({where:{worldId}}),key=retainedPurchaseKey(worldId,questionKey);
+  const kept=await db.fileBlob.findUniqueOrThrow({where:{key}}),beforeCreates=provider.creates.length,beforePaints=render.mock.calls.length;
+  expect(await runLocalPatchWorldSlice(container,deps,gameId,{workMode:REVIEW_EXISTING_WORK_MODE,maxHides:0,
+    hardDeadlineAt:Date.now()+270000,diagnose:forbidden})).toMatchObject({claimed:true});
+  expect(provider.creates,'one free adoption must yield before sibling review').toHaveLength(beforeCreates);
+  expect(await db.targetVariantAsset.findUniqueOrThrow({where:{id:sibling.id}})).toEqual(sibling);
+  const after=await db.targetVariantAsset.findUniqueOrThrow({where:{id:row!.id}}),receipt=JSON.parse(after.judgeJson!);
+  expect(after).toMatchObject({status:'GENERATED',assetId:row!.assetId,attempts:row!.attempts,costCents:row!.costCents});
+  const proof=receipt.boardReview.dual,marker=proof.quality.sourceNeighborReading;
+  expect(marker).toMatchObject({version:BOUND_SOURCE_NEIGHBOR_READER,sourceRequestKey:questionKey,
+    sourceFingerprint:previous.boardReview.dual.quality.fingerprint});
+  for(const role of ['quality','continuity','subject']){
+    expect(proof[role].sourceNeighborReading).toEqual(marker);
+    expect(proof[role].raw).toBe(previous.boardReview.dual[role].raw);
+    expect(proof[role].fingerprint).toBe(previous.boardReview.dual[role].fingerprint);
+  }
+  expect(receipt.reviewHistory.at(-1)).toMatchObject({boardReview:previous.boardReview,verdict:previous.verdict,
+    supersededBy:BOUND_SOURCE_NEIGHBOR_READER,lastError:row!.lastError});
+  expect(await allowedDualPublication(db,publicationBinding(gameId,after))).toBe(true);
+  for(const fault of ['image','geometry','identity','variant','body','fingerprint','policy'] as const){
+    const id='aud_sb_'+marker.roundId+'_intent',saved=await db.auditLog.findUniqueOrThrow({where:{id}}),changed=JSON.parse(saved.metaJson!);
+    if(fault==='image')changed.intent.binding.imageSha256='e'.repeat(64);
+    if(fault==='geometry')changed.intent.binding.geometrySha256='e'.repeat(64);
+    if(fault==='identity')changed.intent.binding.identitySha256='e'.repeat(64);
+    if(fault==='variant')changed.intent.binding.variantId='foreign-row';
+    if(fault==='body')changed.intent.bodySha256='e'.repeat(64);
+    if(fault==='fingerprint')changed.intent.fingerprint='e'.repeat(64);
+    if(fault==='policy')changed.intent.policyVersion='not-the-paid-policy';
+    await db.auditLog.update({where:{id},data:{metaJson:JSON.stringify(changed)}});
+    expect(await allowedDualPublication(db,publicationBinding(gameId,after)),fault).toBe(false);
+    await db.auditLog.update({where:{id},data:{metaJson:saved.metaJson}});
+  }
+  const outcomeId='aud_sb_'+marker.roundId+'_outcome',outcome=await db.auditLog.findUniqueOrThrow({where:{id:outcomeId}});
+  const changedOutcome=JSON.parse(outcome.metaJson!);changedOutcome.state='unpriced';
+  await db.auditLog.update({where:{id:outcomeId},data:{metaJson:JSON.stringify(changedOutcome)}});
+  expect(await allowedDualPublication(db,publicationBinding(gameId,after))).toBe(false);
+  await db.auditLog.update({where:{id:outcomeId},data:{metaJson:outcome.metaJson}});
+  await db.fileBlob.update({where:{key},data:{data:Buffer.from('{}')}});
+  expect(await allowedDualPublication(db,publicationBinding(gameId,after))).toBe(false);
+  await db.fileBlob.update({where:{key},data:{data:kept.data}});
+  // A self-consistent retained payload digest is not proof that its claimed
+  // provider request belongs to the terminal response and its original bill.
+  const intent=JSON.parse((await db.auditLog.findUniqueOrThrow({where:{id:'aud_sb_'+marker.roundId+'_intent'}})).metaJson!).intent;
+  const authenticate=()=>authenticateBoundSourceNeighborReading(db,{gameId,worldId,binding:intent.binding,stage:proof.quality,questionBodySha256:marker.questionBodySha256});
+  expect(await authenticate()).toEqual(marker);
+  const alteredRecord=JSON.parse(Buffer.from(kept.data).toString()),alteredWire=JSON.parse(Buffer.from(alteredRecord.bytesBase64,'base64').toString());
+  alteredWire.requestId='resp_foreign_paid_question';
+  const alteredBytes=Buffer.from(JSON.stringify(alteredWire));
+  alteredRecord.bytesBase64=alteredBytes.toString('base64');alteredRecord.payloadSha256=sha256Bytes(alteredBytes);
+  await db.fileBlob.update({where:{key},data:{data:Buffer.from(JSON.stringify(alteredRecord))}});
+  expect(await authenticate()).toBeNull();
+  await db.fileBlob.update({where:{key},data:{data:kept.data}});
+  const forged=JSON.parse(after.judgeJson!);forged.boardReview.dual.subject.sourceNeighborReading.rawSha256='e'.repeat(64);
+  expect(await allowedDualPublication(db,{...publicationBinding(gameId,after),judgeJson:JSON.stringify(forged)})).toBe(false);
+  expect(await allowedDualPublication(db,publicationBinding(gameId,after))).toBe(true);
+  expect(await db.worldBudgetLedger.findUniqueOrThrow({where:{worldId}})).toEqual(ledger);
+  expect(await db.fileBlob.findUniqueOrThrow({where:{key}})).toEqual(kept);
+  expect(provider.creates).toHaveLength(beforeCreates);expect(render).toHaveBeenCalledTimes(beforePaints);
+  expect(forbidden).not.toHaveBeenCalled();expect(fetch).not.toHaveBeenCalled();
+},300000);
 
 it.each(["pass", "crown-fail"] as const)("native whole-source context preserves26 and buys only one finite fourth; decision=%s", async decision => {
   vi.useFakeTimers({toFake:["Date"]});

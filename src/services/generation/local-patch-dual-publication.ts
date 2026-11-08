@@ -45,7 +45,8 @@ export async function allowedDualPublication(db: Prisma.TransactionClient, input
       || !proof?.continuity || !proof.subject || !isSingleReviewPolicy(proof.quality.policy)
       || proof.quality.policy.effort !== singleVisualReviewEffort(proof.single!) || readSingleVisualReviewVersion(proof.quality.raw) !== proof.single
       || ![proof.continuity, proof.subject].every(stage => stage.requestKey === proof.quality.requestKey && stage.fingerprint === proof.quality.fingerprint
-        && stage.raw === proof.quality.raw && equal(stage.policy, proof.quality.policy) && stage.costMicroUsd === proof.quality.costMicroUsd)
+        && stage.raw === proof.quality.raw && equal(stage.policy, proof.quality.policy) && stage.costMicroUsd === proof.quality.costMicroUsd
+        && equal(stage.sourceNeighborReading, proof.quality.sourceNeighborReading))
       || readSingleVisualReview(proof.quality.raw)?.doubt !== false)) return false;
     if (!single && proof && isSingleReviewPolicy(proof.quality.policy)) return false;
     if (!version || proof?.sceneVersion !== (input.sceneVersion === 13 ? 13 : undefined) || !hasLocalPatchCapability(input.sceneVersion, "integratedQuality") || review?.version !== version || review.effort !== (single ? singleVisualReviewEffort(proof!.single!) : "high")
@@ -70,6 +71,9 @@ export async function allowedDualPublication(db: Prisma.TransactionClient, input
     if (receipt.crownTab !== undefined && (proof.single !== SINGLE_MEDIUM_VISUAL_REVIEW_VERSION
       || !await (await import("./crown-tab")).crownTabPublicationMatches(db, input))) return false;
     if (receipt.crownTab === undefined && input.assetId.startsWith("ast_ctab_")) return false;
+    if (receipt.sourceFigureReturn !== undefined && (proof.single !== SINGLE_MEDIUM_VISUAL_REVIEW_VERSION
+      || !await (await import('./source-figure-return')).sourceFigurePublicationMatches(db, input))) return false;
+    if (receipt.sourceFigureReturn === undefined && input.assetId.startsWith('ast_fgr_')) return false;
     if (!await sourceNeighborPublicationMatches(db, input, proof.quality)) return false;
     if (!equal(proof.authoredReturn, receipt.authoredReturn) || !equal(proof.authoredRecovery, receipt.authoredRecovery)) return false;
     if (receipt.compositionVersion !== LOCAL_PATCH_COMPOSITION_VERSION && receipt.compositionVersion !== AUTHORED_PATCH_COMPOSITION_VERSION && receipt.compositionVersion !== AUTHORED_RECOVERY_COMPOSITION_VERSION && receipt.compositionVersion !== SOURCE_CROWN_COMPOSITION_VERSION) {
@@ -125,7 +129,8 @@ export async function allowedDualSubject(db: Prisma.TransactionClient, worldId: 
     || proof.quality.subjectBundle.photoSha256 !== subject.photoSha256 || proof.quality.subjectBundle.planSha256 !== subject.planSha256
     || (proof.quality.subjectBundle.subjectPolicy ?? SUBJECT_POLICY_VERSION) !== subject.subjectPolicy
     || subject.requestKey !== proof.quality.requestKey || subject.fingerprint !== proof.quality.fingerprint || subject.raw !== proof.quality.raw
-    || subject.costMicroUsd !== proof.quality.costMicroUsd || !equal(subject.sourceNeighbors, proof.quality.sourceNeighbors))) return false;
+    || subject.costMicroUsd !== proof.quality.costMicroUsd || !equal(subject.sourceNeighbors, proof.quality.sourceNeighbors)
+    || !equal(subject.sourceNeighborReading, proof.quality.sourceNeighborReading))) return false;
   const expected = { hideId: input.hideId, ageYears: upgrade.ageYears, plan };
   const reading = v2 ? readSubjectAnswerV2(subjectStageRaw(subject), expected) : readSubjectAnswer(subjectStageRaw(subject), expected);
   if (!reading.ok || reading.disposition !== "pass") return false;

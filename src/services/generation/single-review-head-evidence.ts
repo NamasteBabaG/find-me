@@ -19,23 +19,39 @@ import { LEGACY_PAID_JOIN_HEAD_VERSION, legacyPaidJoinHeadPlan } from '../../dom
 import { measureHeadRetention } from '../../domain/generation/head-retention';
 import { HEAD_PIXEL_CORRECTION_ACTION, HEAD_PIXEL_CORRECTION_VERSION, headPixelCorrectionSchema } from '../../domain/generation/head-pixel-correction';
 import { CROWN_TAB_ACTION, CROWN_TAB_VERSION, crownTabSchema, crownTabWindow } from '../../domain/generation/crown-tab';
+import { SOURCE_FIGURE_RETURN_VERSION, sourceFigureReturnSchema, sourceFigureAuthorityFor, sourceFigureHeadWindow, sourceFigureHash } from '../../domain/generation/source-figure-return';
 
 type Receipt=Record<string,unknown>;
 const tabHash=(r:Receipt)=>sha(Buffer.from(JSON.stringify({compositionVersion:r.compositionVersion,authoredReturn:r.authoredReturn,crownTab:r.crownTab})));
 const legacyCompositionHash=(r:Receipt)=>sha(Buffer.from(JSON.stringify({compositionVersion:r.compositionVersion,compositionSource:r.compositionSource,recoveryComposition:r.recoveryComposition})));
 const normalCompositionHash=(r:Receipt)=>sha(Buffer.from(JSON.stringify({compositionVersion:r.compositionVersion,authoredReturn:r.authoredReturn,retainedNormalHead:r.retainedNormalHead})));
 const correctionHash=(r:Receipt)=>sha(Buffer.from(JSON.stringify({compositionVersion:r.compositionVersion,authoredReturn:r.authoredReturn,headPixelCorrection:r.headPixelCorrection})));
-const bindingOf=(r:Receipt)=>r.crownTab!==undefined?CROWN_TAB_VERSION:r.retainedNormalHead!==undefined?RETAINED_NORMAL_HEAD_VERSION:r.headPixelCorrection!==undefined?HEAD_PIXEL_CORRECTION_VERSION:r.headSourceVersion??undefined;
-const compositionOf=(version:unknown,r:Receipt)=>version===CROWN_TAB_VERSION?tabHash(r):version===RETAINED_NORMAL_HEAD_VERSION?normalCompositionHash(r):version===HEAD_PIXEL_CORRECTION_VERSION?correctionHash(r):legacyCompositionHash(r);
+const figureHash=(r:Receipt)=>sha(Buffer.from(JSON.stringify({compositionVersion:r.compositionVersion,authoredReturn:r.authoredReturn,authoredRecovery:r.authoredRecovery,sourceFigureReturn:r.sourceFigureReturn})));
+const bindingOf=(r:Receipt)=>r.sourceFigureReturn!==undefined?SOURCE_FIGURE_RETURN_VERSION:r.crownTab!==undefined?CROWN_TAB_VERSION:r.retainedNormalHead!==undefined?RETAINED_NORMAL_HEAD_VERSION:r.headPixelCorrection!==undefined?HEAD_PIXEL_CORRECTION_VERSION:r.headSourceVersion??undefined;
+const compositionOf=(version:unknown,r:Receipt)=>version===SOURCE_FIGURE_RETURN_VERSION?figureHash(r):version===CROWN_TAB_VERSION?tabHash(r):version===RETAINED_NORMAL_HEAD_VERSION?normalCompositionHash(r):version===HEAD_PIXEL_CORRECTION_VERSION?correctionHash(r):legacyCompositionHash(r);
 const object=(v:unknown):Record<string,unknown>|null=>v&&typeof v==='object'&&!Array.isArray(v)?v as Record<string,unknown>:null;
 /** The window a head is judged against: a crown tab adds its own rows above the return. */
 const judgedWindow=(receipt:Receipt,returned:PatchRectangle):PatchRectangle=>{
+ if(receipt.sourceFigureReturn!==undefined){
+  const m=sourceFigureReturnSchema.parse(receipt.sourceFigureReturn);
+  const a=sourceFigureAuthorityFor(receipt.authoredReturn as Parameters<typeof sourceFigureAuthorityFor>[0],returned);
+  if(!a||sourceFigureHash(a)!==m.authoritySha256)throw Error('HEAD_RETURN: whole-figure permission differs');
+  return sourceFigureHeadWindow(a);
+ }
  if(receipt.crownTab===undefined)return returned;
  const m=crownTabSchema.parse(receipt.crownTab);
  if(JSON.stringify(m.returned)!==JSON.stringify(returned))throw Error('HEAD_RETURN: crown tab return differs from its window');
  return crownTabWindow(m.returned,m.tab);
 };
 function sourceKey(hide:Pick<LocalPatchHide,'id'|'pose'>,attempt:number,receipt:Receipt):string{
+ if(receipt.sourceFigureReturn!==undefined){
+  const m=sourceFigureReturnSchema.parse(receipt.sourceFigureReturn),{sourceFigureReturn:_figure,...baseline}=receipt;
+  if(m.hideId!==hide.id||m.attempts!==attempt||m.candidateSha256!==receipt.judgedSha256
+    ||targetHeadVersionOfReceipt(receipt)!==TARGET_HEAD_VISIBLE_VERSION||sourceKey(hide,attempt,baseline)!==m.sourceRequestKey
+    ||['crownTab','headPixelCorrection','retainedNormalHead','headSourceVersion'].some(k=>receipt[k]!==undefined))
+   throw Error('HEAD_RETURN: invalid whole-figure source binding');
+  return m.sourceRequestKey;
+ }
  if(receipt.crownTab!==undefined){
   // The tab is over the same paid painting its baseline was composed from.
   const m=crownTabSchema.parse(receipt.crownTab),{crownTab:_tab,...baseline}=receipt;
@@ -102,6 +118,13 @@ async function tabSourceAuthorized(db:Prisma.TransactionClient,gameId:string,rec
   ||m.sourceFingerprint!==paid.kept.operationFingerprint||m.sourcePayloadSha256!==paid.kept.payloadSha256||m.normalizedRawSha256!==sha(paid.normalized))
   throw Error('HEAD_RETURN: crown tab audit differs');
 }
+async function figureSourceAuthorized(db:Prisma.TransactionClient,gameId:string,receipt:Receipt){
+ if(receipt.sourceFigureReturn===undefined)return;
+ const m=sourceFigureReturnSchema.parse(receipt.sourceFigureReturn),row=await db.targetVariantAsset.findUnique({where:{id:m.rowId},select:{assetId:true}});
+ if(!row?.assetId||!await(await import('./source-figure-return')).sourceFigurePublicationMatches(db,{gameId,sceneVersion:13,
+   hideId:m.hideId,variantId:m.rowId,assetId:row.assetId,judgeJson:JSON.stringify(receipt),identitySha256:m.identitySha256}))
+  throw Error('HEAD_RETURN: whole-figure paid source, baseline or candidate differs');
+}
 const decoded=async(png:Buffer)=>{const {data,info}=await sharp(png,{limitInputPixels:8294400}).removeAlpha().raw().toBuffer({resolveWithObject:true});
  return{data,width:info.width,height:info.height,channels:info.channels};};
 /** Measured retention of exactly these authenticated RAW and SHIPPING bytes. */
@@ -145,6 +168,9 @@ export async function singleReviewHeadEvidence(db:Prisma.TransactionClient,input
  await normalSourceAuthorized(db,input.gameId,input.receipt,paid);
  await correctionSourceAuthorized(db,input.gameId,input.receipt,paid);
  await tabSourceAuthorized(db,input.gameId,input.receipt,paid);
+ await figureSourceAuthorized(db,input.gameId,input.receipt);
+ if(input.receipt.sourceFigureReturn!==undefined&&sourceFigureReturnSchema.parse(input.receipt.sourceFigureReturn).identitySha256!==input.identitySha256)
+  throw Error('HEAD_RETURN: whole-figure identity differs');
  if(input.receipt.crownTab!==undefined&&crownTabSchema.parse(input.receipt.crownTab).identitySha256!==input.identitySha256)
   throw Error('HEAD_RETURN: crown tab identity differs');
  if(input.receipt.retainedNormalHead!==undefined&&retainedNormalHeadSchema.parse(input.receipt.retainedNormalHead).identitySha256!==input.identitySha256)
@@ -161,6 +187,7 @@ export async function singleReviewHeadEvidence(db:Prisma.TransactionClient,input
   sourceRequestKey:key,sourceFingerprint:paid.kept.operationFingerprint,sourcePayloadSha256:paid.kept.payloadSha256,
   normalizedRawSha256:sha(paid.normalized),shippingSha256:sha(input.shipping),geometrySha256:input.geometrySha256,
   identitySha256:input.identitySha256,returned,feather:12,...(legacy?{sourceBindingVersion:LEGACY_PAID_JOIN_HEAD_VERSION,sourceCompositionSha256:legacyCompositionHash(input.receipt)}
+   :input.receipt.sourceFigureReturn!==undefined?{sourceBindingVersion:SOURCE_FIGURE_RETURN_VERSION,sourceCompositionSha256:figureHash(input.receipt)}
    :input.receipt.retainedNormalHead!==undefined?{sourceBindingVersion:RETAINED_NORMAL_HEAD_VERSION,sourceCompositionSha256:normalCompositionHash(input.receipt)}
    :input.receipt.crownTab!==undefined?{sourceBindingVersion:CROWN_TAB_VERSION,sourceCompositionSha256:tabHash(input.receipt)}
    :input.receipt.headPixelCorrection!==undefined?{sourceBindingVersion:HEAD_PIXEL_CORRECTION_VERSION,sourceCompositionSha256:correctionHash(input.receipt)}:{}),
@@ -183,6 +210,8 @@ export async function singleReviewHeadEvidenceMatches(db:Prisma.TransactionClien
   await normalSourceAuthorized(db,input.gameId,j,paid);
   await correctionSourceAuthorized(db,input.gameId,j,paid);
   await tabSourceAuthorized(db,input.gameId,j,paid);
+  await figureSourceAuthorized(db,input.gameId,j);
+  if(j.sourceFigureReturn!==undefined&&sourceFigureReturnSchema.parse(j.sourceFigureReturn).identitySha256!==input.identitySha256)return false;
   if(j.crownTab!==undefined&&crownTabSchema.parse(j.crownTab).identitySha256!==input.identitySha256)return false;
   if(j.retainedNormalHead!==undefined){const n=retainedNormalHeadSchema.parse(j.retainedNormalHead);if(n.identitySha256!==input.identitySha256)return false;}
   if(j.headPixelCorrection!==undefined&&headPixelCorrectionSchema.parse(j.headPixelCorrection).identitySha256!==input.identitySha256)return false;

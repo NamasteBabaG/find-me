@@ -158,6 +158,14 @@ export async function authoredLocalPatchRecoveryEvidenceMatches(db: Prisma.Trans
   board: LocalPatchBoard; hide: LocalPatchHide; sceneVersion: number; receipt: AuthoredLocalPatchReceipt;
   placementContext: TrustedSourcePlacementContext; promptVersion: string | null; beforePng?: Buffer }): Promise<boolean> {
   const { receipt, placementContext, board, hide } = input;
+  const figure = (receipt as Record<string, unknown>).sourceFigureReturn;
+  if (figure !== undefined) {
+    const marker = (await import('../../domain/generation/source-figure-return')).sourceFigureReturnSchema.safeParse(figure);
+    const row = marker.success ? await db.targetVariantAsset.findUnique({ where: { id: marker.data.rowId }, select: { assetId: true } }) : null;
+    return marker.success && !!row?.assetId && await (await import('./source-figure-return')).sourceFigurePublicationMatches(db,
+      { gameId: input.gameId, sceneVersion: input.sceneVersion, hideId: hide.id, variantId: marker.data.rowId,
+        assetId: row.assetId, judgeJson: JSON.stringify(receipt) }, input.beforePng ? async () => input.beforePng! : undefined);
+  }
   // A crown tab changes only its own rows: every authored proof holds for the baseline it was derived from.
   if ((receipt as Record<string, unknown>).crownTab !== undefined) {
     const marker = crownTabSchema.safeParse((receipt as Record<string, unknown>).crownTab);
@@ -241,6 +249,7 @@ export async function authoredLocalPatchPublicationMatches(db: Prisma.Transactio
       || receipt?.authoredReturn !== undefined || receipt?.authoredRecovery !== undefined;
     if (!claims && !hide?.returnRect) return true;
     if (!board || !hide || !authoredLocalPatchReturnMatches(receipt, board, hide, input.sceneVersion, true, placementContext)) return false;
+    if (input.assetId?.startsWith('ast_fgr_') && (receipt as Record<string, unknown>)?.sourceFigureReturn === undefined) return false;
     if(input.assetId?.startsWith("ast_crown_")&&receipt?.crownReturn===undefined)return false;
     if(receipt?.crownReturn!==undefined&&!await (await import("./source-crown-pixels")).sourceCrownCompositionMatches(db,input))return false;
     if (input.assetId?.startsWith("ast_prop_") && receipt?.propJoinCorrection === undefined) return false;

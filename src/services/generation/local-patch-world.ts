@@ -6,6 +6,7 @@ import { wholeSourceContextExhausted } from "../../domain/generation/whole-sourc
 import { wholeSourceContextImagePolicy } from "../../infra/generation/openai-local-patch";
 import { resumeBoundEnvelopeReconciliation } from "./bound-envelope-reconciliation";
 import { applySourceCrownReturn } from "./source-crown-pixels";
+import { correctSourceFigureReturn, sourceFigureCandidate } from './source-figure-return';
 import { resumePropJoinRepair,applyPropJoinRepair } from "./prop-join-repair";
 import { sourceBodyBirthMarker } from "../../domain/generation/detectives-operational-policy";
 import { readSourceBodyRepairPin, sourceBodyPurchaseCandidate } from './source-body-repair-pin';
@@ -702,11 +703,26 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
         await c.db.$transaction(async tx => { await fence(tx); await tx.gameScene.update({ where: { id: scene.id },
           data: { generationStatus: scene.generationStatus } }); });
         await reload();
+        // A newly adopted bound source-neighbor reading is one free unit of
+        // work. Let the operator inspect it before another existing painting's
+        // ordinary paid question can start in the same slice.
+        if (decided.sourceNeighborReadingApplied) return yieldToContinue();
       }
     }
     // single-transport-continuation/v1: a single question that ended in transit is logged on its pixels (free),
     // so evidence recovery asks its one continuation instead of resting the appearance as unreadable.
     if (dual && await recordSingleTransportFaults(c, gameId, rows, fence)) await reload();
+    // A source-qualified whole-figure return is free and finite. Yield before
+    // an ordinary question about its new shipping, or any sibling purchase.
+    if (dual && rows.some(sourceFigureCandidate)) {
+      if (!reviewFits()) return yieldToContinue();
+      try { if (await correctSourceFigureReturn(c, gameId, rows, fence, deps.readBoardArt)) return yieldToContinue(); }
+      catch (error) {
+        await c.db.generationJob.updateMany({ where: { id: job.id, attempts: claim, status: 'RUNNING' },
+          data: { status: 'FAILED', lastError: (error instanceof Error ? error.message : String(error)).slice(0, 500) } });
+        throw error;
+      }
+    }
     // One authenticated free correction per slice, after paid-answer readings
     // and before any new diagnosis, painting or review. Yield after the write:
     // remaining free corrections get their turn first, and the changed shipping

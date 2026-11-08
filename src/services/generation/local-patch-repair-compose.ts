@@ -62,6 +62,16 @@ export type PaidPatchJoinResult = {
     readonly outsideChangedPixels: number; readonly protectedChangedPixels: number;
   };
 };
+/** Shared reconstruction of the historical join's declared geometry. Pixel
+ * corrections must not substitute a modern difference measurement for it. */
+export function paidPatchJoinGeometry(input: Pick<PaidPatchJoinInput, 'crop' | 'protectedCore' | 'faceRect' | 'boardSize'>): PatchGeometry {
+  const { crop, protectedCore, faceRect } = input, boardSize = input.boardSize ?? LOCAL_PATCH_BOARD;
+  return {
+    rect: { x: crop.left / boardSize.width, y: crop.top / boardSize.height, w: crop.width / boardSize.width, h: crop.height / boardSize.height },
+    hitRect: { x: (crop.left + protectedCore.left) / boardSize.width, y: (crop.top + protectedCore.top) / boardSize.height, w: protectedCore.width / boardSize.width, h: protectedCore.height / boardSize.height },
+    anchor: { x: (crop.left + faceRect.left + faceRect.width / 2) / boardSize.width, y: (crop.top + faceRect.top) / boardSize.height },
+  };
+}
 
 /** Require one connected paid region and no enclosed original-image islands. */
 function connected(mask: Uint8Array, label: number, start: number) {
@@ -164,11 +174,7 @@ export async function recomputePaidPatchJoin(input: PaidPatchJoinInput): Promise
   const region = { ...returnWindow, left: crop.left + returnWindow.left, top: crop.top + returnWindow.top };
   const tile = await sharp(raw).extract(returnWindow).png().toBuffer();
   const originalRawSeamReport = await analysePatchSeam(input.beforePng, region, tile, { allowedRect: { left: 0, top: 0, width: region.width, height: region.height } });
-  const geometry: PatchGeometry = {
-    rect: { x: crop.left / boardSize.width, y: crop.top / boardSize.height, w: crop.width / boardSize.width, h: crop.height / boardSize.height },
-    hitRect: { x: (crop.left + protectedCore.left) / boardSize.width, y: (crop.top + protectedCore.top) / boardSize.height, w: protectedCore.width / boardSize.width, h: protectedCore.height / boardSize.height },
-    anchor: { x: (crop.left + faceRect.left + faceRect.width / 2) / boardSize.width, y: (crop.top + faceRect.top) / boardSize.height },
-  };
+  const geometry = paidPatchJoinGeometry({ crop, protectedCore, faceRect, boardSize: input.boardSize });
   const candidateSha256 = digest(candidatePng);
   return { version: LOCAL_PATCH_REPAIR_COMPOSITION_VERSION, candidatePng, candidateSha256, geometry,
     ...(input.foreground ? { foreground: foregroundRecord(input.foreground, restoredPixels, candidateSha256) } : {}),

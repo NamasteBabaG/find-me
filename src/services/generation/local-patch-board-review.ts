@@ -101,7 +101,9 @@ function singleJudgeEvidence(keep: { raw: string | null; wireFault: string | nul
 }
 export type LocalPatchBoardReviewOutcome = { state: "done" | "pending" | "held" | "retry" | "blocked"; reason: string | null; replayed: boolean; costCents: number;
   /** A retained answer was decided again with no question or charge. */
-  decidedRetained?: boolean };
+  decidedRetained?: boolean;
+  /** One newly authenticated source-neighbor adoption yields before any ordinary purchase. */
+  sourceNeighborReadingApplied?: true };
 export type LocalPatchBoardReviewDeps = {
   fence(tx: Prisma.TransactionClient): Promise<void>;
   apiKey?: string;
@@ -202,8 +204,16 @@ export async function prepareLocalPatchBoardReview(c: Container, input: { gameId
     demand(sprite.kind === "image" && sprite.rect && sprite.rect.x === crop.left / meta.width! && sprite.rect.y === crop.top / meta.height!
       && sprite.rect.w === crop.width / meta.width! && sprite.rect.h === crop.height / meta.height!, "Shipping placement differs from the authored crop");
     const annotated = sourcePlacementForHide(placementContext, hide.id)?.sourceNeighbors;
+    const sourceHeads = annotated?.contract.neighbors.map(neighbor => neighbor.head) ?? [];
+    if (completed.sourceFigureReturn !== undefined) {
+      const { sourceFigureAuthorityFor } = await import('../../domain/generation/source-figure-return');
+      const authority = sourceFigureAuthorityFor(completed.authoredReturn as Parameters<typeof sourceFigureAuthorityFor>[0],
+        (completed.authoredRecovery as { returnWindow: PatchRectangle }).returnWindow);
+      demand(authority, 'Whole-figure source context is missing');
+      sourceHeads.push(...authority.sourcePeople.map(p => ({ ...p.head, left: crop.left + p.head.left, top: crop.top + p.head.top })));
+    }
     const reviewContextRect = annotated ? sourceNeighborReviewContext(crop, { width: meta.width!, height: meta.height! },
-      annotated.contract.neighbors.map(neighbor => neighbor.head), scene.sceneVersion) : undefined;
+      sourceHeads, scene.sceneVersion) : undefined;
     if (annotated && reviewContextRect) demand(annotated.contract.neighbors.every(n => n.head.left >= reviewContextRect.left
       && n.head.top >= reviewContextRect.top && n.head.left + n.head.width <= reviewContextRect.left + reviewContextRect.width
       && n.head.top + n.head.height <= reviewContextRect.top + reviewContextRect.height), "Annotated source head is outside the actual review context");
@@ -523,7 +533,8 @@ export async function reviewLocalPatchBoard(c: Container, input: { gameId: strin
           { boardReview: prior.boardReview, verdict: prior.verdict, qualityDisposition: prior.qualityDisposition, wireFault: prior.wireFault,
             ...(rejudged ? { supersededBy: SUBJECT_REJUDGE_VERSION, lastError: current.lastError } : {}),
             ...(retainedOnly ? { supersededBy: localPatchHeadRetentionUnread(e.row) ? HEAD_RETENTION_VERSION
-              : localPatchVarietyExhaustedUndecided(e.row) ? COLLECTION_VARIETY_EXHAUSTED_VERSION : evaluated!.proof.quality.envelopeReader, lastError: current.lastError } : {}) },
+              : localPatchVarietyExhaustedUndecided(e.row) ? COLLECTION_VARIETY_EXHAUSTED_VERSION
+              : evaluated!.proof.quality.sourceNeighborReading?.version ?? evaluated!.proof.quality.envelopeReader, lastError: current.lastError } : {}) },
         ] } : {}),
         wireFault: keep.wireFault ?? (verdicts[e.hide.id] ? null : "schema"), judgedSha256: e.imageSha256,
         ...(strict ? { qualityDisposition: disposition, compositionVersion } : {}),
@@ -572,5 +583,6 @@ export async function reviewLocalPatchBoard(c: Container, input: { gameId: strin
     reason: blocked ? "Required quality evidence is unresolved" : retry ? (isLocalPatchAgeVersion(scene.sceneVersion)
       ? "Required visual quality defect requires a bounded replacement" : "Severe seam or face defect requires a bounded replacement") : complete ? null : "Other appearances await generation or review",
     replayed: bought.replayed, costCents: evaluated?.newCostCents ?? bought.evidence.amountMicroUsd / 10_000,
-    ...(evaluated?.salvaged ? { decidedRetained: true } : {}) };
+    ...(evaluated?.salvaged ? { decidedRetained: true,
+      ...(evaluated.proof.quality.sourceNeighborReading ? { sourceNeighborReadingApplied: true as const } : {}) } : {}) };
 }

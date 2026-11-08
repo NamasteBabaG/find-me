@@ -2,6 +2,8 @@ import { nativeDetailQuestion } from "./native-detail-evidence";
 import { collectionVarietyApplies } from "../../domain/generation/collection-variety-exhausted";
 import type { NativeDetailEvidence } from "../../domain/generation/native-detail";
 import { BOUND_SUBJECT_QUALITY_ENVELOPE_READER_V2 } from "../../domain/generation/bound-subject-quality-envelope";
+import { authenticateBoundSourceNeighborReading } from './bound-source-neighbor-reading';
+import { solBackgroundReviewBody } from '../../infra/generation/openai-background-review';
 import { singleMediumEvidence, singleMediumPrompt, singleMediumAnatomyPrompt } from "./single-medium-evidence";
 import { publishedCrownSubjectAnchor } from "./published-crown-repair";
 import { singleReviewHeadEvidence } from "./single-review-head-evidence";
@@ -1125,6 +1127,12 @@ async function prepareSingleLowQuestion(c: Pick<Container, "db" | "storage">, pr
     : (Array.isArray(receipt.evidenceAttempts) ? receipt.evidenceAttempts : []).filter((v: {single?:unknown;imageSha256?:unknown}) => v.single === singleVersion && v.imageSha256 === binding.imageSha256).length;
   const attempt = continued + 1;
   let mediumPrompt = (singleVersion === SINGLE_MEDIUM_VISUAL_REVIEW_VERSION ? singleMediumPrompt(lowQuestion.prompt.replace(anatomy.prompt,()=>singleMediumAnatomyPrompt(anatomy.prompt)),binding,hideId) : lowQuestion.prompt).replace('"version":"' + SINGLE_VISUAL_REVIEW_VERSION + '"', '"version":"' + singleVersion + '"');
+  if (receipt.sourceFigureReturn !== undefined) {
+    const figure = await import('../../domain/generation/source-figure-return');
+    const a = figure.sourceFigureAuthorityFor(receipt.authoredReturn, receipt.authoredRecovery?.returnWindow);
+    if (!a || singleVersion !== SINGLE_MEDIUM_VISUAL_REVIEW_VERSION) throw Error('SOURCE_FIGURE: fresh ordinary MEDIUM evidence required');
+    mediumPrompt += figure.sourceFigureReviewPrompt(a);
+  }
   if (singleVersion === SINGLE_MEDIUM_VISUAL_REVIEW_VERSION && continued)
     mediumPrompt = mediumPrompt.replace('Use doubt=true only', '\nUNANSWERED TRANSPORT CONTINUATION '+attempt+': the earlier provider request ended without text or usage. This is the first usable assessment of these unchanged pixels, not a second opinion.Use doubt=true only');
   const anchor = prepared.child.originalPhotoAssetId===null ? await publishedCrownSubjectAnchor(c,prepared.game.id,hideId,subject.upgrade) : null;
@@ -1222,6 +1230,18 @@ async function singleLowReview(c: Container, prepared: Prepared, deps: LocalPatc
     model: wire.model, finishReason: wire.finishReason, wireFault: wire.wireFault, costMicroUsd: bought.evidence.amountMicroUsd,
     ...(singleVersion === SINGLE_MEDIUM_VISUAL_REVIEW_VERSION ? { envelopeReader: BOUND_SUBJECT_QUALITY_ENVELOPE_READER_V2 } : {}) };
   const qualityStage: QualityStage = { ...base, reader: CURRENT_QUALITY_READER, subjectBundle: combined.binding, ...(sourceNeighbors ? { sourceNeighbors } : {}), ...(head ? { headEvidence: head.evidence } : {}), ...(nativeDetailEvidence ? { nativeDetailEvidence } : {}) };
+  // Only a separately adopted retained reading can name this reader. Rebuild
+  // the original question first; no paid key, prompt or raw answer is rewritten.
+  if (retained) {
+    const sourceNeighborReading = await authenticateBoundSourceNeighborReading(c.db, { gameId: prepared.game.id, worldId: prepared.worldId,
+      stage: qualityStage, questionBodySha256: sha256Bytes(Buffer.from(JSON.stringify(solBackgroundReviewBody(question)))),
+      binding: { hideId, variantId: entry.row.id, imageSha256: binding.imageSha256, geometrySha256: binding.geometrySha256,
+        identitySha256: binding.identitySha256, ...(binding.authoredReturn ? { authoredReviewBinding: authoredLocalPatchReviewBinding(binding)! } : {}) } });
+    if (sourceNeighborReading) {
+      qualityStage.sourceNeighborReading = sourceNeighborReading;
+      base.sourceNeighborReading = sourceNeighborReading;
+    }
+  }
   const continuity: ContinuityStage = { ...base, reader: CURRENT_CONTINUITY_READER[version] };
   const subjectStage: SubjectStage = { ...base, subjectPolicy: SUBJECT_POLICY_V2, reader: SUBJECT_READER_V2,
     photoSha256: subject.upgrade.photoSha256, planSha256: subjectPlanSha256(subject.plan), combined: SUBJECT_QUALITY_BUNDLE_VERSION,

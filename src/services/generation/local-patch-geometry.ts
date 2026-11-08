@@ -5,6 +5,8 @@ import {
 import { hitBoxFromAlpha, type PatchGeometry } from "./patch";
 import { changedWithin, LOCAL_PATCH_RETURN_GUARD, SEAM_LIMITS } from "./local-patch-seam";
 import { isLocalPatchStrictVersion } from "../../domain/scene/local-patch-catalog";
+import { assertSourceFigureAuthority, type SourceFigureAuthority } from "../../domain/generation/source-figure-return";
+import { sha256Bytes } from "./fixed-sprite";
 
 /**
  * Where a finished hide is drawn, where the child in it can be tapped, and where
@@ -61,6 +63,8 @@ export async function localPatchGeometry(input: {
   readonly boardPng: Buffer;
   readonly patchPng: Buffer;
   readonly board?: { readonly width: number; readonly height: number };
+  /** Closed public permission; historical geometry remains byte-identical. */
+  readonly sourceFigure?: SourceFigureAuthority;
 }): Promise<LocalPatchGeometry> {
   const { hide } = input;
   const art = input.board ?? LOCAL_PATCH_BOARD;
@@ -74,8 +78,16 @@ export async function localPatchGeometry(input: {
   const top = Math.max(SEAM_LIMITS.bandPx, requested.top - LOCAL_PATCH_RETURN_GUARD + SEAM_LIMITS.bandPx);
   const right = Math.min(crop.width - SEAM_LIMITS.bandPx, requested.left + requested.width + 24);
   const bottom = Math.min(crop.height - SEAM_LIMITS.bandPx, requested.top + requested.height + 24);
-  const box = isLocalPatchStrictVersion(input.contentVersion)
+  let box = isLocalPatchStrictVersion(input.contentVersion)
     ? { left, top, width: right - left, height: bottom - top } : requested;
+  if (input.sourceFigure) {
+    const a = input.sourceFigure; assertSourceFigureAuthority(a);
+    if (hide.id !== a.hideId || input.contentVersion !== a.sceneVersion || hide.pose !== a.pose
+      || JSON.stringify(crop) !== JSON.stringify(a.crop) || JSON.stringify(requested) !== JSON.stringify(a.child)
+      || art.width !== a.source.width || art.height !== a.source.height || sha256Bytes(input.boardPng) !== a.sourcePngSha256)
+      throw Error("SOURCE_FIGURE: geometry source differs from the closed permission");
+    box = a.measurementBounds;
+  }
 
   const rect = { x: crop.left / art.width, y: crop.top / art.height, w: crop.width / art.width, h: crop.height / art.height };
   const declared = {

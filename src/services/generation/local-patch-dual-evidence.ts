@@ -27,6 +27,8 @@ import { SUBJECT_QUALITY_BUNDLE_VERSION, readSubjectQualityBundle, type SubjectQ
 import { collectionVarietyApplies } from "../../domain/generation/collection-variety-exhausted";
 
 import { readSourceNeighborQualityBundle, type SourceNeighborQualityBundleBinding } from "../../domain/generation/source-neighbor-quality-bundle";
+import { boundSourceNeighborReadingSchema, readQuestionBoundSourceNeighborEnvelope,
+  type BoundSourceNeighborReading } from "../../domain/generation/bound-source-neighbor-envelope";
 import { SOURCE_NEIGHBOR_BUNDLE_VERSION, SOURCE_NEIGHBOR_POLICY, SOURCE_NEIGHBOR_READER, type SourceNeighborContract } from "../../domain/scene/local-patch-source-neighbors";
 import { resolveLocalPatchBoardsForGame, sourcePlacementForHide, sourcePlacementManifestForHide, type TrustedSourcePlacementContext } from "./source-placement-release";
 import { authoredLocalPatchSourceNeighborContract, type AuthoredLocalPatchReceipt } from "./local-patch-authored-return";
@@ -47,11 +49,19 @@ export function sourceNeighborQualityEvidence(context: TrustedSourcePlacementCon
 }
 /** One immutable raw document is retained. Unwrap the new envelope explicitly,
  * then let the original quality and subject readers decide their own documents. */
-export function readSourceNeighborQualityStage(stage: { raw: string | null; sourceNeighbors?: SourceNeighborQualityEvidence; policy?: VisualReviewPolicy }) {
+export function readSourceNeighborQualityStage(stage: { raw: string | null; sourceNeighbors?: SourceNeighborQualityEvidence; policy?: VisualReviewPolicy;
+  sourceNeighborReading?: BoundSourceNeighborReading; requestKey?: string; fingerprint?: string }) {
   const raw = stage.policy && isSingleReviewPolicy(stage.policy) ? readSingleVisualReview(stage.raw)?.assessment ?? null : stage.raw;
+  if (stage.sourceNeighborReading !== undefined) {
+    const marker = boundSourceNeighborReadingSchema.safeParse(stage.sourceNeighborReading);
+    if (!marker.success || !stage.sourceNeighbors || marker.data.sourceRequestKey !== stage.requestKey
+      || marker.data.sourceFingerprint !== stage.fingerprint || marker.data.rawSha256 !== sha256Bytes(Buffer.from(stage.raw ?? ""))) return null;
+    return readQuestionBoundSourceNeighborEnvelope(raw, { contract: stage.sourceNeighbors.contract, binding: stage.sourceNeighbors.binding });
+  }
   return stage.sourceNeighbors ? readSourceNeighborQualityBundle(raw, { contract: stage.sourceNeighbors.contract, binding: stage.sourceNeighbors.binding }) : null;
 }
-function sourceNeighborAssessmentRaw(stage: { raw: string | null; sourceNeighbors?: SourceNeighborQualityEvidence; policy?: VisualReviewPolicy }): string | null {
+function sourceNeighborAssessmentRaw(stage: { raw: string | null; sourceNeighbors?: SourceNeighborQualityEvidence; policy?: VisualReviewPolicy;
+  sourceNeighborReading?: BoundSourceNeighborReading; requestKey?: string; fingerprint?: string }): string | null {
   if (!stage.sourceNeighbors) return stage.policy && isSingleReviewPolicy(stage.policy) ? readSingleVisualReview(stage.raw)?.assessment ?? null : stage.raw;
   const reading = readSourceNeighborQualityStage(stage);
   return reading?.ok && reading.sourceNeighbors.disposition !== "unresolved" ? reading.assessment.raw : null;
@@ -60,14 +70,26 @@ function sourceNeighborAssessmentRaw(stage: { raw: string | null; sourceNeighbor
  * read, including direct dual-policy reads. Cached pass flags and copied metadata
  * cannot stand in for the named wrapper in the actual retained paid answer. */
 export async function sourceNeighborPublicationMatches(db: Prisma.TransactionClient, input: { gameId: string; sceneVersion: number;
-  hideId: string; imageSha256: string; judgeJson: string | null }, stage: QualityStage | undefined): Promise<boolean> {
+  hideId: string; imageSha256: string; judgeJson: string | null; variantId?: string }, stage: QualityStage | undefined): Promise<boolean> {
   try {
     const context = await resolveLocalPatchBoardsForGame(db, input.gameId, input.sceneVersion);
-    if (!sourcePlacementForHide(context, input.hideId)?.sourceNeighbors) return stage?.sourceNeighbors === undefined;
+    if (!sourcePlacementForHide(context, input.hideId)?.sourceNeighbors) return stage?.sourceNeighbors === undefined && stage?.sourceNeighborReading === undefined;
     const receipt = JSON.parse(input.judgeJson ?? "null") as AuthoredLocalPatchReceipt;
     const expected = sourceNeighborQualityEvidence(context, input.hideId, input.imageSha256, receipt);
-    if (!expected) return stage?.sourceNeighbors === undefined;
+    if (!expected) return stage?.sourceNeighbors === undefined && stage?.sourceNeighborReading === undefined;
     if (!stage || JSON.stringify(stage.sourceNeighbors) !== JSON.stringify(expected)) return false;
+    if (stage.sourceNeighborReading !== undefined) {
+      const marker = boundSourceNeighborReadingSchema.safeParse(stage.sourceNeighborReading);
+      if (!marker.success || !input.variantId) return false;
+      const proof = JSON.parse(input.judgeJson ?? 'null')?.boardReview?.dual as DualReviewProof | undefined;
+      if (!proof) return false;
+      const { authenticateBoundSourceNeighborReading } = await import('./bound-source-neighbor-reading');
+      const reading = await authenticateBoundSourceNeighborReading(db, { gameId: input.gameId, worldId: input.gameId + ':board-wizard', stage,
+        binding: { hideId: input.hideId, variantId: input.variantId, imageSha256: input.imageSha256, geometrySha256: proof.geometrySha256,
+          identitySha256: proof.identitySha256, ...(proof.authoredReturn ? { authoredReviewBinding: (await import('./local-patch-authored-return')).authoredLocalPatchReviewBinding(proof)! } : {}) },
+        questionBodySha256: marker.data.questionBodySha256 });
+      if (!reading || JSON.stringify(reading) !== JSON.stringify(marker.data)) return false;
+    }
     const reading = readSourceNeighborQualityStage(stage);
     return !!reading?.ok && reading.sourceNeighbors.disposition === "pass";
   } catch { return false; }
@@ -93,6 +115,8 @@ export type DualStageBase = { requestKey: string; fingerprint: string; attempt: 
   strategy?: EvidenceStrategy;
   /** Named lossless envelope reading; absent on all historical decisions. */
   envelopeReader?: BoundSubjectQualityEnvelopeReader;
+  /** An independently authenticated later reading of the same immutable source-neighbor answer. */
+  sourceNeighborReading?: BoundSourceNeighborReading;
   /** Why the answer could not be used: a code and a JSON path, never answer text. */
   readFault?: ContinuityReadFault | null };
 /** Each role names the reader that decided it. Absent on stages written before readers were named. */
@@ -181,7 +205,8 @@ export function readQualityStage(stage: QualityStage, hideId: string, sceneVersi
   return verdict;
 }
 
-export function qualityStageRaw(stage: Pick<QualityStage, "raw" | "subjectBundle" | "sourceNeighbors"> & { policy?: VisualReviewPolicy; envelopeReader?: string }): string | null {
+export function qualityStageRaw(stage: Pick<QualityStage, "raw" | "subjectBundle" | "sourceNeighbors" | "sourceNeighborReading"> & {
+  requestKey?: string; fingerprint?: string; policy?: VisualReviewPolicy; envelopeReader?: string }): string | null {
   const raw = sourceNeighborAssessmentRaw(stage);
   if (!stage.subjectBundle) return stage.envelopeReader === undefined ? raw : null;
   if (stage.subjectBundle.version !== SUBJECT_QUALITY_BUNDLE_VERSION) return null;
@@ -189,7 +214,8 @@ export function qualityStageRaw(stage: Pick<QualityStage, "raw" | "subjectBundle
   return stage.policy && isSingleMediumReviewPolicy(stage.policy)
     ? readSubjectQualityEnvelopeWith(stage.envelopeReader, raw, stage.subjectBundle)?.quality ?? null : null;
 }
-export function subjectStageRaw(stage: Pick<SubjectStage, "raw" | "combined" | "sourceNeighbors"> & {
+export function subjectStageRaw(stage: Pick<SubjectStage, "raw" | "combined" | "sourceNeighbors" | "sourceNeighborReading"> & {
+  requestKey?: string; fingerprint?: string;
   policy?: VisualReviewPolicy; envelopeReader?: string; photoSha256?: string; planSha256?: string; subjectPolicy?: string;
 }): string | null {
   const raw = sourceNeighborAssessmentRaw(stage);
@@ -264,7 +290,7 @@ export function readContinuityStage(stage: ContinuityStage, hideId: string, vers
  * service still verifies the original bill, pixels and every role before
  * recording any changed decision. No new question is authorized. */
 export function localPatchBoundEnvelopeUndecided(row: { status: string; attempts?: number; lastError?: string | null; judgeJson?: string | null }): boolean {
-  if (localPatchHeadRetentionUnread(row) || localPatchVarietyExhaustedUndecided(row)) return true;
+  if (localPatchHeadRetentionUnread(row) || localPatchVarietyExhaustedUndecided(row) || localPatchSourceNeighborEchoUndecided(row)) return true;
   if (row.status !== "FAILED" || !row.lastError?.startsWith("quality-unresolved:")) return false;
   try {
     const receipt = JSON.parse(row.judgeJson ?? "null"), p = receipt?.boardReview?.dual as DualReviewProof | undefined;
@@ -284,6 +310,24 @@ export function localPatchBoundEnvelopeUndecided(row: { status: string; attempts
       && JSON.stringify(v.policy)===JSON.stringify(q.policy) && visualStageReadable(v))
       && s.photoSha256===bundle.photoSha256 && s.planSha256===bundle.planSha256
       && s.subjectPolicy===bundle.subjectPolicy;
+  } catch { return false; }
+}
+
+/** Scheduling only. Adoption still reconstructs the original paid question and
+ * authenticates all roles, its settled bill and terminal round before any write. */
+export function localPatchSourceNeighborEchoUndecided(row: { status: string; lastError?: string | null; judgeJson?: string | null }): boolean {
+  if (row.status !== 'FAILED' || !row.lastError?.startsWith('quality-unresolved:')) return false;
+  try {
+    const j = JSON.parse(row.judgeJson ?? 'null'), p = j?.boardReview?.dual as DualReviewProof | undefined;
+    if (j?.reviewState !== 'board-review-complete' || p?.single !== SINGLE_MEDIUM_VISUAL_REVIEW_VERSION
+      || !p.quality?.sourceNeighbors || p.quality.sourceNeighborReading !== undefined || !p.continuity || !p.subject
+      || !isSingleMediumReviewPolicy(p.quality.policy) || !visualStageReadable(p.quality)
+      || p.imageSha256 !== j.judgedSha256 || p.geometrySha256 !== j.geometrySha256 || p.hideId !== j.hide
+      || ![p.continuity, p.subject].every(s => s.requestKey === p.quality.requestKey && s.fingerprint === p.quality.fingerprint
+        && s.raw === p.quality.raw && s.sourceNeighborReading === undefined && visualStageReadable(s))) return false;
+    const outer = readSingleVisualReview(p.quality.raw);
+    return !!outer && !outer.doubt && !!readQuestionBoundSourceNeighborEnvelope(outer.assessment,
+      { contract: p.quality.sourceNeighbors.contract, binding: p.quality.sourceNeighbors.binding });
   } catch { return false; }
 }
 
