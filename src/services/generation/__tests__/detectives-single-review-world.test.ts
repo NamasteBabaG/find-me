@@ -2444,6 +2444,111 @@ it("reads settled answers without reserving or asking even with capacity to buy,
  expect(fetch).not.toHaveBeenCalled();
 },900_000);
 
+it('fills only a born Paris source-body background gap for free, preserves paid evidence, and requires a fresh ordinary review', async () => {
+ const { sourceBodyGapAuthority } = await import('../../../domain/generation/source-body-gap');
+ const { correctSourceBodyGap, sourceBodyGapBaseline } = await import('../source-body-gap');
+ const gameId='synthetic-source-body-gap',hideId='paris-detectives-hide-1';
+ vi.useFakeTimers({toFake:['Date']});await newDetectiveWorld(gameId,7,true);
+ const context=await resolveLocalPatchBoardsForGame(db,gameId,13),hides=context.boards.flatMap(b=>b.hides);
+ const hide=hides.find(h=>h.id===hideId)!,g=sourceBodyForHide(context,hideId)!,gap=sourceBodyGapAuthority(g)!.rect;
+ const provider=controlledSol(false,false,undefined,true,true),retrieve=provider.fake.retrieve.bind(provider.fake);
+ provider.fake.retrieve=async id=>{
+  const reply=await retrieve(id);if(reply.status!=='completed')return reply;
+  const asked=provider.creates[Number(id.split('_').at(-1))-1]!;
+  if(asked.hideId!==hideId||provider.creates.filter(p=>p.hideId===hideId).indexOf(asked)!==0)return reply;
+  const doc=JSON.parse(reply.reading.raw!),a=doc.assessment.assessment??doc.assessment;
+  Object.assign(a.quality.hides[0].verdict,{verdict:'fail',severeSeam:'fail',pictureWhole:'fail',reason:'Synthetic rectangular source-mask remnant in paving',
+   faults:[{check:'severeSeam',where:'Synthetic lower-right rectangular background gap'}]});
+  a.quality.hides[0].verdict.boundaryIntegrity.right={status:'fail',observation:'Synthetic rectangular background block beside the complete child'};
+  return {...reply,reading:{...reply.reading,raw:JSON.stringify(doc)}};
+ };
+ const container={...c,backgroundReview:provider.fake,visualReview:{request:async()=>{throw Error('No synchronous or real review');}}} as Container;
+ const render=vi.fn<NonNullable<LocalPatchHideDeps['render']>>(async({requestKey,stylePng})=>{
+  const h=hides.find(h=>requestKey.startsWith(h.id+':'))!,m=maskForHide(h);
+  const figure=await sharp({create:{width:Math.round(m.width*.6),height:Math.round(m.height*.8),channels:4,background:'#1e3ca0'}}).png().toBuffer();
+  const layers=[{input:figure,left:m.left+Math.round(m.width*.2),top:m.top+Math.round(m.height*.2)}];
+  if(h.id===hideId)layers.push({input:await sharp({create:{width:gap.width,height:gap.height,channels:4,background:'#e7d9c8'}}).png().toBuffer(),left:gap.left,top:gap.top});
+  return paintedOk(await sharp(stylePng).composite(layers).png().toBuffer(),bill('paint-'+gameId+'-'+requestKey,66500));
+ });
+ const diagnose=vi.fn(async()=>{throw Error('No diagnosis or repaint permitted');});
+ const deps:LocalPatchHideDeps={readBoardArt:readArt,renderPolicySha256:localPatchRenderPolicySha256(LOCAL_PATCH_IMAGE_POLICY),render,judge:async()=>{throw Error('No synchronous review');}};
+ const row=()=>db.targetVariantAsset.findFirstOrThrow({where:{variant:'A',targetInstance:{gameScene:{gameId,sceneSlug:'paris'},targetId:hide.targetId}}});
+ let pendingSeen=false,last='';
+ let previousLedger: string | null=null, previousSiblings: unknown=null, previousPaints=0, previousQuestions=0;
+ for(let turn=0;turn<180;turn++){
+  const result=await runLocalPatchWorldSlice(container,deps,gameId,{hardDeadlineAt:Date.now()+270000,diagnose});
+  const r=await db.targetVariantAsset.findFirst({where:{variant:'A',targetInstance:{gameScene:{gameId,sceneSlug:'paris'},targetId:hide.targetId}}}),j=JSON.parse(r?.judgeJson??'null');
+  if(j?.sourceBodyGapFill&&j.reviewState==='pending-board-review'){
+   if(!pendingSeen){
+    expect(previousLedger).not.toBeNull();
+    const before=JSON.parse(previousLedger!),after=JSON.parse((await db.worldBudgetLedger.findUniqueOrThrow({where:{worldId:boardWizardWorldId(gameId)}})).snapshotJson);
+    expect(after.requests).toHaveLength(before.requests.length);
+    for(const paid of before.requests){
+     const current=after.requests.find((p:{requestKey:string})=>p.requestKey===paid.requestKey);
+     // The native slice polls already-submitted sibling reviews BEFORE free
+     // compositions. A real terminal settlement is allowed; no new request,
+     // lost reserve, reset or change to any settled/UNKNOWN evidence is.
+     if(paid.state==='pending'&&current.state==='settled')expect(current).toMatchObject({requestKey:paid.requestKey,scope:paid.scope,operationFingerprint:paid.operationFingerprint,reserveMicroUsd:paid.reserveMicroUsd});
+     else expect(current).toEqual(paid);
+    }
+    const inventory=(rows: typeof r[])=>rows.map(p=>({id:p!.id,assetId:p!.assetId,attempts:p!.attempts,costCents:p!.costCents,rectJson:p!.rectJson,hitRectJson:p!.hitRectJson,headAnchorJson:p!.headAnchorJson}));
+    expect(inventory(await db.targetVariantAsset.findMany({where:{id:{not:r!.id},targetInstance:{gameScene:{gameId}}},orderBy:{id:'asc'}}))).toEqual(inventory(previousSiblings as typeof r[]));
+    expect(render.mock.calls.length).toBe(previousPaints);expect(provider.creates.length).toBe(previousQuestions);
+   }
+   pendingSeen=true;expect(await allowedDualPublication(db,{gameId,sceneVersion:13,hideId,variantId:r!.id,attempts:r!.attempts,
+    identityAssetId:'ast-sheet-'+gameId,identitySha256:j.sourceBodyGapFill.identitySha256,assetId:r!.assetId!,imageSha256:j.judgedSha256,
+    geometrySha256:j.geometrySha256,judgeJson:r!.judgeJson})).toBe(false);
+   expect(await correctSourceBodyGap(container,gameId,[r!],async()=>{},readArt)).toBe(false);
+  }
+  if(r?.status==='FAILED'&&!j?.sourceBodyGapFill){
+   previousLedger=(await db.worldBudgetLedger.findUniqueOrThrow({where:{worldId:boardWizardWorldId(gameId)}})).snapshotJson;
+   previousSiblings=await db.targetVariantAsset.findMany({where:{id:{not:r.id},targetInstance:{gameScene:{gameId}}},orderBy:{id:'asc'}});
+   previousPaints=render.mock.calls.length;previousQuestions=provider.creates.length;
+  }
+  if(j?.sourceBodyGapFill&&j.reviewState==='board-review-complete')break;
+  last=JSON.stringify({turn,result,row:r&&{status:r.status,attempts:r.attempts,error:r.lastError,review:j?.reviewState}});
+  if(!result.pending)break;
+ }
+ const accepted=await row(),j=JSON.parse(accepted.judgeJson!);expect(j.sourceBodyGapFill,last).toBeDefined();expect(pendingSeen).toBe(true);
+ expect(accepted).toMatchObject({status:'GENERATED',attempts:1});expect(j.verdict.verdict).toBe('pass');
+ expect(diagnose).not.toHaveBeenCalled();expect(render.mock.calls.filter(([r])=>r.requestKey.startsWith(hideId+':'))).toHaveLength(1);
+ expect(provider.creates.filter(p=>p.hideId===hideId)).toHaveLength(2);
+ expect(provider.creates.filter(p=>p.hideId===hideId)[1]!.prompt).toContain('SOURCE BODY GAP source-body-gap-fill/v1');
+ const audit=await db.auditLog.findUniqueOrThrow({where:{id:j.sourceBodyGapFill.auditId}}),meta=JSON.parse(audit.metaJson!);
+ expect(meta).toMatchObject({providerCalls:0,attemptsPreserved:true,cyclesPreserved:true,requestsPreserved:true,approvalTransferred:false});
+ const old=JSON.parse(meta.previousJudgeJson);expect(old.verdict.verdict).toBe('fail');expect(j.sourceBodyBirth).toEqual(old.sourceBodyBirth);
+ expect(j.sourceBodyComposition).toEqual(old.sourceBodyComposition);expect(j.geometrySha256).toBe(old.geometrySha256);
+ const pixels=async(id:string)=>{const a=await db.asset.findUniqueOrThrow({where:{id}});return sharp(await c.storage.get(a.storagePath)).ensureAlpha().raw().toBuffer();};
+ const before=await pixels(j.sourceBodyGapFill.baselineAssetId),after=await pixels(accepted.assetId!);let changes=0;
+ for(let y=0;y<768;y++)for(let x=0;x<512;x++){
+  const i=(y*512+x)*4;if(before.subarray(i,i+4).equals(after.subarray(i,i+4)))continue;
+  changes++;if(!(x>=gap.left&&x<gap.left+gap.width&&y>=gap.top&&y<gap.top+gap.height))throw Error('Changed pixel outside fixed gap');
+ }
+ expect(changes).toBe(2160);expect(meta.proof.changedPixels).toBe(2160);
+ const base=await sourceBodyGapBaseline(db,gameId,j.sourceBodyGapFill,readArt);expect(base?.previousJudgeJson).toBe(meta.previousJudgeJson);
+ expect(await allowedDualPublication(db,{...publicationBinding(gameId,accepted),sceneVersion:13})).toBe(true);
+ const ledger=await db.worldBudgetLedger.findUniqueOrThrow({where:{worldId:boardWizardWorldId(gameId)}}),ledgerJson=JSON.parse(ledger.snapshotJson);
+ const kept=new PrismaRetainedPurchaseStore(db),paid=await kept.get(boardWizardWorldId(gameId),j.sourceBodyGapFill.sourceRequestKey);
+ expect(paid?.payloadSha256).toBe(j.sourceBodyGapFill.sourcePayloadSha256);
+ for(const field of ['candidateSha256','sourceFingerprint','sourcePayloadSha256','identitySha256','geometrySha256','authoritySha256']){
+  const forged={...j.sourceBodyGapFill,[field]:'f'.repeat(64)};expect(await sourceBodyGapBaseline(db,gameId,forged,readArt)).toBeNull();
+ }
+ const baseAsset=await db.asset.findUniqueOrThrow({where:{id:j.sourceBodyGapFill.baselineAssetId}}),baseBlob=await db.fileBlob.findUniqueOrThrow({where:{key:baseAsset.storagePath}});
+ const corrupt=Buffer.from(baseBlob.data);corrupt[corrupt.length-20]=corrupt[corrupt.length-20]!^1;
+ await db.fileBlob.update({where:{key:baseBlob.key},data:{data:corrupt}});
+ expect(await allowedDualPublication(db,{...publicationBinding(gameId,accepted),sceneVersion:13})).toBe(false);
+ await db.fileBlob.update({where:{key:baseBlob.key},data:{data:baseBlob.data}});
+ await db.order.update({where:{id:'order-'+gameId},data:{paymentStatus:'REFUNDED'}});
+ expect(await sourceBodyGapBaseline(db,gameId,j.sourceBodyGapFill,readArt)).toBeNull();
+ await db.order.update({where:{id:'order-'+gameId},data:{paymentStatus:'PAID'}});
+ const missing={...j};delete missing.sourceBodyGapFill;
+ expect(await allowedDualPublication(db,{...publicationBinding(gameId,accepted),judgeJson:JSON.stringify(missing),sceneVersion:13})).toBe(false);
+ expect(await sourceBodyGapBaseline(db,gameId,j.sourceBodyGapFill,async()=>{throw Error('Wrong source');})).toBeNull();
+ expect(JSON.parse((await db.worldBudgetLedger.findUniqueOrThrow({where:{worldId:ledger.worldId}})).snapshotJson)).toEqual(ledgerJson);
+ expect((await kept.get(boardWizardWorldId(gameId),j.sourceBodyGapFill.sourceRequestKey))?.payloadSha256).toBe(paid!.payloadSha256);
+ expect((await db.auditLog.findUniqueOrThrow({where:{id:audit.id}})).metaJson).toBe(audit.metaJson);
+},600000);
+
 // crown-tab/v1 on real windows from the context the engine builds (2026-11-02: paid crowns drawn 11/35/45 px above
 // the whole window: New York 2 under a bench reader's knee, Paris 1 and Giza 2 on their corrected source-body windows).
 // No new painting: the paid crown is tabbed back, a fresh review decides.

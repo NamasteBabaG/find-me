@@ -1133,6 +1133,10 @@ async function prepareSingleLowQuestion(c: Pick<Container, "db" | "storage">, pr
     if (!a || singleVersion !== SINGLE_MEDIUM_VISUAL_REVIEW_VERSION) throw Error('SOURCE_FIGURE: fresh ordinary MEDIUM evidence required');
     mediumPrompt += figure.sourceFigureReviewPrompt(a);
   }
+  if (receipt.sourceBodyGapFill !== undefined) {
+    if (singleVersion !== SINGLE_MEDIUM_VISUAL_REVIEW_VERSION) throw Error('BODY_GAP: fresh ordinary MEDIUM required');
+    mediumPrompt += '\n' + (await import('../../domain/generation/source-body-gap')).sourceBodyGapReviewDirection();
+  }
   if (singleVersion === SINGLE_MEDIUM_VISUAL_REVIEW_VERSION && continued)
     mediumPrompt = mediumPrompt.replace('Use doubt=true only', '\nUNANSWERED TRANSPORT CONTINUATION '+attempt+': the earlier provider request ended without text or usage. This is the first usable assessment of these unchanged pixels, not a second opinion.Use doubt=true only');
   const anchor = prepared.child.originalPhotoAssetId===null ? await publishedCrownSubjectAnchor(c,prepared.game.id,hideId,subject.upgrade) : null;

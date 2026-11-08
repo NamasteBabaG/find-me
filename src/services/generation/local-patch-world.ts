@@ -7,6 +7,8 @@ import { wholeSourceContextImagePolicy } from "../../infra/generation/openai-loc
 import { resumeBoundEnvelopeReconciliation } from "./bound-envelope-reconciliation";
 import { applySourceCrownReturn } from "./source-crown-pixels";
 import { correctSourceFigureReturn, sourceFigureCandidate } from './source-figure-return';
+import { sourceBodyGapCandidate } from '../../domain/generation/source-body-gap';
+import { correctSourceBodyGap } from './source-body-gap';
 import { resumePropJoinRepair,applyPropJoinRepair } from "./prop-join-repair";
 import { sourceBodyBirthMarker } from "../../domain/generation/detectives-operational-policy";
 import { readSourceBodyRepairPin, sourceBodyPurchaseCandidate } from './source-body-repair-pin';
@@ -712,6 +714,17 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
     // single-transport-continuation/v1: a single question that ended in transit is logged on its pixels (free),
     // so evidence recovery asks its one continuation instead of resting the appearance as unreadable.
     if (dual && await recordSingleTransportFaults(c, gameId, rows, fence)) await reload();
+    // Fix one authenticated source-mask background gap for free, then yield:
+    // the new shipping still owes its own ordinary assessment.
+    if (dual && rows.some(sourceBodyGapCandidate)) {
+      if (!reviewFits()) return yieldToContinue();
+      try { if (await correctSourceBodyGap(c, gameId, rows, fence, deps.readBoardArt)) return yieldToContinue(); }
+      catch (error) {
+        await c.db.generationJob.updateMany({ where: { id: job.id, attempts: claim, status: 'RUNNING' },
+          data: { status: 'FAILED', lastError: (error instanceof Error ? error.message : String(error)).slice(0, 500) } });
+        throw error;
+      }
+    }
     // A source-qualified whole-figure return is free and finite. Yield before
     // an ordinary question about its new shipping, or any sibling purchase.
     if (dual && rows.some(sourceFigureCandidate)) {

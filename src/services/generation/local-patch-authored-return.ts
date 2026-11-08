@@ -158,6 +158,16 @@ export async function authoredLocalPatchRecoveryEvidenceMatches(db: Prisma.Trans
   board: LocalPatchBoard; hide: LocalPatchHide; sceneVersion: number; receipt: AuthoredLocalPatchReceipt;
   placementContext: TrustedSourcePlacementContext; promptVersion: string | null; beforePng?: Buffer }): Promise<boolean> {
   const { receipt, placementContext, board, hide } = input;
+  const gap = (receipt as Record<string, unknown>).sourceBodyGapFill;
+  if (gap !== undefined) {
+    const marker = (await import('../../domain/generation/source-body-gap')).sourceBodyGapSchema.safeParse(gap);
+    const row = marker.success ? await db.targetVariantAsset.findUnique({ where: { id: marker.data.rowId }, select: { judgeJson: true } }) : null;
+    if (!row?.judgeJson || !equal(JSON.parse(row.judgeJson), receipt)) return false;
+    const base = marker.success ? await (await import('./source-body-gap')).sourceBodyGapBaseline(db, input.gameId, marker.data,
+      input.beforePng ? async () => input.beforePng! : undefined) : null;
+    return !!base && base.previous.sourceBodyGapFill === undefined
+      && await authoredLocalPatchRecoveryEvidenceMatches(db, { ...input, receipt: base.previous });
+  }
   const figure = (receipt as Record<string, unknown>).sourceFigureReturn;
   if (figure !== undefined) {
     const marker = (await import('../../domain/generation/source-figure-return')).sourceFigureReturnSchema.safeParse(figure);
@@ -229,6 +239,18 @@ export async function authoredLocalPatchRecoveryEvidenceMatches(db: Prisma.Trans
 export async function authoredLocalPatchPublicationMatches(db: Prisma.TransactionClient,
   input: { gameId: string; sceneVersion: number; hideId: string; judgeJson: string | null; variantId?: string; assetId?: string }): Promise<boolean> {
   try {
+    let gap: unknown;
+    try { gap = JSON.parse(input.judgeJson ?? 'null')?.sourceBodyGapFill; } catch { gap = undefined; }
+    if (gap !== undefined) {
+      const marker = (await import('../../domain/generation/source-body-gap')).sourceBodyGapSchema.safeParse(gap);
+      const row = marker.success ? await db.targetVariantAsset.findUnique({ where: { id: marker.data.rowId }, select: { judgeJson: true } }) : null;
+      if (!row?.judgeJson || !equal(JSON.parse(row.judgeJson), JSON.parse(input.judgeJson!))) return false;
+      const base = marker.success ? await (await import('./source-body-gap')).sourceBodyGapBaseline(db, input.gameId, marker.data) : null;
+      if (!marker.success || !base || input.assetId !== undefined && input.assetId !== base.assetId
+        || input.variantId !== undefined && input.variantId !== base.variantId) return false;
+      return authoredLocalPatchPublicationMatches(db, { ...input, judgeJson: base.previousJudgeJson, assetId: marker.data.baselineAssetId });
+    }
+    if (input.assetId?.startsWith('ast_bgp_')) return false;
     // A crown tab changes only its own rows (its own verifier checks them): every other authored
     // proof is checked against the authenticated baseline the tab was derived from.
     let claimed: unknown;
