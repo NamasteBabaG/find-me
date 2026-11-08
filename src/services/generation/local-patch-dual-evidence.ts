@@ -27,8 +27,10 @@ import { SUBJECT_QUALITY_BUNDLE_VERSION, readSubjectQualityBundle, type SubjectQ
 import { collectionVarietyApplies } from "../../domain/generation/collection-variety-exhausted";
 
 import { readSourceNeighborQualityBundle, type SourceNeighborQualityBundleBinding } from "../../domain/generation/source-neighbor-quality-bundle";
-import { boundSourceNeighborReadingSchema, readQuestionBoundSourceNeighborEnvelope,
-  type BoundSourceNeighborReading } from "../../domain/generation/bound-source-neighbor-envelope";
+import { isDeepStrictEqual } from 'node:util';
+import { readQuestionBoundSourceNeighborEnvelope } from "../../domain/generation/bound-source-neighbor-envelope";
+import { BOUND_SOURCE_CONTRACT_READER, boundSourceNeighborReadingMarkerSchema, readQuestionBoundSourceContractEnvelope,
+  type BoundSourceNeighborReadingMarker as BoundSourceNeighborReading } from "../../domain/generation/bound-source-contract-envelope";
 import { SOURCE_NEIGHBOR_BUNDLE_VERSION, SOURCE_NEIGHBOR_POLICY, SOURCE_NEIGHBOR_READER, type SourceNeighborContract } from "../../domain/scene/local-patch-source-neighbors";
 import { resolveLocalPatchBoardsForGame, sourcePlacementForHide, sourcePlacementManifestForHide, type TrustedSourcePlacementContext } from "./source-placement-release";
 import { authoredLocalPatchSourceNeighborContract, type AuthoredLocalPatchReceipt } from "./local-patch-authored-return";
@@ -53,10 +55,12 @@ export function readSourceNeighborQualityStage(stage: { raw: string | null; sour
   sourceNeighborReading?: BoundSourceNeighborReading; requestKey?: string; fingerprint?: string }) {
   const raw = stage.policy && isSingleReviewPolicy(stage.policy) ? readSingleVisualReview(stage.raw)?.assessment ?? null : stage.raw;
   if (stage.sourceNeighborReading !== undefined) {
-    const marker = boundSourceNeighborReadingSchema.safeParse(stage.sourceNeighborReading);
+    const marker = boundSourceNeighborReadingMarkerSchema.safeParse(stage.sourceNeighborReading);
     if (!marker.success || !stage.sourceNeighbors || marker.data.sourceRequestKey !== stage.requestKey
       || marker.data.sourceFingerprint !== stage.fingerprint || marker.data.rawSha256 !== sha256Bytes(Buffer.from(stage.raw ?? ""))) return null;
-    return readQuestionBoundSourceNeighborEnvelope(raw, { contract: stage.sourceNeighbors.contract, binding: stage.sourceNeighbors.binding });
+    const expected = { contract: stage.sourceNeighbors.contract, binding: stage.sourceNeighbors.binding };
+    return marker.data.version === BOUND_SOURCE_CONTRACT_READER ? readQuestionBoundSourceContractEnvelope(raw, expected)
+      : readQuestionBoundSourceNeighborEnvelope(raw, expected);
   }
   return stage.sourceNeighbors ? readSourceNeighborQualityBundle(raw, { contract: stage.sourceNeighbors.contract, binding: stage.sourceNeighbors.binding }) : null;
 }
@@ -79,7 +83,7 @@ export async function sourceNeighborPublicationMatches(db: Prisma.TransactionCli
     if (!expected) return stage?.sourceNeighbors === undefined && stage?.sourceNeighborReading === undefined;
     if (!stage || JSON.stringify(stage.sourceNeighbors) !== JSON.stringify(expected)) return false;
     if (stage.sourceNeighborReading !== undefined) {
-      const marker = boundSourceNeighborReadingSchema.safeParse(stage.sourceNeighborReading);
+      const marker = boundSourceNeighborReadingMarkerSchema.safeParse(stage.sourceNeighborReading);
       if (!marker.success || !input.variantId) return false;
       const proof = JSON.parse(input.judgeJson ?? 'null')?.boardReview?.dual as DualReviewProof | undefined;
       if (!proof) return false;
@@ -88,7 +92,7 @@ export async function sourceNeighborPublicationMatches(db: Prisma.TransactionCli
         binding: { hideId: input.hideId, variantId: input.variantId, imageSha256: input.imageSha256, geometrySha256: proof.geometrySha256,
           identitySha256: proof.identitySha256, ...(proof.authoredReturn ? { authoredReviewBinding: (await import('./local-patch-authored-return')).authoredLocalPatchReviewBinding(proof)! } : {}) },
         questionBodySha256: marker.data.questionBodySha256 });
-      if (!reading || JSON.stringify(reading) !== JSON.stringify(marker.data)) return false;
+      if (!reading || !isDeepStrictEqual(reading, marker.data)) return false;
     }
     const reading = readSourceNeighborQualityStage(stage);
     return !!reading?.ok && reading.sourceNeighbors.disposition === "pass";
@@ -326,8 +330,10 @@ export function localPatchSourceNeighborEchoUndecided(row: { status: string; las
       || ![p.continuity, p.subject].every(s => s.requestKey === p.quality.requestKey && s.fingerprint === p.quality.fingerprint
         && s.raw === p.quality.raw && s.sourceNeighborReading === undefined && visualStageReadable(s))) return false;
     const outer = readSingleVisualReview(p.quality.raw);
-    return !!outer && !outer.doubt && !!readQuestionBoundSourceNeighborEnvelope(outer.assessment,
-      { contract: p.quality.sourceNeighbors.contract, binding: p.quality.sourceNeighbors.binding });
+    if (!outer || outer.doubt) return false;
+    const expected = { contract: p.quality.sourceNeighbors.contract, binding: p.quality.sourceNeighbors.binding };
+    return !!readQuestionBoundSourceNeighborEnvelope(outer.assessment, expected)
+      || !!readQuestionBoundSourceContractEnvelope(outer.assessment, expected);
   } catch { return false; }
 }
 

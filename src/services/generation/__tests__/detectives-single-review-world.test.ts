@@ -29,6 +29,7 @@ import { localPatchRestDecision } from "../../../domain/scene/local-patch-progre
 import { nextBoundEnvelopeReconciliation, resumeBoundEnvelopeReconciliation } from "../bound-envelope-reconciliation";
 import { BOUND_SUBJECT_QUALITY_ENVELOPE_READER, BOUND_SUBJECT_QUALITY_ENVELOPE_READER_V2 } from "../../../domain/generation/bound-subject-quality-envelope";
 import { BOUND_SOURCE_NEIGHBOR_READER } from '../../../domain/generation/bound-source-neighbor-envelope';
+import { BOUND_SOURCE_CONTRACT_READER } from '../../../domain/generation/bound-source-contract-envelope';
 import { REVIEW_EXISTING_WORK_MODE } from '../../../domain/generation/work-mode';
 import { authenticateBoundSourceNeighborReading } from '../bound-source-neighbor-reading';
 import { correctSourceFigureReturn, sourceFigurePublicationMatches } from '../source-figure-return';
@@ -2869,9 +2870,13 @@ it.each((["outer", "nested"] as const).flatMap(location => (["pass","semantic-fa
 },300000);
 
 
-it.each([55,65])('re-reads a malformed %i-character source-neighbor echo from its original settled question without a new purchase', async length => {
+it.each([
+  { field: 'candidateSha256', length: 55, reader: BOUND_SOURCE_NEIGHBOR_READER },
+  { field: 'candidateSha256', length: 65, reader: BOUND_SOURCE_NEIGHBOR_READER },
+  { field: 'contractSha256', length: 66, reader: BOUND_SOURCE_CONTRACT_READER },
+])('re-reads a malformed $length-character source-neighbor $field echo from its original settled question without a new purchase', async ({ field, length, reader }) => {
   vi.useFakeTimers({toFake:['Date']});
-  const gameId='explorer-source-echo-synthetic-'+length;
+  const gameId='explorer-source-echo-synthetic-'+field.toLowerCase()+'-'+length;
   await newDetectiveWorld(gameId,8,true,true);
   await ensureSingleMediumReviewPolicy(c,gameId,async()=>{});
   const context=await resolveLocalPatchBoardsForGame(db,gameId,12),board=context.boards.find(b=>b.board==='greatwall')!;
@@ -2884,7 +2889,7 @@ it.each([55,65])('re-reads a malformed %i-character source-neighbor echo from it
     const state=await retrieve(responseId);if(state.status!=='completed')return state;
     const outer=JSON.parse(state.reading.raw!);
     if(outer.assessment.version!==SOURCE_NEIGHBOR_BUNDLE_VERSION)return state;
-    outer.assessment.sourceNeighbors.candidateSha256='c'.repeat(length);
+    outer.assessment.sourceNeighbors[field]='c'.repeat(length);
     corruptedReplies++;
     return {...state,reading:{...state.reading,raw:JSON.stringify(outer)}};
   };
@@ -2910,7 +2915,7 @@ it.each([55,65])('re-reads a malformed %i-character source-neighbor echo from it
   expect((await runLocalPatchHide(container,deps,{gameId,board,hide:siblingHide})).state).toBe('generated');
   const sibling=await db.targetVariantAsset.findFirstOrThrow({where:{variant:'A',targetInstance:{gameSceneId:scene.id,targetId:siblingHide.targetId}}});
   expect(JSON.parse(sibling.judgeJson!).reviewState).toBe('pending-board-review');
-  if(length===65){
+  if(length!==55){
     await budget.reserve(worldId,{requestKey:'synthetic-unknown-full-reserve',scope:'image',operationFingerprint:'a'.repeat(64),
       reserveMicroUsd:(await budget.audit(worldId)).remainingMicroUsd});
     await budget.markUnknown(worldId,'synthetic-unknown-full-reserve','Synthetic missing provider usage remains fully reserved');
@@ -2924,7 +2929,7 @@ it.each([55,65])('re-reads a malformed %i-character source-neighbor echo from it
   const after=await db.targetVariantAsset.findUniqueOrThrow({where:{id:row!.id}}),receipt=JSON.parse(after.judgeJson!);
   expect(after).toMatchObject({status:'GENERATED',assetId:row!.assetId,attempts:row!.attempts,costCents:row!.costCents});
   const proof=receipt.boardReview.dual,marker=proof.quality.sourceNeighborReading;
-  expect(marker).toMatchObject({version:BOUND_SOURCE_NEIGHBOR_READER,sourceRequestKey:questionKey,
+  expect(marker).toMatchObject({version:reader,sourceRequestKey:questionKey,
     sourceFingerprint:previous.boardReview.dual.quality.fingerprint});
   for(const role of ['quality','continuity','subject']){
     expect(proof[role].sourceNeighborReading).toEqual(marker);
@@ -2932,7 +2937,7 @@ it.each([55,65])('re-reads a malformed %i-character source-neighbor echo from it
     expect(proof[role].fingerprint).toBe(previous.boardReview.dual[role].fingerprint);
   }
   expect(receipt.reviewHistory.at(-1)).toMatchObject({boardReview:previous.boardReview,verdict:previous.verdict,
-    supersededBy:BOUND_SOURCE_NEIGHBOR_READER,lastError:row!.lastError});
+    supersededBy:reader,lastError:row!.lastError});
   expect(await allowedDualPublication(db,publicationBinding(gameId,after))).toBe(true);
   for(const fault of ['image','geometry','identity','variant','body','fingerprint','policy'] as const){
     const id='aud_sb_'+marker.roundId+'_intent',saved=await db.auditLog.findUniqueOrThrow({where:{id}}),changed=JSON.parse(saved.metaJson!);
