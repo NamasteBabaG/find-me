@@ -8,6 +8,8 @@ import { resumeBoundEnvelopeReconciliation } from "./bound-envelope-reconciliati
 import { applySourceCrownReturn } from "./source-crown-pixels";
 import { correctSourceFigureReturn, sourceFigureCandidate } from './source-figure-return';
 import { sourceBodyGapCandidate } from '../../domain/generation/source-body-gap';
+import { sourceHeadRecoveryPinOf, sourceHeadRecoveryCandidate } from './source-head-recovery';
+import { sourceHeadMarker } from '../../domain/generation/source-head-recovery';
 import { correctSourceBodyGap } from './source-body-gap';
 import { resumePropJoinRepair,applyPropJoinRepair } from "./prop-join-repair";
 import { sourceBodyBirthMarker } from "../../domain/generation/detectives-operational-policy";
@@ -629,6 +631,9 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
   const contextPin=automatic&&!extraPlan?await readWholeSourceContextPin(c.db,gameId):null;
   const contextPainting=(row:typeof rows[number]|undefined)=>!!row&&!!contextPin&&wholeSourceContextCandidate(contextPin,row);
   const contextExhausted=(row:typeof rows[number]|undefined)=>!!row&&wholeSourceContextExhausted(row);
+  const sourceHeadPin=automatic&&!extraPlan?await sourceHeadRecoveryPinOf(c.db,gameId):null;
+  const headPainting=(row:typeof rows[number]|undefined)=>!!row&&!!sourceHeadPin&&sourceHeadRecoveryCandidate(sourceHeadPin,row);
+  const headExhausted=(row:typeof rows[number]|undefined)=>!!row&&row.status==='FAILED'&&row.attempts===4&&!!sourceHeadMarker(row);
   const bodyPin=guideCapacity?await readSourceBodyRepairPin(c.db,gameId):null;
   const bodyPainting=(row:typeof rows[number]|undefined)=>!!row&&!!bodyPin&&sourceBodyPurchaseCandidate(bodyPin,row);
   const bodyExhausted=(row:typeof rows[number]|undefined)=>!!row&&row.status==='FAILED'&&!!sourceBodyMarker(row)&&row.attempts===sourceBodyMarker(row)!.authorizedAttempt;
@@ -914,7 +919,7 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
   // restarted invocation. All other delivered pixels are protected by the grant.
   const settledHide = (row: typeof rows[number] | undefined) => extraPlan
     ? !row || !extraRows.has(row.id) || localPatchSettled(row, 4)
-    : bodyPainting(row)?false:localPatchSettled(row, nativeFourthPainting(row) ? 4 : attemptLimit);
+    : headPainting(row)||bodyPainting(row)?false:localPatchSettled(row, nativeFourthPainting(row) ? 4 : attemptLimit);
   // local-patch-no-route-rest/v1: an appearance with no automatic evidence question left is never painted again,
   // so it no longer holds the whole world in the normal phase; others' final repairs may start (2026-11-03: four such
   // rows at attempt 1 kept giza 2's third painting unreachable and the world idle).
@@ -938,7 +943,7 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
   const automaticWork = automatic && !extraPlan ? work.filter(item => {
     const row = stateOf(item.sceneId, item.hide.targetId);
     if(row&&windowStops.has(row.id))return false;
-    return needsSelfRepair(row) && !legacyReviewOwed(row) && !contextPainting(row) && !contextExhausted(row) && !sourceBodyBirthMarker(row!) && !bodyPainting(row) && !bodyExhausted(row) && !(row && (guidedFrameExhausted(row) && !completionRepair(row) && !mechanicalRepair(row) || nativeMaskTailExhausted(row))) && !leanThirdPainting(row) && !guidedThirdPainting(row) && !(hasLocalPatchCapability(game.scenes.find(scene => scene.id === item.sceneId)?.sceneVersion, "integratedQuality")
+    return needsSelfRepair(row) && !legacyReviewOwed(row) && !headPainting(row) && !headExhausted(row) && !contextPainting(row) && !contextExhausted(row) && !sourceBodyBirthMarker(row!) && !bodyPainting(row) && !bodyExhausted(row) && !(row && (guidedFrameExhausted(row) && !completionRepair(row) && !mechanicalRepair(row) || nativeMaskTailExhausted(row))) && !leanThirdPainting(row) && !guidedThirdPainting(row) && !(hasLocalPatchCapability(game.scenes.find(scene => scene.id === item.sceneId)?.sceneVersion, "integratedQuality")
       && (localPatchEvidenceRecovery(row!) || playerReviewEnabled() && needsPlayerReview(row!)))
       // Re-asked under v2 about the same pixels before any repair (subject-rejudge/v1).
       && !rejudgePending(row!);
@@ -959,12 +964,14 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
       || (row.status === "PENDING" && row.attempts === 4));
   }) : (progress
     // Every unsettled appearance is a candidate; the progress order, not the tier, decides who goes first.
-    ? work.filter(item => contextPainting(stateOf(item.sceneId,item.hide.targetId)) || bodyPainting(stateOf(item.sceneId,item.hide.targetId)) || nativeFourthPainting(stateOf(item.sceneId, item.hide.targetId)) || guidedThirdPainting(stateOf(item.sceneId, item.hide.targetId)) || !settledHide(stateOf(item.sceneId, item.hide.targetId)))
+    ? work.filter(item => headPainting(stateOf(item.sceneId,item.hide.targetId)) || contextPainting(stateOf(item.sceneId,item.hide.targetId)) || bodyPainting(stateOf(item.sceneId,item.hide.targetId)) || nativeFourthPainting(stateOf(item.sceneId, item.hide.targetId)) || guidedThirdPainting(stateOf(item.sceneId, item.hide.targetId)) || !settledHide(stateOf(item.sceneId, item.hide.targetId)))
     : plan.indices.map(index => work[index]!)).filter(item => {
     if (automaticWork.includes(item)) return false;
     const candidate = stateOf(item.sceneId, item.hide.targetId);
     if(candidate&&windowStops.has(candidate.id))return false;
     if (legacyReviewOwed(candidate)) return false;
+    if(headPainting(candidate))return true;
+    if(headExhausted(candidate))return false;
     if(contextPainting(candidate))return true;
     if(contextExhausted(candidate))return false;
     if (automatic && hasLocalPatchCapability(game.scenes.find(scene => scene.id === item.sceneId)?.sceneVersion, "integratedQuality") && candidate && localPatchEvidenceRecovery(candidate)) return false;
@@ -975,7 +982,7 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
     if (!plan.finalRepair || !normalReviewsPending) return true;
     const row = stateOf(item.sceneId, item.hide.targetId);
     // Reviews gate a NEW final purchase, never recovery of one already started.
-    return row?.status === "PENDING" && (bodyPainting(row) || nativeFourthPainting(row) || row.attempts === LOCAL_PATCH_MAX_ATTEMPTS);
+    return row?.status === "PENDING" && (headPainting(row) || bodyPainting(row) || nativeFourthPainting(row) || row.attempts === LOCAL_PATCH_MAX_ATTEMPTS);
   });
   const outcomes: LocalPatchHideOutcome[] = [];
   // The review-existing turn reaches the same ordinary readers and free pixel
@@ -1041,7 +1048,8 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
       if (await tabbedInstead(item)) continue;
       let outcome: LocalPatchHideOutcome;
       try { outcome = await runLocalPatchHide(c, { ...deps, fence }, { gameId, board: item.board, hide: item.hide,
-        finalRepair: contextPainting(stateOf(item.sceneId,item.hide.targetId)) || bodyPainting(stateOf(item.sceneId,item.hide.targetId)) || !!extraPlan || plan.finalRepair || leanThirdPainting(stateOf(item.sceneId, item.hide.targetId)) || guidedThirdPainting(stateOf(item.sceneId, item.hide.targetId)) || nativeFourthPainting(stateOf(item.sceneId, item.hide.targetId)),
+        finalRepair: headPainting(stateOf(item.sceneId,item.hide.targetId)) || contextPainting(stateOf(item.sceneId,item.hide.targetId)) || bodyPainting(stateOf(item.sceneId,item.hide.targetId)) || !!extraPlan || plan.finalRepair || leanThirdPainting(stateOf(item.sceneId, item.hide.targetId)) || guidedThirdPainting(stateOf(item.sceneId, item.hide.targetId)) || nativeFourthPainting(stateOf(item.sceneId, item.hide.targetId)),
+        ...(headPainting(stateOf(item.sceneId,item.hide.targetId))?{sourceHeadRecovery:true}:{}),
         ...(guidedThirdPainting(stateOf(item.sceneId, item.hide.targetId)) ? { guidedFrame: true } : {}),
         ...(nativeFourthPainting(stateOf(item.sceneId, item.hide.targetId)) ? { nativeMaskTail: true } : {}),
         ...(bodyPainting(stateOf(item.sceneId,item.hide.targetId))?{sourceBodyRepair:true}:{}),
@@ -1259,7 +1267,7 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
         // Legacy worlds still owe their historical end-of-world third attempt:
         // a normal-phase gave-up there must not park them before that pass.
         noRoute: automatic && gaveUp.has(item.hide.id),
-        repairSpent: !legacyReviewOwed(row) && (contextExhausted(row) || progress && !!row && !contextPainting(row) && !bodyPainting(row) && !nativeFourthPainting(row) && (bodyExhausted(row) || !!sourceBodyBirthMarker(row) && row.attempts>=LOCAL_PATCH_MAX_ATTEMPTS || guidedFrameExhausted(row) && !completionRepair(row) && !mechanicalRepair(row) || nativeMaskTailExhausted(row) || needsSelfRepair(row) && selfRepairProgress(selfRepairOf(row), row.attempts).exhausted && !mechanicalRepair(row))) });
+        repairSpent: !legacyReviewOwed(row) && (headExhausted(row) || contextExhausted(row) || progress && !!row && !headPainting(row) && !contextPainting(row) && !bodyPainting(row) && !nativeFourthPainting(row) && (bodyExhausted(row) || !!sourceBodyBirthMarker(row) && row.attempts>=LOCAL_PATCH_MAX_ATTEMPTS || guidedFrameExhausted(row) && !completionRepair(row) && !mechanicalRepair(row) || nativeMaskTailExhausted(row) || needsSelfRepair(row) && selfRepairProgress(selfRepairOf(row), row.attempts).exhausted && !mechanicalRepair(row))) });
     });
     const rest = pendingReviews ? null : localPatchRestDecision(rests);
     if (rest?.action === "wait") {

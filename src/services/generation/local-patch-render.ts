@@ -1,4 +1,7 @@
 import { NATIVE_DETAIL_REPAIR_DIRECTION, nativeDetailEvidenceSchema, type NativeDetailEvidence } from "../../domain/generation/native-detail";
+import { sourceHeadMarkerSchema, sourceHeadAuthorityForPlacement, sourceHeadHash, sourceHeadPaintDirection,
+  type SourceHeadMarker, type SourceHeadAuthority } from '../../domain/generation/source-head-recovery';
+import { sourceHeadMaskPng, applySourceHeadPixels } from './source-head-pixels';
 import { wholeSourceContextMarkerSchema, type WholeSourceContextMarker } from "../../domain/generation/whole-source-context-purchase";
 import { assertWholeSourceContextPlan, WHOLE_SOURCE_CONTEXT_VERSION, type WholeSourceContextPlan } from "../../domain/scene/whole-source-context";
 import { prepareWholeSourceContextPixels, extractWholeSourceContextShipping } from "./whole-source-context-pixels";
@@ -130,6 +133,7 @@ export type LocalPatchAttemptInput = {
   readonly nativeMaskTail?: NativeMaskTailMarker;
   readonly sourceBodyRepair?: SourceBodyMarker;
   readonly sourceBodyBirth?: SourceBodyBirthMarker;
+  readonly sourceHeadRecovery?: { readonly marker: SourceHeadMarker; readonly authority: SourceHeadAuthority };
   readonly wholeSourceContext?: { readonly marker: WholeSourceContextMarker; readonly plan: WholeSourceContextPlan; readonly sourceFile: Buffer };
   readonly identityPng: Buffer;
   readonly referenceMode?: LocalPatchReferenceMode;
@@ -204,6 +208,7 @@ export type LocalPatchAttempt = {
   readonly compositionVersion?: LocalPatchCompositionVersion;
   readonly authoredReturn?: AuthoredLocalPatchReturnContract;
   readonly sourceBodyComposition?: Awaited<ReturnType<typeof applySourceBodyPixels>>["proof"];
+  readonly sourceHeadComposition?: Awaited<ReturnType<typeof applySourceHeadPixels>>['proof'];
   /** v18 rows of a hide with an authored outline: what was restored, bound to `shippingPng`. */
   readonly foreground?: LocalPatchForegroundRecord;
   readonly verdict: LocalPatchVerdict | null;
@@ -321,6 +326,7 @@ type RetainedRender = {
   readonly rejected: string | null;
   readonly authoredReturn?: AuthoredLocalPatchReturnContract;
   readonly authoredDiagnosis?: AuthoredRecoveryDiagnosis;
+  readonly sourceHeadRecovery?: SourceHeadMarker;
   readonly wholeSourceContext?: { readonly marker: WholeSourceContextMarker; readonly plan: WholeSourceContextPlan };
 };
 
@@ -386,6 +392,18 @@ export async function renderLocalPatchHide(deps: LocalPatchRenderDeps, input: Lo
   if (authoredReturn && input.authoredSource && (input.authoredSource.sha256 !== authoredReturn.source.sha256
     || input.authoredSource.width !== authoredReturn.source.width || input.authoredSource.height !== authoredReturn.source.height))
     throw Error("LOCAL_PATCH: authored source differs from the trusted context");
+  const sourceHead=input.sourceHeadRecovery;
+  if(sourceHead){
+    const marker=sourceHeadMarkerSchema.parse(sourceHead.marker),authority=input.placementContext&&sourceHeadAuthorityForPlacement(sourcePlacementForHide(input.placementContext,input.hide.id));
+    if(!authority||sourceHeadHash(authority)!==sourceHeadHash(sourceHead.authority)||marker.authoritySha256!==sourceHeadHash(authority)
+      ||marker.hideId!==input.hide.id||marker.requestKey!==input.hide.id+':'+input.hide.pose+':render:4'
+      ||input.contentVersion!==12||input.attempt!==4||!input.subjectDirection||input.subjectDirection.quality!=='medium'
+      ||input.ageYears!==authority.ageYears
+      ||sha(input.composedPng)!==authority.sourcePngSha256
+      ||input.guidedFrameRecovery||input.placementGuide||input.nativeMaskTail||input.sourceBodyRepair||input.sourceBodyBirth
+      ||input.wholeSourceContext||input.selfRepair||input.adaptiveRecovery||input.recoveryDirective)
+      throw Error('SOURCE_HEAD: exact finite native MEDIUM head purchase required');
+  }
   if (authoredReturn && input.selfRepair) {
     assertAuthoredLocalPatchRecoveryGeometry(authoredReturn, input.placementContext, input.selfRepair.decision);
     authoredRecoveryDiagnosisSchema.parse(input.authoredDiagnosis);
@@ -448,6 +466,7 @@ function promptVersionOf(input: LocalPatchAttemptInput): string {
 async function renderLocalPatchHideInner(deps: LocalPatchRenderDeps, input: LocalPatchAttemptInput, authoredReturn?: AuthoredLocalPatchReturnContract,
   guidedReturn?: Pick<AuthoredLocalPatchReturnContract, "local" | "source">): Promise<LocalPatchAttempt> {
   const { worldId, board, hide, attempt } = input;
+  const sourceHead=input.sourceHeadRecovery;
   if (isLocalPatchAgeVersion(input.contentVersion)) {
     if (input.referenceMode !== LOCAL_PATCH_PORTRAIT_ONLY_REFERENCE_MODE || input.canonicalIdentityPng || input.boardPeoplePng) {
       throw new Error("LOCAL_PATCH: v9 requires portrait-only references, with no unrelated face atlas or old body sheet");
@@ -535,6 +554,13 @@ async function renderLocalPatchHideInner(deps: LocalPatchRenderDeps, input: Loca
   ].join("\n") : "";
   /** The pinned recipe alone, or with the subject plan (and its wardrobe in place of the authored one). */
   const basePromptWith = (plan: SubjectRenderDirection | undefined) => {
+    if(sourceHead){
+      if(!plan||!input.ageYears)throw Error('SOURCE_HEAD: original identity/age plan required');
+      // The old subject direction can require a different arm/body action or
+      // repair an old whole-body painting. Keep its identity inputs and hash,
+      // but let this new source-head recipe alone describe the permitted edit.
+      return sourceHeadPaintDirection(sourceHead.authority,input.ageYears);
+    }
     if (input.wholeSourceContext) {
       if (!plan || plan.painterVersion !== SUBJECT_PAINTER_V4 || !input.ageYears) throw Error("WHOLE_SOURCE_CONTEXT: original enrolled subject plan required");
       const wardrobe = plan.wardrobe ?? authoredWardrobe;
@@ -570,7 +596,7 @@ async function renderLocalPatchHideInner(deps: LocalPatchRenderDeps, input: Loca
   // v2 also keeps the seam band shut: the seam check reads exactly that band back.
   const guideV2 = input.placementGuide?.version === PLACEMENT_GUIDE_V2_VERSION;
   const guideEditable = guideV2 ? placementGuideEditableRect(authoredMask, guideReturn!) : nativeEdit ? nativeEdit.editable : guideReturn!;
-  let maskPng = bodyGeometry ? await sourceBodyMaskPng(bodyGeometry) : await poseMask(guideGeometry ? { ...hide, mask: guideEditable } : recovery ? { ...hide, mask } : hide);
+  let maskPng = sourceHead ? await sourceHeadMaskPng(sourceHead.authority) : bodyGeometry ? await sourceBodyMaskPng(bodyGeometry) : await poseMask(guideGeometry ? { ...hide, mask: guideEditable } : recovery ? { ...hide, mask } : hide);
   let placementGuidePng: Buffer | undefined = guideGeometry ? await sharp(stylePng).composite([...(bodyGeometry?[{input:Buffer.from(sourceBodyOverlay(bodyGeometry))}]:[]),{ input:Buffer.from(guidedFrameOverlay(authoredMask,guideReturn!)) }]).png().toBuffer() : undefined;
   if (input.placementGuide) {
     const entry = sourcePlacementForHide(input.placementContext!, hide.id);
@@ -621,6 +647,7 @@ async function renderLocalPatchHideInner(deps: LocalPatchRenderDeps, input: Loca
     ...(input.nativeMaskTail ? { nativeMaskTail: input.nativeMaskTail } : {}),
     ...(input.sourceBodyRepair ? { sourceBodyRepair: input.sourceBodyRepair } : {}),
     ...(input.sourceBodyBirth ? {sourceBodyBirth:input.sourceBodyBirth}:{}),
+    ...(sourceHead ? {sourceHeadRecovery:sourceHead.marker,sourceHeadAuthoritySha256:sourceHeadHash(sourceHead.authority)}:{}),
     ...(input.placementGuide ? { placementGuide: input.placementGuide } : {}),
     ...(placementGuidePng ? { guidedFrameRecovery: input.guidedFrameRecovery, placementGuideSha256:sha(placementGuidePng) } : {}),
     ...(plan ? { subject: plan.sha256 } : {}),
@@ -663,6 +690,7 @@ async function renderLocalPatchHideInner(deps: LocalPatchRenderDeps, input: Loca
         ...(result.failureReceipt ? { failureReceipt: fixedSourceFailureReceiptSchema.parse(result.failureReceipt) } : {}),
         ...(input.sourceBodyRepair?{sourceBodyRepair:input.sourceBodyRepair}:{}),
         ...(input.sourceBodyBirth?{sourceBodyBirth:input.sourceBodyBirth}:{}),
+        ...(sourceHead?{sourceHeadRecovery:sourceHead.marker}:{}),
         ...(authoredReturn?.sourcePlacement ? { authoredReturn, ...(input.authoredDiagnosis ? { authoredDiagnosis: input.authoredDiagnosis } : {}) } : {}),
       };
       const bytes = Buffer.from(JSON.stringify(keep));
@@ -688,17 +716,23 @@ async function renderLocalPatchHideInner(deps: LocalPatchRenderDeps, input: Loca
   }
   if (input.wholeSourceContext && JSON.stringify(painted.wholeSourceContext) !== JSON.stringify({ marker: input.wholeSourceContext.marker, plan: input.wholeSourceContext.plan }))
     throw Error("WHOLE_SOURCE_CONTEXT: retained native mapping changed");
+  if(sourceHead&&JSON.stringify(painted.sourceHeadRecovery)!==JSON.stringify(sourceHead.marker))
+    throw Error('SOURCE_HEAD: retained native source-head permission changed');
   const patchPng = input.wholeSourceContext && painterNeighbors?.ok
     ? await extractWholeSourceContextShipping(Buffer.from(painted.bytesBase64, "base64"), input.wholeSourceContext.plan, painterNeighbors.contract, authoredMask)
     : await sharp(Buffer.from(painted.bytesBase64, "base64")).resize(LOCAL_PATCH_CROP.width, LOCAL_PATCH_CROP.height, { fit: "fill" }).png().toBuffer();
   // The outline is restored before the join, so the seam report describes the published pixels.
-  const occluded = foreground ? await occludeLocalPatch(patchPng,
+  const occluded = !sourceHead && foreground ? await occludeLocalPatch(patchPng,
     await sharp(input.composedPng, { limitInputPixels: 8_294_400 }).extract(crop).png().toBuffer(), foreground) : null;
   const bodyApplied=bodyGeometry?await applySourceBodyPixels(input.composedPng,patchPng,bodyGeometry):null;
-  const restored = (shipping: Buffer) => ({...(occluded ? { foreground: foregroundRecord(foreground!, occluded.restoredPixels, sha(shipping)) } : {}),...(bodyApplied?{sourceBodyComposition:bodyApplied.proof}:{})});
+  let headApplied:Awaited<ReturnType<typeof applySourceHeadPixels>>|null=null;
+  if(sourceHead){try{headApplied=await applySourceHeadPixels(input.composedPng,patchPng,sourceHead.authority);}
+    catch(error){if(!(error instanceof Error)||!error.message.startsWith('SOURCE_HEAD: new head boundary'))throw error;
+      return {...refusedRender('quality-seam: '+error.message,renderCents),patchPng,replayed:bought.replayed};}}
+  const restored = (shipping: Buffer) => ({...(occluded ? { foreground: foregroundRecord(foreground!, occluded.restoredPixels, sha(shipping)) } : {}),...(bodyApplied?{sourceBodyComposition:bodyApplied.proof}:{}),...(headApplied?{sourceHeadComposition:headApplied.proof}:{})});
   const bounded = isLocalPatchStrictVersion(input.contentVersion)
-    ? await composeBoundedLocalPatch(input.composedPng, crop, bodyApplied?.png ?? occluded?.png ?? patchPng, mask, {
-      requireAligned: !!bodyGeometry || hasLocalPatchCapability(input.contentVersion, "integratedQuality") && !playerReviewEnabled(),
+    ? await composeBoundedLocalPatch(input.composedPng, crop, headApplied?.png ?? bodyApplied?.png ?? occluded?.png ?? patchPng, mask, {
+      requireAligned: !!headApplied || !!bodyGeometry || hasLocalPatchCapability(input.contentVersion, "integratedQuality") && !playerReviewEnabled(),
       playerReview: hasLocalPatchCapability(input.contentVersion, "integratedQuality") && playerReviewEnabled(),
       ...(hide.returnRect ? { returnRect: hide.returnRect } : {}),
     }) : null;

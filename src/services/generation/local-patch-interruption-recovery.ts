@@ -30,7 +30,10 @@ export async function localPatchBudgetReadyForPublication(budget: Pick<WorldBudg
     || contentVersion === 13 && !options.reviewRecoveryV3) return false;
   for (const key of audit.unknownRequestKeys) {
     const approval = await budget.readContinuationApproval(worldId, key), version = approval?.version;
-    if (contentVersion === 13 && approval?.version === "world-automatic-review-recovery/v5" && options.singleLowContinuation && await options.singleLowContinuation(approval)) continue;
+    // Both collection families now use the same independently authenticated
+    // single-document LOW/MEDIUM transport recovery. Its full reserve remains
+    // held; the callback still binds the original grant, image and SYSTEM proof.
+    if ((contentVersion === 12 || contentVersion === 13) && approval?.version === "world-automatic-review-recovery/v5" && options.singleLowContinuation && await options.singleLowContinuation(approval)) continue;
     if (contentVersion === 12 && approval?.version === "world-unknown-continuation/v1" && options.sourceReferenceContinuation && await options.sourceReferenceContinuation(approval)) continue;
     if (contentVersion === 12 && approval?.version === "world-automatic-review-recovery/v4" && options.capacityContinuation && await options.capacityContinuation(approval)) continue;
     if (version !== "world-automatic-image-recovery/v1" && version !== "world-automatic-review-recovery/v1"

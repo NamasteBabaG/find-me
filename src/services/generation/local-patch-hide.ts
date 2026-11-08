@@ -7,6 +7,7 @@ import { windowStoppedRows,recordWindowAttemptSource } from './repeat-window-sto
 import { sourceBodyBirthMarkerFor, fenceSourceBodyBirthPurchase } from "./detectives-operational-policy";
 import { requireSourceBodyPurchase } from './source-body-repair';
 import { fenceSourceBodyPurchase } from './source-body-repair-pin';
+import { requireSourceHeadPurchase, fenceSourceHeadPurchase } from './source-head-recovery';
 import { nativeMaskTailCandidate, type NativeMaskTailMarker } from "../../domain/generation/native-mask-tail";
 import { guidedFrameCandidate, guidedFrameMarker, newGuidedFrameMarker, guidedFrameVersionMatches, GUIDED_FRAME_MIN_CAPACITY_MICRO_USD, type GuidedFrameMarker } from "../../domain/generation/guided-frame-recovery";
 import { requireDetectivesNativeMaskTail } from "./detectives-completion-budget";
@@ -230,6 +231,7 @@ export async function runLocalPatchHide(c: Container, deps: LocalPatchHideDeps, 
   readonly extraAttemptAuthorizationId?: string;
   readonly nativeMaskTail?: boolean;
   readonly sourceBodyRepair?: boolean;
+  readonly sourceHeadRecovery?: boolean;
   readonly wholeSourceContext?: boolean;
 }): Promise<LocalPatchHideOutcome> {
   const { gameId, board, hide } = input;
@@ -328,6 +330,15 @@ export async function runLocalPatchHide(c: Container, deps: LocalPatchHideDeps, 
       throw new WorldBudgetError("cap_exceeded", "Native-mask painting requires capacity for its image and one bounded LOW assessment"); }
   }
   const wholeContext=input.wholeSourceContext?await requireWholeSourceContextPurchase(c,gameId,row.id):null;
+  const headRecovery=input.sourceHeadRecovery?await requireSourceHeadPurchase(c,gameId,row.id):null;
+  if(headRecovery){
+    demand(input.finalRepair&&!input.guidedFrame&&!input.nativeMaskTail&&!input.sourceBodyRepair&&!input.wholeSourceContext
+      &&!input.extraAttemptAuthorizationId&&scene.sceneVersion===12&&headRecovery.pin.hideId===hide.id,'Only the exact finite source-head strategy may use this fourth key');
+    const paid=await budget.readRequest(worldId,headRecovery.pin.requestKey);
+    demand(!paid||row.status==='PENDING','Source-head fourth painting already started outside its checkpoint');
+    if(!paid){const room=await budget.audit(worldId);if(room.held||room.remainingMicroUsd<400000)
+      throw new WorldBudgetError('cap_exceeded','Source-head painting and full ordinary MEDIUM reservation must fit existing completion capacity');}
+  }
   if(wholeContext)demand(input.finalRepair&&!input.guidedFrame&&!input.nativeMaskTail&&!input.sourceBodyRepair&&!input.extraAttemptAuthorizationId
     &&scene.sceneVersion===12&&wholeContext.pin.selected.hideId===hide.id,"Only the exact finite source-context strategy may use this fourth key");
   const bodyRepair=input.sourceBodyRepair?await requireSourceBodyPurchase(c,gameId,row.id):null;
@@ -338,12 +349,12 @@ export async function runLocalPatchHide(c: Container, deps: LocalPatchHideDeps, 
   const extra = input.extraAttemptAuthorizationId ? await requireLocalPatchExtraAttempt(c, {
     gameId, hideId: hide.id, rowId: row.id, authorizationId: input.extraAttemptAuthorizationId,
   }) : null;
-  const attemptLimit = wholeContext || nativeMaskTail ? 4 : extra?.authorizedAttempt ?? (input.finalRepair ? LOCAL_PATCH_MAX_ATTEMPTS : LOCAL_PATCH_NORMAL_ATTEMPTS);
+  const attemptLimit = headRecovery || wholeContext || nativeMaskTail ? 4 : extra?.authorizedAttempt ?? (input.finalRepair ? LOCAL_PATCH_MAX_ATTEMPTS : LOCAL_PATCH_NORMAL_ATTEMPTS);
   const { attempt, exhausted } = bodyRepair ? {attempt:bodyRepair.selected.authorizedAttempt,exhausted:false} : nextLocalPatchAttempt(row, attemptLimit);
   const birthPolicy=sourceBodyBirthForHide(placementContext,hide.id),bodyBirth=birthPolicy&&!exhausted?sourceBodyBirthMarkerFor(birthPolicy,row.id,hide.id,attempt):null;
   if(bodyBirth)demand(!bodyRepair&&!guidedFrame&&!nativeMaskTail&&!extra&&scene.sceneVersion===13,'From-birth footprints keep normal finite image attempts');
-  const original=bodyRepair?JSON.parse(row.judgeJson??'{}'):{};
-  let guidedHistory: Record<string, unknown>=wholeContext?{wholeSourceContext:wholeContext.marker}:bodyBirth?{sourceBodyBirth:bodyBirth}:bodyRepair?{sourceBodyRepair:bodyRepair.marker,...(original.selfRepair?{selfRepair:original.selfRepair}:{}),...(original.guidedFrameRecovery?{guidedFrameRecovery:original.guidedFrameRecovery}:{}),...(original.nativeMaskTail?{nativeMaskTail:original.nativeMaskTail}:{})}:guidedFrame?{guidedFrameRecovery:guidedFrame,selfRepair:JSON.parse(row.judgeJson!).selfRepair,...(nativeMaskTail?{nativeMaskTail}:{})}:{};
+  const original=bodyRepair||headRecovery?JSON.parse(row.judgeJson??'{}'):{};
+  let guidedHistory: Record<string, unknown>=headRecovery?{sourceHeadRecovery:headRecovery.marker,...(original.selfRepair?{selfRepair:original.selfRepair}:{}),...(original.guidedFrameRecovery?{guidedFrameRecovery:original.guidedFrameRecovery}:{})}:wholeContext?{wholeSourceContext:wholeContext.marker}:bodyBirth?{sourceBodyBirth:bodyBirth}:bodyRepair?{sourceBodyRepair:bodyRepair.marker,...(original.selfRepair?{selfRepair:original.selfRepair}:{}),...(original.guidedFrameRecovery?{guidedFrameRecovery:original.guidedFrameRecovery}:{}),...(original.nativeMaskTail?{nativeMaskTail:original.nativeMaskTail}:{})}:guidedFrame?{guidedFrameRecovery:guidedFrame,selfRepair:JSON.parse(row.judgeJson!).selfRepair,...(nativeMaskTail?{nativeMaskTail}:{})}:{};
   // judgeJson is intentionally kept while PENDING: clearing lastError must not
   // change the prompt/fingerprint when attempt 2/3 resumes after an interruption.
   // v8 corrects its own located defect on the very next attempt. The old paid
@@ -410,7 +421,7 @@ export async function runLocalPatchHide(c: Container, deps: LocalPatchHideDeps, 
   // This grants neither another attempt nor any additional budget.
   let placementGuide: PlacementGuide | null = null;
   const priorGuide = placementGuideOf(row.judgeJson);
-  if ((scene.sceneVersion === 12 || scene.sceneVersion === 13) && !wholeContext && !bodyRepair && !bodyBirth && !nativeMaskTail && !extra
+  if ((scene.sceneVersion === 12 || scene.sceneVersion === 13) && !headRecovery && !wholeContext && !bodyRepair && !bodyBirth && !nativeMaskTail && !extra
     && (attempt <= LOCAL_PATCH_NORMAL_ATTEMPTS || !!guidedFrame)) {
     const authority = await singleLowReviewAuthorization(c.db, gameId);
     if (authority?.kind === "from-birth") {
@@ -429,7 +440,7 @@ export async function runLocalPatchHide(c: Container, deps: LocalPatchHideDeps, 
   }
   if (priorGuide?.attempt === attempt) demand(placementGuide, "Persisted placement guide cannot be removed from a started painting");
   if (placementGuide) guidedHistory = { ...guidedHistory, placementGuide };
-  const adaptiveRecovery = wholeContext || guidedFrame || placementGuide || bodyRepair || bodyBirth ? null : prepareAdaptiveRecovery(row.judgeJson, row, attempt, {
+  const adaptiveRecovery = headRecovery || wholeContext || guidedFrame || placementGuide || bodyRepair || bodyBirth ? null : prepareAdaptiveRecovery(row.judgeJson, row, attempt, {
     gameId, rowId: row.id, contentVersion: scene.sceneVersion, promptVersion, hide,
     boardSha256: sha256Bytes(artwork), identitySha256: sha256Bytes(sheet), ageYears: child.ageYears,
     renderPolicySha256: deps.renderPolicySha256,
@@ -453,6 +464,7 @@ export async function runLocalPatchHide(c: Container, deps: LocalPatchHideDeps, 
     await fenceLocalPatchImages(tx, gameId);
     await deps.fence?.(tx);
     if(bodyRepair)await fenceSourceBodyPurchase(tx,gameId,row.id,bodyRepair.marker);
+    if(headRecovery)await fenceSourceHeadPurchase(tx,gameId,row.id,headRecovery.marker);
     if(bodyBirth)await fenceSourceBodyBirthPurchase(tx,gameId,row.id,bodyBirth);
     if(wholeContext)await fenceWholeSourceContextPurchase(tx,gameId,row.id,wholeContext.marker);
     if (extra) await fenceLocalPatchExtraAttempt(tx, {
@@ -461,7 +473,7 @@ export async function runLocalPatchHide(c: Container, deps: LocalPatchHideDeps, 
     const claimed = await tx.targetVariantAsset.updateMany({ where: { id: row.id, status: row.status, attempts: row.attempts, judgeJson: row.judgeJson }, data: {
       attempts: attempt, status: "PENDING", lastError: null,
       provider: LOCAL_PATCH_PROVIDER, promptVersion, slotId: target.slots[0].id,
-      ...((adaptiveRecovery || wholeContext || guidedFrame || placementGuide || bodyRepair || bodyBirth) ? { judgeJson: JSON.stringify({ ...JSON.parse(row.judgeJson ?? "{}"), ...guidedHistory, ...(adaptiveRecovery ? { adaptiveRecovery } : {}) }) } : {}),
+      ...((adaptiveRecovery || headRecovery || wholeContext || guidedFrame || placementGuide || bodyRepair || bodyBirth) ? { judgeJson: JSON.stringify({ ...JSON.parse(row.judgeJson ?? "{}"), ...guidedHistory, ...(adaptiveRecovery ? { adaptiveRecovery } : {}) }) } : {}),
     } });
     demand(claimed.count === 1, "Painting row changed before its recipe could be pinned");
     await recordWindowAttemptSource(tx,gameId,row,attempt);
@@ -492,6 +504,7 @@ export async function runLocalPatchHide(c: Container, deps: LocalPatchHideDeps, 
     ...(nativeMaskTail ? { nativeMaskTail } : {}),
     ...(bodyRepair?{sourceBodyRepair:bodyRepair.marker}:{}),
     ...(bodyBirth?{sourceBodyBirth:bodyBirth}:{}),
+    ...(headRecovery?{sourceHeadRecovery:{marker:headRecovery.marker,authority:headRecovery.authority}}:{}),
     ...(wholeContext?{wholeSourceContext:{marker:wholeContext.marker,plan:wholeContext.pin.selected.plan,sourceFile:contextSourceFile!}}:{}),
     ...(attempt === 3 && adaptiveRecovery?.plan ? { adaptiveRecovery: adaptiveRecovery.plan } : {}),
     ...(input.deadlineAt === undefined ? {} : { deadlineAt: input.deadlineAt }),
@@ -532,6 +545,7 @@ export async function runLocalPatchHide(c: Container, deps: LocalPatchHideDeps, 
       await fenceLocalPatchImages(tx, gameId);
       await deps.fence?.(tx);
       if(bodyRepair)await fenceSourceBodyPurchase(tx,gameId,row.id,bodyRepair.marker);
+      if(headRecovery)await fenceSourceHeadPurchase(tx,gameId,row.id,headRecovery.marker);
     if(bodyBirth)await fenceSourceBodyBirthPurchase(tx,gameId,row.id,bodyBirth);
     if(wholeContext)await fenceWholeSourceContextPurchase(tx,gameId,row.id,wholeContext.marker);
     if (extra) await fenceLocalPatchExtraAttempt(tx, {
@@ -546,6 +560,7 @@ export async function runLocalPatchHide(c: Container, deps: LocalPatchHideDeps, 
           compositionVersion: attemptResult.compositionVersion, hide: hide.id, pose: hide.pose } : {}),
         ...(attemptResult.authoredReturn ? { authoredReturn: attemptResult.authoredReturn } : {}),
         ...(attemptResult.sourceBodyComposition?{sourceBodyComposition:attemptResult.sourceBodyComposition}:{}),
+        ...(attemptResult.sourceHeadComposition?{sourceHeadComposition:attemptResult.sourceHeadComposition}:{}),
         ...(attemptResult.foreground ? { foreground: attemptResult.foreground } : {}) }),
       } });
     });
@@ -575,6 +590,7 @@ export async function runLocalPatchHide(c: Container, deps: LocalPatchHideDeps, 
     await fenceLocalPatchImages(tx, gameId);
     await deps.fence?.(tx);
     if(bodyRepair)await fenceSourceBodyPurchase(tx,gameId,row.id,bodyRepair.marker);
+    if(headRecovery)await fenceSourceHeadPurchase(tx,gameId,row.id,headRecovery.marker);
     if(bodyBirth)await fenceSourceBodyBirthPurchase(tx,gameId,row.id,bodyBirth);
     if(wholeContext)await fenceWholeSourceContextPurchase(tx,gameId,row.id,wholeContext.marker);
     if (extra) await fenceLocalPatchExtraAttempt(tx, {
@@ -591,6 +607,7 @@ export async function runLocalPatchHide(c: Container, deps: LocalPatchHideDeps, 
       ...(attemptResult.foreground ? { foreground: attemptResult.foreground } : {}),
       ...(attemptResult.authoredReturn ? { authoredReturn: attemptResult.authoredReturn } : {}),
         ...(attemptResult.sourceBodyComposition?{sourceBodyComposition:attemptResult.sourceBodyComposition}:{}),
+      ...(attemptResult.sourceHeadComposition?{sourceHeadComposition:attemptResult.sourceHeadComposition}:{}),
       geometryBasis: measured.basis, measuredFraction: Number(measured.measuredFraction.toFixed(4)), hide: hide.id, pose: hide.pose });
     await tx.targetVariantAsset.update({ where: { id: row.id }, data: {
       assetId,
@@ -598,6 +615,7 @@ export async function runLocalPatchHide(c: Container, deps: LocalPatchHideDeps, 
       status: "GENERATED", lastError: null,
       costCents: Math.round(row.costCents + attemptResult.renderCents + attemptResult.judgeCents),
       promptVersion: attemptResult.promptVersion, provider: LOCAL_PATCH_PROVIDER,
+      ...(headRecovery?{rejectedAssetIdsJson:JSON.stringify([...new Set([...readIds(row.rejectedAssetIdsJson),...(row.assetId?[row.assetId]:[])])])}:{}),
       judgeJson,
     } });
     await tx.targetInstance.update({ where: { id: instance.id }, data: {

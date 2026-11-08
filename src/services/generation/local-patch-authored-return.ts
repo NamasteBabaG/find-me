@@ -158,6 +158,9 @@ export async function authoredLocalPatchRecoveryEvidenceMatches(db: Prisma.Trans
   board: LocalPatchBoard; hide: LocalPatchHide; sceneVersion: number; receipt: AuthoredLocalPatchReceipt;
   placementContext: TrustedSourcePlacementContext; promptVersion: string | null; beforePng?: Buffer }): Promise<boolean> {
   const { receipt, placementContext, board, hide } = input;
+  if((receipt as Record<string,unknown>).sourceHeadRecovery!==undefined)
+    return input.sceneVersion===12 && await (await import('./source-head-recovery')).sourceHeadCompositionEvidenceMatches(db,
+      {gameId:input.gameId,hideId:hide.id,receipt:receipt as Record<string,any>,beforePng:input.beforePng});
   const gap = (receipt as Record<string, unknown>).sourceBodyGapFill;
   if (gap !== undefined) {
     const marker = (await import('../../domain/generation/source-body-gap')).sourceBodyGapSchema.safeParse(gap);
@@ -239,6 +242,10 @@ export async function authoredLocalPatchRecoveryEvidenceMatches(db: Prisma.Trans
 export async function authoredLocalPatchPublicationMatches(db: Prisma.TransactionClient,
   input: { gameId: string; sceneVersion: number; hideId: string; judgeJson: string | null; variantId?: string; assetId?: string }): Promise<boolean> {
   try {
+    let head:unknown;
+    try{head=JSON.parse(input.judgeJson??'null')?.sourceHeadRecovery;}catch{head=undefined;}
+    if(head!==undefined)return input.sceneVersion===12&&await (await import('./source-head-recovery')).sourceHeadCompositionEvidenceMatches(db,
+      {gameId:input.gameId,hideId:input.hideId,receipt:JSON.parse(input.judgeJson!)});
     let gap: unknown;
     try { gap = JSON.parse(input.judgeJson ?? 'null')?.sourceBodyGapFill; } catch { gap = undefined; }
     if (gap !== undefined) {

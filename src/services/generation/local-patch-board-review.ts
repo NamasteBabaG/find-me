@@ -224,6 +224,7 @@ export async function prepareLocalPatchBoardReview(c: Container, input: { gameId
   if (nativeFourth) for (const entry of entries.filter(e => e.row.attempts > LOCAL_PATCH_MAX_ATTEMPTS)) {
     const scope = { gameId: game.id, variantId: entry.row.id, hideId: entry.hide.id, attempts: entry.row.attempts, sceneVersion: scene.sceneVersion, judgeJson: entry.row.judgeJson };
     demand(scene.sceneVersion === 12 ? await wholeSourceContextPublicationAuthorized(c.db,scope)
+      || await (await import('./source-head-recovery')).sourceHeadPublicationAuthorized(c.db,scope)
       : scene.sceneVersion === 13 && (entry.row.attempts === 4 || !!sourceBodyMarker(entry.row)) && await nativeMaskTailPublicationAuthorized(c.db,scope),
       "A fourth-attempt review requires its exact immutable finite source authority");
   }

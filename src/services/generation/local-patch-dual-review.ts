@@ -1137,6 +1137,15 @@ async function prepareSingleLowQuestion(c: Pick<Container, "db" | "storage">, pr
     if (singleVersion !== SINGLE_MEDIUM_VISUAL_REVIEW_VERSION) throw Error('BODY_GAP: fresh ordinary MEDIUM required');
     mediumPrompt += '\n' + (await import('../../domain/generation/source-body-gap')).sourceBodyGapReviewDirection();
   }
+  if(receipt.sourceHeadRecovery!==undefined){
+    if(singleVersion!==SINGLE_MEDIUM_VISUAL_REVIEW_VERSION)throw Error('SOURCE_HEAD: fresh ordinary MEDIUM required');
+    mediumPrompt+='\nSOURCE HEAD RECOVERY source-head-recovery/v1: this is a newly painted head/hair/neck on the same original source body. '
+      +'Source-preserved apron, arms, hands, decorating spoon, counter, cupcakes and neighbors are intended, not original-head remnants. '
+      +'Independently require the whole new canonical hair/head, photo and portrait identity, stated age, supported source body, source people, native sharpness and every head/neck join. '
+      +'No approval transfers from old paid questions. Never excuse a residual original ponytail, cut hair, halo, blur, anatomical break or wrong age. '
+      +'The unchanged subject reader requires a narrow estimated age range containing the stated age; for age7, a passing range cannot extend above8 or below5 or span more than3years. '
+      +'Report genuine wider or unresolved visual age evidence as unsure; do not narrow estimates merely to obtain a pass.';
+  }
   if (singleVersion === SINGLE_MEDIUM_VISUAL_REVIEW_VERSION && continued)
     mediumPrompt = mediumPrompt.replace('Use doubt=true only', '\nUNANSWERED TRANSPORT CONTINUATION '+attempt+': the earlier provider request ended without text or usage. This is the first usable assessment of these unchanged pixels, not a second opinion.Use doubt=true only');
   const anchor = prepared.child.originalPhotoAssetId===null ? await publishedCrownSubjectAnchor(c,prepared.game.id,hideId,subject.upgrade) : null;
