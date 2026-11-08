@@ -50,7 +50,8 @@ async function baselineContext(c: Container, gameId: string, rowId: string, rece
   const game = await c.db.game.findUnique({ where: { id: gameId }, include: { childProfile: true } }), child = game?.childProfile;
   const row = await c.db.targetVariantAsset.findUnique({ where: { id: rowId }, include: { targetInstance: { include: { gameScene: true } } } });
   if (!game || !(game.status === 'TARGETS_GENERATING' || publication && ['READY', 'DELIVERED'].includes(game.status))
-    || !publication && (game.configJson || game.readyAt) || !child || !row || row.status !== 'GENERATED' || row.attempts < 1 || row.attempts > 3
+    || !publication && (game.configJson || game.readyAt) || !child || !row
+    || row.status !== 'GENERATED' && !(publication && row.status === 'FAILED') || row.attempts < 1 || row.attempts > 3
     || row.targetInstance.gameScene.gameId !== gameId || row.targetInstance.gameScene.sceneVersion !== 13 || receipt.sourceFigureReturn !== undefined
     || ['crownTab', 'headPixelCorrection', 'crownReturn', 'propJoinCorrection', 'foreground', 'retainedNormalHead', 'sourceBodyBirth', 'sourceBodyRepair'].some(k => receipt[k] !== undefined)) return null;
   const context = await resolveLocalPatchBoardsForGame(c.db, gameId, 13), scene = row.targetInstance.gameScene;
@@ -151,8 +152,11 @@ export async function correctSourceFigureReturn(c: Container, gameId: string, ro
   return false;
 }
 
-/** Reproduce the full figure and its new geometry. A marker, copied audit or
- * artist's/model's coordinates alone can never admit it. */
+/** Reproduce the full figure and its new geometry. This is composition
+ * provenance, also needed to prepare the one permitted unanswered-review
+ * continuation after a row becomes FAILED. It grants no visual acceptance:
+ * allowedDualPublication still requires the fresh ordinary paid PASS.
+ * A marker, copied audit or artist's/model's coordinates alone cannot admit it. */
 export async function sourceFigurePublicationMatches(db: Prisma.TransactionClient, input: { gameId: string; sceneVersion: number; hideId: string;
   variantId?: string; assetId?: string; judgeJson: string | null; identitySha256?: string }, readArt: ReadArt = readShippedBoardArt) {
   try {

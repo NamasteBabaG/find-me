@@ -807,7 +807,7 @@ async function legacyKingdomHeadFixture(gameId: string, action: "redraw-with-new
   return { gameId, version, board, hide, scene, deps, render, diagnose, row, candidate, receipt, shipping, identitySha256, decision };
 }
 
-it.each(['free-candidate', 'free-candidate-no-unknown', 'orphan-reservation'] as const)('source-figure-return/v1: %s preserves the old paid recipe, whole body, neighbors, questions and full reserves', async mode => {
+it.each(['free-candidate', 'free-candidate-no-unknown', 'orphan-reservation', 'deadline-cancelled', 'provider-failed'] as const)('source-figure-return/v1: %s preserves the old paid recipe, whole body, neighbors, questions and full reserves', async mode => {
   vi.useFakeTimers({ toFake: ['Date'] });
   try {
     const f = await legacyKingdomHeadFixture('source-figure-synthetic-' + mode, 'redraw-with-new-placement', false, false, true);
@@ -823,7 +823,16 @@ it.each(['free-candidate', 'free-candidate-no-unknown', 'orphan-reservation'] as
     const plan = await planQaCompletionCapacity(c, f.gameId);
     await authorizeQaCompletionCapacity(c, { gameId: f.gameId, operatorId: game.ownerId!, expectedPlanSha256: plan.planSha256, ownerAuthorizationSha256: 'b'.repeat(64) });
     const provider = controlledSol(false, false, undefined, true), originalRetrieve = provider.fake.retrieve.bind(provider.fake);
+    const transportRecovery = mode === 'deadline-cancelled' || mode === 'provider-failed';
+    let cancelled = false, failedCompositionChecked = false;
+    provider.fake.cancel = async () => { cancelled = true; };
     provider.fake.retrieve = async id => {
+      if (transportRecovery && id === 'resp_detective_1') {
+        if (mode === 'deadline-cancelled' && !cancelled) return { status: 'in_progress' };
+        const status = mode === 'deadline-cancelled' ? 'cancelled' : 'failed';
+        return { status, reading: { responseId: id, raw: null, usage: { input_tokens: 2000, output_tokens: 150 }, model: 'gpt-6.1-sol',
+          finishReason: status, serviceTier: 'flex', ...(status === 'failed' ? { providerError: { code: 'server_is_overloaded', message: 'Synthetic settled provider failure without answer' } } : {}) } };
+      }
       const answer = await originalRetrieve(id);
       if (answer.status !== 'completed') return answer;
       const raw = JSON.parse(answer.reading.raw!);
@@ -887,19 +896,39 @@ it.each(['free-candidate', 'free-candidate-no-unknown', 'orphan-reservation'] as
       // nonzero bill. No live reserve is cleared or inferred from missing text.
       await budget.settle(worldId, 'synthetic-figure-unknown', bill('synthetic-confirmed-figure-unknown-' + f.gameId, 25000));
     }
-    for (let tick = 0; tick < 10; tick++) {
+    for (let tick = 0; tick < (transportRecovery ? 20 : 10); tick++) {
+      if (transportRecovery) {
+        const failed = await f.row();
+        if (failed.status === 'FAILED') {
+          // Composition provenance is independent of an unanswered assessment's
+          // FAILED status. This does NOT publish it or waive its fresh review.
+          expect(await sourceFigurePublicationMatches(db, { ...publicationBinding(f.gameId, failed), sceneVersion: 13 })).toBe(true);
+          expect(await allowedDualPublication(db, { ...publicationBinding(f.gameId, failed), sceneVersion: 13 })).toBe(false);
+          expect(failed.assetId).toBe(candidate.assetId);expect(failed.attempts).toBe(candidate.attempts);expect(failed.costCents).toBe(candidate.costCents);
+          failedCompositionChecked = true;
+          await (await import('../single-transport-continuation')).recordSingleTransportFaults(container, f.gameId, [failed], async () => {});
+        }
+      }
       const ordinary = await reviewLocalPatchBoard(container, { gameId: f.gameId, sceneId: f.scene.id, deadlineAt: Date.now() + 270000 }, { fence: async () => {}, readBoardArt: readArt });
       await advanceContinuityInBackground(container, f.gameId, { deadlineAt: Date.now() + 270000 });
       if (!provider.creates.length) throw Error('Synthetic ordinary figure review did not dispatch: ' + ordinary.reason);
       await vi.advanceTimersByTimeAsync(LEAN_RECOVERY_BACKOFF_MS + 1);
-      if (JSON.parse((await f.row()).judgeJson!).reviewState === 'board-review-complete') break;
+      const checkpoint = await f.row();
+      if (JSON.parse(checkpoint.judgeJson!).reviewState === 'board-review-complete' && (!transportRecovery || checkpoint.status === 'GENERATED')) break;
     }
     const accepted = await f.row(), final = JSON.parse(accepted.judgeJson!);
     expect(final.verdict, JSON.stringify({ status: accepted.status, lastError: accepted.lastError, reviewState: final.reviewState,
       wireFault: final.wireFault, raw: final.boardReview?.dual?.quality.raw, creates: provider.creates.length })).not.toBeNull();
     expect(accepted.status).toBe('GENERATED'); expect(final.verdict.verdict).toBe('pass');
     expect(final.boardReview.dual.quality.headEvidence.sourceBindingVersion).toBe(SOURCE_FIGURE_RETURN_VERSION);
-    expect(provider.creates).toHaveLength(1); expect(provider.creates[0]!.reasoning).toMatchObject({ effort: 'medium' });
+    expect(provider.creates).toHaveLength(transportRecovery ? 2 : 1); expect(provider.creates[0]!.reasoning).toMatchObject({ effort: 'medium' });
+    if (transportRecovery) {
+      expect(failedCompositionChecked).toBe(true);expect(provider.creates.map(q=>q.tier)).toEqual(['flex','default']);
+      expect((await import('../../../domain/generation/single-transport-continuation')).singleTransportContinuation(final)).toBeNull();
+      expect(final.sourceFigureReturn).toEqual(marker);
+      const requests = JSON.parse((await db.worldBudgetLedger.findUniqueOrThrow({where:{worldId}})).snapshotJson).requests;
+      expect(requests.filter((r:{scope:string;requestKey:string})=>r.scope==='image'&&r.requestKey.startsWith(f.hide.id+':'))).toHaveLength(3);
+    }
     expect(provider.creates[0]!.prompt).toContain('The bounding head-inspection rectangle is NOT an editable rectangle');
     expect(provider.creates[0]!.prompt).toContain('Neither extra sharpness nor blur is an automatic pass');
     expect(await allowedDualPublication(db, { ...publicationBinding(f.gameId, accepted), sceneVersion: 13 })).toBe(true);
