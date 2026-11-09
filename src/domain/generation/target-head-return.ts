@@ -6,6 +6,7 @@ import { HEAD_PIXEL_CORRECTION_VERSION } from './head-pixel-correction';
 import { CROWN_TAB_VERSION } from './crown-tab';
 import { SOURCE_FIGURE_RETURN_VERSION } from './source-figure-return';
 import { RETAINED_WINDOW_VERSION } from './retained-window';
+import { JOURNEY_SOURCE_HEAD_VERSION } from './journey-source-head';
 
 /** A named inspection in the same MEDIUM answer, never a second judge request. */
 export const TARGET_HEAD_RETURN_VERSION = 'target-head-return/v1' as const;
@@ -19,13 +20,13 @@ const rect = z.object({ left:z.number().int().nonnegative(),top:z.number().int()
 export const targetHeadEvidenceSchema = z.object({ version:z.enum([TARGET_HEAD_RETURN_VERSION,TARGET_HEAD_VISIBLE_VERSION]), gameId:z.string(),hideId:z.string(),
   sourceRequestKey:z.string(),sourceFingerprint:digest,sourcePayloadSha256:digest,normalizedRawSha256:digest,
   shippingSha256:digest,geometrySha256:digest,identitySha256:digest,returned:rect,feather:z.literal(12),
-  sourceBindingVersion:z.enum([LEGACY_PAID_JOIN_HEAD_VERSION,RETAINED_NORMAL_HEAD_VERSION,HEAD_PIXEL_CORRECTION_VERSION,CROWN_TAB_VERSION,SOURCE_FIGURE_RETURN_VERSION,RETAINED_WINDOW_VERSION]).optional(),sourceCompositionSha256:digest.optional(),
+  sourceBindingVersion:z.enum([LEGACY_PAID_JOIN_HEAD_VERSION,RETAINED_NORMAL_HEAD_VERSION,HEAD_PIXEL_CORRECTION_VERSION,CROWN_TAB_VERSION,SOURCE_FIGURE_RETURN_VERSION,RETAINED_WINDOW_VERSION,JOURNEY_SOURCE_HEAD_VERSION]).optional(),sourceCompositionSha256:digest.optional(),
   compoundHeadMask:z.object({opaque:rect,sampleX:z.number().int().min(-3).max(3),sampleY:z.number().int().min(-3).max(3),excluded:z.array(rect).max(8)}).strict().optional(),
   /** Derived from the authenticated RAW/SHIPPING; never part of the paid question. */
   retention:headRetentionSchema.optional() }).strict()
   .refine(v=>(v.sourceBindingVersion===undefined)===(v.sourceCompositionSha256===undefined),'Legacy source version and composition binding must agree')
   .refine(v=>(v.sourceBindingVersion===RETAINED_WINDOW_VERSION)===(v.compoundHeadMask!==undefined),'Only the retained window requires its exact compound head mask')
-  .refine(v=>v.sourceBindingVersion!==RETAINED_NORMAL_HEAD_VERSION&&v.sourceBindingVersion!==HEAD_PIXEL_CORRECTION_VERSION&&v.sourceBindingVersion!==CROWN_TAB_VERSION&&v.sourceBindingVersion!==SOURCE_FIGURE_RETURN_VERSION&&v.sourceBindingVersion!==RETAINED_WINDOW_VERSION||v.version===TARGET_HEAD_VISIBLE_VERSION,'Retained normal sources and pixel corrections require the prospective visible-head policy')
+  .refine(v=>v.sourceBindingVersion!==RETAINED_NORMAL_HEAD_VERSION&&v.sourceBindingVersion!==HEAD_PIXEL_CORRECTION_VERSION&&v.sourceBindingVersion!==CROWN_TAB_VERSION&&v.sourceBindingVersion!==SOURCE_FIGURE_RETURN_VERSION&&v.sourceBindingVersion!==RETAINED_WINDOW_VERSION&&v.sourceBindingVersion!==JOURNEY_SOURCE_HEAD_VERSION||v.version===TARGET_HEAD_VISIBLE_VERSION,'Retained normal sources and pixel corrections require the prospective visible-head policy')
   .refine(v=>v.retention===undefined||v.version===TARGET_HEAD_VISIBLE_VERSION&&v.retention.band===v.feather,'Measured head retention belongs only to the visible-head policy and its own feather');
 export type TargetHeadEvidence = z.infer<typeof targetHeadEvidenceSchema>;
 const status=z.enum(['pass','fail','uncertain']);

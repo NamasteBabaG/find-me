@@ -8,6 +8,7 @@ import { sourceBodyBirthMarkerFor, fenceSourceBodyBirthPurchase } from "./detect
 import { requireSourceBodyPurchase } from './source-body-repair';
 import { fenceSourceBodyPurchase } from './source-body-repair-pin';
 import { requireSourceHeadPurchase, fenceSourceHeadPurchase } from './source-head-recovery';
+import { requireJourneyHeadPurchase, fenceJourneyHeadPurchase } from './journey-source-head-recovery';
 import { nativeMaskTailCandidate, type NativeMaskTailMarker } from "../../domain/generation/native-mask-tail";
 import { guidedFrameCandidate, guidedFrameMarker, newGuidedFrameMarker, guidedFrameVersionMatches, GUIDED_FRAME_MIN_CAPACITY_MICRO_USD, type GuidedFrameMarker } from "../../domain/generation/guided-frame-recovery";
 import { requireDetectivesNativeMaskTail } from "./detectives-completion-budget";
@@ -232,6 +233,7 @@ export async function runLocalPatchHide(c: Container, deps: LocalPatchHideDeps, 
   readonly nativeMaskTail?: boolean;
   readonly sourceBodyRepair?: boolean;
   readonly sourceHeadRecovery?: boolean;
+  readonly journeyHeadRecovery?: boolean;
   readonly wholeSourceContext?: boolean;
 }): Promise<LocalPatchHideOutcome> {
   const { gameId, board, hide } = input;
@@ -331,6 +333,9 @@ export async function runLocalPatchHide(c: Container, deps: LocalPatchHideDeps, 
   }
   const wholeContext=input.wholeSourceContext?await requireWholeSourceContextPurchase(c,gameId,row.id):null;
   const headRecovery=input.sourceHeadRecovery?await requireSourceHeadPurchase(c,gameId,row.id):null;
+  const journeyRecovery=input.journeyHeadRecovery?await requireJourneyHeadPurchase(c,gameId,row.id):null;
+  if(journeyRecovery)demand(input.finalRepair&&!headRecovery&&!input.guidedFrame&&!input.nativeMaskTail&&!input.sourceBodyRepair&&!input.wholeSourceContext
+    &&!input.extraAttemptAuthorizationId&&scene.sceneVersion===13&&journeyRecovery.pin.hideId===hide.id,'Only the exact finite journey head may use this second key');
   if(headRecovery){
     demand(input.finalRepair&&!input.guidedFrame&&!input.nativeMaskTail&&!input.sourceBodyRepair&&!input.wholeSourceContext
       &&!input.extraAttemptAuthorizationId&&scene.sceneVersion===12&&headRecovery.pin.hideId===hide.id,'Only the exact finite source-head strategy may use this fourth key');
@@ -349,12 +354,12 @@ export async function runLocalPatchHide(c: Container, deps: LocalPatchHideDeps, 
   const extra = input.extraAttemptAuthorizationId ? await requireLocalPatchExtraAttempt(c, {
     gameId, hideId: hide.id, rowId: row.id, authorizationId: input.extraAttemptAuthorizationId,
   }) : null;
-  const attemptLimit = headRecovery || wholeContext || nativeMaskTail ? 4 : extra?.authorizedAttempt ?? (input.finalRepair ? LOCAL_PATCH_MAX_ATTEMPTS : LOCAL_PATCH_NORMAL_ATTEMPTS);
+  const attemptLimit = journeyRecovery ? 2 : headRecovery || wholeContext || nativeMaskTail ? 4 : extra?.authorizedAttempt ?? (input.finalRepair ? LOCAL_PATCH_MAX_ATTEMPTS : LOCAL_PATCH_NORMAL_ATTEMPTS);
   const { attempt, exhausted } = bodyRepair ? {attempt:bodyRepair.selected.authorizedAttempt,exhausted:false} : nextLocalPatchAttempt(row, attemptLimit);
-  const birthPolicy=sourceBodyBirthForHide(placementContext,hide.id),bodyBirth=birthPolicy&&!exhausted?sourceBodyBirthMarkerFor(birthPolicy,row.id,hide.id,attempt):null;
+  const birthPolicy=sourceBodyBirthForHide(placementContext,hide.id),bodyBirth=birthPolicy&&!journeyRecovery&&!exhausted?sourceBodyBirthMarkerFor(birthPolicy,row.id,hide.id,attempt):null;
   if(bodyBirth)demand(!bodyRepair&&!guidedFrame&&!nativeMaskTail&&!extra&&scene.sceneVersion===13,'From-birth footprints keep normal finite image attempts');
-  const original=bodyRepair||headRecovery?JSON.parse(row.judgeJson??'{}'):{};
-  let guidedHistory: Record<string, unknown>=headRecovery?{sourceHeadRecovery:headRecovery.marker,...(headRecovery.join?{sourceHeadJoin:headRecovery.join}:{}),...(original.selfRepair?{selfRepair:original.selfRepair}:{}),...(original.guidedFrameRecovery?{guidedFrameRecovery:original.guidedFrameRecovery}:{})}:wholeContext?{wholeSourceContext:wholeContext.marker}:bodyBirth?{sourceBodyBirth:bodyBirth}:bodyRepair?{sourceBodyRepair:bodyRepair.marker,...(original.selfRepair?{selfRepair:original.selfRepair}:{}),...(original.guidedFrameRecovery?{guidedFrameRecovery:original.guidedFrameRecovery}:{}),...(original.nativeMaskTail?{nativeMaskTail:original.nativeMaskTail}:{})}:guidedFrame?{guidedFrameRecovery:guidedFrame,selfRepair:JSON.parse(row.judgeJson!).selfRepair,...(nativeMaskTail?{nativeMaskTail}:{})}:{};
+  const original=journeyRecovery?JSON.parse(journeyRecovery.pin.previousJudgeJson):bodyRepair||headRecovery?JSON.parse(row.judgeJson??'{}'):{};
+  let guidedHistory: Record<string, unknown>=journeyRecovery?{journeyHeadRecovery:journeyRecovery.marker,...(original.selfRepair?{selfRepair:original.selfRepair}:{}),...(original.guidedFrameRecovery?{guidedFrameRecovery:original.guidedFrameRecovery}:{})}:headRecovery?{sourceHeadRecovery:headRecovery.marker,...(headRecovery.join?{sourceHeadJoin:headRecovery.join}:{}),...(original.selfRepair?{selfRepair:original.selfRepair}:{}),...(original.guidedFrameRecovery?{guidedFrameRecovery:original.guidedFrameRecovery}:{})}:wholeContext?{wholeSourceContext:wholeContext.marker}:bodyBirth?{sourceBodyBirth:bodyBirth}:bodyRepair?{sourceBodyRepair:bodyRepair.marker,...(original.selfRepair?{selfRepair:original.selfRepair}:{}),...(original.guidedFrameRecovery?{guidedFrameRecovery:original.guidedFrameRecovery}:{}),...(original.nativeMaskTail?{nativeMaskTail:original.nativeMaskTail}:{})}:guidedFrame?{guidedFrameRecovery:guidedFrame,selfRepair:JSON.parse(row.judgeJson!).selfRepair,...(nativeMaskTail?{nativeMaskTail}:{})}:{};
   // judgeJson is intentionally kept while PENDING: clearing lastError must not
   // change the prompt/fingerprint when attempt 2/3 resumes after an interruption.
   // v8 corrects its own located defect on the very next attempt. The old paid
@@ -421,7 +426,7 @@ export async function runLocalPatchHide(c: Container, deps: LocalPatchHideDeps, 
   // This grants neither another attempt nor any additional budget.
   let placementGuide: PlacementGuide | null = null;
   const priorGuide = placementGuideOf(row.judgeJson);
-  if ((scene.sceneVersion === 12 || scene.sceneVersion === 13) && !headRecovery && !wholeContext && !bodyRepair && !bodyBirth && !nativeMaskTail && !extra
+  if ((scene.sceneVersion === 12 || scene.sceneVersion === 13) && !journeyRecovery && !headRecovery && !wholeContext && !bodyRepair && !bodyBirth && !nativeMaskTail && !extra
     && (attempt <= LOCAL_PATCH_NORMAL_ATTEMPTS || !!guidedFrame)) {
     const authority = await singleLowReviewAuthorization(c.db, gameId);
     if (authority?.kind === "from-birth") {
@@ -440,7 +445,7 @@ export async function runLocalPatchHide(c: Container, deps: LocalPatchHideDeps, 
   }
   if (priorGuide?.attempt === attempt) demand(placementGuide, "Persisted placement guide cannot be removed from a started painting");
   if (placementGuide) guidedHistory = { ...guidedHistory, placementGuide };
-  const adaptiveRecovery = headRecovery || wholeContext || guidedFrame || placementGuide || bodyRepair || bodyBirth ? null : prepareAdaptiveRecovery(row.judgeJson, row, attempt, {
+  const adaptiveRecovery = journeyRecovery || headRecovery || wholeContext || guidedFrame || placementGuide || bodyRepair || bodyBirth ? null : prepareAdaptiveRecovery(row.judgeJson, row, attempt, {
     gameId, rowId: row.id, contentVersion: scene.sceneVersion, promptVersion, hide,
     boardSha256: sha256Bytes(artwork), identitySha256: sha256Bytes(sheet), ageYears: child.ageYears,
     renderPolicySha256: deps.renderPolicySha256,
@@ -465,6 +470,7 @@ export async function runLocalPatchHide(c: Container, deps: LocalPatchHideDeps, 
     await deps.fence?.(tx);
     if(bodyRepair)await fenceSourceBodyPurchase(tx,gameId,row.id,bodyRepair.marker);
     if(headRecovery)await fenceSourceHeadPurchase(tx,gameId,row.id,headRecovery.marker);
+    if(journeyRecovery)await fenceJourneyHeadPurchase(tx,gameId,row.id,journeyRecovery.marker);
     if(bodyBirth)await fenceSourceBodyBirthPurchase(tx,gameId,row.id,bodyBirth);
     if(wholeContext)await fenceWholeSourceContextPurchase(tx,gameId,row.id,wholeContext.marker);
     if (extra) await fenceLocalPatchExtraAttempt(tx, {
@@ -473,7 +479,7 @@ export async function runLocalPatchHide(c: Container, deps: LocalPatchHideDeps, 
     const claimed = await tx.targetVariantAsset.updateMany({ where: { id: row.id, status: row.status, attempts: row.attempts, judgeJson: row.judgeJson }, data: {
       attempts: attempt, status: "PENDING", lastError: null,
       provider: LOCAL_PATCH_PROVIDER, promptVersion, slotId: target.slots[0].id,
-      ...((adaptiveRecovery || headRecovery || wholeContext || guidedFrame || placementGuide || bodyRepair || bodyBirth) ? { judgeJson: JSON.stringify({ ...JSON.parse(row.judgeJson ?? "{}"), ...guidedHistory, ...(adaptiveRecovery ? { adaptiveRecovery } : {}) }) } : {}),
+      ...((adaptiveRecovery || journeyRecovery || headRecovery || wholeContext || guidedFrame || placementGuide || bodyRepair || bodyBirth) ? { judgeJson: JSON.stringify({ ...JSON.parse(row.judgeJson ?? "{}"), ...guidedHistory, ...(adaptiveRecovery ? { adaptiveRecovery } : {}) }) } : {}),
     } });
     demand(claimed.count === 1, "Painting row changed before its recipe could be pinned");
     await recordWindowAttemptSource(tx,gameId,row,attempt);
@@ -484,7 +490,7 @@ export async function runLocalPatchHide(c: Container, deps: LocalPatchHideDeps, 
   // An enrolled world's subject plan for this appearance; absent for every other world.
   const subjectDirection = nativeDetailSubjectDirection(await subjectDirectionFor(c, gameId, hide.id, scene.sceneVersion, row.judgeJson,
     { basePolicySha256: deps.renderPolicySha256, attemptNumber: attempt }));
-  const nativeDetailRepair=repairChecks?.includes('styleMatch') ? nativeDetailRepairOf(row.judgeJson,hide.id,scene.sceneVersion) : undefined;
+  const nativeDetailRepair=!journeyRecovery&&repairChecks?.includes('styleMatch') ? nativeDetailRepairOf(row.judgeJson,hide.id,scene.sceneVersion) : undefined;
   const attemptResult = await renderLocalPatchHide({
     ledger: budget, store: new LocalPatchRetainedPurchaseStore(c, gameId, budget, input.deadlineAt),
     renderPolicySha256: deps.renderPolicySha256, render: deps.render, ...(deps.judge ? { judge: deps.judge } : {}),
@@ -505,6 +511,7 @@ export async function runLocalPatchHide(c: Container, deps: LocalPatchHideDeps, 
     ...(bodyRepair?{sourceBodyRepair:bodyRepair.marker}:{}),
     ...(bodyBirth?{sourceBodyBirth:bodyBirth}:{}),
     ...(headRecovery?{sourceHeadRecovery:{marker:headRecovery.marker,authority:headRecovery.authority,...(headRecovery.join?{join:headRecovery.join}:{})}}:{}),
+    ...(journeyRecovery?{journeyHeadRecovery:{marker:journeyRecovery.marker,authority:journeyRecovery.authority}}:{}),
     ...(wholeContext?{wholeSourceContext:{marker:wholeContext.marker,plan:wholeContext.pin.selected.plan,sourceFile:contextSourceFile!}}:{}),
     ...(attempt === 3 && adaptiveRecovery?.plan ? { adaptiveRecovery: adaptiveRecovery.plan } : {}),
     ...(input.deadlineAt === undefined ? {} : { deadlineAt: input.deadlineAt }),
@@ -548,6 +555,7 @@ export async function runLocalPatchHide(c: Container, deps: LocalPatchHideDeps, 
       await deps.fence?.(tx);
       if(bodyRepair)await fenceSourceBodyPurchase(tx,gameId,row.id,bodyRepair.marker);
       if(headRecovery)await fenceSourceHeadPurchase(tx,gameId,row.id,headRecovery.marker);
+    if(journeyRecovery)await fenceJourneyHeadPurchase(tx,gameId,row.id,journeyRecovery.marker);
     if(bodyBirth)await fenceSourceBodyBirthPurchase(tx,gameId,row.id,bodyBirth);
     if(wholeContext)await fenceWholeSourceContextPurchase(tx,gameId,row.id,wholeContext.marker);
     if (extra) await fenceLocalPatchExtraAttempt(tx, {
@@ -563,6 +571,7 @@ export async function runLocalPatchHide(c: Container, deps: LocalPatchHideDeps, 
         ...(attemptResult.authoredReturn ? { authoredReturn: attemptResult.authoredReturn } : {}),
         ...(attemptResult.sourceBodyComposition?{sourceBodyComposition:attemptResult.sourceBodyComposition}:{}),
         ...(attemptResult.sourceHeadComposition?{sourceHeadComposition:attemptResult.sourceHeadComposition}:{}),
+      ...(attemptResult.journeyHeadComposition?{journeyHeadComposition:attemptResult.journeyHeadComposition}:{}),
         ...(attemptResult.foreground ? { foreground: attemptResult.foreground } : {}) }),
       } });
     });
@@ -574,10 +583,11 @@ export async function runLocalPatchHide(c: Container, deps: LocalPatchHideDeps, 
   const shipping = attemptResult.shippingPng;
   // Measured against the board this crop was cut from, so "what changed" means
   // what the painter added rather than what a neighbour did.
-  const measured = await localPatchGeometry({ hide, boardPng: artwork, patchPng: shipping, board: art, contentVersion: scene.sceneVersion });
+  const measured = await localPatchGeometry({ hide, boardPng: artwork, patchPng: shipping, board: art, contentVersion: scene.sceneVersion,
+    ...(journeyRecovery?{journeyHead:journeyRecovery.authority}:{}) });
 
   const crop = cropOf(hide);
-  const assetId = pictureId(gameId, hide.id, attemptResult.judgedSha256);
+  const assetId = journeyRecovery ? pictureId(gameId,hide.id,attemptResult.judgedSha256).replace('ast_lp_','ast_jnh_') : pictureId(gameId, hide.id, attemptResult.judgedSha256);
   // Retain before the job's publication fence so a lost claim doesn't lose a
   // paid image. The separate lifecycle fence still forbids all writes after
   // deletion, and the atomic row+blob makes every retained image enumerable.
@@ -593,6 +603,7 @@ export async function runLocalPatchHide(c: Container, deps: LocalPatchHideDeps, 
     await deps.fence?.(tx);
     if(bodyRepair)await fenceSourceBodyPurchase(tx,gameId,row.id,bodyRepair.marker);
     if(headRecovery)await fenceSourceHeadPurchase(tx,gameId,row.id,headRecovery.marker);
+    if(journeyRecovery)await fenceJourneyHeadPurchase(tx,gameId,row.id,journeyRecovery.marker);
     if(bodyBirth)await fenceSourceBodyBirthPurchase(tx,gameId,row.id,bodyBirth);
     if(wholeContext)await fenceWholeSourceContextPurchase(tx,gameId,row.id,wholeContext.marker);
     if (extra) await fenceLocalPatchExtraAttempt(tx, {
@@ -610,6 +621,7 @@ export async function runLocalPatchHide(c: Container, deps: LocalPatchHideDeps, 
       ...(attemptResult.authoredReturn ? { authoredReturn: attemptResult.authoredReturn } : {}),
         ...(attemptResult.sourceBodyComposition?{sourceBodyComposition:attemptResult.sourceBodyComposition}:{}),
       ...(attemptResult.sourceHeadComposition?{sourceHeadComposition:attemptResult.sourceHeadComposition}:{}),
+      ...(attemptResult.journeyHeadComposition?{journeyHeadComposition:attemptResult.journeyHeadComposition}:{}),
       geometryBasis: measured.basis, measuredFraction: Number(measured.measuredFraction.toFixed(4)), hide: hide.id, pose: hide.pose });
     await tx.targetVariantAsset.update({ where: { id: row.id }, data: {
       assetId,
@@ -617,7 +629,7 @@ export async function runLocalPatchHide(c: Container, deps: LocalPatchHideDeps, 
       status: "GENERATED", lastError: null,
       costCents: Math.round(row.costCents + money.renderCents + attemptResult.judgeCents),
       promptVersion: attemptResult.promptVersion, provider: LOCAL_PATCH_PROVIDER,
-      ...(headRecovery?{rejectedAssetIdsJson:JSON.stringify([...new Set([...readIds(row.rejectedAssetIdsJson),...(row.assetId?[row.assetId]:[])])])}:{}),
+      ...(headRecovery||journeyRecovery?{rejectedAssetIdsJson:JSON.stringify([...new Set([...readIds(row.rejectedAssetIdsJson),...(row.assetId?[row.assetId]:[])])])}:{}),
       judgeJson,
     } });
     await tx.targetInstance.update({ where: { id: instance.id }, data: {

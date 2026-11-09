@@ -23,6 +23,7 @@ import { SOURCE_FIGURE_RETURN_VERSION, sourceFigureReturnSchema, sourceFigureAut
 import { retainedWindowMarkerSchema, retainedWindowCanonicalHash, RETAINED_WINDOW_VERSION, retainedWindowRegion,
   retainedWindowHeadMask, alignRetainedWindowRaw } from '../../domain/generation/retained-window';
 import { retainedWindowAuthorityFor } from '../../../content/detectives/retained-window-v1';
+import { JOURNEY_SOURCE_HEAD_VERSION, journeyHeadMarkerSchema, journeyHeadAuthorityFor, journeyHeadHash } from '../../domain/generation/journey-source-head';
 
 type Receipt=Record<string,unknown>;
 const tabHash=(r:Receipt)=>sha(Buffer.from(JSON.stringify({compositionVersion:r.compositionVersion,authoredReturn:r.authoredReturn,crownTab:r.crownTab})));
@@ -31,8 +32,9 @@ const normalCompositionHash=(r:Receipt)=>sha(Buffer.from(JSON.stringify({composi
 const correctionHash=(r:Receipt)=>sha(Buffer.from(JSON.stringify({compositionVersion:r.compositionVersion,authoredReturn:r.authoredReturn,headPixelCorrection:r.headPixelCorrection})));
 const figureHash=(r:Receipt)=>sha(Buffer.from(JSON.stringify({compositionVersion:r.compositionVersion,authoredReturn:r.authoredReturn,authoredRecovery:r.authoredRecovery,sourceFigureReturn:r.sourceFigureReturn})));
 const windowHash=(r:Receipt)=>sha(Buffer.from(JSON.stringify({compositionVersion:r.compositionVersion,authoredReturn:r.authoredReturn,authoredRecovery:r.authoredRecovery,retainedWindow:r.retainedWindow})));
-const bindingOf=(r:Receipt)=>r.retainedWindow!==undefined?RETAINED_WINDOW_VERSION:r.sourceFigureReturn!==undefined?SOURCE_FIGURE_RETURN_VERSION:r.crownTab!==undefined?CROWN_TAB_VERSION:r.retainedNormalHead!==undefined?RETAINED_NORMAL_HEAD_VERSION:r.headPixelCorrection!==undefined?HEAD_PIXEL_CORRECTION_VERSION:r.headSourceVersion??undefined;
-const compositionOf=(version:unknown,r:Receipt)=>version===RETAINED_WINDOW_VERSION?windowHash(r):version===SOURCE_FIGURE_RETURN_VERSION?figureHash(r):version===CROWN_TAB_VERSION?tabHash(r):version===RETAINED_NORMAL_HEAD_VERSION?normalCompositionHash(r):version===HEAD_PIXEL_CORRECTION_VERSION?correctionHash(r):legacyCompositionHash(r);
+const journeyCompositionHash=(r:Receipt)=>journeyHeadHash({journeyHeadRecovery:r.journeyHeadRecovery,journeyHeadComposition:r.journeyHeadComposition,compositionVersion:r.compositionVersion,authoredReturn:r.authoredReturn});
+const bindingOf=(r:Receipt)=>r.journeyHeadRecovery!==undefined?JOURNEY_SOURCE_HEAD_VERSION:r.retainedWindow!==undefined?RETAINED_WINDOW_VERSION:r.sourceFigureReturn!==undefined?SOURCE_FIGURE_RETURN_VERSION:r.crownTab!==undefined?CROWN_TAB_VERSION:r.retainedNormalHead!==undefined?RETAINED_NORMAL_HEAD_VERSION:r.headPixelCorrection!==undefined?HEAD_PIXEL_CORRECTION_VERSION:r.headSourceVersion??undefined;
+const compositionOf=(version:unknown,r:Receipt)=>version===JOURNEY_SOURCE_HEAD_VERSION?journeyCompositionHash(r):version===RETAINED_WINDOW_VERSION?windowHash(r):version===SOURCE_FIGURE_RETURN_VERSION?figureHash(r):version===CROWN_TAB_VERSION?tabHash(r):version===RETAINED_NORMAL_HEAD_VERSION?normalCompositionHash(r):version===HEAD_PIXEL_CORRECTION_VERSION?correctionHash(r):legacyCompositionHash(r);
 function windowAuthority(receipt:Receipt){
  const m=retainedWindowMarkerSchema.parse(receipt.retainedWindow),a=retainedWindowAuthorityFor(receipt.authoredReturn as Parameters<typeof retainedWindowAuthorityFor>[0]);
  if(!a||retainedWindowCanonicalHash(a)!==m.authoritySha256)throw Error('HEAD_RETURN: retained window public permission differs');
@@ -60,6 +62,13 @@ const judgedWindow=(receipt:Receipt,returned:PatchRectangle):PatchRectangle=>{
  return crownTabWindow(m.returned,m.tab);
 };
 function sourceKey(hide:Pick<LocalPatchHide,'id'|'pose'>,attempt:number,receipt:Receipt):string{
+ if(receipt.journeyHeadRecovery!==undefined){
+  const m=journeyHeadMarkerSchema.parse(receipt.journeyHeadRecovery),a=journeyHeadAuthorityFor(receipt.authoredReturn as Parameters<typeof journeyHeadAuthorityFor>[0]);
+  if(!a||journeyHeadHash(a)!==m.authoritySha256||hide.id!==m.hideId||attempt!==2||a.pose!==hide.pose
+   ||m.requestKey!==hide.id+':'+hide.pose+':render:2'||targetHeadVersionOfReceipt(receipt)!==TARGET_HEAD_VISIBLE_VERSION)
+   throw Error('HEAD_RETURN: finite journey-head source binding differs');
+  return m.requestKey;
+ }
  if(receipt.retainedWindow!==undefined){
   const{m}=windowAuthority(receipt);
   if(m.hideId!==hide.id||m.attempts!==attempt||m.candidateSha256!==receipt.judgedSha256||receipt.compositionVersion!==RETAINED_WINDOW_VERSION
@@ -154,6 +163,11 @@ async function windowSourceAuthorized(db:Prisma.TransactionClient,gameId:string,
   hideId:m.hideId,variantId:m.rowId,assetId:row.assetId,judgeJson:JSON.stringify(receipt),identitySha256:m.identitySha256}))
   throw Error('HEAD_RETURN: retained window audit, SOURCE, RAW or candidate differs');
 }
+async function journeySourceAuthorized(db:Prisma.TransactionClient,gameId:string,receipt:Receipt){
+ if(receipt.journeyHeadRecovery===undefined)return;
+ if(!await(await import('./journey-source-head-recovery')).journeyHeadCompositionMatches(db,{gameId,hideId:journeyHeadMarkerSchema.parse(receipt.journeyHeadRecovery).hideId,receipt}))
+  throw Error('HEAD_RETURN: finite journey SOURCE, paid RAW or candidate differs');
+}
 const decoded=async(png:Buffer)=>{const {data,info}=await sharp(png,{limitInputPixels:8294400}).removeAlpha().raw().toBuffer({resolveWithObject:true});
  return{data,width:info.width,height:info.height,channels:info.channels};};
 /** Measured retention of exactly these authenticated RAW and SHIPPING bytes. */
@@ -178,6 +192,11 @@ export async function readSettledTargetRaw(db:Prisma.TransactionClient,gameId:st
  const wire=JSON.parse(kept.bytes.toString());
  if(wire.version!=='local-patch-render/v1'||wire.rejected!==null||typeof wire.bytesBase64!=='string')throw Error('HEAD_RETURN: retained painting is unreadable');
  const original=Buffer.from(wire.bytesBase64,'base64');if(original.toString('base64')!==wire.bytesBase64)throw Error('HEAD_RETURN: invalid retained painting bytes');
+ if(wire.journeyHeadRecovery!==undefined){
+  journeyHeadMarkerSchema.parse(wire.journeyHeadRecovery);
+  const shape=await sharp(original,{limitInputPixels:8294400}).metadata();
+  if(shape.width!==512||shape.height!==768)throw Error('HEAD_RETURN: journey paid head is not native512x768');
+ }
  let normalized:Buffer;
  if(wire.wholeSourceContext!==undefined||key==='greatwall-v12-2:peeking:render:4'){
   const marker=wholeSourceContextMarkerSchema.parse(wire.wholeSourceContext?.marker),pin=await readWholeSourceContextPin(db,gameId);
@@ -199,6 +218,7 @@ export async function singleReviewHeadEvidence(db:Prisma.TransactionClient,input
  await tabSourceAuthorized(db,input.gameId,input.receipt,paid);
  await figureSourceAuthorized(db,input.gameId,input.receipt);
  await windowSourceAuthorized(db,input.gameId,input.receipt);
+ await journeySourceAuthorized(db,input.gameId,input.receipt);
  if(input.receipt.retainedWindow!==undefined&&windowAuthority(input.receipt).m.identitySha256!==input.identitySha256)
   throw Error('HEAD_RETURN: retained window identity differs');
  if(input.receipt.sourceFigureReturn!==undefined&&sourceFigureReturnSchema.parse(input.receipt.sourceFigureReturn).identitySha256!==input.identitySha256)
@@ -219,6 +239,7 @@ export async function singleReviewHeadEvidence(db:Prisma.TransactionClient,input
   sourceRequestKey:key,sourceFingerprint:paid.kept.operationFingerprint,sourcePayloadSha256:paid.kept.payloadSha256,
   normalizedRawSha256:sha(paid.normalized),shippingSha256:sha(input.shipping),geometrySha256:input.geometrySha256,
   identitySha256:input.identitySha256,returned,feather:12,...(legacy?{sourceBindingVersion:LEGACY_PAID_JOIN_HEAD_VERSION,sourceCompositionSha256:legacyCompositionHash(input.receipt)}
+   :input.receipt.journeyHeadRecovery!==undefined?{sourceBindingVersion:JOURNEY_SOURCE_HEAD_VERSION,sourceCompositionSha256:journeyCompositionHash(input.receipt)}
    :input.receipt.retainedWindow!==undefined?{sourceBindingVersion:RETAINED_WINDOW_VERSION,sourceCompositionSha256:windowHash(input.receipt),
     compoundHeadMask:retainedWindowHeadMask(windowAuthority(input.receipt).a,windowAuthority(input.receipt).m.sampleX,windowAuthority(input.receipt).m.sampleY)}
    :input.receipt.sourceFigureReturn!==undefined?{sourceBindingVersion:SOURCE_FIGURE_RETURN_VERSION,sourceCompositionSha256:figureHash(input.receipt)}
@@ -246,6 +267,7 @@ export async function singleReviewHeadEvidenceMatches(db:Prisma.TransactionClien
   await tabSourceAuthorized(db,input.gameId,j,paid);
   await figureSourceAuthorized(db,input.gameId,j);
   await windowSourceAuthorized(db,input.gameId,j);
+  await journeySourceAuthorized(db,input.gameId,j);
   if(j.retainedWindow!==undefined){const{m,a}=windowAuthority(j);if(m.identitySha256!==input.identitySha256
    ||JSON.stringify(p.compoundHeadMask)!==JSON.stringify(retainedWindowHeadMask(a,m.sampleX,m.sampleY)))return false;}
   if(j.sourceFigureReturn!==undefined&&sourceFigureReturnSchema.parse(j.sourceFigureReturn).identitySha256!==input.identitySha256)return false;

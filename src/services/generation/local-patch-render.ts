@@ -2,6 +2,8 @@ import { NATIVE_DETAIL_REPAIR_DIRECTION, nativeDetailEvidenceSchema, type Native
 import { sourceHeadMarkerSchema, sourceHeadAuthorityForPlacement, sourceHeadHash, sourceHeadPaintDirection,
   type SourceHeadMarker, type SourceHeadAuthority } from '../../domain/generation/source-head-recovery';
 import { sourceHeadMaskPng, applySourceHeadPixels } from './source-head-pixels';
+import { journeyHeadMarkerSchema, journeyHeadAuthorityFor, journeyHeadHash, journeyHeadPaintDirection, type JourneyHeadMarker, type JourneyHeadAuthority } from '../../domain/generation/journey-source-head';
+import { journeyHeadMaskPng, applyJourneyHeadPixels } from './journey-source-head-recovery';
 import { sourceHeadJoinMarkerSchema, type SourceHeadJoinMarker } from '../../domain/generation/source-head-join';
 import { wholeSourceContextMarkerSchema, type WholeSourceContextMarker } from "../../domain/generation/whole-source-context-purchase";
 import { assertWholeSourceContextPlan, WHOLE_SOURCE_CONTEXT_VERSION, type WholeSourceContextPlan } from "../../domain/scene/whole-source-context";
@@ -135,6 +137,7 @@ export type LocalPatchAttemptInput = {
   readonly sourceBodyRepair?: SourceBodyMarker;
   readonly sourceBodyBirth?: SourceBodyBirthMarker;
   readonly sourceHeadRecovery?: { readonly marker: SourceHeadMarker; readonly authority: SourceHeadAuthority; readonly join?:SourceHeadJoinMarker };
+  readonly journeyHeadRecovery?: { readonly marker: JourneyHeadMarker; readonly authority: JourneyHeadAuthority };
   readonly wholeSourceContext?: { readonly marker: WholeSourceContextMarker; readonly plan: WholeSourceContextPlan; readonly sourceFile: Buffer };
   readonly identityPng: Buffer;
   readonly referenceMode?: LocalPatchReferenceMode;
@@ -210,6 +213,7 @@ export type LocalPatchAttempt = {
   readonly authoredReturn?: AuthoredLocalPatchReturnContract;
   readonly sourceBodyComposition?: Awaited<ReturnType<typeof applySourceBodyPixels>>["proof"];
   readonly sourceHeadComposition?: Awaited<ReturnType<typeof applySourceHeadPixels>>['proof'];
+  readonly journeyHeadComposition?: Awaited<ReturnType<typeof applyJourneyHeadPixels>>['proof'];
   /** v18 rows of a hide with an authored outline: what was restored, bound to `shippingPng`. */
   readonly foreground?: LocalPatchForegroundRecord;
   readonly verdict: LocalPatchVerdict | null;
@@ -328,6 +332,7 @@ type RetainedRender = {
   readonly authoredReturn?: AuthoredLocalPatchReturnContract;
   readonly authoredDiagnosis?: AuthoredRecoveryDiagnosis;
   readonly sourceHeadRecovery?: SourceHeadMarker;
+  readonly journeyHeadRecovery?: JourneyHeadMarker;
   readonly wholeSourceContext?: { readonly marker: WholeSourceContextMarker; readonly plan: WholeSourceContextPlan };
 };
 
@@ -394,6 +399,7 @@ export async function renderLocalPatchHide(deps: LocalPatchRenderDeps, input: Lo
     || input.authoredSource.width !== authoredReturn.source.width || input.authoredSource.height !== authoredReturn.source.height))
     throw Error("LOCAL_PATCH: authored source differs from the trusted context");
   const sourceHead=input.sourceHeadRecovery;
+  const journeyHead=input.journeyHeadRecovery;
   if(sourceHead){
     const marker=sourceHeadMarkerSchema.parse(sourceHead.marker),authority=input.placementContext&&sourceHeadAuthorityForPlacement(sourcePlacementForHide(input.placementContext,input.hide.id));
     if(!authority||sourceHeadHash(authority)!==sourceHeadHash(sourceHead.authority)||marker.authoritySha256!==sourceHeadHash(authority)
@@ -407,6 +413,16 @@ export async function renderLocalPatchHide(deps: LocalPatchRenderDeps, input: Lo
     if(sourceHead.join){const join=sourceHeadJoinMarkerSchema.parse(sourceHead.join);
       if(join.recoveryAuthorizationSha256!==marker.authorizationSha256||join.authoritySha256!==marker.authoritySha256
         ||join.sourceRequestKey!==marker.requestKey)throw Error('SOURCE_HEAD_JOIN: finite replay binding differs');}
+  }
+  if(journeyHead){
+    const marker=journeyHeadMarkerSchema.parse(journeyHead.marker),authority=authoredReturn&&journeyHeadAuthorityFor(authoredReturn);
+    if(!authority||journeyHeadHash(authority)!==journeyHeadHash(journeyHead.authority)||marker.authoritySha256!==journeyHeadHash(authority)
+      ||marker.hideId!==input.hide.id||marker.requestKey!==input.hide.id+':'+input.hide.pose+':render:2'
+      ||input.contentVersion!==13||input.attempt!==2||!input.subjectDirection||input.subjectDirection.quality!=='medium'
+      ||input.ageYears!==7||sha(input.composedPng)!==authority.sourcePngSha256
+      ||sourceHead||input.guidedFrameRecovery||input.placementGuide||input.nativeMaskTail||input.sourceBodyRepair||input.sourceBodyBirth
+      ||input.wholeSourceContext||input.selfRepair||input.adaptiveRecovery||input.recoveryDirective||input.nativeDetailRepair)
+      throw Error('JOURNEY_HEAD: exact finite native MEDIUM head purchase required');
   }
   if (authoredReturn && input.selfRepair) {
     assertAuthoredLocalPatchRecoveryGeometry(authoredReturn, input.placementContext, input.selfRepair.decision);
@@ -435,7 +451,7 @@ export async function renderLocalPatchHide(deps: LocalPatchRenderDeps, input: Lo
   const born=input.placementContext?sourceBodyBirthForHide(input.placementContext,input.hide.id):null;
   const validBirth=!!born&&sourceBodyBirthMarkerSchema.safeParse(input.sourceBodyBirth).success&&input.sourceBodyBirth!.policySha256===born.authorizationSha256&&input.sourceBodyBirth!.manifestSha256===born.sourceBodyManifestSha256&&input.sourceBodyBirth!.hideId===input.hide.id&&input.sourceBodyBirth!.attempt===input.attempt&&!input.sourceBodyRepair;
   const validRepair=!born&&!!input.sourceBodyRepair&&sourceBodyMarkerSchema.safeParse(input.sourceBodyRepair).success&&input.attempt===input.sourceBodyRepair.authorizedAttempt&&!input.sourceBodyBirth;
-  if(body ? !(validBirth||validRepair)||input.guidedFrameRecovery||input.nativeMaskTail||input.selfRepair||input.adaptiveRecovery||input.recoveryDirective : input.sourceBodyRepair!==undefined||input.sourceBodyBirth!==undefined)throw Error('SOURCE_BODY: trusted geometry and exact ordinary or finite purchase required');
+  if(!journeyHead&&(body ? !(validBirth||validRepair)||input.guidedFrameRecovery||input.nativeMaskTail||input.selfRepair||input.adaptiveRecovery||input.recoveryDirective : input.sourceBodyRepair!==undefined||input.sourceBodyBirth!==undefined))throw Error('SOURCE_BODY: trusted geometry and exact ordinary or finite purchase required');
   if (input.wholeSourceContext) {
     const marker = wholeSourceContextMarkerSchema.parse(input.wholeSourceContext.marker);
     const companion = input.placementContext && sourcePlacementForHide(input.placementContext, input.hide.id);
@@ -471,6 +487,7 @@ async function renderLocalPatchHideInner(deps: LocalPatchRenderDeps, input: Loca
   guidedReturn?: Pick<AuthoredLocalPatchReturnContract, "local" | "source">): Promise<LocalPatchAttempt> {
   const { worldId, board, hide, attempt } = input;
   const sourceHead=input.sourceHeadRecovery;
+  const journeyHead=input.journeyHeadRecovery;
   if (isLocalPatchAgeVersion(input.contentVersion)) {
     if (input.referenceMode !== LOCAL_PATCH_PORTRAIT_ONLY_REFERENCE_MODE || input.canonicalIdentityPng || input.boardPeoplePng) {
       throw new Error("LOCAL_PATCH: v9 requires portrait-only references, with no unrelated face atlas or old body sheet");
@@ -558,6 +575,10 @@ async function renderLocalPatchHideInner(deps: LocalPatchRenderDeps, input: Loca
   ].join("\n") : "";
   /** The pinned recipe alone, or with the subject plan (and its wardrobe in place of the authored one). */
   const basePromptWith = (plan: SubjectRenderDirection | undefined) => {
+    if(journeyHead){
+      if(!plan||!input.ageYears)throw Error('JOURNEY_HEAD: original identity/age plan required');
+      return journeyHeadPaintDirection(journeyHead.authority,input.ageYears);
+    }
     if(sourceHead){
       if(!plan||!input.ageYears)throw Error('SOURCE_HEAD: original identity/age plan required');
       // The old subject direction can require a different arm/body action or
@@ -600,7 +621,7 @@ async function renderLocalPatchHideInner(deps: LocalPatchRenderDeps, input: Loca
   // v2 also keeps the seam band shut: the seam check reads exactly that band back.
   const guideV2 = input.placementGuide?.version === PLACEMENT_GUIDE_V2_VERSION;
   const guideEditable = guideV2 ? placementGuideEditableRect(authoredMask, guideReturn!) : nativeEdit ? nativeEdit.editable : guideReturn!;
-  let maskPng = sourceHead ? await sourceHeadMaskPng(sourceHead.authority) : bodyGeometry ? await sourceBodyMaskPng(bodyGeometry) : await poseMask(guideGeometry ? { ...hide, mask: guideEditable } : recovery ? { ...hide, mask } : hide);
+  let maskPng = journeyHead ? await journeyHeadMaskPng(journeyHead.authority) : sourceHead ? await sourceHeadMaskPng(sourceHead.authority) : bodyGeometry ? await sourceBodyMaskPng(bodyGeometry) : await poseMask(guideGeometry ? { ...hide, mask: guideEditable } : recovery ? { ...hide, mask } : hide);
   let placementGuidePng: Buffer | undefined = guideGeometry ? await sharp(stylePng).composite([...(bodyGeometry?[{input:Buffer.from(sourceBodyOverlay(bodyGeometry))}]:[]),{ input:Buffer.from(guidedFrameOverlay(authoredMask,guideReturn!)) }]).png().toBuffer() : undefined;
   if (input.placementGuide) {
     const entry = sourcePlacementForHide(input.placementContext!, hide.id);
@@ -652,6 +673,7 @@ async function renderLocalPatchHideInner(deps: LocalPatchRenderDeps, input: Loca
     ...(input.sourceBodyRepair ? { sourceBodyRepair: input.sourceBodyRepair } : {}),
     ...(input.sourceBodyBirth ? {sourceBodyBirth:input.sourceBodyBirth}:{}),
     ...(sourceHead ? {sourceHeadRecovery:sourceHead.marker,sourceHeadAuthoritySha256:sourceHeadHash(sourceHead.authority)}:{}),
+    ...(journeyHead ? {journeyHeadRecovery:journeyHead.marker,journeyHeadAuthoritySha256:journeyHeadHash(journeyHead.authority)}:{}),
     ...(input.placementGuide ? { placementGuide: input.placementGuide } : {}),
     ...(placementGuidePng ? { guidedFrameRecovery: input.guidedFrameRecovery, placementGuideSha256:sha(placementGuidePng) } : {}),
     ...(plan ? { subject: plan.sha256 } : {}),
@@ -696,6 +718,7 @@ async function renderLocalPatchHideInner(deps: LocalPatchRenderDeps, input: Loca
         ...(input.sourceBodyRepair?{sourceBodyRepair:input.sourceBodyRepair}:{}),
         ...(input.sourceBodyBirth?{sourceBodyBirth:input.sourceBodyBirth}:{}),
         ...(sourceHead?{sourceHeadRecovery:sourceHead.marker}:{}),
+        ...(journeyHead?{journeyHeadRecovery:journeyHead.marker}:{}),
         ...(authoredReturn?.sourcePlacement ? { authoredReturn, ...(input.authoredDiagnosis ? { authoredDiagnosis: input.authoredDiagnosis } : {}) } : {}),
       };
       const bytes = Buffer.from(JSON.stringify(keep));
@@ -725,21 +748,30 @@ async function renderLocalPatchHideInner(deps: LocalPatchRenderDeps, input: Loca
     throw Error('SOURCE_HEAD: retained native source-head permission changed');
   if(sourceHead?.join&&(sourceHead.join.sourceFingerprint!==renderFingerprint||sourceHead.join.sourcePayloadSha256!==sha(bought.bytes)))
     throw Error('SOURCE_HEAD_JOIN: already-paid request fingerprint or payload differs');
+  if(journeyHead){
+    if(JSON.stringify(painted.journeyHeadRecovery)!==JSON.stringify(journeyHead.marker))throw Error('JOURNEY_HEAD: retained permission changed');
+    const rawShape=await sharp(Buffer.from(painted.bytesBase64,'base64')).metadata();
+    if(rawShape.width!==512||rawShape.height!==768) return refusedRender('JOURNEY_HEAD: paid RAW is not native512x768',renderCents);
+  }
   const patchPng = input.wholeSourceContext && painterNeighbors?.ok
     ? await extractWholeSourceContextShipping(Buffer.from(painted.bytesBase64, "base64"), input.wholeSourceContext.plan, painterNeighbors.contract, authoredMask)
     : await sharp(Buffer.from(painted.bytesBase64, "base64")).resize(LOCAL_PATCH_CROP.width, LOCAL_PATCH_CROP.height, { fit: "fill" }).png().toBuffer();
   // The outline is restored before the join, so the seam report describes the published pixels.
-  const occluded = !sourceHead && foreground ? await occludeLocalPatch(patchPng,
+  const occluded = !sourceHead && !journeyHead && foreground ? await occludeLocalPatch(patchPng,
     await sharp(input.composedPng, { limitInputPixels: 8_294_400 }).extract(crop).png().toBuffer(), foreground) : null;
   const bodyApplied=bodyGeometry?await applySourceBodyPixels(input.composedPng,patchPng,bodyGeometry):null;
   let headApplied:Awaited<ReturnType<typeof applySourceHeadPixels>>|null=null;
   if(sourceHead){try{headApplied=await applySourceHeadPixels(input.composedPng,patchPng,sourceHead.authority,sourceHead.join?.version);}
     catch(error){if(!(error instanceof Error)||!error.message.startsWith('SOURCE_HEAD: new head boundary'))throw error;
       return {...refusedRender('quality-seam: '+error.message,renderCents),patchPng,replayed:bought.replayed};}}
-  const restored = (shipping: Buffer) => ({...(occluded ? { foreground: foregroundRecord(foreground!, occluded.restoredPixels, sha(shipping)) } : {}),...(bodyApplied?{sourceBodyComposition:bodyApplied.proof}:{}),...(headApplied?{sourceHeadComposition:headApplied.proof}:{})});
+  let journeyApplied:Awaited<ReturnType<typeof applyJourneyHeadPixels>>|null=null;
+  if(journeyHead){try{journeyApplied=await applyJourneyHeadPixels(input.composedPng,patchPng,journeyHead.authority);}
+    catch(error){if(!(error instanceof Error)||!error.message.startsWith('JOURNEY_HEAD: protected SOURCE exterior'))throw error;
+      return {...refusedRender('quality-seam: '+error.message,renderCents),patchPng,replayed:bought.replayed};}}
+  const restored = (shipping: Buffer) => ({...(occluded ? { foreground: foregroundRecord(foreground!, occluded.restoredPixels, sha(shipping)) } : {}),...(bodyApplied?{sourceBodyComposition:bodyApplied.proof}:{}),...(headApplied?{sourceHeadComposition:headApplied.proof}:{}),...(journeyApplied?{journeyHeadComposition:journeyApplied.proof}:{})});
   const bounded = isLocalPatchStrictVersion(input.contentVersion)
-    ? await composeBoundedLocalPatch(input.composedPng, crop, headApplied?.png ?? bodyApplied?.png ?? occluded?.png ?? patchPng, mask, {
-      requireAligned: !!headApplied || !!bodyGeometry || hasLocalPatchCapability(input.contentVersion, "integratedQuality") && !playerReviewEnabled(),
+    ? await composeBoundedLocalPatch(input.composedPng, crop, journeyApplied?.png ?? headApplied?.png ?? bodyApplied?.png ?? occluded?.png ?? patchPng, mask, {
+      requireAligned: !!journeyApplied || !!headApplied || !!bodyGeometry || hasLocalPatchCapability(input.contentVersion, "integratedQuality") && !playerReviewEnabled(),
       playerReview: hasLocalPatchCapability(input.contentVersion, "integratedQuality") && playerReviewEnabled(),
       ...(hide.returnRect ? { returnRect: hide.returnRect } : {}),
     }) : null;

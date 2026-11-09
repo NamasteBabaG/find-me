@@ -1,5 +1,6 @@
 import { SOURCE_CROWN_COMPOSITION_VERSION, sourceCrownReturned, sourceCrownCorrectionSchema } from "../../domain/scene/source-crown-return";
 import { crownTabSchema } from "../../domain/generation/crown-tab";
+import { journeyHeadMarkerSchema, journeyHeadAuthorityFor, journeyHeadHash } from '../../domain/generation/journey-source-head';
 import { RETAINED_WINDOW_VERSION, retainedWindowMarkerSchema, retainedWindowCanonicalHash } from '../../domain/generation/retained-window';
 import { retainedWindowAuthorityFor } from '../../../content/detectives/retained-window-v1';
 import { hasLocalPatchCapability } from "../../domain/scene/local-patch-family";
@@ -28,7 +29,7 @@ import { foregroundForPinnedPrompt, foregroundPlanConflict } from "./local-patch
 const equal = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
 const object = (value: unknown): Record<string, unknown> => value !== null && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
 export type AuthoredLocalPatchReceipt = { compositionVersion?: unknown; authoredReturn?: unknown; authoredRecovery?: unknown;
-  retainedWindow?: unknown;
+  retainedWindow?: unknown; journeyHeadRecovery?: unknown;
   crownReturn?: unknown; propJoinCorrection?: unknown; selfRepair?: unknown; recoveryComposition?: unknown; foreground?: unknown; judgedSha256?: unknown; promptVersion?: unknown; boardReview?: unknown };
 
 /** Reconstruct from trusted pinned source data, never from a claimed receipt. */
@@ -147,6 +148,12 @@ export function authoredLocalPatchReturnMatches(receipt: AuthoredLocalPatchRecei
           && equal(review.authoredRecovery, receipt.authoredRecovery));
     } catch { return false; }
   }
+  if(receipt?.journeyHeadRecovery!==undefined){
+    const m=journeyHeadMarkerSchema.safeParse(receipt.journeyHeadRecovery),parent=expectedAuthoredLocalPatchReturn(board,hide,contentVersion,placementContext);
+    const a=parent&&journeyHeadAuthorityFor(parent);
+    if(!m.success||!a||m.data.hideId!==hide.id||journeyHeadHash(a)!==m.data.authoritySha256
+      ||receipt.authoredRecovery!==undefined||receipt.compositionVersion!==AUTHORED_PATCH_COMPOSITION_VERSION)return false;
+  }
   const v4 = receipt?.compositionVersion === AUTHORED_PATCH_COMPOSITION_VERSION;
   const recovery = receipt?.compositionVersion === AUTHORED_RECOVERY_COMPOSITION_VERSION;
   const crown=receipt?.compositionVersion===SOURCE_CROWN_COMPOSITION_VERSION;
@@ -186,6 +193,8 @@ export async function authoredLocalPatchRecoveryEvidenceMatches(db: Prisma.Trans
       { gameId: input.gameId, sceneVersion: input.sceneVersion, hideId: hide.id, variantId: m.data.rowId,
         assetId: row.assetId, judgeJson: JSON.stringify(receipt) }, input.beforePng ? async () => input.beforePng! : undefined);
   }
+  if(receipt.journeyHeadRecovery!==undefined)return input.sceneVersion===13&&await (await import('./journey-source-head-recovery')).journeyHeadCompositionMatches(db,
+    {gameId:input.gameId,hideId:hide.id,receipt:receipt as Record<string,any>,beforePng:input.beforePng});
   if((receipt as Record<string,unknown>).sourceHeadRecovery!==undefined)
     return input.sceneVersion===12 && await (await import('./source-head-recovery')).sourceHeadCompositionEvidenceMatches(db,
       {gameId:input.gameId,hideId:hide.id,receipt:receipt as Record<string,any>,beforePng:input.beforePng});
@@ -276,6 +285,11 @@ export async function authoredLocalPatchPublicationMatches(db: Prisma.Transactio
     try { retained = JSON.parse(input.judgeJson ?? 'null')?.retainedWindow; } catch { retained = undefined; }
     if (retained !== undefined) return await (await import('./retained-window-recovery')).retainedWindowEvidenceMatches(db, input);
     if (input.assetId?.startsWith('ast_rsw_')) return false;
+    let journey:unknown;
+    try{journey=JSON.parse(input.judgeJson??'null')?.journeyHeadRecovery;}catch{journey=undefined;}
+    if(journey!==undefined)return input.sceneVersion===13&&await (await import('./journey-source-head-recovery')).journeyHeadCompositionMatches(db,
+      {...input,receipt:JSON.parse(input.judgeJson!)});
+    if(input.assetId?.startsWith('ast_jnh_'))return false;
     let head:unknown;
     try{head=JSON.parse(input.judgeJson??'null')?.sourceHeadRecovery;}catch{head=undefined;}
     if(head!==undefined)return input.sceneVersion===12&&await (await import('./source-head-recovery')).sourceHeadCompositionEvidenceMatches(db,

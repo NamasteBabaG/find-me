@@ -3704,3 +3704,132 @@ it("local-patch-no-route-rest/v1: permanent failures rest four first pictures, g
     expect(rests.every((r:{rest:string})=>r.rest==="evidence")).toBe(true);
   } finally { vi.useRealTimers(); }
 }, 1_500_000);
+
+it.each([{index:0,refuseAge:false,label:'New York full native head'}, {index:1,refuseAge:false,label:'Paris active body route and protected feet'}, {index:0,refuseAge:true,label:'unchanged strict age refusal'}])('journey native head v2: $label binds one second purchase, full MEDIUM coverage and all26 unchanged siblings',async({index,refuseAge})=>{
+ vi.useFakeTimers({toFake:['Date']});
+ try{
+  const jh=await import('../../../domain/generation/journey-source-head'),service=await import('../journey-source-head-recovery');
+  const {JOURNEY_SOURCE_HEAD_AUTHORITIES}=await import('../../../../content/detectives/journey-source-head-v2');
+  const a=JOURNEY_SOURCE_HEAD_AUTHORITIES[index]!,gameId='journey-native-head-synthetic-'+index+'-'+Number(refuseAge);
+  await newDetectiveWorld(gameId,7,true,false,false,true);
+  const payment=await db.order.findUniqueOrThrow({where:{id:'order-'+gameId}});
+  await db.game.update({where:{id:gameId},data:{paidAt:payment.paidAt}});
+  await ensureSingleMediumReviewPolicy(c,gameId,async()=>{});
+  const placement=await resolveLocalPatchBoardsForGame(db,gameId,13),board=placement.boards.find(b=>b.board===a.boardId)!,hide=board.hides.find(h=>h.id===a.hideId)!;
+  expect(jh.journeyHeadAuthorityFor(expectedAuthoredLocalPatchReturn(board,hide,13,placement)!)).toEqual(a);
+  let headBought=false,headQuestions=0;
+  const provider=controlledSol(false,false),retrieve=provider.fake.retrieve.bind(provider.fake),create=provider.fake.create.bind(provider.fake);
+  provider.fake.create=async body=>{
+   const prompt=(body.input as {content:{text?:string}[]}[])[0]!.content[0]!.text!;
+   if(prompt.includes('NATIVE SOURCE HEAD '+jh.JOURNEY_SOURCE_HEAD_VERSION)){headQuestions++;expect(body.max_output_tokens).toBe(6000);expect(body.reasoning).toMatchObject({effort:'medium'});
+    expect(prompt).toContain('ENTIRE new hair silhouette');expect(prompt).toContain('public edit footprint');expect((body.input as {content:{type:string;text?:string}[]}[])[0]!.content.some(block=>block.type==='input_text'&&block.text?.includes(':native-shipping-crown'))).toBe(true);}
+   return create(body);
+  };
+  provider.fake.retrieve=async id=>{const result=await retrieve(id);if(result.status!=='completed'||!headBought)return result;
+   const value=JSON.parse(result.reading.raw!),assessment=value.assessment.version===SOURCE_NEIGHBOR_BUNDLE_VERSION?value.assessment.assessment:value.assessment;
+   assessment.subject.checks.perceivedAge.estimatedMinYears=refuseAge?7:6;assessment.subject.checks.perceivedAge.estimatedMaxYears=refuseAge?9:8;
+   const head=index?{left:170,top:220,width:95,height:100}:{left:210,top:290,width:60,height:80};
+   value.head={...value.head,rawHead:head,shippingHead:head,rawCrown:'pass',shippingCrown:'pass'};
+   return {...result,reading:{...result.reading,raw:JSON.stringify(value)}};
+  };
+  const forbidden=vi.fn(async()=>{throw Error('No extra synchronous or paid diagnostic request');});
+  const container={...c,backgroundReview:provider.fake,visualReview:{request:forbidden}} as Container;
+  const render=vi.fn<LocalPatchHideDeps['render']>(async input=>{
+   expect(input.subjectQuality).toBe('medium');const pixels=await sharp(input.stylePng).ensureAlpha().raw().toBuffer();
+   if(input.requestKey===a.hideId+':'+a.pose+':render:2'){
+    expect(headBought).toBe(false);headBought=true;expect(input.prompt).toContain('NATIVE SOURCE HEAD '+jh.JOURNEY_SOURCE_HEAD_VERSION);
+    expect(input.prompt).not.toContain('SUBJECT DIRECTION local-patch-subject-paint/');expect(input.placementGuidePng).toBeUndefined();
+    const alpha=jh.journeyHeadAlpha(a),mask=await sharp(input.maskPng).ensureAlpha().raw().toBuffer();
+    let maskMismatches=0;for(let i=0;i<alpha.length;i++){if(mask[i*4+3]!==255-alpha[i]!)maskMismatches++;if(alpha[i]){pixels[i*4]=32;pixels[i*4+1]=108;pixels[i*4+2]=139;}}expect(maskMismatches).toBe(0);
+   }else{expect(input.requestKey).toBe(a.hideId+':'+a.pose+':render:1');const r=maskForHide(hide);
+    for(let y=r.top+30;y<r.top+80;y++)for(let x=r.left+30;x<r.left+80;x++){const i=(y*512+x)*4;pixels[i]=84;pixels[i+1]=54;pixels[i+2]=121;}}
+   return paintedOk(await sharp(pixels,{raw:{width:512,height:768,channels:4}}).png().toBuffer(),bill('synthetic-journey-head-'+input.requestKey,50000));
+  });
+  let interruptedCheckpoint=false;
+  const deps:LocalPatchHideDeps={readBoardArt:readArt,renderPolicySha256:localPatchRenderPolicySha256(LOCAL_PATCH_IMAGE_POLICY),render,judge:forbidden,
+   fence:async()=>{if(index===1&&headBought&&!interruptedCheckpoint){interruptedCheckpoint=true;throw Error('Synthetic lost new-head row checkpoint');}}};
+  const initial=await runLocalPatchHide(container,deps,{gameId,board,hide});expect(initial.state,initial.reason??'').toBe('generated');
+  const scene=await db.gameScene.findUniqueOrThrow({where:{gameId_sceneSlug:{gameId,sceneSlug:board.board}}});
+  const row=()=>db.targetVariantAsset.findFirstOrThrow({where:{variant:'A',targetInstance:{gameSceneId:scene.id,targetId:hide.targetId}}});
+  for(let turn=0;turn<8;turn++){await reviewLocalPatchBoard(container,{gameId,sceneId:scene.id,deadlineAt:Date.now()+270000},{fence:async()=>{},readBoardArt:readArt},{onlyHideId:hide.id});
+   await advanceContinuityInBackground(container,gameId,{deadlineAt:Date.now()+270000});await vi.advanceTimersByTimeAsync(LEAN_RECOVERY_BACKOFF_MS+1);if(JSON.parse((await row()).judgeJson!).reviewState==='board-review-complete')break;}
+  const before=await row();expect(before).toMatchObject({status:'FAILED',attempts:1});expect(JSON.parse(before.judgeJson!).reviewState).toBe('board-review-complete');
+  for(const b of placement.boards)for(const h of b.hides){if(h.id===hide.id)continue;
+   const s=await db.gameScene.findFirstOrThrow({where:{gameId,sceneSlug:b.board}}),target=sceneBySlug(b.board,13).targets.find(t=>t.id===h.targetId)!;
+   const ti=await db.targetInstance.create({data:{id:'jnh-tgt-'+gameId+'-'+h.id,gameSceneId:s.id,targetId:target.id,targetType:target.targetType,spriteKind:'image',slotAId:target.slots[0].id,slotBId:target.slots[1].id}});
+   await db.targetVariantAsset.create({data:{id:'jnh-tva-'+gameId+'-'+h.id,targetInstanceId:ti.id,variant:'A',slotId:target.slots[0].id,status:'PENDING',provider:'local-patch',attempts:0}});}
+  const siblings=()=>db.targetVariantAsset.findMany({where:{id:{not:before.id},targetInstance:{gameScene:{gameId}}},orderBy:{id:'asc'}}),protectedRows=await siblings();expect(protectedRows).toHaveLength(26);
+  const worldId=boardWizardWorldId(gameId),budget=boardWizardBudgetOf(container);
+  if(index===0&&!refuseAge){
+   const key='synthetic-jnh-prior-unknown';await budget.reserve(worldId,{requestKey:key,scope:'judge',operationFingerprint:'c'.repeat(64),reserveMicroUsd:202060});
+   await budget.markUnknown(worldId,key,'Synthetic old unanswered provider request');
+   expect(await service.resumeJourneySourceHead(container,gameId,hide.id)).toBe(false);const unknown=await budget.readRequest(worldId,key);
+   const owner=(await db.game.findUniqueOrThrow({where:{id:gameId}})).ownerId!;
+   await boardWizardBudgetOf(container,1,{authorizeUnknownContinuation:async approval=>approval.worldId===worldId&&approval.operatorId===owner})
+    .authorizeUnknownContinuation(worldId,{approvalId:'synthetic-existing-jnh-human-authority',requestKey:key,scope:unknown!.scope,operationFingerprint:unknown!.operationFingerprint,
+     reserveMicroUsd:unknown!.reserveMicroUsd,unknownReasons:unknown!.unknownReasons,operatorId:owner,authorizationSha256:'d'.repeat(64),authorizedAt:new Date().toISOString()});
+   const fill=3615442-(await budget.audit(worldId)).committedMicroUsd;await budget.reserve(worldId,{requestKey:'synthetic-jnh-prior-costs',scope:'image',operationFingerprint:'e'.repeat(64),reserveMicroUsd:fill});
+   await budget.settle(worldId,'synthetic-jnh-prior-costs',bill('synthetic-prior-costs-'+gameId,fill));
+   expect((await budget.audit(worldId)).remainingMicroUsd).toBe(384558);expect(await budget.readRequest(worldId,key)).toMatchObject({state:'unknown',reserveMicroUsd:202060});
+  }
+  const oldLedger=await db.worldBudgetLedger.findUniqueOrThrow({where:{worldId}});
+  await db.order.update({where:{id:payment.id},data:{paymentStatus:'REFUNDED'}});expect(await service.resumeJourneySourceHead(container,gameId,hide.id)).toBe(false);await db.order.update({where:{id:payment.id},data:{paymentStatus:'PAID'}});
+  const reasons:string[]=[];expect(await service.resumeJourneySourceHead(container,gameId,hide.id,r=>reasons.push(r)),reasons.join(',')).toBe(true);
+  expect(await row()).toEqual(before);expect((await db.worldBudgetLedger.findUniqueOrThrow({where:{worldId}})).snapshotJson).toBe(oldLedger.snapshotJson);expect(render).toHaveBeenCalledTimes(1);
+  expect(await service.resumeJourneySourceHead(container,gameId,hide.id)).toBe(false);
+  if(index===1){await expect(runLocalPatchHide(container,deps,{gameId,board,hide,finalRepair:true,journeyHeadRecovery:true})).rejects.toThrow('Synthetic lost new-head row checkpoint');
+   expect(await row()).toMatchObject({status:'PENDING',attempts:2});expect(render).toHaveBeenCalledTimes(2);}
+  const result=await runLocalPatchHide(container,deps,{gameId,board,hide,finalRepair:true,journeyHeadRecovery:true});expect(result.state,result.reason??'').toBe('generated');
+  expect(render).toHaveBeenCalledTimes(2);
+  const generated=await row(),j=JSON.parse(generated.judgeJson!);expect(generated).toMatchObject({attempts:2,status:'GENERATED'});expect(generated.assetId).toMatch(/^ast_jnh_/);
+  const hit=JSON.parse(generated.hitRectJson!);const sourceFeet={x:(a.crop.left+a.child.left+a.child.width/2)/a.source.width,y:(a.crop.top+a.child.top+a.child.height-2)/a.source.height};
+  expect(rectContains({x0:hit.x,y0:hit.y,x1:hit.x+hit.w,y1:hit.y+hit.h},sourceFeet.x,sourceFeet.y),'unchanged SOURCE feet remain tappable').toBe(true);
+  expect(j.reviewState).toBe('pending-board-review');expect(j.boardReview).toBeUndefined();expect(j.journeyHeadComposition).toMatchObject({outsideMaskChangedPixels:0,paidHeadChangedPixels:0,shift:{dx:0,dy:0}});
+  expect(await service.journeyHeadCompositionMatches(db,{gameId,hideId:hide.id,receipt:j},readArt)).toBe(true);
+  const headPin=(await service.journeyHeadPinsOf(db,gameId))[0]!;
+  expect(await allowedDualPublication(db,{gameId,sceneVersion:13,hideId:hide.id,variantId:generated.id,attempts:2,
+   identityAssetId:headPin.identityAssetId,identitySha256:headPin.identitySha256,assetId:generated.assetId!,imageSha256:j.judgedSha256,
+   geometrySha256:j.geometrySha256,judgeJson:generated.judgeJson})).toBe(false);
+  expect(await budget.readRequest(worldId,headPin.requestKey)).toMatchObject({state:'settled',reserveMicroUsd:120000});
+  const prepared=await (await import('../local-patch-board-review')).prepareLocalPatchBoardReview(container,{gameId,sceneId:scene.id},{readBoardArt:readArt},{playerReview:true,onlyHideId:hide.id});
+  if(!prepared.ready)throw Error('Native question preparation did not produce its own candidate');
+  const exact=await dualReviewModule.prospectiveSingleVisualReviewQuestion(container,prepared);expect(exact.outputTokens).toBe(6000);expect(exact.reserveMicroUsd).toBeLessThanOrEqual(jh.JOURNEY_HEAD_REVIEW_COVERAGE_MICRO_USD);
+  let defaultBound=0;
+  try{
+   await db.targetVariantAsset.update({where:{id:generated.id},data:{judgeJson:JSON.stringify({...j,evidenceAttempts:[{single:SINGLE_MEDIUM_VISUAL_REVIEW_VERSION,imageSha256:j.judgedSha256}]})}});
+   const retryPrepared=await (await import('../local-patch-board-review')).prepareLocalPatchBoardReview(container,{gameId,sceneId:scene.id},{readBoardArt:readArt},{playerReview:true,onlyHideId:hide.id});
+   if(!retryPrepared.ready)throw Error('Native DEFAULT planning has no prepared candidate');
+   const retryQuestion=await dualReviewModule.prospectiveSingleVisualReviewQuestion(container,retryPrepared);defaultBound=retryQuestion.reserveMicroUsd;
+   expect(retryQuestion.outputTokens).toBe(6000);expect(defaultBound).toBeLessThanOrEqual(jh.JOURNEY_HEAD_REVIEW_COVERAGE_MICRO_USD);
+  }finally{await db.targetVariantAsset.update({where:{id:generated.id},data:{judgeJson:generated.judgeJson}});}
+  console.info('synthetic-native-full-review-bounds',{hideId:hide.id,flex:exact.reserveMicroUsd,default:defaultBound,outputTokens:exact.outputTokens});
+  const headReviewReasons:string[]=[];
+  for(let turn=0;turn<8;turn++){const outcome=await reviewLocalPatchBoard(container,{gameId,sceneId:scene.id,deadlineAt:Date.now()+270000},{fence:async()=>{},readBoardArt:readArt},{onlyHideId:hide.id});headReviewReasons.push(outcome.state+':'+outcome.reason);
+   await advanceContinuityInBackground(container,gameId,{deadlineAt:Date.now()+270000});await vi.advanceTimersByTimeAsync(LEAN_RECOVERY_BACKOFF_MS+1);if(JSON.parse((await row()).judgeJson!).reviewState==='board-review-complete')break;}
+  const final=await row(),receipt=JSON.parse(final.judgeJson!);expect(receipt.reviewState,JSON.stringify({headReviewReasons,headQuestions,lastError:final.lastError,receiptKeys:Object.keys(receipt)})).toBe('board-review-complete');
+  expect(final.status,final.lastError??'').toBe(refuseAge?'FAILED':'GENERATED');expect(headQuestions).toBe(1);
+  expect(await allowedDualPublication(db,{...publicationBinding(gameId,final),sceneVersion:13})).toBe(!refuseAge);
+  if(!refuseAge){expect(receipt.boardReview.dual.quality.policy.maxOutputTokens).toBe(6000);
+   const noMarker={...receipt};delete noMarker.journeyHeadRecovery;expect(await allowedDualPublication(db,{...publicationBinding(gameId,final),sceneVersion:13,judgeJson:JSON.stringify(noMarker)})).toBe(false);
+   expect(await service.journeyHeadCompositionMatches(db,{gameId,hideId:hide.id,receipt:{...receipt,journeyHeadComposition:{...receipt.journeyHeadComposition,paidHeadChangedPixels:1}}},readArt)).toBe(false);}
+  expect(await service.resumeJourneySourceHead(container,gameId,hide.id)).toBe(false);
+  // A normal world slice after completion or refusal may not buy another hide
+  // or diagnose the same head again. Placeholder siblings stay byte-identical.
+  const beforeScope=(await budget.audit(worldId)).committedMicroUsd;
+  await runLocalPatchWorldSlice(container,deps,gameId,{hardDeadlineAt:Date.now()+270000,diagnose:forbidden});
+  expect(render).toHaveBeenCalledTimes(2);expect(await siblings()).toEqual(protectedRows);expect(forbidden).not.toHaveBeenCalled();
+  expect((await budget.audit(worldId)).committedMicroUsd).toBe(beforeScope);
+  const bills=JSON.parse((await db.worldBudgetLedger.findUniqueOrThrow({where:{worldId}})).snapshotJson).requests;
+  for(const old of JSON.parse(oldLedger.snapshotJson).requests)expect(bills.find((b:{requestKey:string})=>b.requestKey===old.requestKey)).toEqual(old);
+  // Stop before a second admission when its full image+review allowance is short by one microUSD.
+  const remaining=(await budget.audit(worldId)).remainingMicroUsd,fill=remaining-(120000+jh.JOURNEY_HEAD_REVIEW_COVERAGE_MICRO_USD-1);
+  if(fill>0){await budget.reserve(worldId,{requestKey:'synthetic-jnh-cap-boundary',scope:'image',operationFingerprint:'f'.repeat(64),reserveMicroUsd:fill});await budget.settle(worldId,'synthetic-jnh-cap-boundary',bill('synthetic-cap-boundary-'+gameId,fill));}
+  const nextReasons:string[]=[];expect(await service.resumeJourneySourceHead(container,gameId,JOURNEY_SOURCE_HEAD_AUTHORITIES[index?0:1]!.hideId,r=>nextReasons.push(r))).toBe(false);
+  expect(nextReasons).toEqual(['payment-identity-or-full-capacity']);
+  const closed=await db.worldBudgetLedger.findUniqueOrThrow({where:{worldId}}),game=await db.game.findUniqueOrThrow({where:{id:gameId}});
+  expect(await deleteLocalPatchGame(container,gameId,{type:'USER',id:game.ownerId!},game.ownerId!)).toBe(true);
+  expect((await db.auditLog.findFirstOrThrow({where:{entityId:gameId,action:jh.JOURNEY_SOURCE_HEAD_ACTION}})).metaJson).toBeNull();
+  expect((await db.worldBudgetLedger.findUniqueOrThrow({where:{worldId}})).snapshotJson).toBe(closed.snapshotJson);
+  expect(fetch).not.toHaveBeenCalled();
+ }finally{vi.useRealTimers();}
+},180_000);

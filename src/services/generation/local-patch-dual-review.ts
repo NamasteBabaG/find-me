@@ -1144,6 +1144,11 @@ async function prepareSingleLowQuestion(c: Pick<Container, "db" | "storage">, pr
     if (singleVersion !== SINGLE_MEDIUM_VISUAL_REVIEW_VERSION) throw Error('BODY_GAP: fresh ordinary MEDIUM required');
     mediumPrompt += '\n' + (await import('../../domain/generation/source-body-gap')).sourceBodyGapReviewDirection();
   }
+  if(receipt.journeyHeadRecovery!==undefined){
+    const jh=await import('../../domain/generation/journey-source-head'),a=jh.journeyHeadAuthorityFor(receipt.authoredReturn);
+    if(!a||singleVersion!==SINGLE_MEDIUM_VISUAL_REVIEW_VERSION)throw Error('JOURNEY_HEAD: fresh ordinary MEDIUM required');
+    mediumPrompt+=jh.journeyHeadReviewDirection(a);
+  }
   if(receipt.sourceHeadRecovery!==undefined){
     if(singleVersion!==SINGLE_MEDIUM_VISUAL_REVIEW_VERSION)throw Error('SOURCE_HEAD: fresh ordinary MEDIUM required');
     mediumPrompt+='\nSOURCE HEAD RECOVERY source-head-recovery/v1: this is a newly painted head/hair/neck on the same original source body. '
@@ -1166,7 +1171,7 @@ async function prepareSingleLowQuestion(c: Pick<Container, "db" | "storage">, pr
   const shared = singleVersion === SINGLE_MEDIUM_VISUAL_REVIEW_VERSION ? await singleMediumEvidence(assessment,anatomy,hideId) : undefined;
   let question = singleVersion === SINGLE_VISUAL_REVIEW_VERSION ? lowQuestion : prepareVisualReview({ ...lowQuestion,
     combined: singleVersion, effort: 'medium', tier: continued ? 'default' : 'flex',
-    ...(receipt.retainedWindow !== undefined ? { outputProfile: 'single-medium-6000/v1' as const } : {}),
+    ...(receipt.retainedWindow !== undefined || receipt.journeyHeadRecovery !== undefined ? { outputProfile: 'single-medium-6000/v1' as const } : {}),
     prompt: mediumPrompt + '\nMEDIUM SHARED NATIVE EVIDENCE: the quality AFTER image contains the anatomy context at LEFT and its exact native head detail at RIGHT across the 24px white gutter. Inspect both panels for every anatomy requirement; neither is a new appearance. All four AFTER-only joins remain supplied as the RIGHT native panels of their labelled BEFORE/AFTER return comparisons. Anatomy must inspect RIGHT AFTER only; never borrow a head from LEFT BEFORE. No required pixels or inspections were removed.' + targetHeadReturnPrompt(head!.evidence), images: [...shared!.images, head!.raw, entry.bytes],
     labels: [...shared!.labels.map(label=>anchor&&label.includes(hideId+':original-photo')?'EVIDENCE_ID='+hideId+':original-photo PRIOR PHOTO-APPROVED TARGET FACE ANCHOR, NOT the deleted photograph':label), 'EVIDENCE_ID='+hideId+':native-provider-raw 512x768 WHOLE RAW TARGET HEAD, crop-local axes',
       'EVIDENCE_ID='+hideId+':native-shipping-crown 512x768 EXACT PLAYER CROP, same axes, inspect full crown at the return edge'] });
@@ -1186,6 +1191,8 @@ async function prepareSingleLowQuestion(c: Pick<Container, "db" | "storage">, pr
   const bound = visualReviewMaxCharge(question);
   if (!bound.ok) throw Error('SINGLE_REVIEW: unbounded prepared evidence: ' + bound.reason);
   if (bound.microUsd > 250_000) throw Error('SINGLE_REVIEW: exact request exceeds its qualified maximum');
+  if(receipt.journeyHeadRecovery!==undefined&&bound.microUsd>(await import('../../domain/generation/journey-source-head')).JOURNEY_HEAD_REVIEW_COVERAGE_MICRO_USD)
+    throw Error('JOURNEY_HEAD: full actual prepared MEDIUM maximum '+bound.microUsd+' input '+bound.inputTokens+' tier '+question.tier+' exceeds prospective coverage');
   return { binding, hideId, entry, receipt, sourceNeighbors, combined, question, requestKey, bound, attempt, continued, singleVersion, head, anchor, nativeDetailEvidence };
 }
 

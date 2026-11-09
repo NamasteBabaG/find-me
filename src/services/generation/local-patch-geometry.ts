@@ -9,6 +9,8 @@ import { assertSourceFigureAuthority, type SourceFigureAuthority } from "../../d
 import { sha256Bytes } from "./fixed-sprite";
 import { retainedWindowMeasurementBounds, retainedWindowCanonicalHash, type RetainedWindowAuthority } from '../../domain/generation/retained-window';
 import { RETAINED_WINDOW_AUTHORITIES, assertRetainedWindowManifest } from '../../../content/detectives/retained-window-v1';
+import { JOURNEY_SOURCE_HEAD_AUTHORITIES } from '../../../content/detectives/journey-source-head-v2';
+import { assertJourneyHeadManifest, journeyHeadHash, type JourneyHeadAuthority } from '../../domain/generation/journey-source-head';
 
 /**
  * Where a finished hide is drawn, where the child in it can be tapped, and where
@@ -68,6 +70,8 @@ export async function localPatchGeometry(input: {
   /** Closed public permission; historical geometry remains byte-identical. */
   readonly sourceFigure?: SourceFigureAuthority;
   readonly retainedWindow?: RetainedWindowAuthority;
+  /** The unchanged SOURCE body remains tappable, not just its newly drawn face. */
+  readonly journeyHead?: JourneyHeadAuthority;
 }): Promise<LocalPatchGeometry> {
   const { hide } = input;
   const art = input.board ?? LOCAL_PATCH_BOARD;
@@ -101,6 +105,14 @@ export async function localPatchGeometry(input: {
     // these pixels/geometry on publication. Do not measure the entire crop.
     box = retainedWindowMeasurementBounds(a);
   }
+  if (input.journeyHead) {
+    const a = input.journeyHead, same = (x: unknown, y: unknown) => journeyHeadHash(x) === journeyHeadHash(y);
+    assertJourneyHeadManifest();
+    if (input.sourceFigure || input.retainedWindow || input.contentVersion !== 13 || hide.id !== a.hideId || hide.pose !== a.pose
+      || !same(crop, a.crop) || !same(requested, a.child) || art.width !== a.source.width || art.height !== a.source.height
+      || sha256Bytes(input.boardPng) !== a.sourcePngSha256 || !JOURNEY_SOURCE_HEAD_AUTHORITIES.some(known => same(known, a)))
+      throw Error('JOURNEY_HEAD: full SOURCE-body geometry differs from public permission');
+  }
 
   const rect = { x: crop.left / art.width, y: crop.top / art.height, w: crop.width / art.width, h: crop.height / art.height };
   const declared = {
@@ -110,7 +122,7 @@ export async function localPatchGeometry(input: {
 
   const change = await changedWithin(input.boardPng, crop, input.patchPng, box);
   const measuredFraction = change.changed / (box.width * box.height);
-  if (measuredFraction < LOCAL_PATCH_MIN_MEASURED_FRACTION) {
+  if (input.journeyHead || measuredFraction < LOCAL_PATCH_MIN_MEASURED_FRACTION) {
     return { geometry: { rect, ...declared }, measuredFraction, basis: "declared" };
   }
 
