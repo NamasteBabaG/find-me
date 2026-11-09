@@ -3,7 +3,7 @@ import { BOUND_SUBJECT_QUALITY_ENVELOPE_READER, readBoundSubjectQualityEnvelopeV
   readSubjectQualityEnvelopeWith, type BoundSubjectQualityEnvelopeReader } from "../../domain/generation/bound-subject-quality-envelope";
 import { targetHeadReturnDecision, TARGET_HEAD_VISIBLE_VERSION, type TargetHeadEvidence } from "../../domain/generation/target-head-return";
 import { SINGLE_MEDIUM_VISUAL_REVIEW_VERSION, readSingleVisualReviewVersion, readSingleVisualReview, type SingleVisualReviewVersion } from "../../domain/generation/single-visual-review";
-import { SINGLE_LOW_REVIEW_POLICIES, SINGLE_MEDIUM_REVIEW_POLICIES, isSingleReviewPolicy, isSingleMediumReviewPolicy } from "../../domain/generation/visual-review-policy";
+import { SINGLE_LOW_REVIEW_POLICIES, SINGLE_MEDIUM_REVIEW_POLICIES, BOUNDED_SINGLE_MEDIUM_REVIEW_POLICIES, isSingleReviewPolicy, isSingleMediumReviewPolicy } from "../../domain/generation/visual-review-policy";
 import type { Prisma } from "@prisma/client";
 import type { AuthoredLocalPatchReturnContract, AuthoredLocalPatchRecoveryContract } from "../../domain/scene/local-patch-return-region";
 import type { VisualReviewPolicy } from "../../domain/generation/visual-review-policy";
@@ -419,7 +419,7 @@ export async function verifiedDualStage(db: Prisma.TransactionClient, worldId: s
   const allowed = [visualReviewPolicy(role, "high"), ...(options.allowBackground && role === "head-continuity"
     ? [visualReviewPolicy(role, "high", undefined, "responses-background")] : []),
     ...(options.allowLean ? LEAN_REVIEW_POLICIES.filter(policy => policy.role === role) : []),
-    ...(options.allowSingle ? [...SINGLE_LOW_REVIEW_POLICIES, ...SINGLE_MEDIUM_REVIEW_POLICIES] : [])];
+    ...(options.allowSingle ? [...SINGLE_LOW_REVIEW_POLICIES, ...SINGLE_MEDIUM_REVIEW_POLICIES, ...BOUNDED_SINGLE_MEDIUM_REVIEW_POLICIES] : [])];
   if (!allowed.some(policy => equal(stage.policy, policy)) || !visualStageReadable(stage)
     || !Number.isSafeInteger(stage.attempt) || stage.attempt < 1
     || !/^self-repair:board:[a-z]+:[a-f0-9]{64}$/.test(stage.requestKey)

@@ -1,5 +1,7 @@
 import { publishedCrownRepairOf } from "./published-crown-repair";
 import { recordWindowFailure } from './repeat-window-stop';
+import { RETAINED_WINDOW_VERSION, retainedWindowRegion, retainedWindowMeasurementBounds } from '../../domain/generation/retained-window';
+import { retainedWindowAuthorityFor } from '../../../content/detectives/retained-window-v1';
 import { SOURCE_CROWN_COMPOSITION_VERSION, sourceCrownReturned } from "../../domain/scene/source-crown-return";
 import { identityApprovedForDisplay, identityGateReceiptOf, validateIdentityGateBill } from "./board-wizard-identity-gate";
 import { wholeSourceContextPublicationAuthorized } from "./whole-source-context-pin";
@@ -192,6 +194,7 @@ export async function prepareLocalPatchBoardReview(c: Container, input: { gameId
     demand(await authoredLocalPatchRecoveryEvidenceMatches(c.db, { gameId: game.id, board, hide, sceneVersion: scene.sceneVersion,
       receipt: completed, placementContext, promptVersion: row.promptVersion, beforePng: before }), "Authored recovery paid evidence or deterministic candidate changed");
     if (strict && completed.compositionVersion !== LOCAL_PATCH_COMPOSITION_VERSION
+      && completed.compositionVersion !== RETAINED_WINDOW_VERSION
       && completed.compositionVersion !== AUTHORED_PATCH_COMPOSITION_VERSION
       && completed.compositionVersion !== SOURCE_CROWN_COMPOSITION_VERSION
       && !(isCollectionVersion(scene.sceneVersion) && [SELF_REPAIR_COMPOSITION_VERSION, AUTHORED_RECOVERY_COMPOSITION_VERSION].includes(String(completed.compositionVersion))
@@ -305,7 +308,8 @@ export async function prepareLocalPatchBoardReview(c: Container, input: { gameId
       let closeupPng: Buffer | undefined, afterEvidencePng: Buffer | undefined;
       if (strict) {
         const receipt = JSON.parse(e.row.judgeJson!);
-        const mask = [SELF_REPAIR_COMPOSITION_VERSION, AUTHORED_RECOVERY_COMPOSITION_VERSION].includes(receipt.compositionVersion)
+        const windowAuthority = receipt.retainedWindow !== undefined ? retainedWindowAuthorityFor(receipt.authoredReturn) : null;
+        const mask = windowAuthority ? retainedWindowMeasurementBounds(windowAuthority) : [SELF_REPAIR_COMPOSITION_VERSION, AUTHORED_RECOVERY_COMPOSITION_VERSION].includes(receipt.compositionVersion)
           ? selfRepairDecisionSchema.parse(receipt.selfRepair.decision).faceRect : maskForHide(e.hide);
         const guard = LOCAL_PATCH_REVIEW_CLOSEUP_GUARD_PX;
         const detailLeft = e.crop.left + Math.max(0, mask.left - guard), detailTop = e.crop.top + Math.max(0, mask.top - guard);
@@ -325,7 +329,8 @@ export async function prepareLocalPatchBoardReview(c: Container, input: { gameId
         afterEvidencePng = await boundedVisualEvidencePng(afterEvidencePng);
       }
       const receipt = JSON.parse(e.row.judgeJson!);
-      const returned = receipt.crownReturn!==undefined ? sourceCrownReturned(receipt.authoredReturn,receipt.crownReturn)! : [SELF_REPAIR_COMPOSITION_VERSION, AUTHORED_RECOVERY_COMPOSITION_VERSION].includes(receipt.compositionVersion)
+      const windowAuthority = receipt.retainedWindow !== undefined ? retainedWindowAuthorityFor(receipt.authoredReturn) : null;
+      const returned = windowAuthority ? retainedWindowRegion(windowAuthority) : receipt.crownReturn!==undefined ? sourceCrownReturned(receipt.authoredReturn,receipt.crownReturn)! : [SELF_REPAIR_COMPOSITION_VERSION, AUTHORED_RECOVERY_COMPOSITION_VERSION].includes(receipt.compositionVersion)
         ? selfRepairDecisionSchema.parse(receipt.selfRepair.decision).returnWindow
         : localPatchReturnRegion(e.crop, maskForHide(e.hide), e.hide.returnRect).local;
       // The same window for the boundary strips and, under the object-joins question, its magnified joins.
@@ -512,7 +517,7 @@ export async function reviewLocalPatchBoard(c: Container, input: { gameId: strin
         continue;
       }
       const prior = JSON.parse(current.judgeJson ?? "{}");
-      const compositionVersion = prior.compositionVersion === SOURCE_CROWN_COMPOSITION_VERSION ? SOURCE_CROWN_COMPOSITION_VERSION : prior.compositionVersion === AUTHORED_RECOVERY_COMPOSITION_VERSION ? AUTHORED_RECOVERY_COMPOSITION_VERSION
+      const compositionVersion = prior.compositionVersion === RETAINED_WINDOW_VERSION ? RETAINED_WINDOW_VERSION : prior.compositionVersion === SOURCE_CROWN_COMPOSITION_VERSION ? SOURCE_CROWN_COMPOSITION_VERSION : prior.compositionVersion === AUTHORED_RECOVERY_COMPOSITION_VERSION ? AUTHORED_RECOVERY_COMPOSITION_VERSION
         : prior.compositionVersion === SELF_REPAIR_COMPOSITION_VERSION ? SELF_REPAIR_COMPOSITION_VERSION
         : prior.compositionVersion === AUTHORED_PATCH_COMPOSITION_VERSION ? AUTHORED_PATCH_COMPOSITION_VERSION : LOCAL_PATCH_COMPOSITION_VERSION;
       const disposition = dispositions[index]!;
@@ -543,8 +548,8 @@ export async function reviewLocalPatchBoard(c: Container, input: { gameId: strin
           fingerprint: evaluated?.proof.quality.fingerprint ?? fingerprint,
           requestKey: evaluated?.proof.quality.requestKey ?? requestKey, composedSha256: sha256Bytes(composed),
           ...(evaluated ? { dual: evaluated.proof } : {}),
-          ...([AUTHORED_PATCH_COMPOSITION_VERSION, AUTHORED_RECOVERY_COMPOSITION_VERSION, SOURCE_CROWN_COMPOSITION_VERSION].includes(compositionVersion) ? { authoredReturn: prior.authoredReturn } : {}),
-          ...(compositionVersion === AUTHORED_RECOVERY_COMPOSITION_VERSION ? { authoredRecovery: prior.authoredRecovery } : {}),
+          ...([RETAINED_WINDOW_VERSION, AUTHORED_PATCH_COMPOSITION_VERSION, AUTHORED_RECOVERY_COMPOSITION_VERSION, SOURCE_CROWN_COMPOSITION_VERSION].includes(compositionVersion) ? { authoredReturn: prior.authoredReturn } : {}),
+          ...(compositionVersion === AUTHORED_RECOVERY_COMPOSITION_VERSION || compositionVersion === RETAINED_WINDOW_VERSION && prior.authoredRecovery !== undefined ? { authoredRecovery: prior.authoredRecovery } : {}),
           ...(request.assessmentMode === PLAYER_REVIEW_MODE ? { assessmentMode: PLAYER_REVIEW_MODE } : {}),
           ...(request.reviewScope ? { reviewScope: request.reviewScope, reviewedHideIds: request.hides.map(h => h.hideId), evidenceReviewAttempt,
             evidenceReviewedAt: new Date().toISOString() } : {}),

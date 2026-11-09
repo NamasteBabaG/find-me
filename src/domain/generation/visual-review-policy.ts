@@ -94,7 +94,7 @@ export const LEAN_REVIEW_POLICIES: readonly VisualReviewPolicy[] = Object.freeze
   .flatMap(role => (["flex", "default"] as const).map(tier => leanReviewPolicy(role, tier))));
 export const isLeanReviewPolicy = (policy: Pick<VisualReviewPolicy, "pricingVersion">) => policy.pricingVersion === VISUAL_REVIEW_SOL_TIERS_PRICING_VERSION;
 /** The lean policy recorded under this exact version, or null. */
-export const leanReviewPolicyOf = (version: string) => [...LEAN_REVIEW_POLICIES, ...SINGLE_LOW_REVIEW_POLICIES, ...SINGLE_MEDIUM_REVIEW_POLICIES].find(policy => policy.version === version) ?? null;
+export const leanReviewPolicyOf = (version: string) => [...LEAN_REVIEW_POLICIES, ...SINGLE_LOW_REVIEW_POLICIES, ...SINGLE_MEDIUM_REVIEW_POLICIES, ...BOUNDED_SINGLE_MEDIUM_REVIEW_POLICIES].find(policy => policy.version === version) ?? null;
 /** Whether a policy is asked in the background and polled, never sent synchronously. */
 export const isBackgroundReviewPolicy = (policy: Pick<VisualReviewPolicy, "endpoint">) => policy.endpoint === OPENAI_RESPONSES_ENDPOINT;
 
@@ -118,7 +118,15 @@ export function singleMediumReviewPolicy(tier: VisualReviewTier = 'flex'): Visua
     version: 'visual-review-quality-subject-continuity-sol-medium-background-' + tier + '/single-v1', effort: 'medium' as const });
 }
 export const SINGLE_MEDIUM_REVIEW_POLICIES = Object.freeze((['flex', 'default'] as const).map(singleMediumReviewPolicy));
+/** Prospective transport bound only. Same model, MEDIUM effort, evidence and
+ * strict answer readers. A truncated answer fails closed with its real bill.
+ * Existing10k policies and already submitted fingerprints remain exact. */
+export function boundedSingleMediumReviewPolicy(tier: VisualReviewTier = 'flex'): VisualReviewPolicy {
+  return Object.freeze({ ...singleMediumReviewPolicy(tier),
+    version: 'visual-review-quality-subject-continuity-sol-medium-background-' + tier + '/single-bounded-6000-v1', maxOutputTokens: 6000 });
+}
+export const BOUNDED_SINGLE_MEDIUM_REVIEW_POLICIES = Object.freeze((['flex', 'default'] as const).map(boundedSingleMediumReviewPolicy));
 export const isSingleMediumReviewPolicy = (policy: Pick<VisualReviewPolicy, 'version'>) =>
-  SINGLE_MEDIUM_REVIEW_POLICIES.some(known => known.version === policy.version);
+  [...SINGLE_MEDIUM_REVIEW_POLICIES, ...BOUNDED_SINGLE_MEDIUM_REVIEW_POLICIES].some(known => known.version === policy.version);
 export const isSingleReviewPolicy = (policy: Pick<VisualReviewPolicy, 'version'>) =>
   isSingleLowReviewPolicy(policy) || isSingleMediumReviewPolicy(policy);

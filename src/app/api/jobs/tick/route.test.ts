@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-const f = vi.hoisted(() => ({ tick: vi.fn(), notify: vi.fn(), health: vi.fn(), retention: vi.fn(), appEnv:'qa', storageId:'db' }));
+const f = vi.hoisted(() => ({ tick: vi.fn(), restore: vi.fn(), notify: vi.fn(), health: vi.fn(), retention: vi.fn(), appEnv:'qa', storageId:'db' }));
+vi.mock('@/services/generation/retained-window-recovery', () => ({ restoreRetainedWindow: f.restore }));
 vi.mock("@/services/container", () => ({ getContainer: () => ({storage:{id:f.storageId}}) }));
 vi.mock("@/lib/server/qa-access", () => ({ qaAccessDenied: async () => null }));
 vi.mock("@/lib/env", () => ({ env: () => ({ CRON_SECRET: "synthetic-cron", APP_ENV:f.appEnv }) }));
@@ -20,6 +21,30 @@ beforeEach(() => { repairSelection.id = null;
 });
 afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); });
 describe("tick diagnostics and remaining budget", () => {
+  it('an explicit free restore yields without dispatching any generation or review', async () => {
+    f.restore.mockResolvedValue(true);
+    const response=await POST(new Request('https://qa.example/api/jobs/tick?gameId=synthetic&mode=review-existing&restore=retained-window-v1&hideId=synthetic-hide',
+      {method:'POST',headers:{authorization:'Bearer synthetic-cron'}}));
+    expect(await response.json()).toEqual({restored:true,providerCalls:0,approvalTransferred:false});
+    expect(f.restore).toHaveBeenCalledWith(expect.anything(),'synthetic','synthetic-hide');
+    expect(f.tick).not.toHaveBeenCalled();expect(f.notify).not.toHaveBeenCalled();expect(f.retention).not.toHaveBeenCalled();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+  it('passes a named paid source only to the free authenticated restore, never to the painter',async()=>{
+    f.restore.mockResolvedValue(false);
+    const response=await POST(new Request('https://qa.example/api/jobs/tick?gameId=synthetic&mode=review-existing&restore=retained-window-v1&hideId=synthetic-hide&sourceKey=synthetic-hide:standing:render:1',
+      {method:'POST',headers:{authorization:'Bearer synthetic-cron'}}));
+    expect((await response.json()).restored).toBe(false);
+    expect(f.restore).toHaveBeenCalledWith(expect.anything(),'synthetic','synthetic-hide',undefined,undefined,'synthetic-hide:standing:render:1');
+    expect(f.tick).not.toHaveBeenCalled();
+  });
+  it.each(['no-mode','no-hide','wrong-restore','production','wrong-storage'])('rejects invalid free restore before any work: %s',async which=>{
+    if(which==='production')f.appEnv='production';if(which==='wrong-storage')f.storageId='local';
+    const query='gameId=synthetic&restore='+(which==='wrong-restore'?'anything':'retained-window-v1')
+      +(which==='no-mode'?'':'&mode=review-existing')+(which==='no-hide'?'':'&hideId=synthetic-hide');
+    const response=await POST(new Request('https://qa.example/api/jobs/tick?'+query,{method:'POST',headers:{authorization:'Bearer synthetic-cron'}}));
+    expect(response.status).toBe(400);expect(f.restore).not.toHaveBeenCalled();expect(f.tick).not.toHaveBeenCalled();
+  });
   it('passes the narrower mode only for a named QA DB request and skips unrelated cron work',async()=>{
     const response=await POST(new Request('https://qa.example/api/jobs/tick?gameId=synthetic&mode=review-existing',{
       method:'POST',headers:{authorization:'Bearer synthetic-cron'},

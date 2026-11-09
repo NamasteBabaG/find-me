@@ -1,4 +1,5 @@
 import { SOURCE_CROWN_COMPOSITION_VERSION } from "../../domain/scene/source-crown-return";
+import { RETAINED_WINDOW_VERSION } from '../../domain/generation/retained-window';
 import { singleReviewHeadEvidenceMatches } from "./single-review-head-evidence";
 import { TARGET_HEAD_VISIBLE_VERSION } from "../../domain/generation/target-head-return";
 import { singleMediumReviewPolicyOf } from "./single-medium-policy";
@@ -58,6 +59,8 @@ export async function allowedDualPublication(db: Prisma.TransactionClient, input
       || proof.identitySha256 !== input.identitySha256 || !proof.quality || !proof.continuity) return false;
     if(receipt.compositionVersion===SOURCE_CROWN_COMPOSITION_VERSION&&proof.single!==SINGLE_MEDIUM_VISUAL_REVIEW_VERSION)return false;
     if (!await authoredLocalPatchPublicationMatches(db, input)) return false;
+    if (receipt.retainedWindow !== undefined && proof.single !== SINGLE_MEDIUM_VISUAL_REVIEW_VERSION) return false;
+    if (receipt.retainedWindow === undefined && input.assetId.startsWith('ast_rsw_')) return false;
     // A visible-head decision publishes only with its measured retention; an older
     // one is first re-read for free (localPatchHeadRetentionUnread), never waived.
     if (proof.single === SINGLE_MEDIUM_VISUAL_REVIEW_VERSION && proof.quality.headEvidence?.version === TARGET_HEAD_VISIBLE_VERSION
@@ -76,7 +79,7 @@ export async function allowedDualPublication(db: Prisma.TransactionClient, input
     if (receipt.sourceFigureReturn === undefined && input.assetId.startsWith('ast_fgr_')) return false;
     if (!await sourceNeighborPublicationMatches(db, input, proof.quality)) return false;
     if (!equal(proof.authoredReturn, receipt.authoredReturn) || !equal(proof.authoredRecovery, receipt.authoredRecovery)) return false;
-    if (receipt.compositionVersion !== LOCAL_PATCH_COMPOSITION_VERSION && receipt.compositionVersion !== AUTHORED_PATCH_COMPOSITION_VERSION && receipt.compositionVersion !== AUTHORED_RECOVERY_COMPOSITION_VERSION && receipt.compositionVersion !== SOURCE_CROWN_COMPOSITION_VERSION) {
+    if (receipt.compositionVersion !== RETAINED_WINDOW_VERSION && receipt.compositionVersion !== LOCAL_PATCH_COMPOSITION_VERSION && receipt.compositionVersion !== AUTHORED_PATCH_COMPOSITION_VERSION && receipt.compositionVersion !== AUTHORED_RECOVERY_COMPOSITION_VERSION && receipt.compositionVersion !== SOURCE_CROWN_COMPOSITION_VERSION) {
       if (receipt.compositionVersion !== SELF_REPAIR_COMPOSITION_VERSION || receipt.selfRepair?.version !== SELF_REPAIR_VERSION
         || receipt.selfRepair.phase !== "awaiting-review" || !selfRepairDecisionSchema.safeParse(receipt.selfRepair.decision).success
         || receipt.recoveryComposition?.outsideChangedPixels !== 0 || receipt.recoveryComposition?.protectedChangedPixels !== 0) return false;

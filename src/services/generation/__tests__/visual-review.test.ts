@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { visualReviewPolicy } from "../../../domain/generation/visual-review-policy";
+import { visualReviewPolicy, singleMediumReviewPolicy, boundedSingleMediumReviewPolicy, leanReviewPolicyOf } from "../../../domain/generation/visual-review-policy";
 import { visualReviewCharge } from "../../../infra/generation/visual-review-pricing";
 import { requestAnthropicVisualReview } from "../../../infra/generation/anthropic-visual-review";
 import { buyVisualReview, prepareVisualReview, requestVisualReview, type VisualReviewQuestion } from "../visual-review";
@@ -28,6 +28,19 @@ function purchaseFixture() {
 }
 
 describe("explicit two-provider visual review", () => {
+  it('keeps historical MEDIUM bytes and gives the explicit6000 profile its own full transport bound and paid identity', () => {
+    const original=singleMediumReviewPolicy('flex'),bounded=boundedSingleMediumReviewPolicy('flex');
+    expect(original.maxOutputTokens).toBe(10000);expect(bounded.maxOutputTokens).toBe(6000);
+    expect({...bounded,version:original.version,maxOutputTokens:original.maxOutputTokens}).toEqual(original);
+    expect(leanReviewPolicyOf(bounded.version)).toEqual(bounded);
+    const q={...question(),combined:'single-sol-medium/v1' as const,judge:'gpt-6.1-sol' as const,transport:'responses-background' as const,tier:'flex' as const};
+    const historical=prepareVisualReview(q),prospective=prepareVisualReview({...q,outputProfile:'single-medium-6000/v1'});
+    expect(historical.policy).toEqual(original);expect(prospective.policy).toEqual(bounded);
+    expect(prospective.fingerprint).not.toBe(historical.fingerprint);
+    expect(prepareVisualReview(q).fingerprint).toBe(historical.fingerprint);
+    expect(()=>prepareVisualReview({...question(),outputProfile:'single-medium-6000/v1'})).toThrow(/bounded MEDIUM/);
+    expect(()=>prepareVisualReview({...q,combined:'single-sol-low/v1' as never,effort:'low',outputProfile:'single-medium-6000/v1'})).toThrow();
+  });
   it("pins the requested roles and efforts without changing historical questions", () => {
     expect(visualReviewPolicy("scene-quality")).toMatchObject({ model: "claude-opus-5-5", provider: "anthropic", effort: "high" });
     expect(visualReviewPolicy("head-continuity")).toMatchObject({ model: "gpt-6.1-sol", provider: "openai", effort: "high" });

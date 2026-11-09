@@ -9,6 +9,7 @@ import { localPatchNotificationPrefix } from "../local-patch-notifications";
 import { avatarRepairLineageAssets } from "./avatar-repair-lineage";
 import { purgeAdminAlertNotifications } from "../admin-alert-deletion";
 import { SOURCE_FIGURE_ACTION } from '../../domain/generation/source-figure-return';
+import { RETAINED_WINDOW_ACTION } from '../../domain/generation/retained-window';
 
 function demand(value: unknown, message: string): asserts value {
   if (!value) throw new Error(`LOCAL_PATCH_DELETE: ${message}`);
@@ -64,7 +65,7 @@ export async function deleteLocalPatchGame(c: Container, gameId: string, actor: 
     await tx.auditLog.updateMany({ where: { entityType: "Game", entityId: gameId,
       action: { in: ["local-patch:extra-attempt", "local-patch:partial-release", "local-patch:legacy-head-source-corrected",
         "local-patch:qa-guided-repair-context", "local-patch:visible-head-policy-corrected", "local-patch:retained-normal-head-restored",
-        "local-patch:head-pixel-correction", SOURCE_FIGURE_ACTION] } }, data: { metaJson: null } });
+        "local-patch:head-pixel-correction", SOURCE_FIGURE_ACTION, RETAINED_WINDOW_ACTION, RETAINED_WINDOW_ACTION + ':once'] } }, data: { metaJson: null } });
     let sharedAssetsRetained = 0;
     for (const asset of await tx.asset.findMany({ where: { id: { in: inventory.assetIds } } })) {
       demand(asset.ownerId === game.ownerId && asset.provider === LOCAL_PATCH_PROVIDER && asset.providerRequestId === gameId

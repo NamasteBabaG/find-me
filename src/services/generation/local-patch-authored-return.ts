@@ -1,5 +1,7 @@
 import { SOURCE_CROWN_COMPOSITION_VERSION, sourceCrownReturned, sourceCrownCorrectionSchema } from "../../domain/scene/source-crown-return";
 import { crownTabSchema } from "../../domain/generation/crown-tab";
+import { RETAINED_WINDOW_VERSION, retainedWindowMarkerSchema, retainedWindowCanonicalHash } from '../../domain/generation/retained-window';
+import { retainedWindowAuthorityFor } from '../../../content/detectives/retained-window-v1';
 import { hasLocalPatchCapability } from "../../domain/scene/local-patch-family";
 import { createHash } from "node:crypto";
 import type { Prisma } from "@prisma/client";
@@ -26,6 +28,7 @@ import { foregroundForPinnedPrompt, foregroundPlanConflict } from "./local-patch
 const equal = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
 const object = (value: unknown): Record<string, unknown> => value !== null && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
 export type AuthoredLocalPatchReceipt = { compositionVersion?: unknown; authoredReturn?: unknown; authoredRecovery?: unknown;
+  retainedWindow?: unknown;
   crownReturn?: unknown; propJoinCorrection?: unknown; selfRepair?: unknown; recoveryComposition?: unknown; foreground?: unknown; judgedSha256?: unknown; promptVersion?: unknown; boardReview?: unknown };
 
 /** Reconstruct from trusted pinned source data, never from a claimed receipt. */
@@ -105,6 +108,14 @@ export function assertAuthoredLocalPatchRecoveryGeometry(parent: AuthoredLocalPa
  * caller still supplies an authoritative entry and verifies paid role evidence. */
 export function authoredLocalPatchSourceNeighborContract(entry: SourcePlacementHideContract, receipt: AuthoredLocalPatchReceipt) {
   if (!entry.sourceNeighbors) return null;
+  if (receipt.retainedWindow !== undefined) {
+    const m = retainedWindowMarkerSchema.parse(receipt.retainedWindow), a = retainedWindowAuthorityFor(receipt.authoredReturn as AuthoredLocalPatchReturnContract);
+    if (!a || m.hideId !== entry.hideId || retainedWindowCanonicalHash(a) !== m.authoritySha256 || receipt.compositionVersion !== RETAINED_WINDOW_VERSION)
+      throw Error('RETAINED_WINDOW: source-neighbor authority differs');
+    // Role registration is the original immutable contract. Actual wider
+    // compound joins and SOURCE-head holes are separately supplied and proved.
+    return entry.sourceNeighbors;
+  }
   const parent = receipt.authoredReturn as AuthoredLocalPatchReturnContract;
   const canonical = parent && authoredLocalPatchReturnContract({ contentVersion: entry.sceneVersion, boardId: entry.boardId, hideId: entry.hideId,
     source: entry.source, crop: entry.effective.crop, child: entry.effective.child, authored: entry.effective.returnRect,
@@ -126,6 +137,16 @@ export function authoredLocalPatchSourceNeighborContract(entry: SourcePlacementH
 
 export function authoredLocalPatchReturnMatches(receipt: AuthoredLocalPatchReceipt | null,
   board: LocalPatchBoard, hide: LocalPatchHide, contentVersion: number, reviewed = false, placementContext?: TrustedSourcePlacementContext): boolean {
+  if (receipt?.retainedWindow !== undefined || receipt?.compositionVersion === RETAINED_WINDOW_VERSION) {
+    try {
+      const m = retainedWindowMarkerSchema.parse(receipt?.retainedWindow), parent = expectedAuthoredLocalPatchReturn(board, hide, contentVersion, placementContext);
+      const a = parent && retainedWindowAuthorityFor(parent), review = object(receipt?.boardReview);
+      return !!a && contentVersion === 13 && m.hideId === hide.id && retainedWindowCanonicalHash(a) === m.authoritySha256
+        && receipt?.compositionVersion === RETAINED_WINDOW_VERSION && equal(receipt.authoredReturn, parent)
+        && (!reviewed || review.compositionVersion === RETAINED_WINDOW_VERSION && equal(review.authoredReturn, parent)
+          && equal(review.authoredRecovery, receipt.authoredRecovery));
+    } catch { return false; }
+  }
   const v4 = receipt?.compositionVersion === AUTHORED_PATCH_COMPOSITION_VERSION;
   const recovery = receipt?.compositionVersion === AUTHORED_RECOVERY_COMPOSITION_VERSION;
   const crown=receipt?.compositionVersion===SOURCE_CROWN_COMPOSITION_VERSION;
@@ -158,6 +179,13 @@ export async function authoredLocalPatchRecoveryEvidenceMatches(db: Prisma.Trans
   board: LocalPatchBoard; hide: LocalPatchHide; sceneVersion: number; receipt: AuthoredLocalPatchReceipt;
   placementContext: TrustedSourcePlacementContext; promptVersion: string | null; beforePng?: Buffer }): Promise<boolean> {
   const { receipt, placementContext, board, hide } = input;
+  if (receipt.retainedWindow !== undefined || receipt.compositionVersion === RETAINED_WINDOW_VERSION) {
+    const m = retainedWindowMarkerSchema.safeParse(receipt.retainedWindow);
+    const row = m.success ? await db.targetVariantAsset.findUnique({ where: { id: m.data.rowId }, select: { assetId: true } }) : null;
+    return m.success && !!row?.assetId && await (await import('./retained-window-recovery')).retainedWindowEvidenceMatches(db,
+      { gameId: input.gameId, sceneVersion: input.sceneVersion, hideId: hide.id, variantId: m.data.rowId,
+        assetId: row.assetId, judgeJson: JSON.stringify(receipt) }, input.beforePng ? async () => input.beforePng! : undefined);
+  }
   if((receipt as Record<string,unknown>).sourceHeadRecovery!==undefined)
     return input.sceneVersion===12 && await (await import('./source-head-recovery')).sourceHeadCompositionEvidenceMatches(db,
       {gameId:input.gameId,hideId:hide.id,receipt:receipt as Record<string,any>,beforePng:input.beforePng});
@@ -242,6 +270,12 @@ export async function authoredLocalPatchRecoveryEvidenceMatches(db: Prisma.Trans
 export async function authoredLocalPatchPublicationMatches(db: Prisma.TransactionClient,
   input: { gameId: string; sceneVersion: number; hideId: string; judgeJson: string | null; variantId?: string; assetId?: string }): Promise<boolean> {
   try {
+    // Leave malformed legacy receipts to their original versioned reader.
+    // A retained-window asset still requires a readable, authenticated marker.
+    let retained: unknown;
+    try { retained = JSON.parse(input.judgeJson ?? 'null')?.retainedWindow; } catch { retained = undefined; }
+    if (retained !== undefined) return await (await import('./retained-window-recovery')).retainedWindowEvidenceMatches(db, input);
+    if (input.assetId?.startsWith('ast_rsw_')) return false;
     let head:unknown;
     try{head=JSON.parse(input.judgeJson??'null')?.sourceHeadRecovery;}catch{head=undefined;}
     if(head!==undefined)return input.sceneVersion===12&&await (await import('./source-head-recovery')).sourceHeadCompositionEvidenceMatches(db,

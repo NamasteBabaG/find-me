@@ -38,6 +38,8 @@ import { BOUND_SOURCE_CONTRACT_READER } from '../../../domain/generation/bound-s
 import { REVIEW_EXISTING_WORK_MODE } from '../../../domain/generation/work-mode';
 import { authenticateBoundSourceNeighborReading } from '../bound-source-neighbor-reading';
 import { correctSourceFigureReturn, sourceFigurePublicationMatches } from '../source-figure-return';
+import { restoreRetainedWindow, retainedWindowEvidenceMatches } from '../retained-window-recovery';
+import { RETAINED_WINDOW_ACTION, RETAINED_WINDOW_VERSION } from '../../../domain/generation/retained-window';
 import { SOURCE_FIGURE_ACTION, SOURCE_FIGURE_RETURN_VERSION, sourceFigureAuditId, sourceFigureHash } from '../../../domain/generation/source-figure-return';
 import { KINGDOM_FIGURE_RETURNS } from '../../../../content/detectives/kingdom/figure-return-v1';
 import { PLACEMENT_GUIDE_VERSION, PLACEMENT_GUIDE_V2_VERSION, placementGuideEditableRect } from "../../../domain/generation/placement-guide";
@@ -956,7 +958,7 @@ it.each(["recompose-retained", "redraw-with-new-placement", "restyle-retained"] 
   } finally { vi.useRealTimers(); }
 }, 300000);
 
-async function legacyKingdomHeadFixture(gameId: string, action: "redraw-with-new-placement" | "recompose-retained", explorer = true, normalOnly = false, wholeFigure = false) {
+async function legacyKingdomHeadFixture(gameId: string, action: "redraw-with-new-placement" | "recompose-retained", explorer = true, normalOnly = false, wholeFigure = false, windowShift = 0) {
   await newDetectiveWorld(gameId, 7, true, explorer, true);
   await ensureSingleMediumReviewPolicy(c, gameId, async () => {});
   const version = explorer ? 12 : 13, context = await resolveLocalPatchBoardsForGame(db, gameId, version), board = context.boards.find(b => b.board === (wholeFigure ? 'cloudcity' : "dragoncave"))!, hide = board.hides[wholeFigure ? 0 : 2]!;
@@ -980,7 +982,11 @@ async function legacyKingdomHeadFixture(gameId: string, action: "redraw-with-new
     if (wholeFigure) {
       const head = await sharp({ create: { width: 140, height: 170, channels: 4, background: '#88663d' } }).png().toBuffer();
       const body = await sharp({ create: { width: 148, height: 362, channels: 4, background: '#294c93' } }).png().toBuffer();
-      return paintedOk(await sharp(input.stylePng).composite([{ input: head, left: 154, top: 184 }, { input: body, left: 154, top: 222 }]).png().toBuffer(),
+      let png=await sharp(input.stylePng).composite([{ input: head, left: 154, top: 184 }, { input: body, left: 154, top: 222 }]).png().toBuffer();
+      if(windowShift&&input.requestKey.includes(':self-repair:')){const {data,info}=await sharp(png).ensureAlpha().raw().toBuffer({resolveWithObject:true}),moved=Buffer.from(data);
+        for(let y=windowShift;y<768;y++)data.copy(moved,y*512*4,(y-windowShift)*512*4,(y-windowShift+1)*512*4);
+        png=await sharp(moved,{raw:{width:info.width,height:info.height,channels:4}}).png().toBuffer();}
+      return paintedOk(png,
         bill('synthetic-whole-figure-' + gameId + '-' + input.requestKey, 50000));
     }
     const figure = await sharp({ create: { width: parent ? Math.min(120, decision.protectedCore.width - 20) : 120, height: parent ? Math.min(250, decision.protectedCore.height - 20) : 250, channels: 4,
@@ -1015,6 +1021,117 @@ async function legacyKingdomHeadFixture(gameId: string, action: "redraw-with-new
   const shipping = await c.storage.get(asset.storagePath), identitySha256 = sha256Bytes(await c.storage.get(identity.storagePath));
   return { gameId, version, board, hide, scene, deps, render, diagnose, row, candidate, receipt, shipping, identitySha256, decision };
 }
+
+it.each([{shift:0,label:'unshifted',refuseHead:false},{shift:2,label:'registered',refuseHead:false},{shift:0,label:'reported-head-loss',refuseHead:true}])('retained-source-window/v1: $label preserves all27 rows and every full bill, requires a new ordinary MEDIUM and reproduces publication',async({shift,label,refuseHead})=>{
+  vi.useFakeTimers({toFake:['Date']});
+  try{
+    const f=await legacyKingdomHeadFixture('retained-window-native-'+label,'redraw-with-new-placement',false,false,true,shift),imageCalls=f.render.mock.calls.length;
+    const exactRow=()=>db.targetVariantAsset.findUniqueOrThrow({where:{id:f.candidate.id}});
+    const payment=await db.order.findUniqueOrThrow({where:{id:'order-'+f.gameId}});
+    await db.game.update({where:{id:f.gameId},data:{paidAt:payment.paidAt}});
+    const placement=await resolveLocalPatchBoardsForGame(db,f.gameId,13);
+    for(const board of placement.boards)for(const hide of board.hides){
+      if(hide.id===f.hide.id)continue;
+      const scene=await db.gameScene.findFirstOrThrow({where:{gameId:f.gameId,sceneSlug:board.board}}),target=sceneBySlug(board.board,13).targets.find(t=>t.id===hide.targetId)!;
+      const instance=await db.targetInstance.create({data:{id:'rsw-tgt-'+f.gameId+'-'+hide.id,gameSceneId:scene.id,targetId:target.id,targetType:target.targetType,
+        spriteKind:'image',slotAId:target.slots[0].id,slotBId:target.slots[1].id}});
+      await db.targetVariantAsset.create({data:{id:'rsw-tva-'+f.gameId+'-'+hide.id,targetInstanceId:instance.id,variant:'A',slotId:target.slots[0].id,
+        status:'PENDING',provider:'local-patch',attempts:0}});
+    }
+    await db.targetVariantAsset.update({where:{id:f.candidate.id},data:{status:'FAILED',lastError:'quality-retry: synthetic whole head lost at old return'}});
+    const budget=boardWizardBudgetOf(c),worldId=boardWizardWorldId(f.gameId);
+    if(!shift){
+      await budget.reserve(worldId,{requestKey:'synthetic-rsw-old-unknown',scope:'judge',operationFingerprint:'e'.repeat(64),reserveMicroUsd:202060});
+      await budget.markUnknown(worldId,'synthetic-rsw-old-unknown','Synthetic full unresolved original bill');
+      await db.generationJob.update({where:{id:'job_'+f.gameId},data:{status:'FAILED',currentStep:'local-patch:recovery-exhausted'}});
+      const game=await db.game.findUniqueOrThrow({where:{id:f.gameId}}),plan=await planQaCompletionCapacity(c,f.gameId);
+      await authorizeQaCompletionCapacity(c,{gameId:f.gameId,operatorId:game.ownerId!,expectedPlanSha256:plan.planSha256,ownerAuthorizationSha256:'b'.repeat(64)});
+    }
+    const before=await exactRow(),oldLedger=await db.worldBudgetLedger.findUniqueOrThrow({where:{worldId}});
+    if(label==='unshifted'){
+      await db.order.update({where:{id:payment.id},data:{paymentStatus:'REFUNDED'}});
+      expect(await restoreRetainedWindow(c,f.gameId,f.hide.id,readArt)).toBe(false);
+      await db.order.update({where:{id:payment.id},data:{paymentStatus:payment.paymentStatus}});
+      const keys=JSON.parse(oldLedger.snapshotJson).requests.filter((r:{scope:string;requestKey:string})=>r.scope==='image'&&r.requestKey.startsWith(f.hide.id+':'))
+        .map((r:{requestKey:string})=>retainedPurchaseKey(worldId,r.requestKey));
+      const originals=await db.fileBlob.findMany({where:{key:{in:keys}}});expect(originals.length).toBeGreaterThan(1);
+      await db.fileBlob.deleteMany({where:{key:{in:keys}}});
+      expect(await restoreRetainedWindow(c,f.gameId,f.hide.id,readArt)).toBe(false);
+      expect(await exactRow()).toEqual(before);expect(await db.worldBudgetLedger.findUniqueOrThrow({where:{worldId}})).toEqual(oldLedger);
+      await db.fileBlob.createMany({data:originals});
+    }
+    const siblings=await db.targetVariantAsset.findMany({where:{id:{not:before.id},targetInstance:{gameScene:{gameId:f.gameId}}},orderBy:{id:'asc'}});
+    const provider=controlledSol(false,false,undefined,true),retrieve=provider.fake.retrieve.bind(provider.fake);
+    provider.fake.retrieve=async id=>{const response=await retrieve(id);if(response.status!=='completed')return response;
+      const answer=JSON.parse(response.reading.raw!);answer.head.rawHead={left:154,top:184+shift,width:140,height:170};answer.head.shippingHead={left:154,top:184,width:140,height:170};
+      if(refuseHead)answer.head.shippingCrown='fail';
+      return{...response,reading:{...response.reading,raw:JSON.stringify(answer)}};};
+    const container={...c,backgroundReview:provider.fake,visualReview:{request:async()=>{throw Error('No synchronous review in the retained window test');}}} as Container;
+    const refusal:string[]=[];
+    const explicitSource=label==='unshifted'?`${f.hide.id}:${f.hide.pose}:render:1`:undefined;
+    if(explicitSource)expect(await restoreRetainedWindow(container,f.gameId,f.hide.id,readArt,undefined,'another-hide:standing:render:1')).toBe(false);
+    expect(await restoreRetainedWindow(container,f.gameId,f.hide.id,readArt,r=>refusal.push(r),explicitSource),refusal.join(',')).toBe(true);
+    const candidate=await exactRow(),j=JSON.parse(candidate.judgeJson!),marker=j.retainedWindow;
+    expect(marker).toMatchObject({version:RETAINED_WINDOW_VERSION,sampleX:0,sampleY:shift,attempts:before.attempts});
+    if(explicitSource)expect(marker.sourceRequestKey).toBe(explicitSource);
+    expect(candidate).toMatchObject({status:'GENERATED',costCents:before.costCents,attempts:before.attempts});
+    expect(j.reviewState).toBe('pending-board-review');expect(j.boardReview).toBeUndefined();expect(j.selfRepair).toEqual(JSON.parse(before.judgeJson!).selfRepair);
+    expect(provider.creates).toHaveLength(0);
+    const ledger=await db.worldBudgetLedger.findUniqueOrThrow({where:{worldId}});expect(ledger.snapshotJson).toBe(oldLedger.snapshotJson);expect(ledger.revision).toBe(oldLedger.revision+1);
+    expect(await db.targetVariantAsset.findMany({where:{id:{not:before.id},targetInstance:{gameScene:{gameId:f.gameId}}},orderBy:{id:'asc'}})).toEqual(siblings);
+    expect(await restoreRetainedWindow(container,f.gameId,f.hide.id,readArt)).toBe(false);
+    const binding={gameId:f.gameId,sceneVersion:13,hideId:f.hide.id,variantId:candidate.id,attempts:candidate.attempts,
+      identityAssetId:'ast-sheet-'+f.gameId,identitySha256:f.identitySha256,assetId:candidate.assetId!,imageSha256:j.judgedSha256,
+      geometrySha256:j.geometrySha256,judgeJson:candidate.judgeJson};
+    const refusalStages:string[]=[];
+    expect(await retainedWindowEvidenceMatches(db,binding,readArt,r=>refusalStages.push(r)),refusalStages.join(',')).toBe(true);expect(await allowedDualPublication(db,binding)).toBe(false);
+    const evidence=await singleReviewHeadEvidence(db,{gameId:f.gameId,hide:f.hide,attempt:candidate.attempts,receipt:j,shipping:await c.storage.get((await db.asset.findUniqueOrThrow({where:{id:candidate.assetId!}})).storagePath),geometrySha256:j.geometrySha256,identitySha256:f.identitySha256});
+    expect(evidence.evidence.sourceBindingVersion).toBe(RETAINED_WINDOW_VERSION);expect(evidence.evidence.compoundHeadMask).toMatchObject({sampleX:0,sampleY:shift});
+    if(!shift){
+      const held=await reviewLocalPatchBoard(container,{gameId:f.gameId,sceneId:f.scene.id,deadlineAt:Date.now()+270000},
+        {fence:async()=>{},readBoardArt:readArt},{onlyHideId:f.hide.id});
+      expect(held.reason).toContain('world ledger is held');expect(provider.creates).toHaveLength(0);
+      // Synthetic pre-existing human continuation, not a released reserve or a
+      // zero-charge inference. The live service cannot mint this approval.
+      const game=await db.game.findUniqueOrThrow({where:{id:f.gameId}}),unknown=await budget.readRequest(worldId,'synthetic-rsw-old-unknown');
+      await boardWizardBudgetOf(c,1,{authorizeUnknownContinuation:async a=>a.requestKey==='synthetic-rsw-old-unknown'&&a.operatorId===game.ownerId})
+        .authorizeUnknownContinuation(worldId,{approvalId:'synthetic-existing-rsw-human-continuation',requestKey:unknown!.requestKey,scope:unknown!.scope,
+          operationFingerprint:unknown!.operationFingerprint,reserveMicroUsd:unknown!.reserveMicroUsd,unknownReasons:unknown!.unknownReasons,
+          operatorId:game.ownerId!,authorizationSha256:'d'.repeat(64),authorizedAt:new Date().toISOString()});
+      expect(await budget.readRequest(worldId,'synthetic-rsw-old-unknown')).toEqual(unknown);
+    }
+    const reviewReasons:string[]=[];
+    for(let turn=0;turn<7;turn++){
+      const outcome=await reviewLocalPatchBoard(container,{gameId:f.gameId,sceneId:f.scene.id,deadlineAt:Date.now()+270000},{fence:async()=>{},readBoardArt:readArt},{onlyHideId:f.hide.id});
+      reviewReasons.push(outcome.state+':'+outcome.reason);
+      await advanceContinuityInBackground(container,f.gameId,{deadlineAt:Date.now()+270000});await vi.advanceTimersByTimeAsync(LEAN_RECOVERY_BACKOFF_MS+1);
+      if(JSON.parse((await exactRow()).judgeJson!).reviewState==='board-review-complete')break;
+    }
+    const accepted=await exactRow(),final=JSON.parse(accepted.judgeJson!);
+    if(refuseHead){
+      expect(accepted.status).toBe('FAILED');expect(final.verdict?.verdict).toBe('fail');expect(provider.creates).toHaveLength(1);
+      expect(await allowedDualPublication(db,{...publicationBinding(f.gameId,accepted),sceneVersion:13})).toBe(false);
+      expect(await restoreRetainedWindow(container,f.gameId,f.hide.id,readArt)).toBe(false);
+      expect(f.render).toHaveBeenCalledTimes(imageCalls);expect(fetch).not.toHaveBeenCalled();return;
+    }
+    expect(accepted.status,accepted.lastError??'').toBe('GENERATED');expect(final.verdict?.verdict,JSON.stringify({reviewReasons,creates:provider.creates.length,reviewState:final.reviewState})).toBe('pass');expect(provider.creates).toHaveLength(1);
+    expect(provider.creates[0]!.prompt).toContain('Native integer mapping');expect(provider.creates[0]!.prompt).toContain('blur or a depth/style mismatch');
+    expect(final.boardReview.dual.quality.policy.maxOutputTokens).toBe(6000);
+    if(!shift)expect(await budget.readRequest(worldId,'synthetic-rsw-old-unknown')).toMatchObject({state:'unknown',reserveMicroUsd:202060});
+    expect(await allowedDualPublication(db,{...publicationBinding(f.gameId,accepted),sceneVersion:13})).toBe(true);
+    const audit=await db.auditLog.findFirstOrThrow({where:{entityId:f.gameId,action:RETAINED_WINDOW_ACTION}}),saved=JSON.parse(audit.metaJson!);
+    expect(saved.previousRow.judgeJson).toBe(before.judgeJson);expect(saved.providerCalls).toBe(0);expect(saved.approvalTransferred).toBe(false);
+    const altered=JSON.parse(accepted.judgeJson!);altered.retainedWindow.sampleY=shift?0:1;
+    expect(await retainedWindowEvidenceMatches(db,{...publicationBinding(f.gameId,accepted),sceneVersion:13,judgeJson:JSON.stringify(altered)},readArt)).toBe(false);
+    const noMarker={...final};delete noMarker.retainedWindow;
+    expect(await allowedDualPublication(db,{...publicationBinding(f.gameId,accepted),sceneVersion:13,judgeJson:JSON.stringify(noMarker)})).toBe(false);
+    const game=await db.game.findUniqueOrThrow({where:{id:f.gameId}}),closedLedger=await db.worldBudgetLedger.findUniqueOrThrow({where:{worldId}});
+    expect(await deleteLocalPatchGame(container,f.gameId,{type:'USER',id:game.ownerId!},game.ownerId!)).toBe(true);
+    expect((await db.auditLog.findUniqueOrThrow({where:{id:audit.id}})).metaJson).toBeNull();
+    expect((await db.worldBudgetLedger.findUniqueOrThrow({where:{worldId}})).snapshotJson).toBe(closedLedger.snapshotJson);
+    expect(f.render).toHaveBeenCalledTimes(imageCalls);expect(fetch).not.toHaveBeenCalled();
+  }finally{vi.useRealTimers();}
+},300000);
 
 it.each(['free-candidate', 'free-candidate-no-unknown', 'orphan-reservation', 'deadline-cancelled', 'provider-failed'] as const)('source-figure-return/v1: %s preserves the old paid recipe, whole body, neighbors, questions and full reserves', async mode => {
   vi.useFakeTimers({ toFake: ['Date'] });

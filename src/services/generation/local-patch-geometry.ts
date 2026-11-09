@@ -7,6 +7,8 @@ import { changedWithin, LOCAL_PATCH_RETURN_GUARD, SEAM_LIMITS } from "./local-pa
 import { isLocalPatchStrictVersion } from "../../domain/scene/local-patch-catalog";
 import { assertSourceFigureAuthority, type SourceFigureAuthority } from "../../domain/generation/source-figure-return";
 import { sha256Bytes } from "./fixed-sprite";
+import { retainedWindowMeasurementBounds, retainedWindowCanonicalHash, type RetainedWindowAuthority } from '../../domain/generation/retained-window';
+import { RETAINED_WINDOW_AUTHORITIES, assertRetainedWindowManifest } from '../../../content/detectives/retained-window-v1';
 
 /**
  * Where a finished hide is drawn, where the child in it can be tapped, and where
@@ -65,6 +67,7 @@ export async function localPatchGeometry(input: {
   readonly board?: { readonly width: number; readonly height: number };
   /** Closed public permission; historical geometry remains byte-identical. */
   readonly sourceFigure?: SourceFigureAuthority;
+  readonly retainedWindow?: RetainedWindowAuthority;
 }): Promise<LocalPatchGeometry> {
   const { hide } = input;
   const art = input.board ?? LOCAL_PATCH_BOARD;
@@ -87,6 +90,16 @@ export async function localPatchGeometry(input: {
       || art.width !== a.source.width || art.height !== a.source.height || sha256Bytes(input.boardPng) !== a.sourcePngSha256)
       throw Error("SOURCE_FIGURE: geometry source differs from the closed permission");
     box = a.measurementBounds;
+  }
+  if (input.retainedWindow) {
+    const a = input.retainedWindow, same = (x: unknown, y: unknown) => retainedWindowCanonicalHash(x) === retainedWindowCanonicalHash(y);
+    assertRetainedWindowManifest();
+    if (input.sourceFigure || input.contentVersion !== 13 || hide.id !== a.hideId || !same(crop, a.crop) || !same(requested, a.parentChild)
+      || art.width !== a.source.width || art.height !== a.source.height || !RETAINED_WINDOW_AUTHORITIES.some(known => same(known, a)))
+      throw Error('RETAINED_WINDOW: target geometry differs from the public permission');
+    // The service verifies encoded public SOURCE and independently reproduces
+    // these pixels/geometry on publication. Do not measure the entire crop.
+    box = retainedWindowMeasurementBounds(a);
   }
 
   const rect = { x: crop.left / art.width, y: crop.top / art.height, w: crop.width / art.width, h: crop.height / art.height };

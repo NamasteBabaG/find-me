@@ -1,5 +1,5 @@
 import { isSingleVisualReviewVersion, singleVisualReviewEffort, type SingleVisualReviewVersion } from "../../domain/generation/single-visual-review";
-import { singleLowReviewPolicy, singleMediumReviewPolicy } from "../../domain/generation/visual-review-policy";
+import { singleLowReviewPolicy, singleMediumReviewPolicy, boundedSingleMediumReviewPolicy } from "../../domain/generation/visual-review-policy";
 import { createHash } from "node:crypto";
 import { isBackgroundReviewPolicy, visualReviewPolicy, VISUAL_REVIEW_DEFAULT_EFFORT, type VisualReviewEffort, type VisualReviewJudge, type VisualReviewPolicy, type VisualReviewRole, type VisualReviewTier, type VisualReviewTransport } from "../../domain/generation/visual-review-policy";
 import { visualReviewInputBound } from "../../domain/generation/visual-review-input-bound";
@@ -12,6 +12,7 @@ import { requestJudgeWire, localPatchBoardJudgePrompt, localPatchBoardJudgeImage
 
 export type VisualReviewQuestion = {
   readonly combined?: SingleVisualReviewVersion;
+  readonly outputProfile?: 'single-medium-6000/v1';
   readonly role: VisualReviewRole;
   readonly effort: VisualReviewEffort;
   /** Absent: the role's standing judge, as every historical question. */
@@ -30,9 +31,11 @@ const sha = (value: string | Buffer) => createHash("sha256").update(value).diges
 /** Policy, labels and every image participate in the paid identity. A new
  * model/effort must never replay a historical judgement under its new name. */
 export function prepareVisualReview(question: VisualReviewQuestion): PreparedVisualReview {
+  if (question.outputProfile !== undefined && (question.outputProfile !== 'single-medium-6000/v1'
+    || !question.combined || singleVisualReviewEffort(question.combined) !== 'medium')) throw Error('Invalid bounded MEDIUM output profile');
   if (question.combined !== undefined && (!isSingleVisualReviewVersion(question.combined) || question.role !== "scene-quality" || question.effort !== singleVisualReviewEffort(question.combined)
     || question.judge !== "gpt-6.1-sol" || question.transport !== "responses-background" || !question.tier)) throw Error("Invalid single review policy");
-  const policy = question.combined ? (singleVisualReviewEffort(question.combined) === "medium" ? singleMediumReviewPolicy(question.tier) : singleLowReviewPolicy(question.tier)) : visualReviewPolicy(question.role, question.effort, question.judge, question.transport, question.tier);
+  const policy = question.outputProfile ? boundedSingleMediumReviewPolicy(question.tier) : question.combined ? (singleVisualReviewEffort(question.combined) === "medium" ? singleMediumReviewPolicy(question.tier) : singleLowReviewPolicy(question.tier)) : visualReviewPolicy(question.role, question.effort, question.judge, question.transport, question.tier);
   if (!question.prompt.trim() || question.images.length < 1 || question.images.length > 30
     || question.labels.length !== question.images.length || question.labels.some(l => !l.trim())
     || question.images.some(b => !b.length || b.length > 5 * 1024 * 1024)) throw Error(`Invalid visual review evidence: ${question.images.length} images, ${question.labels.length} labels; bytes=${question.images.map(b=>b.length).join(',')}`);

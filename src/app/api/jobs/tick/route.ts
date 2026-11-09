@@ -62,11 +62,23 @@ export async function POST(req: Request) {
     if (denied) return denied;
     const c = getContainer();
     const query = new URL(req.url).searchParams;
-    const gameId = query.get("gameId"), requestedMode = query.get('mode');
+    const gameId = query.get("gameId"), requestedMode = query.get('mode'), restore = query.get('restore');
     enter("authorization");
     if (!(await isAllowed(req, gameId))) return NextResponse.json({ error: "forbidden" }, { status: 403 });
     if (requestedMode !== null && (requestedMode !== 'review-existing' || !gameId || env().APP_ENV !== 'qa' || c.storage.id !== 'db'))
       return NextResponse.json({ error: 'unsupported-work-mode' }, { status: 400 });
+    if (restore !== null) {
+      const hideId = query.get('hideId'), sourceKey = query.get('sourceKey');
+      if (restore !== 'retained-window-v1' || requestedMode !== 'review-existing' || !gameId || env().APP_ENV !== 'qa'
+        || c.storage.id !== 'db' || !hideId || !/^[A-Za-z0-9._:-]{1,160}$/.test(hideId)
+        || sourceKey !== null && !/^[A-Za-z0-9._:-]{1,240}$/.test(sourceKey))
+        return NextResponse.json({ error: 'unsupported-free-restore' }, { status: 400 });
+      enter('retained-window-free-restore');
+      const recovery = await import('@/services/generation/retained-window-recovery');
+      const restored = sourceKey === null ? await recovery.restoreRetainedWindow(c, gameId, hideId)
+        : await recovery.restoreRetainedWindow(c, gameId, hideId, undefined, undefined, sourceKey);
+      return NextResponse.json({ restored, providerCalls: 0, approvalTransferred: false }, { headers: { 'Cache-Control': 'no-store' } });
+    }
     const workMode = requestedMode === 'review-existing' ? REVIEW_EXISTING_WORK_MODE : undefined;
     // A source repair needs one full provider window. Optional chores must not starve it every minute.
     const referenceRepair = !gameId ? await nextIdentitySourceRevision(c, null) : null;
