@@ -1,4 +1,6 @@
 import { nativeDetailRepairOf } from "./native-detail-evidence";
+import { sunburstRequiredPaintCapacity } from "./sunburst-review-capacity";
+import { LOCAL_PATCH_SUNBURST_IMAGE_POLICY, localPatchRenderPolicySha256 } from "../../infra/generation/openai-local-patch";
 import { nativeDetailSubjectDirection } from "./native-detail-painter";
 import { requireWholeSourceContextPurchase } from "./whole-source-context-repair";
 import { fenceWholeSourceContextPurchase } from "./whole-source-context-pin";
@@ -146,6 +148,8 @@ export type LocalPatchHideDeps = Pick<LocalPatchRenderDeps, "render" | "judge" |
    * over finishes its render and writes nothing. Throwing is how it says no.
    */
   readonly fence?: (tx: Prisma.TransactionClient) => Promise<void>;
+  /** Used only by a verified finite Paris Sunburst head authority. */
+  readonly sunburstHeadRender?: LocalPatchRenderDeps["render"];
 };
 
 function demand(ok: unknown, message: string): asserts ok { if (!ok) throw new Error(`LOCAL_PATCH_HIDE: ${message}`); }
@@ -334,6 +338,11 @@ export async function runLocalPatchHide(c: Container, deps: LocalPatchHideDeps, 
   const wholeContext=input.wholeSourceContext?await requireWholeSourceContextPurchase(c,gameId,row.id):null;
   const headRecovery=input.sourceHeadRecovery?await requireSourceHeadPurchase(c,gameId,row.id):null;
   const journeyRecovery=input.journeyHeadRecovery?await requireJourneyHeadPurchase(c,gameId,row.id):null;
+  const sunburstHead=journeyRecovery?.sunburst??null;
+  if(sunburstHead)demand(deps.sunburstHeadRender&&sunburstHead.imagePolicySha256===localPatchRenderPolicySha256(LOCAL_PATCH_SUNBURST_IMAGE_POLICY),
+    'JOURNEY_HEAD: the finite Sunburst head requires its explicit per-call painter');
+  const paint=sunburstHead?{renderPolicySha256:sunburstHead.imagePolicySha256,render:deps.sunburstHeadRender!}
+    :{renderPolicySha256:deps.renderPolicySha256,render:deps.render};
   if(journeyRecovery)demand(input.finalRepair&&!headRecovery&&!input.guidedFrame&&!input.nativeMaskTail&&!input.sourceBodyRepair&&!input.wholeSourceContext
     &&!input.extraAttemptAuthorizationId&&scene.sceneVersion===13&&journeyRecovery.pin.hideId===hide.id,'Only the exact finite journey head may use this second key');
   if(headRecovery){
@@ -380,6 +389,12 @@ export async function runLocalPatchHide(c: Container, deps: LocalPatchHideDeps, 
     return {...base,state:'gave-up',reason:'repeat-window-stop/v1: two distinct settled judgments locate the same window defect; unchanged third painting is not bought'};
   if (exhausted) {
     return { ...base, attempt: row.attempts, state: "gave-up", reason: row.lastError ?? `gave up after ${row.attempts} attempts` };
+  }
+  if (paint.renderPolicySha256 === localPatchRenderPolicySha256(LOCAL_PATCH_SUNBURST_IMAGE_POLICY)
+    && !await budget.readRequest(worldId, `${hide.id}:${hide.pose}:render:${attempt}`)) {
+    const room = await budget.audit(worldId);
+    if (room.held || room.remainingMicroUsd < await sunburstRequiredPaintCapacity(c, gameId, row.id))
+      throw new WorldBudgetError("cap_exceeded", "Sunburst painting requires its full image and ordinary assessment capacity");
   }
   if (bodyBirth && !await budget.readRequest(worldId, `${hide.id}:${hide.pose}:render:${attempt}`)) {
     const room = await budget.audit(worldId);
@@ -489,11 +504,11 @@ export async function runLocalPatchHide(c: Container, deps: LocalPatchHideDeps, 
   const identityReferences = await prepareLocalPatchIdentityReferences(sheet, scene.sceneVersion);
   // An enrolled world's subject plan for this appearance; absent for every other world.
   const subjectDirection = nativeDetailSubjectDirection(await subjectDirectionFor(c, gameId, hide.id, scene.sceneVersion, row.judgeJson,
-    { basePolicySha256: deps.renderPolicySha256, attemptNumber: attempt }));
+    { basePolicySha256: paint.renderPolicySha256, attemptNumber: attempt }));
   const nativeDetailRepair=!journeyRecovery&&repairChecks?.includes('styleMatch') ? nativeDetailRepairOf(row.judgeJson,hide.id,scene.sceneVersion) : undefined;
   const attemptResult = await renderLocalPatchHide({
     ledger: budget, store: new LocalPatchRetainedPurchaseStore(c, gameId, budget, input.deadlineAt),
-    renderPolicySha256: deps.renderPolicySha256, render: deps.render, ...(deps.judge ? { judge: deps.judge } : {}),
+    renderPolicySha256: paint.renderPolicySha256, render: paint.render, ...(deps.judge ? { judge: deps.judge } : {}),
   }, {
     worldId, board, hide, composedPng: artwork, contentVersion: scene.sceneVersion, placementContext,
     ...(hide.returnRect ? { authoredSource: { sha256: definition.art.sha256 ?? "", width: definition.art.width, height: definition.art.height } } : {}),

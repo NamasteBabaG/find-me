@@ -46,7 +46,7 @@ const EnvSchema = z.object({
    * is created; a game keeps its pin, and a game without one keeps its content
    * version's own quality (MEDIUM for v12). low-v1 is qualified only on QA with
    * v19 and dual-high-v3, and a draft is refused rather than painted otherwise. */
-  LOCAL_PATCH_PAINTER: z.enum(["by-version", "low-v1"]).prefault("by-version"),
+  LOCAL_PATCH_PAINTER: z.enum(["by-version", "low-v1", "sunburst-v1"]).prefault("by-version"),
   /** How NEW local-patch drafts have their Opus quality questions delivered, pinned
    * per game: synchronously, or by Anthropic's Message Batches at half price with a
    * six-hour deadline. Qualified only on QA with dual-high-v3; never retroactive. */

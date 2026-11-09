@@ -74,6 +74,9 @@ async function stateOf(c: Container, gameId: string) {
   return {game,child,identity,avatar,state};
 }
 
+/** Shared read-only identity/payment/source binding; grants keep separate versions. */
+export const qaCompletionSourceState = stateOf;
+
 async function receiptOf(c: Container, gameId: string): Promise<QaCompletionReceipt|null> {
   const row=await c.db.auditLog.findUnique({where:{id:qaCompletionCapacityId(gameId)}});if(!row)return null;
   const receipt=qaCompletionReceiptSchema.parse(JSON.parse(row.metaJson??"null")),{authorizationSha256,...body}=receipt;

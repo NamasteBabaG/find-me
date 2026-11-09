@@ -4,7 +4,7 @@ import type { Container } from "../../container";
 import { loadSubjectPhoto, subjectDirectionFor } from "../local-patch-subject-review";
 import { SUBJECT_UPGRADE_ACTION, SUBJECT_UPGRADE_VERSION, subjectUpgradeAuditId, subjectUpgradeReceiptSchema } from "../subject-enrollment";
 import { SUBJECT_POLICY_VERSION } from "../../../domain/generation/subject-policy";
-import { LOCAL_PATCH_IMAGE_POLICY, LOCAL_PATCH_LOW_IMAGE_POLICY, localPatchRenderPolicySha256 } from "../../../infra/generation/openai-local-patch";
+import { LOCAL_PATCH_IMAGE_POLICY, LOCAL_PATCH_LOW_IMAGE_POLICY, LOCAL_PATCH_SUNBURST_IMAGE_POLICY, localPatchRenderPolicySha256 } from "../../../infra/generation/openai-local-patch";
 import { LEAN_WARM_HAT_WARDROBE, SUBJECT_PAINTER_V3, SUBJECT_PAINTER_V4 } from "../../../domain/generation/subject-painter";
 import { sha256Bytes } from "../fixed-sprite";
 import { DUAL_VISUAL_REVIEW_V3 } from "../visual-review-release";
@@ -82,5 +82,11 @@ describe("owned photo evidence and explicit affordable redraw quality", () => {
     const hat = await subjectDirectionFor(f.c, f.gameId, "antarctica-v12-1", 12, null, { attemptNumber: 1 });
     expect(hat?.wardrobe).toBe(LEAN_WARM_HAT_WARDROBE);
     expect(hat?.text).toContain("worn pushed back off the forehead");
+    const sunburst = await subjectDirectionFor(f.c, f.gameId, "newyork-v12-1", 12, null,
+      { basePolicySha256: localPatchRenderPolicySha256(LOCAL_PATCH_SUNBURST_IMAGE_POLICY), attemptNumber: 1 });
+    expect(sunburst).toMatchObject({ painterVersion: SUBJECT_PAINTER_V4, quality: "high", policySha256: localPatchRenderPolicySha256(LOCAL_PATCH_SUNBURST_IMAGE_POLICY) });
+    expect(sunburst?.text).toBe(first?.text); expect(sunburst?.photoPng.equals(first!.photoPng)).toBe(true);
+    expect(sunburst?.sha256).not.toBe(first?.sha256);
+    expect(Array.isArray(sunburst?.legacy) && sunburst.legacy[0]).toMatchObject({ quality: "medium", sha256: first?.sha256 });
   });
 });

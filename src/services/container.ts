@@ -26,7 +26,7 @@ import { runGenerationPipeline } from "./generation/pipeline";
 import { prepareVisualReview, requestVisualReview, type VisualReviewQuestion } from "./generation/visual-review";
 import type { LocalPatchJudgeResult } from "./generation/local-patch-judge";
 import { DUAL_VISUAL_REVIEW_V2, DUAL_VISUAL_REVIEW_V3, DUAL_VISUAL_REVIEW_VERSION, type DualVisualReviewVersion } from "./generation/visual-review-release";
-import { LOCAL_PATCH_LOW_PAINTER, type LocalPatchPainterRelease } from "./generation/painter-release";
+import { LOCAL_PATCH_LOW_PAINTER, LOCAL_PATCH_SUNBURST_PAINTER, type LocalPatchPainterRelease } from "./generation/painter-release";
 import { QUALITY_BATCH_CHANNEL, type QualityChannelRelease } from "./generation/quality-channel";
 import { LOCAL_PATCH_LEAN_RELEASE, type LocalPatchLeanRelease } from "./generation/lean-release";
 import type { BackgroundReviewTransport, QualityBatchTransport } from "@/infra/generation/types";
@@ -155,6 +155,7 @@ function build(): Container {
     // Chosen by name like the review: the default keeps every content version's
     // own quality, and only drafts created while low-v1 is set are painted LOW.
     ...(e.LOCAL_PATCH_PAINTER === "low-v1" ? { localPatchPainter: LOCAL_PATCH_LOW_PAINTER } : {}),
+    ...(e.APP_ENV === "qa" && e.LOCAL_PATCH_PAINTER === "sunburst-v1" ? { localPatchPainter: LOCAL_PATCH_SUNBURST_PAINTER } : {}),
     ...(e.LOCAL_PATCH_QUALITY_CHANNEL === "anthropic-batch-v1" ? { qualityChannel: QUALITY_BATCH_CHANNEL } : {}),
     ...(e.LOCAL_PATCH_LEAN === "lean-v1" ? { leanRelease: LOCAL_PATCH_LEAN_RELEASE } : {}),
     ...(qualifiedDetectives ? {detectivesOperationalRelease:DETECTIVES_OPERATIONAL_RELEASE,explorersOperationalRelease:EXPLORERS_OPERATIONAL_RELEASE,

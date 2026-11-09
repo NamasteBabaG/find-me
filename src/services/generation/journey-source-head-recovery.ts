@@ -10,10 +10,17 @@ import { JOURNEY_SOURCE_HEAD_AUTHORITIES } from '../../../content/detectives/jou
 import { JOURNEY_SOURCE_HEAD_VERSION, JOURNEY_SOURCE_HEAD_ACTION, JOURNEY_HEAD_REVIEW_COVERAGE_MICRO_USD,
   journeyHeadHash as hash, journeyHeadBytesHash as sha, journeyHeadAlpha, journeyHeadAuthorityFor,
   journeyHeadMarker, journeyHeadMarkerSchema, composeJourneySourceHead, JOURNEY_HEAD_FRAME_REPLAY_ACTION,
+  JOURNEY_SUNBURST_HEAD_VERSION, JOURNEY_SUNBURST_HEAD_ACTION, JOURNEY_SUNBURST_HEAD_HIDE_ID, JOURNEY_SUNBURST_HEAD_PAINTER,
+  journeyHeadPinId, journeySunburstHeadPinId,
   type JourneyHeadAuthority, type JourneyHeadMarker } from '../../domain/generation/journey-source-head';
+import { SUNBURST_IMAGE_RESERVE_MICRO_USD, SUNBURST_REVIEW_COVERAGE_MICRO_USD } from '../../domain/generation/sunburst-painter';
+import { LOCAL_PATCH_SUNBURST_IMAGE_POLICY, localPatchRenderPolicySha256 } from '../../infra/generation/openai-local-patch';
+import { QA_FIVE_COMPLETION_CAP } from '../../domain/generation/qa-five-dollar-completion';
+import { qaFiveCompletionActive } from './qa-five-dollar-completion';
 import { normalizeJourneyHeadProviderPng } from './journey-head-provider-frame';
 import { maskForHide } from '../../domain/scene/local-patch-hides';
 import { TARGET_HEAD_VISIBLE_VERSION } from '../../domain/generation/target-head-return';
+import { localPatchReadyReviewOwed } from '../../domain/scene/local-patch-progress';
 import { composeBoundedLocalPatch } from './local-patch-seam';
 import { AUTHORED_PATCH_COMPOSITION_VERSION } from '../../domain/scene/local-patch-return-region';
 import { LOCAL_PATCH_RESERVE } from './local-patch-render';
@@ -41,9 +48,30 @@ const pinBody = z.object({ version: z.literal(JOURNEY_SOURCE_HEAD_VERSION), game
   previousAssetId: id, protectedRows: z.array(z.object({ id, sha256: digest }).strict()).length(26),
   originalRequests: z.array(requestHash).min(1), createdAt: z.string().datetime() }).strict();
 const pinSchema = pinBody.extend({ authorizationSha256: digest }).strict();
-export type JourneyHeadPin = z.infer<typeof pinSchema>;
+/** journey-source-head-sunburst/v1: the same finite second purchase, for Paris
+ * only, bound to the active explicit five-dollar completion and the reviewed
+ * Sunburst image policy. Never a game-wide painter pin. */
+const SUNBURST_HEAD_POLICY_SHA256 = localPatchRenderPolicySha256(LOCAL_PATCH_SUNBURST_IMAGE_POLICY);
+const sunburstPinBody = pinBody.extend({ version: z.literal(JOURNEY_SUNBURST_HEAD_VERSION), hideId: z.literal(JOURNEY_SUNBURST_HEAD_HIDE_ID),
+  capMicroUsd: z.literal(QA_FIVE_COMPLETION_CAP), completionAuthorizationSha256: digest, painterRelease: z.literal(JOURNEY_SUNBURST_HEAD_PAINTER),
+  imagePolicySha256: z.literal(SUNBURST_HEAD_POLICY_SHA256), imageReserveMicroUsd: z.literal(SUNBURST_IMAGE_RESERVE_MICRO_USD),
+  reviewCoverageMicroUsd: z.literal(SUNBURST_REVIEW_COVERAGE_MICRO_USD) }).strict();
+const sunburstPinSchema = sunburstPinBody.extend({ authorizationSha256: digest }).strict();
+export type JourneyHeadMediumPin = z.infer<typeof pinSchema>;
+export type JourneySunburstHeadPin = z.infer<typeof sunburstPinSchema>;
+export type JourneyHeadPin = JourneyHeadMediumPin | JourneySunburstHeadPin;
+export const isJourneySunburstHeadPin = (p: JourneyHeadPin): p is JourneySunburstHeadPin => p.version === JOURNEY_SUNBURST_HEAD_VERSION;
+/** Typed routing state for the one Sunburst head; null for every v2 head. */
+export type JourneySunburstHeadState = { readonly painterRelease: typeof JOURNEY_SUNBURST_HEAD_PAINTER; readonly imagePolicySha256: string;
+  readonly subjectQuality: 'high'; readonly imageReserveMicroUsd: number; readonly reviewCoverageMicroUsd: number;
+  readonly completionAuthorizationSha256: string; readonly requestKey: string; readonly hideId: typeof JOURNEY_SUNBURST_HEAD_HIDE_ID };
+export function journeySunburstHeadState(p: JourneyHeadPin): JourneySunburstHeadState | null {
+  return isJourneySunburstHeadPin(p) ? { painterRelease: p.painterRelease, imagePolicySha256: p.imagePolicySha256, subjectQuality: 'high',
+    imageReserveMicroUsd: p.imageReserveMicroUsd, reviewCoverageMicroUsd: p.reviewCoverageMicroUsd,
+    completionAuthorizationSha256: p.completionAuthorizationSha256, requestKey: p.requestKey, hideId: p.hideId } : null;
+}
 const check = (ok: unknown, why: string): void => { if (!ok) throw Error('JOURNEY_HEAD: ' + why); };
-const keyOf = (gameId: string, hideId: string) => 'aud_journey_head_' + hash([gameId, hideId]).slice(0, 40);
+const keyOf = journeyHeadPinId;
 const rowKeys = ['id', 'targetInstanceId', 'variant', 'status', 'attempts', 'assetId', 'rectJson', 'hitRectJson', 'headAnchorJson',
   'judgeJson', 'promptVersion', 'provider', 'model', 'costCents', 'rejectedAssetIdsJson', 'lastError'];
 const rowHash = (row: Row) => hash(rowKeys.map(k => [k, row[k] ?? null]));
@@ -53,7 +81,8 @@ const scoped = (db: Db) => ({ db, storage: new DbStorage(db) } as unknown as Con
 export function journeyHeadMarkerFor(p: JourneyHeadPin): JourneyHeadMarker {
   return journeyHeadMarkerSchema.parse({ version: JOURNEY_SOURCE_HEAD_VERSION, authorizationSha256: p.authorizationSha256,
     authoritySha256: p.authoritySha256, rowId: p.rowId, hideId: p.hideId, originalAttempts: 1, authorizedAttempt: 2,
-    previousJudgeSha256: p.previousJudgeSha256, requestKey: p.requestKey });
+    previousJudgeSha256: p.previousJudgeSha256, requestKey: p.requestKey,
+    ...(isJourneySunburstHeadPin(p) ? { painterRelease: p.painterRelease } : {}) });
 }
 export function journeyHeadCandidate(p: JourneyHeadPin, row: Row) {
   return row.id === p.rowId && (row.status === 'FAILED' && row.attempts === 1 && rowHash(row) === p.previousRowSha256
@@ -63,13 +92,14 @@ export function journeyHeadCandidate(p: JourneyHeadPin, row: Row) {
 /** Absent pins are a cheap no-op for every historical world. There are only the
  * two named public SOURCE strategies, never an unbounded extra attempt list. */
 export async function journeyHeadPinsOf(db: Db, gameId: string): Promise<JourneyHeadPin[]> {
-  const records = await db.auditLog.findMany({ where: { id: { in: JOURNEY_SOURCE_HEAD_AUTHORITIES.map(a => keyOf(gameId, a.hideId)) } } });
+  const records = await db.auditLog.findMany({ where: { id: { in: [...JOURNEY_SOURCE_HEAD_AUTHORITIES.map(a => keyOf(gameId, a.hideId)), journeySunburstHeadPinId(gameId)] } } });
   const result: JourneyHeadPin[] = [];
   for (const record of records) {
-    const p = pinSchema.parse(JSON.parse(record.metaJson ?? 'null')), { authorizationSha256, ...body } = p;
-    check(record.actorType === 'SYSTEM' && record.actorId === null && record.action === JOURNEY_SOURCE_HEAD_ACTION
+    const sunburst = record.action === JOURNEY_SUNBURST_HEAD_ACTION;
+    const p: JourneyHeadPin = (sunburst ? sunburstPinSchema : pinSchema).parse(JSON.parse(record.metaJson ?? 'null')), { authorizationSha256, ...body } = p;
+    check(record.actorType === 'SYSTEM' && record.actorId === null && record.action === (sunburst ? JOURNEY_SUNBURST_HEAD_ACTION : JOURNEY_SOURCE_HEAD_ACTION)
       && record.entityType === 'Game' && record.entityId === gameId && p.gameId === gameId && p.worldId === gameId + ':board-wizard'
-      && record.id === keyOf(gameId, p.hideId) && hash(body) === authorizationSha256, 'finite head authority changed');
+      && record.id === (sunburst ? journeySunburstHeadPinId(gameId) : keyOf(gameId, p.hideId)) && hash(body) === authorizationSha256, 'finite head authority changed');
     const a = JOURNEY_SOURCE_HEAD_AUTHORITIES.find(a => a.hideId === p.hideId);
     check(a && hash(a) === p.authoritySha256 && p.requestKey === a.hideId + ':' + a.pose + ':render:2'
       && sha(Buffer.from(p.previousJudgeJson)) === p.previousJudgeSha256, 'public recipe or original evidence changed');
@@ -79,6 +109,7 @@ export async function journeyHeadPinsOf(db: Db, gameId: string): Promise<Journey
     'original MEDIUM birth authority, bills or full reserves changed');
     result.push(p);
   }
+  check(new Set(result.map(p => p.hideId)).size === result.length, 'two finite head authorities name one appearance');
   return result;
 }
 
@@ -110,26 +141,53 @@ async function context(c: Container, gameId: string, hideId: string, painting: b
   const authority = parent && journeyHeadAuthorityFor(parent);
   if (!board || !hide || !parent || !authority || hide.pose !== authority.pose) return null;
   const budget = await boardWizardBudgetOf(c).audit(gameId + ':board-wizard');
-  if (budget.capMicroUsd !== 4_000_000 || budget.overCapMicroUsd || budget.conflictRequestKeys.length || budget.overrunRequestKeys.length) return null;
-  return { game, child, policy, identity, board, hide, parent, authority, budget, photoSha256, photoCropSha256 };
+  // The original four dollars, or exactly the verified explicit five-dollar
+  // completion of THIS game (no other widened ceiling admits a finite head).
+  const five = budget.capMicroUsd === QA_FIVE_COMPLETION_CAP ? await qaFiveCompletionActive(c, gameId) : null;
+  if (budget.capMicroUsd !== 4_000_000 && !five || budget.overCapMicroUsd || budget.conflictRequestKeys.length || budget.overrunRequestKeys.length) return null;
+  return { game, child, policy, identity, board, hide, parent, authority, budget, photoSha256, photoCropSha256, five };
 }
 
 /** A free, finite recipe enrollment, not a painting or an art approval. The two
  * heads are handled before optional window reviews while full bounds still fit. */
 export async function resumeJourneySourceHead(c: Container, gameId: string, hideId: string, observeRefusal?: (why: string) => void) {
+  return enrollJourneyHead(c, gameId, hideId, false, observeRefusal);
+}
+
+/** journey-source-head-sunburst/v1: the same free finite enrollment for the ONE
+ * Paris head, bound to the active explicit five-dollar completion whose named
+ * next operation it is. It buys nothing and never changes the game's painter pin. */
+export async function resumeJourneySunburstHead(c: Container, gameId: string, observeRefusal?: (why: string) => void) {
+  return enrollJourneyHead(c, gameId, JOURNEY_SUNBURST_HEAD_HIDE_ID, true, observeRefusal);
+}
+
+async function enrollJourneyHead(c: Container, gameId: string, hideId: string, sunburst: boolean, observeRefusal?: (why: string) => void) {
   const refuse = (why: string) => { observeRefusal?.(why); return false; };
-  if (env().APP_ENV !== 'qa' || c.storage.id !== 'db' || !JOURNEY_SOURCE_HEAD_AUTHORITIES.some(a => a.hideId === hideId)) return refuse('qa-scope');
+  if (env().APP_ENV !== 'qa' || c.storage.id !== 'db' || !JOURNEY_SOURCE_HEAD_AUTHORITIES.some(a => a.hideId === hideId)
+    || sunburst && hideId !== JOURNEY_SUNBURST_HEAD_HIDE_ID) return refuse('qa-scope');
   return c.db.$transaction(async tx => {
     await fenceLocalPatchImages(tx, gameId);
     const cc = { ...c, db: tx, storage: new DbStorage(tx) } as unknown as Container;
     const job = await tx.generationJob.findUnique({ where: { id: 'job_' + gameId } });
-    if (!job || !['QUEUED', 'FAILED'].includes(job.status) || await tx.auditLog.findUnique({ where: { id: keyOf(gameId, hideId) } })) return refuse('job-or-existing-pin');
+    // Exactly one finite second purchase per appearance, whichever painter.
+    if (!job || !['QUEUED', 'FAILED'].includes(job.status) || await tx.auditLog.findUnique({ where: { id: keyOf(gameId, hideId) } })
+      || hideId === JOURNEY_SUNBURST_HEAD_HIDE_ID && await tx.auditLog.findUnique({ where: { id: journeySunburstHeadPinId(gameId) } })) return refuse('job-or-existing-pin');
     const p = await context(cc, gameId, hideId, true);
-    if (!p || p.budget.held || p.budget.remainingMicroUsd < LOCAL_PATCH_RESERVE.renderMicroUsd + JOURNEY_HEAD_REVIEW_COVERAGE_MICRO_USD) return refuse('payment-identity-or-full-capacity');
+    const need = sunburst ? SUNBURST_IMAGE_RESERVE_MICRO_USD + SUNBURST_REVIEW_COVERAGE_MICRO_USD : LOCAL_PATCH_RESERVE.renderMicroUsd + JOURNEY_HEAD_REVIEW_COVERAGE_MICRO_USD;
+    if (!p || p.budget.held || p.budget.remainingMicroUsd < need) return refuse('payment-identity-or-full-capacity');
+    // The five-dollar grant was justified by THIS Sunburst head: while it is
+    // active, its named appearance cannot be re-enrolled as a MEDIUM v2 head.
+    if (!sunburst && p.five?.plan.nextOperation.hideId === hideId) return refuse('five-dollar-grant-names-sunburst-head');
+    if (sunburst && (!p.five || p.budget.capMicroUsd !== QA_FIVE_COMPLETION_CAP)) return refuse('explicit-five-dollar-completion-required');
     const all = await tx.targetVariantAsset.findMany({ where: { variant: 'A', targetInstance: { gameScene: { gameId } } },
       include: { targetInstance: { include: { gameScene: true } } } });
     const row = all.find(r => r.targetInstance.gameScene.sceneSlug === p.board.board && r.targetInstance.targetId === p.hide.targetId);
     if (all.length !== 27 || !row || row.provider !== 'local-patch' || row.status !== 'FAILED' || row.attempts !== 1 || !row.assetId) return refuse('original27-or-first-failed-row');
+    // This game's global painter remains MEDIUM. Finish existing paid-picture
+    // assessments before enrolling its one finite Sunburst head; their later
+    // mutation is also barred by the protected-row fence before dispatch.
+    if (sunburst && all.some(other => other.id !== row.id && localPatchReadyReviewOwed(other, { required: true })))
+      return refuse('other-paid-pictures-await-ordinary-review');
     const previous = JSON.parse(row.judgeJson ?? 'null');
     if (previous?.hide !== hideId || previous.pose !== p.hide.pose || previous.reviewState !== 'board-review-complete'
       || previous.journeyHeadRecovery !== undefined || previous.retainedWindow !== undefined || hash(previous.authoredReturn) !== hash(p.parent)) return refuse('unfinished-original-evidence');
@@ -146,16 +204,28 @@ export async function resumeJourneySourceHead(c: Container, gameId: string, hide
     await readSettledTargetRaw(tx, gameId, hideId + ':' + p.hide.pose + ':render:1');
     const requestKey = hideId + ':' + p.hide.pose + ':render:2';
     if (ledger.snapshot.requests.some(r => r.requestKey === requestKey) || await new PrismaRetainedPurchaseStore(tx).get(gameId + ':board-wizard', requestKey)) return refuse('second-purchase-exists');
-    const body = pinBody.parse({ version: JOURNEY_SOURCE_HEAD_VERSION, gameId, worldId: gameId + ':board-wizard', ownerId: p.game.ownerId,
+    if (sunburst) {
+      const next = p.five!.plan.nextOperation;
+      if (next.hideId !== hideId || next.rowId !== row.id || next.requestKey !== requestKey || next.previousJudgeSha256 !== sha(Buffer.from(row.judgeJson!)))
+        return refuse('five-dollar-named-operation-changed');
+    }
+    const common = { gameId, worldId: gameId + ':board-wizard', ownerId: p.game.ownerId,
       rowId: row.id, hideId, authoritySha256: hash(p.authority), identityAssetId: p.identity.id, identitySha256: p.policy.identitySha256,
-      mediumAuthorizationSha256: p.policy.authorizationSha256, originalPhotoAssetId:p.child.originalPhotoAssetId, originalPhotoSha256:p.photoSha256, photoCropSha256:p.photoCropSha256, capMicroUsd: 4_000_000, originalAttempts: 1, authorizedAttempt: 2, requestKey,
+      mediumAuthorizationSha256: p.policy.authorizationSha256, originalPhotoAssetId:p.child.originalPhotoAssetId, originalPhotoSha256:p.photoSha256, photoCropSha256:p.photoCropSha256 };
+    const tail = { originalAttempts: 1, authorizedAttempt: 2, requestKey,
       previousJudgeJson: row.judgeJson, previousJudgeSha256: sha(Buffer.from(row.judgeJson!)), previousRowSha256: rowHash(row), rowInvariantSha256: invariant(row), previousAssetId: row.assetId,
       protectedRows: all.filter(r => r.id !== row.id).map(r => ({ id: r.id, sha256: rowHash(r) })),
-      originalRequests: ledger.snapshot.requests.map(r => ({ requestKey: r.requestKey, sha256: hash(r) })), createdAt: new Date().toISOString() });
-    const pin = pinSchema.parse({ ...body, authorizationSha256: hash(body) });
+      originalRequests: ledger.snapshot.requests.map(r => ({ requestKey: r.requestKey, sha256: hash(r) })), createdAt: new Date().toISOString() };
+    const body = sunburst
+      ? sunburstPinBody.parse({ version: JOURNEY_SUNBURST_HEAD_VERSION, ...common, capMicroUsd: QA_FIVE_COMPLETION_CAP, ...tail,
+        completionAuthorizationSha256: p.five!.authorizationSha256, painterRelease: JOURNEY_SUNBURST_HEAD_PAINTER, imagePolicySha256: SUNBURST_HEAD_POLICY_SHA256,
+        imageReserveMicroUsd: SUNBURST_IMAGE_RESERVE_MICRO_USD, reviewCoverageMicroUsd: SUNBURST_REVIEW_COVERAGE_MICRO_USD })
+      : pinBody.parse({ version: JOURNEY_SOURCE_HEAD_VERSION, ...common, capMicroUsd: 4_000_000, ...tail });
+    const pin = (sunburst ? sunburstPinSchema : pinSchema).parse({ ...body, authorizationSha256: hash(body) });
     const revision = await tx.worldBudgetLedger.updateMany({ where: { worldId: pin.worldId, revision: ledger.revision }, data: { revision: { increment: 1 } } });
     check(revision.count === 1, 'concurrent finite head enrollment');
-    await tx.auditLog.create({ data: { id: keyOf(gameId, hideId), actorType: 'SYSTEM', action: JOURNEY_SOURCE_HEAD_ACTION, entityType: 'Game', entityId: gameId, metaJson: JSON.stringify(pin) } });
+    await tx.auditLog.create({ data: { id: sunburst ? journeySunburstHeadPinId(gameId) : keyOf(gameId, hideId), actorType: 'SYSTEM',
+      action: sunburst ? JOURNEY_SUNBURST_HEAD_ACTION : JOURNEY_SOURCE_HEAD_ACTION, entityType: 'Game', entityId: gameId, metaJson: JSON.stringify(pin) } });
     await tx.generationJob.update({ where: { id: job.id }, data: { status: 'QUEUED', currentStep: 'local-patch', lastError: null } });
     return true;
   }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, timeout: 60_000 });
@@ -167,10 +237,15 @@ export async function requireJourneyHeadPurchase(c: Container, gameId: string, r
   const p = await context(c, gameId, pin!.hideId, true);
   check(p && hash(p.authority) === pin!.authoritySha256 && p.policy.identitySha256 === pin!.identitySha256
     && p.child.originalPhotoAssetId===pin!.originalPhotoAssetId&&p.photoSha256===pin!.originalPhotoSha256&&p.photoCropSha256===pin!.photoCropSha256, 'current payment, identity, photo, crop or public SOURCE changed');
+  const sunburst = journeySunburstHeadState(pin!);
+  // The Sunburst head stays bound to the exact active grant it was enrolled under.
+  if (sunburst) check(p!.budget.capMicroUsd === QA_FIVE_COMPLETION_CAP && p!.five?.authorizationSha256 === sunburst.completionAuthorizationSha256,
+    'explicit five-dollar completion authority changed');
   const existing = await boardWizardBudgetOf(c).readRequest(pin!.worldId, pin!.requestKey);
-  if (!existing) check(!p!.budget.held && p!.budget.remainingMicroUsd >= LOCAL_PATCH_RESERVE.renderMicroUsd + JOURNEY_HEAD_REVIEW_COVERAGE_MICRO_USD,
-    'image and full bounded ordinary MEDIUM coverage do not fit');
-  return { pin: pin!, marker: journeyHeadMarkerFor(pin!), authority: p!.authority };
+  if (!existing) check(!p!.budget.held && p!.budget.remainingMicroUsd >= (sunburst ? sunburst.imageReserveMicroUsd + sunburst.reviewCoverageMicroUsd
+    : LOCAL_PATCH_RESERVE.renderMicroUsd + JOURNEY_HEAD_REVIEW_COVERAGE_MICRO_USD),
+    sunburst ? 'Sunburst image and full ordinary assessment coverage do not fit' : 'image and full bounded ordinary MEDIUM coverage do not fit');
+  return { pin: pin!, marker: journeyHeadMarkerFor(pin!), authority: p!.authority, sunburst };
 }
 
 /** Free recovery of the one settled head that stopped at the old provider-size

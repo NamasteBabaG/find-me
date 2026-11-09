@@ -26,7 +26,7 @@ import { INTEGRATED_COLLECTION_VERSION } from "../domain/scene/local-patch-versi
 import { assertNoOutstandingCheckout, DraftCheckoutInProgress, hasOutstandingCheckout } from "./draft-checkout-lock";
 import { pinVisualReviewRelease, DUAL_VISUAL_REVIEW_V3 } from "./generation/visual-review-release";
 import { pinNewQaWorldBudget } from "./generation/local-patch-qa-budget";
-import { pinLocalPatchPainter } from "./generation/painter-release";
+import { LOCAL_PATCH_SUNBURST_PAINTER, pinLocalPatchPainter } from "./generation/painter-release";
 import { pinQualityChannel } from "./generation/quality-channel";
 import { pinLeanRelease, LOCAL_PATCH_LEAN_RELEASE } from "./generation/lean-release";
 import { pinIdentitySourceRelease } from "./generation/identity-source-release";
@@ -90,6 +90,7 @@ export async function createDraft(c: Container, ownerId: string | null, locale: 
         if(selectedVersion===13 && !scoped)await pinDetectivesOperationalPolicy(tx,created.id,c.detectivesOperationalRelease,c.storage.id);
         if(selectedVersion===12)await pinExplorersOperationalPolicy(tx,created.id,c.explorersOperationalRelease,c.storage.id);
       }
+      if (lean && c.localPatchPainter === LOCAL_PATCH_SUNBURST_PAINTER) await pinLocalPatchPainter(tx, created.id, c.localPatchPainter);
     }
     if (options.askSearchLevel) await pinSearchLevelChoice(tx, created.id);
     return created;

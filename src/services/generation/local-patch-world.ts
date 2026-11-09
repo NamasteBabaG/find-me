@@ -42,7 +42,8 @@ import { resolveLocalPatchBoardsForGame } from "./source-placement-release";
 import { deliverLocalPatchNotifications } from "../local-patch-notifications";
 import { GenerationPaused, boardWizardBudgetOf, boardWizardWorldId } from "./board-conditioned-wizard";
 import { retainedPurchaseKeysFor } from "../../infra/db/prisma-retained-purchase-store";
-import { buyLocalPatch, localPatchImagePolicyForVersion, localPatchRenderPolicySha256 } from "../../infra/generation/openai-local-patch";
+import { buyLocalPatch, LOCAL_PATCH_SUNBURST_IMAGE_POLICY, localPatchImagePolicyForVersion, localPatchRenderPolicySha256 } from "../../infra/generation/openai-local-patch";
+import { SUNBURST_REVIEW_COVERAGE_MICRO_USD } from "../../domain/generation/sunburst-painter";
 import { fenceLocalPatchImages } from "./local-patch-lifecycle";
 import { env } from "../../lib/env";
 import { identityRevisionPending } from "./identity-source-revision-state";
@@ -68,7 +69,7 @@ import { activateLocalPatchEmergencyBudget } from "./local-patch-budget-recovery
 import { localPatchEvidenceRecovery, LOCAL_PATCH_EVIDENCE_RETRY_BACKOFF_MS } from "./local-patch-review-recovery";
 import { localPatchRetainedAnswerUndecided, localPatchContinuityPending, localPatchBoundEnvelopeUndecided } from "./local-patch-dual-evidence";
 import { hasDualVisualReview } from "./visual-review-release";
-import { localPatchPainterRelease, painterReleasePolicy, type LocalPatchPainterRelease } from "./painter-release";
+import { LOCAL_PATCH_SUNBURST_PAINTER, localPatchPainterRelease, painterReleasePolicy, type LocalPatchPainterRelease } from "./painter-release";
 import { advanceQualityBatches } from "./quality-batch";
 import { subjectUpgradeOf } from "./subject-enrollment";
 import { subjectRejudgePending } from "./subject-rejudge";
@@ -649,6 +650,8 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
     && guideCapacity && !sourceBodyBirthMarker(row) && guidedFrameCandidate(row);
   const readyReviewOwed = (row: { status: string; judgeJson: string | null }) => localPatchReadyReviewOwed(row,
     { required: !!subjectUpgrade, identitySha256: subjectUpgrade?.identityRevision ? subjectUpgrade.identitySha256 : undefined });
+  const sunburstReviewDebtAtStart = deps.renderPolicySha256 === localPatchRenderPolicySha256(LOCAL_PATCH_SUNBURST_IMAGE_POLICY)
+    ? rows.filter(readyReviewOwed).length : 0;
   const completionAuthority = automatic && !extraPlan ? await readQaCompletionCapacity(c, boardWizardWorldId(gameId)) : null;
   const legacyHead = completionAuthority ? await reconcileLegacyPaidJoinHead(c, gameId, rows, fence) : { changed: false, continuePaidRows: [] as string[] };
   if (legacyHead.changed) rows = await c.db.targetVariantAsset.findMany({ where: { variant: LOCAL_PATCH_VARIANT, targetInstance: { gameScene: { gameId } } },
@@ -1254,6 +1257,16 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
         && (repair.decision!.action === "recompose-retained" || currentBudget.remainingMicroUsd >= LOCAL_PATCH_RESERVE.renderMicroUsd);
     })) return { ...await yieldToContinue(), outcomes, blocked };
     if (deferredBudgetError && automatic && (await settledAnswersWaiting()).length) return { ...await yieldToContinue(), outcomes, blocked };
+    // Sunburst's review coverage may deliberately defer another painting on a
+    // partial board. Give its already-paid pictures their ordinary review turn
+    // before declaring money exhausted. Yield only after new pixels or a real
+    // reduction in debt; an unchanged blocked review cannot wake itself forever.
+    if (deferredBudgetError && automatic && deps.renderPolicySha256 === localPatchRenderPolicySha256(LOCAL_PATCH_SUNBURST_IMAGE_POLICY)
+      && currentBudget.remainingMicroUsd >= SUNBURST_REVIEW_COVERAGE_MICRO_USD) {
+      const owed = after.filter(readyReviewOwed).length;
+      if (owed > 0 && (outcomes.some(outcome => outcome.state === "generated") || owed < sunburstReviewDebtAtStart))
+        return { ...await yieldToContinue(), outcomes, blocked };
+    }
     const deferred = deferredBudgetError ? await deferBudget(deferredBudgetError) : null;
     if (deferred) return { gameId, pending: !deferred.parked, claimed: true, paused: false, attention: deferred.parked, outcomes, blocked };
     // What is left when nothing automatic remains to start for any of it: appearances whose repair cycles under
@@ -1320,7 +1333,15 @@ export function localPatchPainterDeps(_c: Container, contentVersion = 6, release
     apiKey,
     renderPolicySha256: localPatchRenderPolicySha256(policy),
     render: async input => {
-      const base = input.subjectPhotoPng ? input.subjectQuality === "low" ? painterReleasePolicy("local-patch-painter/low-v1", 12) : localPatchImagePolicyForVersion(contentVersion) : policy;
+      // A declared HIGH subject is Sunburst only when the game's own immutable
+      // pin selected it. Old LOW/MEDIUM directions remain their original model.
+      if (input.subjectQuality === "high" && release !== LOCAL_PATCH_SUNBURST_PAINTER)
+        throw Error("Sunburst subject painting requires the game's painter pin");
+      if (release === LOCAL_PATCH_SUNBURST_PAINTER && input.subjectPhotoPng && input.subjectQuality !== "high")
+        throw Error("Sunburst cannot buy a historical subject policy; retained purchases replay before dispatch");
+      if (release === LOCAL_PATCH_SUNBURST_PAINTER && !input.subjectPhotoPng)
+        throw Error("Sunburst paints only photo-backed enrolled appearances");
+      const base = input.subjectQuality === "high" ? policy : input.subjectPhotoPng ? input.subjectQuality === "low" ? painterReleasePolicy("local-patch-painter/low-v1", 12) : localPatchImagePolicyForVersion(contentVersion) : policy;
       return buyLocalPatch(apiKey,input,{policy:input.wholeSourceContext?wholeSourceContextImagePolicy(base):base});
     },
   };
@@ -1330,7 +1351,11 @@ export function localPatchPainterDeps(_c: Container, contentVersion = 6, release
  * the deployment's current setting. Every paid painting of the game, repairs
  * included, is bought through what this returns. */
 export async function localPatchPainterForGame(c: Container, gameId: string, contentVersion: number | undefined): Promise<LocalPatchHideDeps | null> {
-  return localPatchPainterDeps(c, contentVersion, await localPatchPainterRelease(c.db, gameId));
+  const deps = localPatchPainterDeps(c, contentVersion, await localPatchPainterRelease(c.db, gameId));
+  // Merely constructing this adapter buys nothing. Only the verified finite
+  // journey head pin in runLocalPatchHide can select it for the Paris request.
+  const head = deps && contentVersion === 13 ? localPatchPainterDeps(c, 13, LOCAL_PATCH_SUNBURST_PAINTER) : null;
+  return deps && head ? { ...deps, sunburstHeadRender: head.render } : deps;
 }
 
 /**

@@ -4,7 +4,7 @@ import { pinDetectivesOperationalPolicy } from "./generation/detectives-operatio
 import { Prisma } from "@prisma/client";
 import { pinVisualReviewRelease } from "./generation/visual-review-release";
 import { pinNewQaWorldBudget } from "./generation/local-patch-qa-budget";
-import { pinLocalPatchPainter } from "./generation/painter-release";
+import { LOCAL_PATCH_SUNBURST_PAINTER, pinLocalPatchPainter } from "./generation/painter-release";
 import { pinQualityChannel } from "./generation/quality-channel";
 import { pinLeanRelease } from "./generation/lean-release";
 import { pinIdentitySourceRelease } from "./generation/identity-source-release";
@@ -152,6 +152,7 @@ export async function beginWorldPurchase(c: Container, input: WorldPurchaseInput
             if(version===13 && !scoped)await pinDetectivesOperationalPolicy(tx,gameId,c.detectivesOperationalRelease,c.storage.id);
             if(version===12)await pinExplorersOperationalPolicy(tx,gameId,c.explorersOperationalRelease,c.storage.id);
           }
+          if (lean && c.localPatchPainter === LOCAL_PATCH_SUNBURST_PAINTER) await pinLocalPatchPainter(tx, gameId, c.localPatchPainter);
         }
         if (choice.shown) await pinSearchLevelChoice(tx, gameId);
         await tx.gameScene.createMany({ data: boards.map((slug, orderIndex) => ({ id: newId("gsc"), gameId, sceneSlug: slug, sceneVersion: sceneBySlug(slug, version).version, orderIndex })) });

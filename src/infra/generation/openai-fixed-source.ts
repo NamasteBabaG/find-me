@@ -5,8 +5,10 @@ import { WorldBudget, WorldBudgetError, type WorldBudgetAudit, type WorldChargeE
 import { fixedSourceFailureReceipt, isSafeFixedSourceRequestId, type FixedSourceFailureReceipt, type FixedSourceFailureSink } from "./fixed-source-diagnostics";
 
 const ENDPOINT = "https://api.openai.com/v1/images/edits";
-/** The only two qualities this route may buy. HIGH and AUTO stay out. */
-export type FixedSourceQuality = "low" | "medium";
+/** HIGH is admitted only by the explicit Sunburst profile; historical models
+ * retain their original LOW/MEDIUM boundary. AUTO is never purchased. */
+export type FixedSourceQuality = "low" | "medium" | "high";
+export type FixedSourceComplexity = "low" | "medium" | "high";
 /**
  * Every size this route may buy, and why each exists.
  *
@@ -36,7 +38,7 @@ export type FixedSourceSize = (typeof FIXED_SOURCE_SIZES)[number];
 /** The image models this route may buy. Omitted means gpt-image-2, so every frozen
  * fingerprint stays where it is; gpt-image-1-mini is cost experiment E2's, and it
  * paints only the standard sizes. */
-export const FIXED_SOURCE_MODELS = ["gpt-image-2", "gpt-image-1-mini"] as const;
+export const FIXED_SOURCE_MODELS = ["gpt-image-2", "gpt-image-1-mini", "gpt-image-2.6-sunburst"] as const;
 export type FixedSourceModel = (typeof FIXED_SOURCE_MODELS)[number];
 const STANDARD_SIZES: readonly FixedSourceSize[] = ["1024x1024", "1024x1536"];
 /** The version names the size, so a new size can never quietly reuse an old
@@ -55,9 +57,10 @@ export const fixedSourceVersion = (quality: FixedSourceQuality, size: FixedSourc
     ? `fixed-source-${quality}/v1`
     : `fixed-source-${quality}-${size}${background === "opaque" ? "-opaque" : ""}/v1`;
 export const fixedSourceSettings = (quality: FixedSourceQuality, size: FixedSourceSize = "1024x1024", background: FixedSourceBackground = "transparent",
-  model: FixedSourceModel = "gpt-image-2") => Object.freeze({
+  model: FixedSourceModel = "gpt-image-2", complexity?: FixedSourceComplexity) => Object.freeze({
   version: fixedSourceVersion(quality, size, background, model), model, quality,
   size, background, output_format: "png", n: 1,
+  ...(complexity === undefined ? {} : { complexity }),
 } as const);
 /**
  * The provider's edit endpoint takes many reference images; this route's own
@@ -118,6 +121,9 @@ export interface FixedSourceRequest {
 export interface FixedSourcePolicy {
   /** Omitted means gpt-image-2, so existing callers and their frozen fingerprints do not move. */
   model?: FixedSourceModel;
+  /** Sunburst plans the focused edit explicitly. Omission on historical models
+   * preserves their exact capture and wire bytes. */
+  complexity?: FixedSourceComplexity;
   /** Omitted means LOW, so existing callers and their frozen fingerprints do not move. */
   quality?: FixedSourceQuality;
   /** Omitted means the 1024 single-board sheet, for the same reason. */
@@ -177,8 +183,17 @@ function policyCopy(input: FixedSourcePolicy): FixedSourcePolicy {
   // `high` and `9999x9999`. The refusal has to happen before the request is
   // built, because afterwards the only options left are a billed rejection or a
   // sheet at a quality nobody approved.
-  if (input.quality !== undefined && input.quality !== "low" && input.quality !== "medium") {
+  if (input.quality !== undefined && input.quality !== "low" && input.quality !== "medium"
+    && !(input.quality === "high" && input.model === "gpt-image-2.6-sunburst")) {
     fail("invalid_input", "Only LOW and MEDIUM may be bought on this route");
+  }
+  if (input.model === "gpt-image-2.6-sunburst") {
+    if (!["low", "medium", "high"].includes(input.complexity ?? ""))
+      fail("invalid_input", "Sunburst requires an explicit supported complexity");
+    if (input.rateCard.textInput !== 5 || input.rateCard.imageInput !== 8 || input.rateCard.imageOutput !== 30)
+      fail("invalid_input", "Sunburst requires the reviewed full standard-rate card");
+  } else if (input.complexity !== undefined) {
+    fail("invalid_input", "Complexity is not supported by this historical image policy");
   }
   if (input.size !== undefined && !(FIXED_SOURCE_SIZES as readonly string[]).includes(input.size)) {
     fail("invalid_input", "Sheet size is not one this route may buy");
@@ -237,7 +252,7 @@ export async function prepareFixedSource(input: Omit<FixedSourceRequest, "worldI
   // With no extra atlases the capture keeps exactly the shape and key order every
   // sheet bought so far was fingerprinted with, so nothing frozen moves.
   const capture = {
-    settings: fixedSourceSettings(policy.quality ?? "low", policy.size ?? "1024x1024", policy.background ?? "transparent", policy.model), sourceGroupKey, policy,
+    settings: fixedSourceSettings(policy.quality ?? "low", policy.size ?? "1024x1024", policy.background ?? "transparent", policy.model, policy.complexity), sourceGroupKey, policy,
     promptSha256: hash(prompt),
     inputOrder: extras.length ? ["style", "identity", ...extras.map((_, i) => `reference-${i + 1}`)] : (["style", "identity"] as const),
     styleSha256: hash(stylePng), identitySha256: hash(identityPng),

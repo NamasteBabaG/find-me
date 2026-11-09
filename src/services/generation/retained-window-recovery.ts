@@ -14,6 +14,7 @@ import { expectedAuthoredLocalPatchReturn } from './local-patch-authored-return'
 import { readSettledTargetRaw } from './single-review-head-evidence';
 import { singleMediumReviewPolicyOf } from './single-medium-policy';
 import { readQaCompletionCapacity } from './qa-completion-capacity';
+import { originalOrFiveDollarCap } from './qa-five-dollar-completion';
 import { boardWizardBudgetOf } from './board-conditioned-wizard';
 import { readShippedBoardArt, type LocalPatchHideDeps } from './local-patch-hide';
 import { localPatchGeometry } from './local-patch-geometry';
@@ -72,7 +73,7 @@ async function context(c: Container, gameId: string, rowId: string, publication:
   })())) return null;
   const grant = await readQaCompletionCapacity(c, gameId + ':board-wizard');
   const budget = await boardWizardBudgetOf(c).audit(gameId + ':board-wizard');
-  if (budget.capMicroUsd !== (grant ? 12000000 : 4000000) || budget.overCapMicroUsd
+  if (!(grant ? budget.capMicroUsd === 12000000 : await originalOrFiveDollarCap(c, gameId, budget.capMicroUsd)) || budget.overCapMicroUsd
     || budget.conflictRequestKeys.length || budget.overrunRequestKeys.length) return null;
   return { game, row, board, hide, parent, authority, identitySha256, scene };
 }

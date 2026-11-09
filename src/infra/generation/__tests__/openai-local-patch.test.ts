@@ -4,7 +4,7 @@ import { PLACEMENT_GUIDE_VERSION, PLACEMENT_GUIDE_V2_VERSION } from "../../../do
 import sharp from "sharp";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import {
-  LOCAL_PATCH_IMAGE_POLICY, LOCAL_PATCH_LOW_IMAGE_POLICY, LOCAL_PATCH_MINI_IMAGE_POLICY, LOCAL_PATCH_PORTRAIT_ONLY_REFERENCE_MODE, LOCAL_PATCH_PHOTO_REFERENCE_MODE, buyLocalPatch,
+  LOCAL_PATCH_IMAGE_POLICY, LOCAL_PATCH_LOW_IMAGE_POLICY, LOCAL_PATCH_MINI_IMAGE_POLICY, LOCAL_PATCH_SUNBURST_IMAGE_POLICY, LOCAL_PATCH_PORTRAIT_ONLY_REFERENCE_MODE, LOCAL_PATCH_PHOTO_REFERENCE_MODE, buyLocalPatch,
   localPatchImagePolicyForVersion, localPatchRenderPolicySha256,
 } from "../openai-local-patch";
 
@@ -42,6 +42,35 @@ const request = () => ({
 });
 
 describe("buying one local patch", () => {
+  it("keeps historical policy fingerprints byte-compatible and selects a distinct Sunburst policy", () => {
+    expect(localPatchRenderPolicySha256(LOCAL_PATCH_IMAGE_POLICY)).toBe("b88c9bbca3d255ffeb9ae9cfaebbe76e2597275fe53d81972411e971217fcf61");
+    expect(localPatchRenderPolicySha256(LOCAL_PATCH_LOW_IMAGE_POLICY)).toBe("85fca6d46515409bfa50f795a7c0bb6d10deff14e74afb9bbe1866feb98f7510");
+    expect(localPatchRenderPolicySha256(LOCAL_PATCH_SUNBURST_IMAGE_POLICY)).not.toBe(localPatchRenderPolicySha256(LOCAL_PATCH_IMAGE_POLICY));
+  });
+  it("sends the owned photo and unchanged mask to Sunburst at HIGH with LOW complexity", async () => {
+    const fetchOnce = vi.fn<typeof fetch>(async () => answer({ model: "gpt-image-2.6-sunburst", quality: "high" }));
+    const result = await buyLocalPatch("synthetic-never-live", { ...request(), referenceMode: LOCAL_PATCH_PHOTO_REFERENCE_MODE,
+      subjectPhotoPng: identity, subjectQuality: "high" }, { policy: LOCAL_PATCH_SUNBURST_IMAGE_POLICY, fetchOnce });
+    expect(result.png).toBeDefined(); expect(result.rejected).toBeNull(); expect(result.unknownReason).toBeNull();
+    expect(result.evidence?.amountMicroUsd).toBe(6090);
+    const form = (fetchOnce.mock.calls[0]![1]!.body) as FormData;
+    expect(form.get("model")).toBe("gpt-image-2.6-sunburst"); expect(form.get("quality")).toBe("high"); expect(form.get("complexity")).toBe("low");
+    expect(form.getAll("image[]")).toHaveLength(3);
+    expect(Buffer.from(await (form.get("mask") as Blob).arrayBuffer()).equals(mask)).toBe(true);
+  });
+  it("refuses a Sunburst photo request with legacy MEDIUM or unpinned complexity before dispatch", async () => {
+    const fetchOnce = vi.fn<typeof fetch>();
+    for (const [quality, selected] of [["medium", LOCAL_PATCH_SUNBURST_IMAGE_POLICY], ["high", { ...LOCAL_PATCH_SUNBURST_IMAGE_POLICY, complexity: "high" }]] as const)
+      await expect(buyLocalPatch("synthetic-never-live", { ...request(), referenceMode: LOCAL_PATCH_PHOTO_REFERENCE_MODE,
+        subjectPhotoPng: identity, subjectQuality: quality }, { policy: selected, fetchOnce })).rejects.toThrow("declared quality");
+    expect(fetchOnce).not.toHaveBeenCalled();
+  });
+  it("never dispatches a Sunburst local-patch painting without the enrolled photograph", async () => {
+    const fetchOnce = vi.fn<typeof fetch>();
+    await expect(buyLocalPatch("synthetic-never-live", request(), { policy: LOCAL_PATCH_SUNBURST_IMAGE_POLICY, fetchOnce }))
+      .rejects.toThrow("Sunburst paints only photo-backed enrolled appearances");
+    expect(fetchOnce).not.toHaveBeenCalled();
+  });
   it("uses the explicit MEDIUM subject redraw with scene, native portrait and photo in that order; the LOW receipt stays historical", async () => {
     const fetchOnce = vi.fn<typeof fetch>(async () => answer());
     const photo = await sharp({ create: { width: 200, height: 260, channels: 4, background: "#c07b63" } }).png().toBuffer();

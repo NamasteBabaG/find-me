@@ -10,7 +10,7 @@ import type { LocalPatchJudgeResult } from "../local-patch-judge";
 import type { PurchaseLedger, RetainedPurchase, RetainedPurchaseStore } from "../paid-operation";
 import { WorldBudgetError } from "../world-budget";
 import type { WorldBudgetRequest, WorldChargeEvidence } from "../world-budget";
-import { LOCAL_PATCH_PORTRAIT_ONLY_REFERENCE_MODE, localPatchImagePolicyForVersion, localPatchRenderPolicySha256 } from "../../../infra/generation/openai-local-patch";
+import { LOCAL_PATCH_PORTRAIT_ONLY_REFERENCE_MODE, LOCAL_PATCH_SUNBURST_IMAGE_POLICY, localPatchImagePolicyForVersion, localPatchRenderPolicySha256 } from "../../../infra/generation/openai-local-patch";
 import type { SelfRepairDecision } from "../../../domain/scene/local-patch-self-repair";
 import { SUBJECT_PAINTER_V2, subjectRenderDirectionV2 } from "../../../domain/generation/subject-painter";
 import { subjectPlanFor, subjectRenderDirection } from "../../../domain/generation/subject-policy";
@@ -101,6 +101,40 @@ async function attempt(deps: LocalPatchRenderDeps, over: Record<string, unknown>
 }
 
 describe("one paid attempt at one hide", () => {
+  it.each(["settled", "unknown"] as const)("replays a %s legacy request unchanged under the new profile, and buys only Sunburst on a new key", async state => {
+    const b = localPatchBoardsForVersion(12).find(b => b.board === "newyork")!, h = b.hides[0]!, w = world(), bytes = await small();
+    const digest = (v: Buffer) => createHash("sha256").update(v).digest("hex");
+    const photoSha256 = digest(bytes), text = "Synthetic planned child, preserve the source scene.";
+    const direction = (quality: "medium" | "high") => {
+      const policySha256 = localPatchRenderPolicySha256(quality === "high" ? LOCAL_PATCH_SUNBURST_IMAGE_POLICY : localPatchImagePolicyForVersion(12));
+      return { text, quality, photoPng: bytes, photoSha256, policySha256,
+        sha256: digest(Buffer.from(JSON.stringify([text, null, photoSha256, policySha256, quality]))) };
+    };
+    const old = direction("medium"), next = { ...direction("high"), legacy: [old] };
+    const render = vi.fn(async (_input: Parameters<LocalPatchRenderDeps["render"]>[0]) => ({ png: null, quarantined: null,
+      rejected: "Synthetic refusal, never semantic approval", evidence: evidence("req_synthetic_sunburst"), unknownReason: null }));
+    const worker = w.process({ render, renderPolicySha256: old.policySha256 });
+    const input = { worldId: "synthetic-sunburst-replay", board: b, hide: h,
+      composedPng: await sharp({ create: { width: 3840, height: 2160, channels: 3, background: "#ccbbaa" } }).png().toBuffer(),
+      identityPng: bytes, judgeIdentityPng: bytes, contentVersion: 12, paintRecipe: "scene-integration-v8" as const,
+      referenceMode: LOCAL_PATCH_PORTRAIT_ONLY_REFERENCE_MODE, ageYears: 7, attempt: 2, apiKey: "synthetic-never-live" };
+    await renderLocalPatchHide(worker.deps, { ...input, subjectDirection: old });
+    const key = w.at(input.worldId, `${h.id}:${h.pose}:render:2`), first = w.rows.get(key)!;
+    if (state === "unknown") { if (first.state !== "settled") throw Error("Expected the synthetic first purchase to settle");
+      const { evidence: _bill, ...rest } = first;
+      w.rows.set(key, { ...rest, state: "unknown", unknownReasons: ["Synthetic missing bill"] } as WorldBudgetRequest); w.retained.delete(key); }
+    const before = structuredClone(w.rows.get(key));
+    const upgraded = { ...worker.deps, renderPolicySha256: next.policySha256 };
+    await renderLocalPatchHide(upgraded, { ...input, subjectDirection: next });
+    expect(w.rows.get(key)).toEqual(before); expect(render).toHaveBeenCalledTimes(1);
+    await renderLocalPatchHide(upgraded, { ...input, attempt: 3, subjectDirection: next });
+    expect(render).toHaveBeenCalledTimes(2); expect(render.mock.calls[1]![0].subjectQuality).toBe("high");
+    const bought = w.rows.get(w.at(input.worldId, `${h.id}:${h.pose}:render:3`))!;
+    expect(bought.reserveMicroUsd).toBe(150_000); expect(bought.operationFingerprint).not.toBe(first.operationFingerprint);
+    const fresh = world().process({ render, renderPolicySha256: next.policySha256 });
+    await expect(renderLocalPatchHide(fresh.deps, { ...input, subjectDirection: old })).rejects.toThrow("requires its declared HIGH");
+    expect(render).toHaveBeenCalledTimes(2);
+  });
   it.each(['settled','unknown'] as const)('preserves an exact historical %s painting when native-detail directions are introduced',async state=>{
     const b=localPatchBoardsForVersion(12).find(b=>b.board==='newyork')!,h=b.hides[0]!,w=world(),bytes=await small();
     const digest=(b:Buffer)=>createHash('sha256').update(b).digest('hex'),photoSha256=digest(bytes),policySha256=localPatchRenderPolicySha256(localPatchImagePolicyForVersion(12)),quality='medium' as const;

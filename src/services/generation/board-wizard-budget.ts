@@ -17,7 +17,10 @@ export function applyBoardWizardBudgetCap(audit: WorldBudgetAudit, capMicroUsd =
     state: held ? "held" : remainingMicroUsd === 0 ? "exhausted" : "open" };
 }
 /** A verified grant above the default ceiling. */
-export interface BoardWizardBudgetGrant { worldId: string; capMicroUsd: 5_000_000 | 6_000_000 | 8_000_000 | 10_000_000 | typeof QA_PILOT_COMPLETION_CAP_MICRO_USD; authorizationSha256: string }
+export interface BoardWizardBudgetGrant { worldId: string; capMicroUsd: 5_000_000 | 6_000_000 | 8_000_000 | 10_000_000 | typeof QA_PILOT_COMPLETION_CAP_MICRO_USD; authorizationSha256: string;
+  /** The extra dollar admits only the named new painting. Old pictures replay,
+   * and their full ordinary review reservations still use the cumulative cap. */
+  readonly imageAboveBaseOnly?: { readonly baseCapMicroUsd: 4_000_000; readonly requestKey: string; readonly reserveMicroUsd: number } }
 /** A lean world's lower ceiling (local-patch-lean/v1): never a grant. */
 export interface BoardWizardBudgetCeiling { worldId: string; capMicroUsd: typeof LEAN_BOARD_WIZARD_CAP_MICRO_USD; authorizationSha256: string }
 export type BoardWizardBudgetExtension = BoardWizardBudgetGrant | BoardWizardBudgetCeiling;
@@ -26,20 +29,32 @@ export type BoardWizardBudgetExtensionResolver = (worldId: string) => Promise<Bo
  * Actual settlements/imports are never discarded, including provider overruns. */
 export function boardWizardBudget(repository: WorldBudgetRepository, attempt = 1, options: WorldBudgetOptions = {}, resolveExtension?: BoardWizardBudgetExtensionResolver) {
   if (attempt !== 1 && attempt !== 2) throw new Error("Only two board attempts are authorized");
-  const capFor = async (worldId: string) => {
+  const authorityFor = async (worldId: string) => {
     const extension = await resolveExtension?.(worldId);
-    if (!extension) return BOARD_WIZARD_CAP_MICRO_USD;
+    if (!extension) return { cap: BOARD_WIZARD_CAP_MICRO_USD, imageAboveBaseOnly: undefined };
     if (extension.worldId !== worldId || (extension.capMicroUsd !== LEAN_BOARD_WIZARD_CAP_MICRO_USD && extension.capMicroUsd !== 5_000_000
       && extension.capMicroUsd !== 6_000_000 && extension.capMicroUsd !== 8_000_000 && extension.capMicroUsd !== 10_000_000 && extension.capMicroUsd !== QA_PILOT_COMPLETION_CAP_MICRO_USD) || !/^[a-f0-9]{64}$/.test(extension.authorizationSha256)) {
       throw new WorldBudgetError("invalid_input", "Verified budget extension does not bind this exact world");
     }
-    return extension.capMicroUsd;
+    const imageAboveBaseOnly = "imageAboveBaseOnly" in extension ? extension.imageAboveBaseOnly : undefined;
+    if (imageAboveBaseOnly && (extension.capMicroUsd !== 5_000_000 || imageAboveBaseOnly.baseCapMicroUsd !== 4_000_000
+      || !/^[A-Za-z0-9_:.-]{1,240}$/.test(imageAboveBaseOnly.requestKey)
+      || !Number.isSafeInteger(imageAboveBaseOnly.reserveMicroUsd) || imageAboveBaseOnly.reserveMicroUsd <= 0))
+      throw new WorldBudgetError("invalid_input", "Finite image capacity must bind one exact request at the original ceiling");
+    return { cap: extension.capMicroUsd, imageAboveBaseOnly };
+  };
+  const capFor = async (worldId: string) => (await authorityFor(worldId)).cap;
+  const reservationCapFor = async (worldId: string, request: { scope: string; requestKey: string; reserveMicroUsd: number }) => {
+    const { cap, imageAboveBaseOnly: only } = await authorityFor(worldId);
+    if (only && request.requestKey === only.requestKey && (request.scope !== "image" || request.reserveMicroUsd !== only.reserveMicroUsd))
+      throw new WorldBudgetError("invalid_input", "Named completion image requires its exact scope and reservation");
+    return only && request.scope !== "judge" && request.requestKey !== only.requestKey ? only.baseCapMicroUsd : cap;
   };
   const guarded: WorldBudgetRepository = { transactWorld: (worldId, work) => repository.transactWorld(worldId, tx => work({ snapshot: tx.snapshot,
     createRequest: async request => {
       // Only a new reservation asks for capacity. A linked alias's charge is the canonical row's, counted once;
       // an unknown charge recorded as spent (`recordUnknown`) grants no dispatch and must be counted whatever the room.
-      if (request.origin === "reserved" && request.state === "pending" && auditWorldBudget(tx.snapshot).committedMicroUsd + request.reserveMicroUsd > await capFor(worldId)) {
+      if (request.origin === "reserved" && request.state === "pending" && auditWorldBudget(tx.snapshot).committedMicroUsd + request.reserveMicroUsd > await reservationCapFor(worldId, request)) {
         throw new WorldBudgetError("cap_exceeded", "Reservation exceeds the inclusive authorized QA world ceiling",
           { worldId, requestKey: request.requestKey, scope: request.scope, operationFingerprint: request.operationFingerprint,
             reserveMicroUsd: request.reserveMicroUsd });

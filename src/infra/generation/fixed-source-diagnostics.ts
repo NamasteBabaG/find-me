@@ -14,12 +14,14 @@ export const fixedSourceFailureReceiptSchema = z.object({
   requestIdStatus: z.enum(["missing", "safe", "invalid"]),
   transport: z.enum(["timeout", "network-or-runtime", "unclassified"]).nullable(),
   jsonStatus: z.enum(["not-read", "invalid", "parsed"]),
-  requestedModel: z.enum(["gpt-image-2", "gpt-image-1-mini"]), requestedQuality: z.enum(["low", "medium"]),
+  requestedModel: z.enum(["gpt-image-2", "gpt-image-1-mini", "gpt-image-2.6-sunburst"]), requestedQuality: z.enum(["low", "medium", "high"]),
   returnedModel: z.enum(["absent", "expected", "unexpected", "invalid"]),
   usage: z.object({ present: z.boolean(), valid: z.boolean(), inputTokensInvalid: z.boolean(), outputTokensInvalid: z.boolean(),
     detailsInvalid: z.boolean(), textTokensInvalid: z.boolean(), imageTokensInvalid: z.boolean(), totalTokensInvalid: z.boolean(), inconsistentTotals: z.boolean() }).strict(),
   providerErrorCode: z.enum(errors).nullable(), providerErrorType: z.enum(types).nullable(),
-}).strict();
+}).strict().refine(x => x.requestedQuality !== "high" || x.requestedModel === "gpt-image-2.6-sunburst", {
+  message: "Historical image policies cannot request HIGH",
+});
 export type FixedSourceFailureReceipt = z.infer<typeof fixedSourceFailureReceiptSchema>;
 export type FixedSourceFailureSink = (receipt: FixedSourceFailureReceipt) => Promise<void>;
 const object = (v: unknown): Record<string, unknown> | null => v !== null && typeof v === "object" && !Array.isArray(v) ? v as Record<string, unknown> : null;
@@ -28,7 +30,7 @@ const count = (v: unknown) => typeof v === "number" && Number.isSafeInteger(v) &
 export function fixedSourceFailureReceipt(input: { worldId: string; requestKey: string; fingerprint: string;
   /** The model asked for; absent is gpt-image-2, as every receipt before cost experiment E2. */
   model?: FixedSourceFailureReceipt["requestedModel"];
-  quality: "low" | "medium"; reason: FixedSourceFailureReceipt["reason"]; billing: FixedSourceFailureReceipt["billing"];
+  quality: "low" | "medium" | "high"; reason: FixedSourceFailureReceipt["reason"]; billing: FixedSourceFailureReceipt["billing"];
   response?: Pick<Response, "status" | "headers">; json?: unknown; jsonStatus: FixedSourceFailureReceipt["jsonStatus"];
   usageValid?: boolean; transport?: FixedSourceFailureReceipt["transport"] }): FixedSourceFailureReceipt {
   const body = object(input.json), u = object(body?.usage), details = object(u?.input_tokens_details), err = object(body?.error);

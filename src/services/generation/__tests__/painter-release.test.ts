@@ -6,7 +6,7 @@ import sharp from "sharp";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { applyTestSchema } from "../../../lib/test-schema";
 import { DbStorage } from "../../../infra/storage/db";
-import { LOCAL_PATCH_IMAGE_POLICY, LOCAL_PATCH_LOW_IMAGE_POLICY, localPatchRenderPolicySha256 } from "../../../infra/generation/openai-local-patch";
+import { LOCAL_PATCH_IMAGE_POLICY, LOCAL_PATCH_LOW_IMAGE_POLICY, LOCAL_PATCH_SUNBURST_IMAGE_POLICY, LOCAL_PATCH_PHOTO_REFERENCE_MODE, localPatchRenderPolicySha256 } from "../../../infra/generation/openai-local-patch";
 import type { Container } from "../../container";
 import { createDraft, sceneVersionForDraft } from "../../create-flow.service";
 import { beginWorldPurchase } from "../../world-purchase.service";
@@ -15,7 +15,8 @@ import { DETECTIVE_RELEASES } from "../../../../content/worlds/detective-release
 import { DUAL_VISUAL_REVIEW_V3, DUAL_VISUAL_REVIEW_VERSION, dualVisualReviewVersion } from "../visual-review-release";
 import { newQaWorldBudgetAuditId } from "../local-patch-qa-budget";
 import { boardWizardWorldId } from "../board-conditioned-wizard";
-import { LOCAL_PATCH_LOW_PAINTER, localPatchPainterAuditId, localPatchPainterRelease, lowPainterQualified, pinLocalPatchPainter } from "../painter-release";
+import { LOCAL_PATCH_LOW_PAINTER, LOCAL_PATCH_SUNBURST_PAINTER, sunburstPainterReceipt, sunburstPainterConfigured, localPatchPainterAuditId, localPatchPainterRelease, lowPainterQualified, pinLocalPatchPainter } from "../painter-release";
+import { LOCAL_PATCH_LEAN_RELEASE, isLeanWorld, readLeanWorldBudget } from "../lean-release";
 import * as world from "../local-patch-world";
 import { tickGeneration } from "../queue";
 import { runGenerationPipeline } from "../pipeline";
@@ -87,6 +88,46 @@ async function qualityOnTheWire(gameId: string, contentVersion = 12) {
 const slice = (gameId: string) => ({ gameId, pending: false, claimed: true, paused: false, attention: null, outcomes: [], blocked: [] });
 
 describe("the painter a new draft is pinned to", () => {
+  it("pins Sunburst beside an existing lean contract without widening four dollars, and routes photo-backed HIGH", async () => {
+    const born = { ...c, leanRelease: LOCAL_PATCH_LEAN_RELEASE, localPatchPainter: LOCAL_PATCH_SUNBURST_PAINTER };
+    const draft = await createDraft(born, null, "he");
+    expect(await localPatchPainterRelease(db, draft.gameId)).toBe(LOCAL_PATCH_SUNBURST_PAINTER);
+    expect(await isLeanWorld(db, draft.gameId)).toBe(true);
+    expect(await readLeanWorldBudget({ db }, boardWizardWorldId(draft.gameId))).toMatchObject({ capMicroUsd: 4_000_000 });
+    const pin = await db.auditLog.findUniqueOrThrow({ where: { id: localPatchPainterAuditId(draft.gameId) } });
+    expect(pin.metaJson).toBe(JSON.stringify(sunburstPainterReceipt(draft.gameId)));
+    for (const version of [12, 13]) {
+      const painter = await world.localPatchPainterForGame(c, draft.gameId, version);
+      expect(painter?.renderPolicySha256).toBe(localPatchRenderPolicySha256(LOCAL_PATCH_SUNBURST_IMAGE_POLICY));
+      const wire = vi.fn(async () => new Response(JSON.stringify({ model: "gpt-image-2.6-sunburst", quality: "high",
+        usage: { input_tokens: 30, output_tokens: 196, input_tokens_details: { text_tokens: 10, image_tokens: 20 } },
+        data: [{ b64_json: painted.toString("base64") }] }), { headers: { "x-request-id": "req_sunburst_synthetic" } }));
+      vi.stubGlobal("fetch", wire);
+      expect((await painter!.render({ ...request(), referenceMode: LOCAL_PATCH_PHOTO_REFERENCE_MODE, subjectPhotoPng: identity, subjectQuality: "high" })).png).not.toBeNull();
+      const form = (wire.mock.calls as unknown as [string, RequestInit][])[0]![1].body as FormData;
+      expect([form.get("model"), form.get("quality"), form.get("complexity")]).toEqual(["gpt-image-2.6-sunburst", "high", "low"]);
+      wire.mockClear();
+      await expect(painter!.render({ ...request(), subjectPhotoPng: identity, subjectQuality: "medium" })).rejects.toThrow("cannot buy a historical subject policy");
+      expect(wire).not.toHaveBeenCalled();
+    }
+  });
+  it("refuses a Sunburst draft without lean and never retrofits a paid game", async () => {
+    const before = await db.game.count();
+    await expect(createDraft({ ...c, localPatchPainter: LOCAL_PATCH_SUNBURST_PAINTER }, null, "he")).rejects.toThrow("four-dollar lean release");
+    expect(await db.game.count()).toBe(before);
+    const paid = await paintingGame({ ...c, localPatchPainter: undefined });
+    await expect(db.$transaction(tx => pinLocalPatchPainter(tx, paid, LOCAL_PATCH_SUNBURST_PAINTER))).rejects.toThrow("unstarted new");
+    expect(await localPatchPainterRelease(db, paid)).toBeNull();
+    const oldPainter = await world.localPatchPainterForGame(c, paid, 12);
+    await expect(oldPainter!.render({ ...request(), subjectPhotoPng: identity, subjectQuality: "high" })).rejects.toThrow("requires the game's painter pin");
+    expect(fetch).not.toHaveBeenCalled();
+  });
+  it("refuses a modified Sunburst receipt without falling back to the old model", async () => {
+    const draft = await createDraft({ ...c, leanRelease: LOCAL_PATCH_LEAN_RELEASE, localPatchPainter: LOCAL_PATCH_SUNBURST_PAINTER }, null, "he");
+    await db.auditLog.update({ where: { id: localPatchPainterAuditId(draft.gameId) }, data: { metaJson: JSON.stringify({ ...sunburstPainterReceipt(draft.gameId), complexity: "high" }) } });
+    await expect(localPatchPainterRelease(db, draft.gameId)).rejects.toThrow("invalid");
+    expect(fetch).not.toHaveBeenCalled();
+  });
   it("pins LOW atomically beside the draft's review and budget pins, and paints LOW", async () => {
     const draft = await createDraft(c, null, "he");
     expect(await localPatchPainterRelease(db, draft.gameId)).toBe(LOCAL_PATCH_LOW_PAINTER);
@@ -138,14 +179,21 @@ describe("the painter a new draft is pinned to", () => {
     expect(await localPatchPainterRelease(db, draft.gameId)).toBeNull();
   });
 
-  it("pins the draft a world purchase creates, in the same transaction", async () => {
+  it.each([LOCAL_PATCH_LOW_PAINTER, LOCAL_PATCH_SUNBURST_PAINTER])("pins the draft a world purchase creates, in the same transaction: %s", async release => {
     const id = `painter-purchase-${++sequence}`;
     await db.user.create({ data: { id: `${id}-owner`, email: `${id}@example.invalid` } });
     await db.familyChild.create({ data: { id: `${id}-child`, ownerId: `${id}-owner`, displayName: "Synthetic child" } });
-    const started = await beginWorldPurchase(c, { ownerId: `${id}-owner`, familyChildId: `${id}-child`, worldSlug: "journey", ageYears: 6, locale: "he" });
+    const selected = { ...c, localPatchPainter: release, ...(release === LOCAL_PATCH_SUNBURST_PAINTER ? { leanRelease: LOCAL_PATCH_LEAN_RELEASE } : {}) };
+    const started = await beginWorldPurchase(selected, { ownerId: `${id}-owner`, familyChildId: `${id}-child`, worldSlug: "journey", ageYears: 6, locale: "he" });
     if (!started.ok) throw Error(`Synthetic purchase draft was not created: ${started.code}`);
-    expect(await localPatchPainterRelease(db, started.gameId)).toBe(LOCAL_PATCH_LOW_PAINTER);
+    expect(await localPatchPainterRelease(db, started.gameId)).toBe(release);
     expect((await db.gameScene.findMany({ where: { gameId: started.gameId } })).every(scene => scene.sceneVersion === 12)).toBe(true);
+  });
+  it("configures Sunburst only for the exact QA lean contract without claiming a real image pass", () => {
+    const good = { appEnv: "qa", promptRelease: "v19", reviewRelease: DUAL_VISUAL_REVIEW_V3, leanRelease: LOCAL_PATCH_LEAN_RELEASE };
+    expect(sunburstPainterConfigured(good)).toBe(true);
+    for (const changed of [{ appEnv: "production" }, { appEnv: "development" }, { promptRelease: "v18" }, { reviewRelease: undefined }, { leanRelease: undefined }])
+      expect(sunburstPainterConfigured({ ...good, ...changed })).toBe(false);
   });
 
   it.each(["quality", "renderPolicySha256", "contentVersion", "gameId", "qualifiedWith"])("refuses a pin with a changed %s instead of falling back", async key => {

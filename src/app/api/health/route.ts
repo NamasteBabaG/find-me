@@ -12,7 +12,7 @@ import { BOARD_JUDGE_VERSION } from "@/infra/generation/board-verdict";
 import { deliverWithProblemsOf } from "@/services/container";
 import { visualReviewPolicy } from "@/domain/generation/visual-review-policy";
 import { DUAL_VISUAL_REVIEW_V3 } from "@/services/generation/visual-review-release";
-import { lowPainterQualified } from "@/services/generation/painter-release";
+import { lowPainterQualified, sunburstPainterConfigured } from "@/services/generation/painter-release";
 import { qualityBatchQualified } from "@/services/generation/quality-channel";
 import { LEAN_WORLD_CAP_MICRO_USD, leanReleaseQualified } from "@/services/generation/lean-release";
 
@@ -49,13 +49,17 @@ export async function GET(req: Request) {
   // local-patch-lean/v1 outside its qualified configuration refuses every new draft; without Sol's background transport
   // a lean world cannot enroll or be judged.
   const leanRequested = e.APP_ENV === "qa" && e.LOCAL_PATCH_LEAN === "lean-v1";
+  const sunburstRequested = e.APP_ENV === "qa" && e.LOCAL_PATCH_PAINTER === "sunburst-v1";
+  const sunburstConfigured = !sunburstRequested || sunburstPainterConfigured({ appEnv: e.APP_ENV,
+    promptRelease: e.LOCAL_PATCH_PROMPT_RELEASE, reviewRelease: e.LOCAL_PATCH_VISUAL_REVIEW === "dual-high-v3" ? DUAL_VISUAL_REVIEW_V3 : undefined,
+    leanRelease: leanRequested ? "local-patch-lean/v1" : undefined });
   const leanQualified = !leanRequested || leanReleaseQualified({ appEnv: e.APP_ENV, promptRelease: e.LOCAL_PATCH_PROMPT_RELEASE,
     reviewRelease: e.LOCAL_PATCH_VISUAL_REVIEW === "dual-high-v3" ? DUAL_VISUAL_REVIEW_V3 : undefined });
   const detectivesNewPolicy = e.STORAGE_PROVIDER === "db" && detectivesOperationalQualified({appEnv:e.APP_ENV,promptRelease:e.LOCAL_PATCH_PROMPT_RELEASE,identitySource:e.LOCAL_PATCH_IDENTITY_SOURCE,reviewRelease:e.LOCAL_PATCH_VISUAL_REVIEW==="dual-high-v3"?DUAL_VISUAL_REVIEW_V3:undefined,leanRelease:leanRequested?"local-patch-lean/v1":undefined});
   const windowsRequested=e.DETECTIVES_WINDOW_RELEASE==='v1',windowsEnabled=windowsRequested&&detectivesNewPolicy;
   const leanConfigured = !leanRequested || (e.GENERATION_PROVIDER === "openai" && !!e.OPENAI_API_KEY?.trim());
   const ok = db.ok && !(e.APP_ENV === "qa" && e.LOCAL_PATCH_VISUAL_REVIEW !== "legacy" && !dualConfigured) && !painterUnqualified
-    && batchQualified && batchConfigured && leanQualified && leanConfigured && (!windowsRequested||windowsEnabled);
+    && batchQualified && batchConfigured && leanQualified && leanConfigured && sunburstConfigured && (!windowsRequested||windowsEnabled);
   const body = {
     ok,
     db,
@@ -76,7 +80,8 @@ export async function GET(req: Request) {
     // Which wording NEW hides and identities receive; stored ones keep their own.
     promptRelease: e.LOCAL_PATCH_PROMPT_RELEASE,
     // The painting quality NEW local-patch drafts are pinned to; existing games keep their own.
-    painter: { newGames: e.APP_ENV === "qa" ? e.LOCAL_PATCH_PAINTER ?? "by-version" : "by-version", qualified: !painterUnqualified },
+    painter: { newGames: e.APP_ENV === "qa" ? e.LOCAL_PATCH_PAINTER ?? "by-version" : "by-version", qualified: !painterUnqualified && sunburstConfigured,
+      ...(sunburstRequested ? { model: "gpt-image-2.6-sunburst", quality: "high", complexity: "low", realFindMeQualityMeasured: false } : {}) },
     // Legacy channel configuration; new qualified Detectives use their combined SOL LOW policy; existing games keep their own.
     qualityChannel: { newGames: batchRequested ? "anthropic-batch-v1" : "sync", qualified: batchQualified, configured: batchConfigured },
     // Whether NEW local-patch drafts are pinned lean (local-patch-lean/v1), instead of the painter and channel above.

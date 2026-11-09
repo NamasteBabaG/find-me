@@ -112,10 +112,26 @@ export function composeJourneySourceHead(a: JourneyHeadAuthority, source: Journe
     discardedRawBackgroundBestShift: observed, outsideMaskChangedPixels: outsideChanged, paidHeadChangedPixels: paidHeadChanged } };
 }
 
+/** One named Paris SOURCE head bought with the explicit Sunburst profile under
+ * the separately authorized five-dollar completion of one existing game. It is
+ * its own finite pin and action; every v2 pin and marker keeps its exact bytes,
+ * and the game's global painter release is never changed. */
+export const JOURNEY_SUNBURST_HEAD_VERSION = 'journey-source-head-sunburst/v1' as const;
+export const JOURNEY_SUNBURST_HEAD_ACTION = 'generation:journey-source-head-sunburst/v1' as const;
+export const JOURNEY_SUNBURST_HEAD_HIDE_ID = 'paris-detectives-hide-1' as const;
+/** Equal to painter-release LOCAL_PATCH_SUNBURST_PAINTER (asserted in tests); a
+ * domain literal so pure code never imports the service layer. */
+export const JOURNEY_SUNBURST_HEAD_PAINTER = 'local-patch-painter/sunburst-high-low-complexity-v1' as const;
+/** Audit ids of the two finite head pins. The v2 formula is the historical one, unchanged. */
+export const journeyHeadPinId = (gameId: string, hideId: string) => 'aud_journey_head_' + journeyHeadHash([gameId, hideId]).slice(0, 40);
+export const journeySunburstHeadPinId = (gameId: string) => 'aud_journey_head_sb_' + journeyHeadHash([gameId, JOURNEY_SUNBURST_HEAD_HIDE_ID]).slice(0, 40);
+
 const digest = z.string().regex(/^[a-f0-9]{64}$/), id = z.string().regex(/^[A-Za-z0-9_:.-]{1,240}$/);
 export const journeyHeadMarkerSchema = z.object({ version: z.literal(JOURNEY_SOURCE_HEAD_VERSION), authorizationSha256: digest,
   authoritySha256: digest, rowId: id, hideId: id, originalAttempts: z.literal(1), authorizedAttempt: z.literal(2),
-  previousJudgeSha256: digest, requestKey: id }).strict();
+  previousJudgeSha256: digest, requestKey: id,
+  // Absent on every v2 purchase (unchanged bytes); present only on the one Sunburst head.
+  painterRelease: z.literal(JOURNEY_SUNBURST_HEAD_PAINTER).optional() }).strict();
 export type JourneyHeadMarker = z.infer<typeof journeyHeadMarkerSchema>;
 export function journeyHeadMarker(row: { judgeJson: string | null }) {
   try { const p = journeyHeadMarkerSchema.safeParse(JSON.parse(row.judgeJson ?? 'null')?.journeyHeadRecovery); return p.success ? p.data : null; }

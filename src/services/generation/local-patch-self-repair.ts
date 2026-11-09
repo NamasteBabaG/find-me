@@ -1,4 +1,6 @@
 import { nativeDetailRepairOf } from "./native-detail-evidence";
+import { sunburstRequiredPaintCapacity } from "./sunburst-review-capacity";
+import { LOCAL_PATCH_SUNBURST_IMAGE_POLICY, localPatchRenderPolicySha256 } from "../../infra/generation/openai-local-patch";
 import { nativeDetailSubjectDirection } from "./native-detail-painter";
 import { hasLocalPatchCapability } from "../../domain/scene/local-patch-family";
 import { isCollectionVersion } from "../../domain/scene/local-patch-versions";
@@ -473,12 +475,17 @@ export async function runLocalPatchSelfRepair(c: Container, input: { gameId: str
       demand(JSON.stringify(wire.authoredDiagnosis) === JSON.stringify(active.authoredDiagnosis), "Native replay image diagnosis changed");
       imageCostCents = active.imageCostCents;
     } else {
+      if (deps.renderPolicySha256 === localPatchRenderPolicySha256(LOCAL_PATCH_SUNBURST_IMAGE_POLICY) && !await budget.readRequest(worldId, key)) {
+        const room = await budget.audit(worldId);
+        if (room.held || room.remainingMicroUsd < await sunburstRequiredPaintCapacity(c, gameId, row.id))
+          throw Error("Sunburst repair requires its full image and ordinary assessment capacity");
+      }
       await inventorySelfRepairRequest(c, gameId, key, fenced);
       await assertGenerationSpendAllowed(c, game.ownerId);
       const references = await prepareLocalPatchIdentityReferences(sheet, scene.sceneVersion);
       // A redraw in an enrolled world carries the appearance's subject plan; a surface-only repair keeps its own pixels.
       const subjectDirection = nativeDetailSubjectDirection(decision.action === "redraw-with-new-placement"
-        ? await subjectDirectionFor(c, gameId, hide.id, scene.sceneVersion, row.judgeJson, { forceMedium: true }) : undefined);
+        ? await subjectDirectionFor(c, gameId, hide.id, scene.sceneVersion, row.judgeJson, { forceMedium: true, basePolicySha256: deps.renderPolicySha256 }) : undefined);
       const nativeDetailRepair=decision.cause==='paint-style' ? nativeDetailRepairOf(row.judgeJson,hide.id,scene.sceneVersion) : undefined;
       const result = await renderLocalPatchHide({ ledger: budget, store, render: deps.render, renderPolicySha256: deps.renderPolicySha256 }, {
         worldId, board, hide, composedPng: original, contentVersion: scene.sceneVersion, placementContext, ...references, ageYears: child.ageYears,

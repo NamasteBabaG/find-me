@@ -16,7 +16,7 @@ import { prepareVisualReview, visualReviewMaxCharge, type PreparedVisualReview }
 import { DUAL_REVIEW_V3_RESERVE_MICRO_USD } from "../../domain/generation/dual-review-reserve";
 import { sha256Bytes } from "./fixed-sprite";
 import { subjectPlanOfHide, subjectPlanSha256, subjectUpgradeOf, type SubjectUpgradeReceipt } from "./subject-enrollment";
-import { LOCAL_PATCH_IMAGE_POLICY, LOCAL_PATCH_LOW_IMAGE_POLICY, localPatchRenderPolicySha256 } from "../../infra/generation/openai-local-patch";
+import { LOCAL_PATCH_IMAGE_POLICY, LOCAL_PATCH_LOW_IMAGE_POLICY, LOCAL_PATCH_SUNBURST_IMAGE_POLICY, localPatchRenderPolicySha256 } from "../../infra/generation/openai-local-patch";
 import type { LocalPatchAttemptInput } from "./local-patch-render";
 import { SUBJECT_QUALITY_BUNDLE_VERSION, type SubjectQualityBundleBinding } from "../../domain/generation/subject-quality-bundle";
 
@@ -181,13 +181,17 @@ export async function subjectDirectionFor(c: Pick<Container, "db" | "storage">, 
   // local-patch-lean/v1: every painting MEDIUM, the planned look and the pushed-back hat (v4). Its own
   // wardrobe replaces the enrolled one; the earlier directions stay only to replay a started purchase.
   if (await isLeanWorld(c.db, gameId)) {
-    const lean = (text: string) => {
-      const policySha256 = localPatchRenderPolicySha256(LOCAL_PATCH_IMAGE_POLICY), hat = plan.warmHat ? LEAN_WARM_HAT_WARDROBE : undefined;
-      return { text, ...(hat ? { wardrobe: hat } : {}), photoPng, photoSha256, policySha256, quality: "medium" as const,
-        sha256: sha256Bytes(Buffer.from(JSON.stringify([text, hat ?? null, photoSha256, policySha256, "medium"]))) };
+    const lean = (text: string, sunburst = false) => {
+      const policySha256 = localPatchRenderPolicySha256(sunburst ? LOCAL_PATCH_SUNBURST_IMAGE_POLICY : LOCAL_PATCH_IMAGE_POLICY), hat = plan.warmHat ? LEAN_WARM_HAT_WARDROBE : undefined;
+      const quality = sunburst ? "high" as const : "medium" as const;
+      return { text, ...(hat ? { wardrobe: hat } : {}), photoPng, photoSha256, policySha256, quality,
+        sha256: sha256Bytes(Buffer.from(JSON.stringify([text, hat ?? null, photoSha256, policySha256, quality]))) };
     };
-    return { ...lean(subjectRenderDirectionV4(plan, upgrade.ageYears, { codes: refusal.codes, located: refusal.located })
-      + references + " Render the planned look in the scene's illustration style."), painterVersion: SUBJECT_PAINTER_V4, legacy: [v3, ...legacy] };
+    const text = subjectRenderDirectionV4(plan, upgrade.ageYears, { codes: refusal.codes, located: refusal.located })
+      + references + " Render the planned look in the scene's illustration style.";
+    const old = { ...lean(text), painterVersion: SUBJECT_PAINTER_V4, legacy: [v3, ...legacy] };
+    if (painter.basePolicySha256 !== localPatchRenderPolicySha256(LOCAL_PATCH_SUNBURST_IMAGE_POLICY)) return old;
+    return { ...lean(text, true), painterVersion: SUBJECT_PAINTER_V4, legacy: [old, v3, ...legacy] };
   }
   return { ...v3, legacy };
 }

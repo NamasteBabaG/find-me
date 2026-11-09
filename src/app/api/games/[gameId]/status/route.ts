@@ -23,6 +23,7 @@ import { applyBoardWizardBudgetCap } from "@/services/generation/board-wizard-bu
 import { identityRevisionPending, identityRevisionHeldOf } from "@/services/generation/identity-source-revision-state";
 import { openAdmittedInterruptions } from "@/services/generation/subject-upgrade";
 import { readLocalPatchExtraAttemptPlan } from "@/services/generation/local-patch-extra-attempt";
+import { qaFiveCompletionStatus } from "@/services/generation/qa-five-dollar-completion";
 
 export const runtime = "nodejs";
 
@@ -129,6 +130,16 @@ export async function GET(req: Request, ctx: { params: Promise<{ gameId: string 
       localPatchBudgetHeld = true;
     }
   }
+  // The owner/admin may see a recorded explicit five-dollar completion. The
+  // birth ceiling stays four dollars; qaCost above already uses the verified
+  // resolver, so an active grant shows its real five-dollar ceiling there.
+  let qaCompletionAuthority: { kind: "explicit-five-dollar-completion"; birthCapCents: number; capCents: number; status: "active" | "withdrawn" | "invalid" } | null = null;
+  if (game.styleVersion === LOCAL_PATCH_STYLE && env().APP_ENV === "qa" && user && (user.id === game.ownerId || isAdminEmail(user.email))) {
+    try {
+      const five = await qaFiveCompletionStatus(c, gameId);
+      if (five) qaCompletionAuthority = { kind: "explicit-five-dollar-completion", birthCapCents: five.baseCapMicroUsd / 10_000, capCents: five.capMicroUsd / 10_000, status: five.status };
+    } catch { qaCompletionAuthority = { kind: "explicit-five-dollar-completion", birthCapCents: 400, capCents: 500, status: "invalid" }; }
+  }
   let boardWizardPending = false;
   let boardWizardState: CreationSignals["boardWizardState"] = boardWizard ? "unavailable" : undefined;
   let fixedAssemblyReady: boolean | undefined = boardWizard ? false : undefined;
@@ -230,6 +241,7 @@ export async function GET(req: Request, ctx: { params: Promise<{ gameId: string 
       qaPreviewUrl,
       qaBoards,
       qaCost,
+      qaCompletionAuthority,
       awaitingQa: progress.state === "awaiting_review" || progress.state === "held",
       pending: qualityFailed || progress.state === "held" ? false : boardWizard ? boardWizardPending : !fixed && RESUMABLE_STATUSES.includes(status),
       // "Ready" and "sent" are different facts: DELIVERED means a real recipient

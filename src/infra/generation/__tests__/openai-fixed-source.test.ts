@@ -256,3 +256,47 @@ describe("what this route may buy is refused before the request is built", () =>
     expect(prepared.referencePngs).toHaveLength(2);
   });
 });
+
+describe("explicit Sunburst transport without live requests", () => {
+  const sunburst: FixedSourcePolicy = { ...policy, model: "gpt-image-2.6-sunburst", quality: "high", complexity: "low" };
+  it("pins model, HIGH and LOW complexity in both capture and actual form, with standard-rate usage", async () => {
+    const f = await fixture(async () => reply({ model: sunburst.model, quality: "high" }), sunburst);
+    const result = await f.provider.generate(f.input);
+    expect(result).toMatchObject({ kind: "generated", semanticApproval: "pending", evidence: { amountMicroUsd: 6090 } });
+    const form = (f.fetchOnce.mock.calls as unknown as [string, RequestInit][])[0]![1].body as FormData;
+    expect(form.get("model")).toBe(sunburst.model); expect(form.get("quality")).toBe("high"); expect(form.get("complexity")).toBe("low");
+    expect(form.get("n")).toBe("1"); expect(form.has("service_tier")).toBe(false);
+    expect(await f.provider.generate(f.input)).toMatchObject({ kind: "already-recorded" });
+    expect(f.fetchOnce).toHaveBeenCalledTimes(1);
+  });
+  it.each([
+    { complexity: undefined }, { complexity: "auto" },
+    { rateCard: { ...policy.rateCard, imageOutput: 15 } },
+    { model: "gpt-image-2", complexity: "low" },
+    { model: "gpt-image-2.6-flare" },
+  ])("refuses an unselected or incompletely costed policy before purchase: %j", async changed => {
+    await expect(fixture(async () => reply(), { ...sunburst, ...changed } as FixedSourcePolicy)).rejects.toMatchObject({ code: "invalid_input" });
+  });
+  it("never treats another complexity as the same paid request", async () => {
+    const f = await fixture(async () => reply({ model: sunburst.model }), sunburst);
+    const other = await prepareFixedSource(f.input, { ...sunburst, complexity: "medium" });
+    expect(other.fingerprint).not.toBe(f.input.expectedFingerprint);
+    await expect(f.provider.generate({ ...f.input, expectedFingerprint: other.fingerprint })).rejects.toMatchObject({ code: "invalid_input" });
+    expect(f.fetchOnce).not.toHaveBeenCalled();
+  });
+  it("holds the entire reservation on absent usage and never redispatches it", async () => {
+    const f = await fixture(async () => reply({ model: sunburst.model, quality: "high", usage: undefined }), sunburst);
+    await expect(f.provider.generate(f.input)).rejects.toMatchObject({ code: "cost_unknown" });
+    expect((await f.budget.audit(f.input.worldId)).reservedMicroUsd).toBe(sunburst.reserveMicroUsd);
+    expect(f.diagnostics[0]).toMatchObject({ requestedModel: sunburst.model, requestedQuality: "high", billing: "unknown" });
+    expect(await f.provider.generate(f.input)).toMatchObject({ kind: "already-recorded", requestState: "unknown" });
+    expect(f.fetchOnce).toHaveBeenCalledTimes(1);
+  });
+  it("quarantines the wrong model's picture and holds full billing uncertainty", async () => {
+    const f = await fixture(async () => reply(), sunburst);
+    await expect(f.provider.generate(f.input)).rejects.toMatchObject({ code: "cost_unknown", diagnostic: { returnedModel: "unexpected", billing: "unknown" } });
+    expect((await f.budget.audit(f.input.worldId)).reservedMicroUsd).toBe(sunburst.reserveMicroUsd);
+    expect((await f.budget.audit(f.input.worldId)).settledMicroUsd).toBe(0);
+    expect(f.fetchOnce).toHaveBeenCalledTimes(1);
+  });
+});

@@ -5,6 +5,7 @@ import { SOURCE_BODY_REPAIR_VERSION } from '../../domain/scene/source-body-repai
 import { GUIDED_FRAME_RECOVERY_VERSION } from '../../domain/generation/guided-frame-recovery';
 import { PLACEMENT_GUIDE_VERSION, PLACEMENT_GUIDE_V2_VERSION, type PlacementGuideVersion } from "../../domain/generation/placement-guide";
 import { hasLocalPatchCapability } from "../../domain/scene/local-patch-family";
+import { SUNBURST_IMAGE_RESERVE_MICRO_USD } from "../../domain/generation/sunburst-painter";
 import { createHash } from "node:crypto";
 import sharp from "sharp";
 import { isLocalPatchAdvisoryVersion } from "../../domain/scene/local-patch-catalog";
@@ -81,6 +82,17 @@ export const LOCAL_PATCH_LOW_IMAGE_POLICY: FixedSourcePolicy = FIVE_HIDE_IMAGE_P
 export const LOCAL_PATCH_MINI_IMAGE_POLICY: FixedSourcePolicy = Object.freeze({ ...LOCAL_PATCH_IMAGE_POLICY,
   model: "gpt-image-1-mini", size: "1024x1536", rateCard: { id: "gpt-image-1-mini-2-3-8-microusd-v1", textInput: 2, imageInput: 3, imageOutput: 8 } });
 
+/** New explicit painter candidate. This declaration grants no spending or
+ * visual qualification and never changes a previously purchased policy. */
+export const LOCAL_PATCH_SUNBURST_IMAGE_POLICY: FixedSourcePolicy = Object.freeze({ ...LOCAL_PATCH_IMAGE_POLICY,
+  model: "gpt-image-2.6-sunburst", quality: "high", complexity: "low", reserveMicroUsd: SUNBURST_IMAGE_RESERVE_MICRO_USD,
+  rateCard: { id: "sunburst-2.6-standard-5-8-30-20261109-v1", textInput: 5, imageInput: 8, imageOutput: 30 } });
+
+/** The only admitted new profile. Legacy policies keep their original hashes. */
+export const isSunburstImagePolicy = (policy: FixedSourcePolicy) =>
+  localPatchRenderPolicySha256(policy) === localPatchRenderPolicySha256(LOCAL_PATCH_SUNBURST_IMAGE_POLICY)
+  && policy.reserveMicroUsd === LOCAL_PATCH_SUNBURST_IMAGE_POLICY.reserveMicroUsd;
+
 /**
  * What the render fingerprint pins, beside the prompt and the pictures: change
  * the model, the quality, the size or the rate card and it is a different
@@ -91,6 +103,7 @@ export const localPatchRenderPolicySha256 = (policy: FixedSourcePolicy = LOCAL_P
     version: "local-patch-painter/v1", ...(policy.model && policy.model !== "gpt-image-2" ? { model: policy.model } : {}),
     quality: policy.quality, size: policy.size,
     background: policy.background, rateCard: policy.rateCard, timeoutMs: policy.timeoutMs,
+    ...(policy.complexity === undefined ? {} : { complexity: policy.complexity }),
   })).digest("hex");
 
 /** Explicit native context; historical policies and fingerprints stay unchanged. */
@@ -113,7 +126,7 @@ export type LocalPatchRenderInput = {
   readonly referenceMode?: LocalPatchReferenceMode;
   /** Enrolled subject redraw only: an owned, hash-checked, bounded original photo. */
   readonly subjectPhotoPng?: Buffer;
-  readonly subjectQuality?: "low" | "medium";
+  readonly subjectQuality?: "low" | "medium" | "high";
   /** v8 only: full approved sheet corroborates the high-resolution portrait. */
   readonly canonicalIdentityPng?: Buffer;
   readonly boardPeoplePng?: Buffer;
@@ -229,8 +242,10 @@ export async function buyLocalPatch(apiKey: string, input: LocalPatchRenderInput
     throw new Error("LOCAL_PATCH_PAINTER: unsupported reference mode");
   }
   const photoReference = input.referenceMode === LOCAL_PATCH_PHOTO_REFERENCE_MODE;
+  if (chosen.model === "gpt-image-2.6-sunburst" && !photoReference)
+    throw Error("LOCAL_PATCH_PAINTER: Sunburst paints only photo-backed enrolled appearances");
   if (photoReference && (!input.subjectPhotoPng || !input.subjectQuality || chosen.quality !== input.subjectQuality || chosen.size !== (input.wholeSourceContext ? "768x1024" : "768x1152")
-    || chosen.model && chosen.model !== "gpt-image-2")) throw new Error("LOCAL_PATCH_PAINTER: subject redraw requires its photograph and declared quality policy");
+    || (chosen.model && chosen.model !== "gpt-image-2") && !isSunburstImagePolicy(chosen))) throw new Error("LOCAL_PATCH_PAINTER: subject redraw requires its photograph and declared quality policy");
   if (!photoReference && (input.subjectPhotoPng || input.subjectQuality)) throw new Error("LOCAL_PATCH_PAINTER: photograph requires its explicit reference mode");
   if ((input.placementGuidePng !== undefined || input.placementGuideVersion !== undefined)
     && (!photoReference || ![GUIDED_FRAME_RECOVERY_VERSION,SOURCE_BODY_REPAIR_VERSION,WHOLE_SOURCE_CONTEXT_VERSION,PLACEMENT_GUIDE_VERSION,PLACEMENT_GUIDE_V2_VERSION].includes(input.placementGuideVersion as typeof GUIDED_FRAME_RECOVERY_VERSION) || !Buffer.isBuffer(input.placementGuidePng)))

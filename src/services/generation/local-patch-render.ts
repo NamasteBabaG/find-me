@@ -2,7 +2,7 @@ import { NATIVE_DETAIL_REPAIR_DIRECTION, nativeDetailEvidenceSchema, type Native
 import { sourceHeadMarkerSchema, sourceHeadAuthorityForPlacement, sourceHeadHash, sourceHeadPaintDirection,
   type SourceHeadMarker, type SourceHeadAuthority } from '../../domain/generation/source-head-recovery';
 import { sourceHeadMaskPng, applySourceHeadPixels } from './source-head-pixels';
-import { journeyHeadMarkerSchema, journeyHeadAuthorityFor, journeyHeadHash, journeyHeadPaintDirection, type JourneyHeadMarker, type JourneyHeadAuthority } from '../../domain/generation/journey-source-head';
+import { journeyHeadMarkerSchema, journeyHeadAuthorityFor, journeyHeadHash, journeyHeadPaintDirection, JOURNEY_SUNBURST_HEAD_PAINTER, JOURNEY_SUNBURST_HEAD_HIDE_ID, type JourneyHeadMarker, type JourneyHeadAuthority } from '../../domain/generation/journey-source-head';
 import { journeyHeadMaskPng, applyJourneyHeadPixels } from './journey-source-head-recovery';
 import { normalizeJourneyHeadProviderPng } from './journey-head-provider-frame';
 import { sourceHeadJoinMarkerSchema, type SourceHeadJoinMarker } from '../../domain/generation/source-head-join';
@@ -38,7 +38,7 @@ import {
 import { judgeCharge } from "../../infra/generation/judge";
 import { LOCAL_PATCH_POSE_WORDING, LOCAL_PATCH_PROMPT_VERSION, LOCAL_PATCH_BOARD_DRAWN_PROMPT_VERSION, LOCAL_PATCH_FIVE_PROMPT_VERSION, LOCAL_PATCH_CANONICAL_PROMPT_VERSION, LOCAL_PATCH_AGE_PROMPT_VERSION, LOCAL_PATCH_IDENTITY_LOCK_PROMPT_VERSION, LOCAL_PATCH_INTEGRATED_PROMPT_VERSION, LOCAL_PATCH_REFERENCE_NEUTRAL_PROMPT_VERSION, LOCAL_PATCH_BOARD_PAINT_PROMPT_VERSION, localPatchPrompt, type LocalPatchRepairCheck, type LocalPatchPaintRecipe } from "./local-patch-prompt";
 import { purchaseOnce, type PurchaseLedger, type RetainedPurchaseStore } from "./paid-operation";
-import { LOCAL_PATCH_PORTRAIT_ONLY_REFERENCE_MODE, LOCAL_PATCH_PHOTO_REFERENCE_MODE, LOCAL_PATCH_IMAGE_POLICY, LOCAL_PATCH_LOW_IMAGE_POLICY, localPatchRenderPolicySha256, type LocalPatchPurchase, type LocalPatchReferenceMode } from "../../infra/generation/openai-local-patch";
+import { LOCAL_PATCH_PORTRAIT_ONLY_REFERENCE_MODE, LOCAL_PATCH_PHOTO_REFERENCE_MODE, LOCAL_PATCH_IMAGE_POLICY, LOCAL_PATCH_LOW_IMAGE_POLICY, LOCAL_PATCH_SUNBURST_IMAGE_POLICY, localPatchRenderPolicySha256, type LocalPatchPurchase, type LocalPatchReferenceMode } from "../../infra/generation/openai-local-patch";
 import type { BudgetJson } from "./world-budget";
 import { isLocalPatchAdvisoryVersion, isLocalPatchAgeVersion, isLocalPatchStrictVersion } from "../../domain/scene/local-patch-catalog";
 import type { LocalPatchRecoveryDirective } from "../../domain/scene/local-patch-recovery-directive";
@@ -101,7 +101,7 @@ export type LocalPatchRenderDeps = {
     readonly wholeSourceContext?: WholeSourceContextTransport;
     readonly referenceMode?: LocalPatchReferenceMode;
     readonly subjectPhotoPng?: Buffer;
-    readonly subjectQuality?: "low" | "medium";
+    readonly subjectQuality?: "low" | "medium" | "high";
     readonly canonicalIdentityPng?: Buffer;
     readonly boardPeoplePng?: Buffer;
     /** What is left of the caller's request. An adapter that ignores it can outlive it. */
@@ -112,7 +112,7 @@ export type LocalPatchRenderDeps = {
 };
 
 export type SubjectRenderDirection = { readonly text: string; readonly wardrobe?: string; readonly sha256: string;
-  readonly photoPng: Buffer; readonly photoSha256: string; readonly policySha256: string; readonly quality: "low" | "medium";
+  readonly photoPng: Buffer; readonly photoSha256: string; readonly policySha256: string; readonly quality: "low" | "medium" | "high";
   readonly painterVersion?: SubjectPainterVersion };
 
 export type LocalPatchAttemptInput = {
@@ -376,7 +376,11 @@ export async function renderLocalPatchHide(deps: LocalPatchRenderDeps, input: Lo
   if (input.expectedPromptVersion !== undefined && input.expectedPromptVersion !== promptVersionOf(input)) {
     throw new Error(`LOCAL_PATCH: prompt provenance conflict; stored ${input.expectedPromptVersion}, selected ${promptVersionOf(input)}`);
   }
-  if (input.contentVersion === 13 && (input.paintRecipe !== "scene-integration-v8" || deps.renderPolicySha256 !== localPatchRenderPolicySha256(LOCAL_PATCH_IMAGE_POLICY)))
+  const sunburst = deps.renderPolicySha256 === localPatchRenderPolicySha256(LOCAL_PATCH_SUNBURST_IMAGE_POLICY);
+  if (sunburst && !input.subjectDirection) throw Error("LOCAL_PATCH: Sunburst paints only photo-backed enrolled appearances");
+  if (sunburst && (input.contentVersion !== 12 && input.contentVersion !== 13 || input.wholeSourceContext))
+    throw Error("LOCAL_PATCH: Sunburst requires source family 12/13 and its qualified crop frame");
+  if (input.contentVersion === 13 && (input.paintRecipe !== "scene-integration-v8" || !sunburst && deps.renderPolicySha256 !== localPatchRenderPolicySha256(LOCAL_PATCH_IMAGE_POLICY)))
     throw Error("LOCAL_PATCH: Detective painting requires its pinned v19 MEDIUM recipe");
   if (hasLocalPatchCapability(input.contentVersion, "requiresFamilyPin") && !input.placementContext)
     throw Error("LOCAL_PATCH: Detective rendering requires its trusted source-family context");
@@ -417,9 +421,11 @@ export async function renderLocalPatchHide(deps: LocalPatchRenderDeps, input: Lo
   }
   if(journeyHead){
     const marker=journeyHeadMarkerSchema.parse(journeyHead.marker),authority=authoredReturn&&journeyHeadAuthorityFor(authoredReturn);
+    const sunburstHead=marker.painterRelease===JOURNEY_SUNBURST_HEAD_PAINTER;
     if(!authority||journeyHeadHash(authority)!==journeyHeadHash(journeyHead.authority)||marker.authoritySha256!==journeyHeadHash(authority)
       ||marker.hideId!==input.hide.id||marker.requestKey!==input.hide.id+':'+input.hide.pose+':render:2'
-      ||input.contentVersion!==13||input.attempt!==2||!input.subjectDirection||input.subjectDirection.quality!=='medium'
+      ||input.contentVersion!==13||input.attempt!==2||!input.subjectDirection||input.subjectDirection.quality!==(sunburstHead?'high':'medium')
+      ||sunburstHead!==sunburst||sunburstHead&&marker.hideId!==JOURNEY_SUNBURST_HEAD_HIDE_ID
       ||input.ageYears!==7||sha(input.composedPng)!==authority.sourcePngSha256
       ||sourceHead||input.guidedFrameRecovery||input.placementGuide||input.nativeMaskTail||input.sourceBodyRepair||input.sourceBodyBirth
       ||input.wholeSourceContext||input.selfRepair||input.adaptiveRecovery||input.recoveryDirective||input.nativeDetailRepair)
@@ -487,6 +493,7 @@ function promptVersionOf(input: LocalPatchAttemptInput): string {
 async function renderLocalPatchHideInner(deps: LocalPatchRenderDeps, input: LocalPatchAttemptInput, authoredReturn?: AuthoredLocalPatchReturnContract,
   guidedReturn?: Pick<AuthoredLocalPatchReturnContract, "local" | "source">): Promise<LocalPatchAttempt> {
   const { worldId, board, hide, attempt } = input;
+  const sunburst = deps.renderPolicySha256 === localPatchRenderPolicySha256(LOCAL_PATCH_SUNBURST_IMAGE_POLICY);
   const sourceHead=input.sourceHeadRecovery;
   const journeyHead=input.journeyHeadRecovery;
   if (isLocalPatchAgeVersion(input.contentVersion)) {
@@ -542,8 +549,9 @@ async function renderLocalPatchHideInner(deps: LocalPatchRenderDeps, input: Loca
   const directions = input.subjectDirection ? [input.subjectDirection, ...(Array.isArray(legacy) ? legacy : legacy ? [legacy as SubjectRenderDirection] : [])] : [];
   if (directions.some(direction => !hasLocalPatchCapability(input.contentVersion, "integratedQuality") || restyling || !direction.text.trim()
     || direction.painterVersion !== undefined && !isPlanLedPainter(direction.painterVersion)
-    || sha(direction.photoPng) !== direction.photoSha256 || !["low", "medium"].includes(direction.quality)
-    || direction.policySha256 !== localPatchRenderPolicySha256(direction.quality === "low" ? LOCAL_PATCH_LOW_IMAGE_POLICY : LOCAL_PATCH_IMAGE_POLICY)
+    || sha(direction.photoPng) !== direction.photoSha256 || !["low", "medium", "high"].includes(direction.quality)
+    || direction.quality === "high" && !sunburst
+    || direction.policySha256 !== localPatchRenderPolicySha256(direction.quality === "high" ? LOCAL_PATCH_SUNBURST_IMAGE_POLICY : direction.quality === "low" ? LOCAL_PATCH_LOW_IMAGE_POLICY : LOCAL_PATCH_IMAGE_POLICY)
     || createHash("sha256").update(JSON.stringify([direction.text, direction.wardrobe ?? null,
       direction.photoSha256, direction.policySha256, direction.quality])).digest("hex") !== direction.sha256))
     throw Error("LOCAL_PATCH: a subject plan belongs only to a v12 painting and must match its digest");
@@ -684,6 +692,7 @@ async function renderLocalPatchHideInner(deps: LocalPatchRenderDeps, input: Loca
   let subject: SubjectRenderDirection | undefined = input.subjectDirection;
   if (subject) {
     const started = await deps.ledger.readRequest(worldId, renderKey);
+    if (!started && sunburst && subject.quality !== "high") throw Error("LOCAL_PATCH: a new Sunburst purchase requires its declared HIGH subject policy");
     if (started) subject = directions.find(direction => started.operationFingerprint === fingerprintFor(promptWith(direction), direction));
   }
   const prompt = promptWith(subject);
@@ -698,7 +707,8 @@ async function renderLocalPatchHideInner(deps: LocalPatchRenderDeps, input: Loca
   const bought = await purchaseOnce(deps, {
     ...(windowFor(LOCAL_PATCH_MIN_PROVIDER_MS.render) ? { dispatchWindow: windowFor(LOCAL_PATCH_MIN_PROVIDER_MS.render)! } : {}),
     worldId, requestKey: renderKey, scope: "image",
-    operationFingerprint: renderFingerprint, reserveMicroUsd: input.wholeSourceContext ? WHOLE_SOURCE_CONTEXT_IMAGE_RESERVE : LOCAL_PATCH_RESERVE.renderMicroUsd,
+    operationFingerprint: renderFingerprint, reserveMicroUsd: input.wholeSourceContext ? WHOLE_SOURCE_CONTEXT_IMAGE_RESERVE
+      : subject?.quality === "high" ? LOCAL_PATCH_SUNBURST_IMAGE_POLICY.reserveMicroUsd : LOCAL_PATCH_RESERVE.renderMicroUsd,
     buy: async ({ timeoutMs }) => {
       if(sourceHead?.join)throw Error('SOURCE_HEAD_JOIN: free replay cannot dispatch a painting');
       const result = await deps.render({ worldId, requestKey: renderKey, prompt, stylePng, identityPng: renderIdentityPng, maskPng,

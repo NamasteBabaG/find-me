@@ -1,3 +1,5 @@
+import { LOCAL_PATCH_SUNBURST_IMAGE_POLICY } from "../../../infra/generation/openai-local-patch";
+import { LOCAL_PATCH_SUNBURST_PAINTER, pinLocalPatchPainter, localPatchPainterRelease } from "../painter-release";
 import * as nativeDetailEvidenceModule from "../native-detail-evidence";
 import { resumeSourceHeadRecovery, sourceHeadRecoveryPinOf, sourceHeadRecoveryId, sourceHeadCompositionEvidenceMatches } from '../source-head-recovery';
 import { SOURCE_HEAD_RECOVERY_AUTHORITIES } from '../../../../content/adventures/source-head-recovery-v1';
@@ -99,6 +101,7 @@ import { DbStorage } from "../../../infra/storage/db";
 import type { BackgroundReviewState, BackgroundReviewTransport } from "../../../infra/generation/types";
 import { localPatchRenderPolicySha256, LOCAL_PATCH_IMAGE_POLICY } from "../../../infra/generation/openai-local-patch";
 import { maskForHide } from "../../../domain/scene/local-patch-hides";
+import { LOCAL_PATCH_FIXED_SCENERY_PROMPT_VERSION } from "../local-patch-prompt";
 import { parseGameConfig } from "../../../domain/game/config";
 import { PrismaRetainedPurchaseStore, retainedPurchaseKey } from "../../../infra/db/prisma-retained-purchase-store";
 import { SOURCE_NEIGHBOR_ANSWER_VERSION, SOURCE_NEIGHBOR_BUNDLE_VERSION, type SourceNeighborContract } from "../../../domain/scene/local-patch-source-neighbors";
@@ -152,7 +155,7 @@ afterAll(async () => {
   if (path.dirname(directory) === realpathSync(tmpdir()) && path.basename(directory).startsWith("findme-detective-world-")) rmSync(directory, { recursive: true });
 });
 
-async function newDetectiveWorld(gameId: string, ageYears=8, born=false, explorer=false, kingdom=false, windows=false) {
+async function newDetectiveWorld(gameId: string, ageYears=8, born=false, explorer=false, kingdom=false, windows=false, sunburst=false) {
   const version = explorer ? 12 : 13, level = explorer ? "explorers" : "detectives";
   const journey = new Set(boardsOfWorlds(["journey"]));
   const kingdomBoards=new Set(boardsOfWorlds(["kingdom"]));
@@ -169,6 +172,7 @@ async function newDetectiveWorld(gameId: string, ageYears=8, born=false, explore
   await db.$transaction(async tx => {
     await pinVisualReviewRelease(tx, gameId, DUAL_VISUAL_REVIEW_V3);
     await pinLeanRelease(tx, gameId, LOCAL_PATCH_LEAN_RELEASE);
+    if (sunburst) await pinLocalPatchPainter(tx, gameId, LOCAL_PATCH_SUNBURST_PAINTER);
     await pinIdentitySourceRelease(tx, gameId);
     if((kingdom||windows)&&!explorer){
       await pinDetectiveSourceScope(tx,gameId,DETECTIVES_OPERATIONAL_RELEASE,c.storage.id);
@@ -529,9 +533,28 @@ it('prospective window stop serves the other26, permits a different-edge repair,
   expect(await boardWizardBudgetOf(container).audit(boardWizardWorldId(gameId))).toEqual(ledger);
 },1500000);
 
-it.each([{mode:"clean",interrupted:false,guided:false},{mode:"transport",interrupted:true,guided:false},{mode:"guided",interrupted:false,guided:true},{mode:"tail",interrupted:false,guided:true},{mode:"body",interrupted:false,guided:true}].map(v=>({...v,born:false})).concat([{mode:"born-clean",interrupted:false,guided:false,born:true},{mode:"born-guided",interrupted:false,guided:true,born:true},{mode:"born-transport",interrupted:true,guided:false,born:true},{mode:"born-crown",interrupted:false,guided:false,born:true},{mode:"kingdom-clean",interrupted:false,guided:false,born:true},{mode:"kingdom-transport",interrupted:true,guided:false,born:true},{mode:"kingdom-guided",interrupted:false,guided:true,born:true},{mode:"window-clean",interrupted:false,guided:false,born:true}]).map(testCase => ({ ...testCase, reviewEffort: testCase.born && testCase.mode !== "born-crown" ? "MEDIUM" : "LOW" })))("completes 27 hides with bounded $reviewEffort review and no extra planner; mode=$mode", async ({mode,interrupted,guided,born}) => {
+it.each(["newyork-detectives-hide-1", "giza-detectives-hide-2"])("Sunburst refuses a new %s painting before spending its ordinary assessment coverage", async hideId => {
+  const gameId = "synthetic-sunburst-capacity-" + hideId;
+  await newDetectiveWorld(gameId, 7, true, false, false, false, true);
+  const context = await resolveLocalPatchBoardsForGame(db, gameId, 13), board = context.boards.find(b => b.hides.some(h => h.id === hideId))!;
+  const budget = boardWizardBudgetOf(c), worldId = boardWizardWorldId(gameId), fill = 4_000_000 - 399_999 - (await budget.audit(worldId)).committedMicroUsd;
+  await budget.reserve(worldId, { requestKey: "synthetic-prior-usage", scope: "image", operationFingerprint: "e".repeat(64), reserveMicroUsd: fill });
+  await budget.settle(worldId, "synthetic-prior-usage", bill("req_synthetic_prior_sunburst", fill));
+  const before = await db.worldBudgetLedger.findUniqueOrThrow({ where: { worldId } });
+  const render = vi.fn(async () => { throw Error("No provider dispatch permitted"); });
+  await expect(runLocalPatchHide(c, { readBoardArt: readArt, render,
+    renderPolicySha256: localPatchRenderPolicySha256(LOCAL_PATCH_SUNBURST_IMAGE_POLICY) },
+    { gameId, board, hide: board.hides.find(h => h.id === hideId)! })).rejects.toThrow("Sunburst painting requires its full image and ordinary assessment capacity");
+  expect(render).not.toHaveBeenCalled();
+  expect(await db.worldBudgetLedger.findUniqueOrThrow({ where: { worldId } })).toEqual(before);
+  const rows = await db.targetVariantAsset.findMany({ where: { targetInstance: { gameScene: { gameId } } } });
+  expect(rows).toHaveLength(1); expect(rows[0]).toMatchObject({ attempts: 0, status: "PENDING" });
+});
+
+it.each([{mode:"clean",interrupted:false,guided:false},{mode:"transport",interrupted:true,guided:false},{mode:"guided",interrupted:false,guided:true},{mode:"tail",interrupted:false,guided:true},{mode:"body",interrupted:false,guided:true}].map(v=>({...v,born:false})).concat([{mode:"born-clean",interrupted:false,guided:false,born:true},{mode:"born-guided",interrupted:false,guided:true,born:true},{mode:"born-transport",interrupted:true,guided:false,born:true},{mode:"born-crown",interrupted:false,guided:false,born:true},{mode:"kingdom-clean",interrupted:false,guided:false,born:true},{mode:"kingdom-transport",interrupted:true,guided:false,born:true},{mode:"kingdom-guided",interrupted:false,guided:true,born:true},{mode:"window-clean",interrupted:false,guided:false,born:true},{mode:"sunburst-clean",interrupted:false,guided:false,born:true}]).map(testCase => ({ ...testCase, reviewEffort: testCase.born && testCase.mode !== "born-crown" ? "MEDIUM" : "LOW" })))("completes 27 hides with bounded $reviewEffort review and no extra planner; mode=$mode", async ({mode,interrupted,guided,born}) => {
   vi.useFakeTimers({ toFake: ["Date"] });
-  const kingdom=mode.startsWith("kingdom-"),crown=mode==="born-crown",body=mode==="body";const gameId = "detective-single-world-synthetic-" + mode; await newDetectiveWorld(gameId,body||born?7:8,born,false,kingdom,mode==='window-clean');
+  const kingdom=mode.startsWith("kingdom-"),crown=mode==="born-crown",body=mode==="body";const gameId = "detective-single-world-synthetic-" + mode; await newDetectiveWorld(gameId,body||born?7:8,born,false,kingdom,mode==='window-clean',mode==='sunburst-clean');
+  if(mode==="sunburst-clean")expect(await localPatchPainterRelease(db,gameId)).toBe(LOCAL_PATCH_SUNBURST_PAINTER);
   const context = await resolveLocalPatchBoardsForGame(db, gameId, 13), hides = context.boards.flatMap(board => board.hides);
   expect(context.boards).toHaveLength(9); expect(hides).toHaveLength(27);
   // Simulate the actual older deployment: genuine LOW purchases under the
@@ -557,10 +580,10 @@ it.each([{mode:"clean",interrupted:false,guided:false},{mode:"transport",interru
       nativeDeferred = true; await vi.advanceTimersByTimeAsync(120_001);
     }
     return bytes;
-  }, renderPolicySha256: localPatchRenderPolicySha256(LOCAL_PATCH_IMAGE_POLICY),
+  }, renderPolicySha256: localPatchRenderPolicySha256(mode==="sunburst-clean" ? LOCAL_PATCH_SUNBURST_IMAGE_POLICY : LOCAL_PATCH_IMAGE_POLICY),
     judge: async () => { throw Error("Historical per-hide judge forbidden"); },
     render: async ({ requestKey, stylePng, prompt, subjectQuality, placementGuidePng, maskPng }) => {
-      expect(subjectQuality).toBe("medium");
+      expect(subjectQuality).toBe(mode==="sunburst-clean" ? "high" : "medium");
       const hide = hides.find(hide => requestKey.startsWith(hide.id + ":")); if (!hide) throw Error("Unregistered Detective painter request");
       if (guided && (hide.id === guidedHideId || body&&hide.id==="giza-detectives-hide-2")) {
         expect(body?[1,2,3,4,5]:tail ? [1,2,3,4] : [1,2,3]).toContain(Number(requestKey.split(":").at(-1)));
@@ -587,7 +610,7 @@ it.each([{mode:"clean",interrupted:false,guided:false},{mode:"transport",interru
         let mismatches=0;for(let y=0;y<768;y++)for(let x=0;x<512;x++){const editable=alpha[(y*512+x)*4+3]===0;if(editable)clear++;if(editable!==(x>=edit.left&&x<edit.left+edit.width&&y>=edit.top&&y<edit.top+edit.height))mismatches++;}
         expect(mismatches).toBe(0);expect(clear).toBe(edit.width*edit.height);
       }
-      return paintedOk(png, bill("paint-" + gameId + "-" + requestKey, born ? 66500 : undefined));
+      return paintedOk(png, { ...bill("paint-" + gameId + "-" + requestKey, born ? 66500 : undefined), ...(mode==="sunburst-clean" ? {model:"gpt-image-2.6-sunburst"} : {}) });
     } };
   const diagnose = vi.fn(async () => { throw Error("Clean controlled answers cannot authorize a diagnosis"); });
   let result = { pending: true, attention: null as string | null }, ticks = 0;
@@ -3865,6 +3888,247 @@ it.each([{index:0,refuseAge:false,providerWidth:512,replaySizeFailure:false,labe
   expect(fetch).not.toHaveBeenCalled();
  }finally{vi.useRealTimers();}
 },180_000);
+
+it('explicit five-dollar completion admits exactly one Paris Sunburst head without changing history, the game painter pin or any other grant',async()=>{
+ vi.useFakeTimers({toFake:['Date']});
+ try{
+  const jh=await import('../../../domain/generation/journey-source-head'),service=await import('../journey-source-head-recovery');
+  const five=await import('../qa-five-dollar-completion'),fiveDomain=await import('../../../domain/generation/qa-five-dollar-completion');
+  const {readBoardWizardBudgetAuthority}=await import('../board-conditioned-wizard');
+  const {leanCompletionBudgetAuditId}=await import('../lean-completion-budget');
+  const {JOURNEY_SOURCE_HEAD_AUTHORITIES}=await import('../../../../content/detectives/journey-source-head-v2');
+  expect(jh.JOURNEY_SUNBURST_HEAD_PAINTER).toBe(LOCAL_PATCH_SUNBURST_PAINTER);
+  const a=JOURNEY_SOURCE_HEAD_AUTHORITIES.find(x=>x.hideId===jh.JOURNEY_SUNBURST_HEAD_HIDE_ID)!,gameId='five-dollar-sunburst-head-synthetic';
+  await newDetectiveWorld(gameId,7,true,false,false,true);
+  const payment=await db.order.findUniqueOrThrow({where:{id:'order-'+gameId}});
+  await db.game.update({where:{id:gameId},data:{paidAt:payment.paidAt}});
+  await ensureSingleMediumReviewPolicy(c,gameId,async()=>{});
+  const placement=await resolveLocalPatchBoardsForGame(db,gameId,13),board=placement.boards.find(b=>b.board===a.boardId)!,hide=board.hides.find(h=>h.id===a.hideId)!;
+  const provider=controlledSol(false,false),retrieve=provider.fake.retrieve.bind(provider.fake);let headBought=false;
+  let retainedHead:{left:number;top:number;width:number;height:number}|undefined;
+  provider.fake.retrieve=async id=>{const result=await retrieve(id);if(result.status!=='completed')return result;
+   const value=JSON.parse(result.reading.raw!);
+   const assessment=value.assessment.version===SOURCE_NEIGHBOR_BUNDLE_VERSION?value.assessment.assessment:value.assessment;
+   const head=assessment.quality.hides[0].hideId==='amazon-detectives-hide-3'?retainedHead:headBought?{left:170,top:220,width:95,height:100}:undefined;
+   if(!head)return result;
+   assessment.subject.checks.perceivedAge.estimatedMinYears=6;assessment.subject.checks.perceivedAge.estimatedMaxYears=8;
+   value.head={...value.head,rawHead:head,shippingHead:head,rawCrown:'pass',shippingCrown:'pass'};
+   return {...result,reading:{...result.reading,raw:JSON.stringify(value)}};};
+  const forbidden=vi.fn(async()=>{throw Error('No extra synchronous or paid diagnostic request');});
+  const container={...c,backgroundReview:provider.fake,visualReview:{request:forbidden}} as Container;
+  const render=vi.fn<LocalPatchHideDeps['render']>(async input=>{
+   const pixels=await sharp(input.stylePng).ensureAlpha().raw().toBuffer();
+   if(input.requestKey===a.hideId+':'+a.pose+':render:2'){
+    // The one Sunburst head: photo-backed HIGH, native SOURCE head recipe, exactly once.
+    expect(headBought).toBe(false);headBought=true;expect(input.subjectQuality).toBe('high');expect(input.subjectPhotoPng).toBeDefined();
+    expect(input.prompt).toContain('NATIVE SOURCE HEAD '+jh.JOURNEY_SOURCE_HEAD_VERSION);
+    const alpha=jh.journeyHeadAlpha(a);for(let i=0;i<alpha.length;i++)if(alpha[i]){pixels[i*4]=32;pixels[i*4+1]=108;pixels[i*4+2]=139;}
+   }else{expect(input.requestKey).toBe(a.hideId+':'+a.pose+':render:1');expect(input.subjectQuality).toBe('medium');const r=maskForHide(hide);
+    for(let y=r.top+30;y<r.top+80;y++)for(let x=r.left+30;x<r.left+80;x++){const i=(y*512+x)*4;pixels[i]=84;pixels[i+1]=54;pixels[i+2]=121;}}
+   return paintedOk(await sharp(pixels,{raw:{width:512,height:768,channels:4}}).png().toBuffer(),bill('synthetic-five-head-'+input.requestKey,50000));
+  });
+  const mediumDeps:LocalPatchHideDeps={readBoardArt:readArt,renderPolicySha256:localPatchRenderPolicySha256(LOCAL_PATCH_IMAGE_POLICY),render,judge:forbidden,fence:async()=>{}};
+  expect((await runLocalPatchHide(container,mediumDeps,{gameId,board,hide})).state).toBe('generated');
+  const scene=await db.gameScene.findUniqueOrThrow({where:{gameId_sceneSlug:{gameId,sceneSlug:board.board}}});
+  const row=()=>db.targetVariantAsset.findFirstOrThrow({where:{variant:'A',targetInstance:{gameSceneId:scene.id,targetId:hide.targetId}}});
+  for(let turn=0;turn<8;turn++){await reviewLocalPatchBoard(container,{gameId,sceneId:scene.id,deadlineAt:Date.now()+270000},{fence:async()=>{},readBoardArt:readArt},{onlyHideId:hide.id});
+   await advanceContinuityInBackground(container,gameId,{deadlineAt:Date.now()+270000});await vi.advanceTimersByTimeAsync(LEAN_RECOVERY_BACKOFF_MS+1);if(JSON.parse((await row()).judgeJson!).reviewState==='board-review-complete')break;}
+  const before=await row();expect(before).toMatchObject({status:'FAILED',attempts:1});
+  for(const b of placement.boards)for(const h of b.hides){if(h.id===hide.id)continue;
+   const s=await db.gameScene.findFirstOrThrow({where:{gameId,sceneSlug:b.board}}),target=sceneBySlug(b.board,13).targets.find(t=>t.id===h.targetId)!;
+   const ti=await db.targetInstance.create({data:{id:'five-tgt-'+gameId+'-'+h.id,gameSceneId:s.id,targetId:target.id,targetType:target.targetType,spriteKind:'image',slotAId:target.slots[0].id,slotBId:target.slots[1].id}});
+   await db.targetVariantAsset.create({data:{id:'five-tva-'+gameId+'-'+h.id,targetInstanceId:ti.id,variant:'A',slotId:target.slots[0].id,status:'PENDING',provider:'local-patch',promptVersion:LOCAL_PATCH_FIXED_SCENERY_PROMPT_VERSION,attempts:0}});}
+  // A real free paid-window composition is approved under the birth cap before
+  // the grant. Its publication proof must remain valid after the cap is five.
+  const windowBoard=placement.boards.find(b=>b.board==='amazon')!,windowHide=windowBoard.hides.find(h=>h.id==='amazon-detectives-hide-3')!;
+  const windowScene=await db.gameScene.findUniqueOrThrow({where:{gameId_sceneSlug:{gameId,sceneSlug:'amazon'}}});
+  const windowRow=()=>db.targetVariantAsset.findFirstOrThrow({where:{variant:'A',targetInstance:{gameSceneId:windowScene.id,targetId:windowHide.targetId}}});
+  const windowRender:LocalPatchHideDeps['render']=async input=>{
+   expect(input.requestKey).toBe(windowHide.id+':'+windowHide.pose+':render:1');
+   const mask=maskForHide(windowHide),rect={left:mask.left+20,top:mask.top+20,width:50,height:70};
+   const block=await sharp({create:{width:rect.width,height:rect.height,channels:4,background:'#405971'}}).png().toBuffer();
+   const paidDetail=await sharp({create:{width:12,height:12,channels:4,background:'#3c6058'}}).png().toBuffer();
+   return paintedOk(await sharp(input.stylePng).composite([{input:block,left:rect.left,top:rect.top},{input:paidDetail,left:32,top:680}]).png().toBuffer(),bill('synthetic-five-window',50000));
+  };
+  const initialWindowOutcome=await runLocalPatchHide(container,{...mediumDeps,render:windowRender},{gameId,board:windowBoard,hide:windowHide});
+  expect(initialWindowOutcome.state,initialWindowOutcome.reason??'').toBe('generated');
+  const initialWindow=await windowRow();await db.targetVariantAsset.update({where:{id:initialWindow.id},data:{status:'FAILED'}});
+  const windowReasons:string[]=[];
+  expect(await restoreRetainedWindow(container,gameId,windowHide.id,readArt,r=>windowReasons.push(r)),windowReasons.join(',')).toBe(true);
+  const restoredWindow=await windowRow(),windowReceipt=JSON.parse(restoredWindow.judgeJson!);
+  const windowAuthority=(await import('../../../../content/detectives/retained-window-v1')).retainedWindowAuthorityFor(windowReceipt.authoredReturn)!;
+  const registered=windowAuthority.sourceHeads.find(h=>h.sourceId===windowAuthority.targetSourceId)!.head;
+  retainedHead={left:registered.left-windowAuthority.crop.left,top:registered.top-windowAuthority.crop.top,width:registered.width,height:registered.height};
+  for(let turn=0;turn<8;turn++){
+   await reviewLocalPatchBoard(container,{gameId,sceneId:windowScene.id,deadlineAt:Date.now()+270000},{fence:async()=>{},readBoardArt:readArt},{onlyHideId:windowHide.id});
+   await advanceContinuityInBackground(container,gameId,{deadlineAt:Date.now()+270000});await vi.advanceTimersByTimeAsync(LEAN_RECOVERY_BACKOFF_MS+1);
+   if(JSON.parse((await windowRow()).judgeJson!).reviewState==='board-review-complete')break;
+  }
+  const approvedWindow=await windowRow();expect(JSON.parse(approvedWindow.judgeJson!).qualityDisposition.state,approvedWindow.lastError??'').toBe('acceptable');
+  const windowBinding={...publicationBinding(gameId,approvedWindow),sceneVersion:13};
+  expect(await allowedDualPublication(db,windowBinding)).toBe(true);
+  const siblings=()=>db.targetVariantAsset.findMany({where:{id:{not:before.id},targetInstance:{gameScene:{gameId}}},orderBy:{id:'asc'}}),protectedRows=await siblings();expect(protectedRows).toHaveLength(26);
+  // The real game's position: $3.699963 committed under the original $4, an old UNKNOWN kept whole.
+  const worldId=boardWizardWorldId(gameId),budget=boardWizardBudgetOf(container),unknownKey='synthetic-five-prior-unknown';
+  await budget.reserve(worldId,{requestKey:unknownKey,scope:'judge',operationFingerprint:'c'.repeat(64),reserveMicroUsd:205615});
+  await budget.markUnknown(worldId,unknownKey,'Synthetic old unanswered provider request');
+  const unknown=await budget.readRequest(worldId,unknownKey),gameOwner=(await db.game.findUniqueOrThrow({where:{id:gameId}})).ownerId!;
+  await boardWizardBudgetOf(container,1,{authorizeUnknownContinuation:async approval=>approval.worldId===worldId&&approval.operatorId===gameOwner})
+   .authorizeUnknownContinuation(worldId,{approvalId:'synthetic-existing-five-human-authority',requestKey:unknownKey,scope:unknown!.scope,operationFingerprint:unknown!.operationFingerprint,
+    reserveMicroUsd:unknown!.reserveMicroUsd,unknownReasons:unknown!.unknownReasons,operatorId:gameOwner,authorizationSha256:'d'.repeat(64),authorizedAt:new Date().toISOString()});
+  const fill=3_699_963-(await budget.audit(worldId)).committedMicroUsd;
+  await budget.reserve(worldId,{requestKey:'synthetic-five-prior-costs',scope:'image',operationFingerprint:'e'.repeat(64),reserveMicroUsd:fill});
+  await budget.settle(worldId,'synthetic-five-prior-costs',bill('synthetic-five-prior-costs-'+gameId,fill));
+  expect(await budget.audit(worldId)).toMatchObject({capMicroUsd:4_000_000,remainingMicroUsd:300_037});
+  const historical=await db.worldBudgetLedger.findUniqueOrThrow({where:{worldId}});
+  // Under four dollars the named Sunburst head (150k + 250k) is refused; nothing is pinned.
+  const early:string[]=[];expect(await service.resumeJourneySunburstHead(container,gameId,r=>early.push(r))).toBe(false);
+  expect(early).toEqual(['payment-identity-or-full-capacity']);
+  const owner=(await db.game.findUniqueOrThrow({where:{id:gameId}})).ownerId!;
+  const {plan,planSha256}=await five.planQaFiveCompletion(container,gameId);
+  expect(plan.nextOperation).toMatchObject({kind:jh.JOURNEY_SUNBURST_HEAD_VERSION,hideId:a.hideId,rowId:before.id,requestKey:a.hideId+':'+a.pose+':render:2',
+   imageReserveMicroUsd:150_000,reviewCoverageMicroUsd:250_000,requiredMicroUsd:400_000,remainingUnderBaseMicroUsd:300_037});
+  expect(plan.unknowns).toEqual([{requestKey:unknownKey,operationFingerprint:'c'.repeat(64),reserveMicroUsd:205615}]);
+  // Exclusive: another completion grant on the world refuses the plan.
+  await db.auditLog.create({data:{id:leanCompletionBudgetAuditId(gameId),actorType:'ADMIN',actorId:owner,action:'synthetic-other-grant',entityType:'Game',entityId:gameId,metaJson:null}});
+  await expect(five.planQaFiveCompletion(container,gameId)).rejects.toThrow('Another completion grant');
+  await db.auditLog.delete({where:{id:leanCompletionBudgetAuditId(gameId)}});
+  const input={gameId,operatorId:owner,expectedPlanSha256:planSha256,ownerAuthorizationSha256:'9'.repeat(64)};
+  await expect(five.authorizeQaFiveCompletion(container,{...input,operatorId:'forged-operator'})).rejects.toThrow('Owner administrator');
+  await expect(five.authorizeQaFiveCompletion(container,{...input,expectedPlanSha256:'f'.repeat(64)})).rejects.toThrow('Stale plan');
+  const receipt=await five.authorizeQaFiveCompletion(container,input);
+  expect(await five.authorizeQaFiveCompletion(container,input)).toEqual(receipt);
+  await expect(five.authorizeQaFiveCompletion(container,{...input,ownerAuthorizationSha256:'a'.repeat(64)})).rejects.toThrow('Different authority');
+  expect(receipt).toMatchObject({automaticExtension:false,requestsPreserved:true,exclusiveOfOtherGrants:true});
+  expect((await db.worldBudgetLedger.findUniqueOrThrow({where:{worldId}})).snapshotJson).toBe(historical.snapshotJson);
+  expect(await budget.audit(worldId)).toMatchObject({capMicroUsd:5_000_000,remainingMicroUsd:1_300_037,held:false});
+  expect(await retainedWindowEvidenceMatches(db,{gameId,sceneVersion:13,hideId:windowHide.id,variantId:approvedWindow.id,
+   assetId:approvedWindow.assetId!,judgeJson:approvedWindow.judgeJson},readArt),'An explicit five-dollar head grant cannot revoke an already approved free window').toBe(true);
+  expect(await allowedDualPublication(db,windowBinding)).toBe(true);
+  await expect(budget.reserve(worldId,{requestKey:'amazon-detectives-hide-3:standing:render:2',scope:'image',operationFingerprint:'7'.repeat(64),reserveMicroUsd:300_038}))
+   .rejects.toThrow('ceiling');
+  expect(await budget.readRequest(worldId,'amazon-detectives-hide-3:standing:render:2')).toBeNull();
+  expect(await budget.readRequest(worldId,unknownKey)).toMatchObject({state:'unknown',reserveMicroUsd:205615});
+  expect(await five.qaFiveCompletionStatus(container,gameId)).toMatchObject({status:'active',baseCapMicroUsd:4_000_000,capMicroUsd:5_000_000});
+  await expect(five.planQaFiveCompletion(container,gameId)).rejects.toThrow('already exists');
+  // Never a sum or silent fallback beside another grant.
+  await db.auditLog.create({data:{id:leanCompletionBudgetAuditId(gameId),actorType:'ADMIN',actorId:owner,action:'synthetic-other-grant',entityType:'Game',entityId:gameId,metaJson:null}});
+  await expect(readBoardWizardBudgetAuthority(container,worldId)).rejects.toThrow('cannot coexist');
+  await db.auditLog.delete({where:{id:leanCompletionBudgetAuditId(gameId)}});
+  // A refund withdraws the capacity; restoring the payment restores the same receipt.
+  await db.order.update({where:{id:payment.id},data:{paymentStatus:'REFUNDED'}});
+  expect(await five.readQaFiveCompletionBudget(container,worldId)).toBeNull();
+  expect(await five.qaFiveCompletionStatus(container,gameId)).toMatchObject({status:'withdrawn'});
+  await db.order.update({where:{id:payment.id},data:{paymentStatus:'PAID'}});
+  // While the grant names the Sunburst head, Paris cannot be enrolled as a MEDIUM v2 head.
+  const mediumReasons:string[]=[];expect(await service.resumeJourneySourceHead(container,gameId,a.hideId,r=>mediumReasons.push(r))).toBe(false);
+  expect(mediumReasons).toEqual(['five-dollar-grant-names-sunburst-head']);
+  await db.targetVariantAsset.update({where:{id:approvedWindow.id},data:{judgeJson:JSON.stringify({...JSON.parse(approvedWindow.judgeJson!),reviewState:'pending-board-review'})}});
+  const unpaidReviewReasons:string[]=[];
+  expect(await service.resumeJourneySunburstHead(container,gameId,r=>unpaidReviewReasons.push(r))).toBe(false);
+  expect(unpaidReviewReasons).toEqual(['other-paid-pictures-await-ordinary-review']);
+  await db.targetVariantAsset.update({where:{id:approvedWindow.id},data:{judgeJson:approvedWindow.judgeJson,updatedAt:approvedWindow.updatedAt}});
+  const reasons:string[]=[];expect(await service.resumeJourneySunburstHead(container,gameId,r=>reasons.push(r)),reasons.join(',')).toBe(true);
+  expect(await service.resumeJourneySunburstHead(container,gameId)).toBe(false);
+  expect(await service.resumeJourneySourceHead(container,gameId,a.hideId)).toBe(false);
+  expect(await row()).toEqual(before);expect(await siblings()).toEqual(protectedRows);
+  expect((await db.worldBudgetLedger.findUniqueOrThrow({where:{worldId}})).snapshotJson).toBe(historical.snapshotJson);
+  const pins=await service.journeyHeadPinsOf(db,gameId);expect(pins).toHaveLength(1);
+  const pin=pins[0]!;expect(service.isJourneySunburstHeadPin(pin)).toBe(true);
+  expect(pin).toMatchObject({version:jh.JOURNEY_SUNBURST_HEAD_VERSION,hideId:a.hideId,capMicroUsd:5_000_000,completionAuthorizationSha256:receipt.authorizationSha256,
+   imagePolicySha256:localPatchRenderPolicySha256(LOCAL_PATCH_SUNBURST_IMAGE_POLICY),imageReserveMicroUsd:150_000,reviewCoverageMicroUsd:250_000});
+  const purchase=await service.requireJourneyHeadPurchase(container,gameId,before.id);
+  expect(purchase.sunburst).toMatchObject({painterRelease:LOCAL_PATCH_SUNBURST_PAINTER,subjectQuality:'high',imageReserveMicroUsd:150_000,reviewCoverageMicroUsd:250_000,
+   requestKey:a.hideId+':'+a.pose+':render:2',completionAuthorizationSha256:receipt.authorizationSha256});
+  expect(purchase.marker.painterRelease).toBe(LOCAL_PATCH_SUNBURST_PAINTER);
+  // The game's own painter release is never pinned or changed.
+  expect(await localPatchPainterRelease(db,gameId)).toBeNull();
+  expect(await allowedDualPublication(db,windowBinding)).toBe(true);
+  // CONTRACT for Codex hunks H1/H2 (RED until applied): a MEDIUM-policy dispatch
+  // can never buy the Sunburst pin, and is refused before any reservation.
+  await expect(runLocalPatchHide(container,mediumDeps,{gameId,board,hide,finalRepair:true,journeyHeadRecovery:true})).rejects.toThrow('JOURNEY_HEAD');
+  expect(render).toHaveBeenCalledTimes(1);expect(await budget.readRequest(worldId,pin.requestKey)).toBeNull();
+  expect((await db.worldBudgetLedger.findUniqueOrThrow({where:{worldId}})).snapshotJson).toBe(historical.snapshotJson);
+  // The one purchase through per-call Sunburst deps: photo-backed HIGH, 150k reserve, once.
+  // Production: localPatchPainterForGame supplies sunburstHeadRender (hunk H3); the game's own deps stay MEDIUM.
+  const sunburstDeps={...mediumDeps,sunburstHeadRender:render} as LocalPatchHideDeps;
+  const bought=await runLocalPatchHide(container,sunburstDeps,{gameId,board,hide,finalRepair:true,journeyHeadRecovery:true});
+  expect(bought.state,bought.reason??'').toBe('generated');expect(render).toHaveBeenCalledTimes(2);
+  expect(await budget.readRequest(worldId,pin.requestKey)).toMatchObject({state:'settled',reserveMicroUsd:150_000});
+  const bills=JSON.parse((await db.worldBudgetLedger.findUniqueOrThrow({where:{worldId}})).snapshotJson).requests;
+  for(const old of JSON.parse(historical.snapshotJson).requests)expect(bills.find((b:{requestKey:string})=>b.requestKey===old.requestKey)).toEqual(old);
+  expect(await siblings()).toEqual(protectedRows);expect(await localPatchPainterRelease(db,gameId)).toBeNull();
+  const generated=await row();
+  expect(JSON.parse(generated.judgeJson!).reviewState).toBe('pending-board-review');
+  const pendingReceipt=JSON.parse(generated.judgeJson!);
+  expect(await allowedDualPublication(db,{gameId,sceneVersion:13,hideId:hide.id,variantId:generated.id,attempts:2,
+   identityAssetId:pin.identityAssetId,identitySha256:pin.identitySha256,assetId:generated.assetId!,
+   imageSha256:pendingReceipt.judgedSha256,geometrySha256:pendingReceipt.geometrySha256,judgeJson:generated.judgeJson})).toBe(false);
+  const reviewStates:string[]=[];
+  for(let turn=0;turn<8;turn++){
+   const review=await reviewLocalPatchBoard(container,{gameId,sceneId:scene.id,deadlineAt:Date.now()+270000},
+    {fence:async()=>{},readBoardArt:readArt},{onlyHideId:hide.id});reviewStates.push(review.state+':'+review.reason);
+   await advanceContinuityInBackground(container,gameId,{deadlineAt:Date.now()+270000});
+   await vi.advanceTimersByTimeAsync(LEAN_RECOVERY_BACKOFF_MS+1);
+   if(JSON.parse((await row()).judgeJson!).reviewState==='board-review-complete')break;
+  }
+  const reviewed=await row(),reviewedReceipt=JSON.parse(reviewed.judgeJson!);
+  expect(reviewedReceipt.reviewState,JSON.stringify(reviewStates)).toBe('board-review-complete');
+  expect(reviewedReceipt.qualityDisposition.state,reviewed.lastError??'').toBe('acceptable');
+  expect(reviewedReceipt.boardReview.dual.quality.policy.maxOutputTokens).toBe(6000);
+  expect(await allowedDualPublication(db,{...publicationBinding(gameId,reviewed),sceneVersion:13})).toBe(true);
+  expect(await service.journeyHeadCompositionMatches(db,{gameId,hideId:hide.id,receipt:reviewedReceipt},readArt)).toBe(true);
+  expect(render).toHaveBeenCalledTimes(2);expect(await siblings()).toEqual(protectedRows);
+  expect(await budget.readRequest(worldId,unknownKey)).toMatchObject({state:'unknown',reserveMicroUsd:205615});
+  expect(await localPatchPainterRelease(db,gameId)).toBeNull();
+  // A second Sunburst painting is never admitted.
+  expect(await service.resumeJourneySunburstHead(container,gameId)).toBe(false);
+  expect(fiveDomain.QA_FIVE_COMPLETION_CAP).toBe(5_000_000);
+  expect(fetch).not.toHaveBeenCalled();
+ }finally{vi.useRealTimers();}
+},300_000);
+
+it.each([false,true])('P2-D: a Sunburst world with 700k left preserves review coverage and bounded progress; permanent blocked review=%s',async(blockReview)=>{
+ vi.useFakeTimers({toFake:['Date']});
+ try{
+  const gameId='sunburst-capacity-700k-synthetic-'+Number(blockReview);await newDetectiveWorld(gameId,7,true,false,false,false,true);
+  expect(await localPatchPainterRelease(db,gameId)).toBe(LOCAL_PATCH_SUNBURST_PAINTER);
+  const worldId=boardWizardWorldId(gameId),budget=boardWizardBudgetOf(c);
+  const fill=3_300_000-(await budget.audit(worldId)).committedMicroUsd;
+  await budget.reserve(worldId,{requestKey:'synthetic-700k-prior-costs',scope:'image',operationFingerprint:'8'.repeat(64),reserveMicroUsd:fill});
+  await budget.settle(worldId,'synthetic-700k-prior-costs',bill('synthetic-700k-prior-costs-'+gameId,fill));
+  expect(await budget.audit(worldId)).toMatchObject({capMicroUsd:4_000_000,remainingMicroUsd:700_000});
+  const provider=controlledSol(false,false),forbidden=vi.fn(async()=>{throw Error('No synchronous or paid diagnostic request');});
+  const container={...c,backgroundReview:provider.fake,visualReview:{request:forbidden}} as Container;
+  const owedReviews=async()=>(await db.targetVariantAsset.findMany({where:{variant:'A',assetId:{not:null},targetInstance:{gameScene:{gameId}}}}))
+   .filter(r=>JSON.parse(r.judgeJson??'{}').reviewState!=='board-review-complete').length;
+  const dispatched:{key:string;remaining:number;owed:number}[]=[];
+  const render=vi.fn<LocalPatchHideDeps['render']>(async input=>{
+   expect(input.subjectQuality).toBe('high');
+   // At dispatch this painting's 150k reserve is already counted. Its OWN review and
+   // every earlier painting still awaiting its ordinary review must remain covered.
+   const audit=await budget.audit(worldId),owed=await owedReviews();dispatched.push({key:input.requestKey,remaining:audit.remainingMicroUsd,owed});
+   expect(audit.remainingMicroUsd,JSON.stringify(dispatched)).toBeGreaterThanOrEqual(250_000*(owed+1));
+   const pixels=await sharp(input.stylePng).ensureAlpha().raw().toBuffer();
+   return paintedOk(await sharp(pixels,{raw:{width:512,height:768,channels:4}}).png().toBuffer(),bill('synthetic-700k-'+input.requestKey,50000));
+  });
+  const deps:LocalPatchHideDeps={readBoardArt:readArt,renderPolicySha256:localPatchRenderPolicySha256(LOCAL_PATCH_SUNBURST_IMAGE_POLICY),render,judge:forbidden,fence:async()=>{}};
+  const blockedReview=blockReview?vi.spyOn(await import('../local-patch-board-review'),'reviewLocalPatchBoard')
+   .mockResolvedValue({state:'blocked',reason:'Synthetic permanently unverifiable current review',replayed:false,costCents:0}):null;
+  for(let slice=0;slice<6&&dispatched.length<3;slice++){
+   await runLocalPatchWorldSlice(container,deps,gameId,{hardDeadlineAt:Date.now()+270000,diagnose:forbidden});
+   await advanceContinuityInBackground(container,gameId,{deadlineAt:Date.now()+270000});await vi.advanceTimersByTimeAsync(LEAN_RECOVERY_BACKOFF_MS+1);
+  }
+  // A parked job after the first two paintings is not success: the partial
+  // board's reviews must clear the debt and admit the third within six slices.
+  if(blockReview){
+   expect(dispatched).toHaveLength(2);expect(blockedReview).toHaveBeenCalledTimes(1);
+   expect(await db.generationJob.findUniqueOrThrow({where:{id:'job_'+gameId}})).toMatchObject({status:'FAILED',currentStep:'local-patch:recovery-exhausted'});
+  }else expect(dispatched.length,JSON.stringify(dispatched)).toBeGreaterThanOrEqual(3);
+  const after=await budget.audit(worldId);expect(after.committedMicroUsd).toBeLessThanOrEqual(4_000_000);expect(after.overCapMicroUsd).toBe(0);
+  expect(forbidden).not.toHaveBeenCalled();expect(fetch).not.toHaveBeenCalled();
+ }finally{vi.useRealTimers();}
+},600_000);
 
 it('retained neighbor alternate v1 preserves the real rejected answer, changes paid source once, and requires a fresh ordinary pass',async()=>{
  vi.useFakeTimers({toFake:['Date']});

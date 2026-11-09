@@ -15,6 +15,24 @@ function repository(afterRead?: () => Promise<void>) {
 const evidence = (id: string, amountMicroUsd: number) => ({ providerNamespace: "fixture", providerRequestId: id, usageId: id, rawUsage: { tokens: 1 }, model: "gpt-image-2", amountMicroUsd, costBasis: "conservative-upper-estimate" as const });
 const reserve = (key: string, cents: number) => ({ requestKey: key, scope: "image" as const, operationFingerprint: key, reserveMicroUsd: cents * 10_000 });
 describe("QA wizard four-dollar budget", () => {
+  it("limits the extra dollar to the named image while retaining full review capacity and historical bills", async () => {
+    const repo = repository(), worldId = "finite-five-world", imageKey = "paris-detectives-hide-1:standing:render:2";
+    const b = boardWizardBudget(repo, 1, {}, async id => ({ worldId: id, capMicroUsd: 5_000_000,
+      authorizationSha256: "a".repeat(64), imageAboveBaseOnly: { baseCapMicroUsd: 4_000_000, requestKey: imageKey, reserveMicroUsd: 150_000 } }));
+    await b.importSettled(worldId, { scope: "image", operationFingerprint: "old", evidence: evidence("old-paid", 3_900_000) });
+    const old = await b.audit(worldId);
+    await expect(b.reserve(worldId, reserve(imageKey, 12))).rejects.toMatchObject({ code: "invalid_input" });
+    for (const scope of ["identity", "sheet", "repair"] as const)
+      await expect(b.reserve(worldId, { ...reserve("unrelated-" + scope, 15), scope })).rejects.toMatchObject({ code: "cap_exceeded" });
+    await expect(b.reserve(worldId, { ...reserve("other-image", 15) })).rejects.toMatchObject({ code: "cap_exceeded" });
+    expect(await b.readRequest(worldId, "other-image")).toBeNull();
+    expect(await b.audit(worldId)).toEqual(old);
+    expect((await b.reserve(worldId, reserve(imageKey, 15))).acquired).toBe(true);
+    expect((await b.reserve(worldId, { ...reserve("ordinary-review", 25), scope: "judge" })).acquired).toBe(true);
+    await expect(b.reserve(worldId, reserve("other-image-after-head", 1))).rejects.toMatchObject({ code: "cap_exceeded" });
+    expect(await b.audit(worldId)).toMatchObject({ capMicroUsd: 5_000_000, committedMicroUsd: 4_300_000, held: false });
+    expect((await b.reserve(worldId, reserve(imageKey, 15))).acquired).toBe(false);
+  });
   it.each([1, 2] as const)("forwards pending-only unknown accounting after a concurrent hold under attempt %i", async attempt => {
     let pauseNextRead = false, read!: () => void, release!: () => void;
     const observed = new Promise<void>(resolve => { read = resolve; });
