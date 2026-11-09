@@ -9,7 +9,13 @@ import { PrismaRetainedPurchaseStore } from '../../infra/db/prisma-retained-purc
 import { JOURNEY_SOURCE_HEAD_AUTHORITIES } from '../../../content/detectives/journey-source-head-v2';
 import { JOURNEY_SOURCE_HEAD_VERSION, JOURNEY_SOURCE_HEAD_ACTION, JOURNEY_HEAD_REVIEW_COVERAGE_MICRO_USD,
   journeyHeadHash as hash, journeyHeadBytesHash as sha, journeyHeadAlpha, journeyHeadAuthorityFor,
-  journeyHeadMarker, journeyHeadMarkerSchema, composeJourneySourceHead, type JourneyHeadAuthority, type JourneyHeadMarker } from '../../domain/generation/journey-source-head';
+  journeyHeadMarker, journeyHeadMarkerSchema, composeJourneySourceHead, JOURNEY_HEAD_FRAME_REPLAY_ACTION,
+  type JourneyHeadAuthority, type JourneyHeadMarker } from '../../domain/generation/journey-source-head';
+import { normalizeJourneyHeadProviderPng } from './journey-head-provider-frame';
+import { maskForHide } from '../../domain/scene/local-patch-hides';
+import { TARGET_HEAD_VISIBLE_VERSION } from '../../domain/generation/target-head-return';
+import { composeBoundedLocalPatch } from './local-patch-seam';
+import { AUTHORED_PATCH_COMPOSITION_VERSION } from '../../domain/scene/local-patch-return-region';
 import { LOCAL_PATCH_RESERVE } from './local-patch-render';
 import { singleMediumReviewPolicyOf } from './single-medium-policy';
 import { identityApprovedForDisplay } from './board-wizard-identity-gate';
@@ -166,6 +172,70 @@ export async function requireJourneyHeadPurchase(c: Container, gameId: string, r
     'image and full bounded ordinary MEDIUM coverage do not fit');
   return { pin: pin!, marker: journeyHeadMarkerFor(pin!), authority: p!.authority };
 }
+
+/** Free recovery of the one settled head that stopped at the old provider-size
+ * guard. It never re-enters painting or increments an attempt or cost. */
+export async function restoreJourneyHeadProviderFrame(c: Container, gameId: string, hideId: string,
+  readArt: ReadArt = readShippedBoardArt, observeRefusal?: (why: string) => void) {
+  const refuse = (why: string) => { observeRefusal?.(why); return false; };
+  if (env().APP_ENV !== 'qa' || c.storage.id !== 'db') return refuse('qa-only');
+  return c.db.$transaction(async tx => {
+    await fenceLocalPatchImages(tx, gameId);
+    const cc = { ...c, db: tx, storage: new DbStorage(tx) } as unknown as Container;
+    const p = await context(cc, gameId, hideId, false), pin = (await journeyHeadPinsOf(tx, gameId)).find(x => x.hideId === hideId);
+    const job = await tx.generationJob.findUnique({ where: { id: 'job_' + gameId } });
+    const auditId = 'aud_journey_frame_' + hash([gameId, hideId]).slice(0, 40);
+    if (!p || !pin || !job || !['QUEUED', 'FAILED'].includes(job.status) || p.game.readyAt || p.game.configJson
+      || p.child.originalPhotoAssetId !== pin.originalPhotoAssetId || p.photoSha256 !== pin.originalPhotoSha256
+      || p.photoCropSha256 !== pin.photoCropSha256 || await tx.auditLog.findUnique({ where: { id: auditId } })) return refuse('current-pin-or-once');
+    const row = await tx.targetVariantAsset.findUnique({ where: { id: pin.rowId } });
+    const old = JSON.parse(row?.judgeJson ?? 'null');
+    if (!row || row.status !== 'FAILED' || row.attempts !== 2 || old?.renderFault !== 'JOURNEY_HEAD: paid RAW is not native512x768'
+      || hash(journeyHeadMarker(row)) !== hash(journeyHeadMarkerFor(pin)) || old.boardReview !== undefined) return refuse('not-unreviewed-size-refusal');
+    const ledger = await PrismaWorldBudgetStore.forReadOnlyTransaction(tx).read(pin.worldId);
+    if (!ledger || ledger.snapshot.requests.some(x => x.state === 'pending')) return refuse('pending-purchase');
+    const siblings = await tx.targetVariantAsset.findMany({ where: { id: { in: pin.protectedRows.map(x => x.id) } } });
+    if (siblings.length !== 26 || !pin.protectedRows.every(x => siblings.some(r => r.id === x.id && rowHash(r) === x.sha256))) return refuse('sibling-drift');
+    const paid = await readSettledTargetRaw(tx, gameId, pin.requestKey), decoded = await normalizeJourneyHeadProviderPng(paid.original);
+    if (!decoded.frame.resized || decoded.frame.width !== 768 || decoded.frame.height !== 1152
+      || hash(paid.wire.journeyHeadRecovery) !== hash(journeyHeadMarkerFor(pin)) || hash(paid.wire.authoredReturn) !== hash(p.parent)) return refuse('exact-paid-frame');
+    const before = await readArt(p.authority.source.art, p.authority.source.sha256), made = await applyJourneyHeadPixels(before, paid.normalized, p.authority);
+    const bounded = await composeBoundedLocalPatch(before, p.authority.crop, made.png, maskForHide(p.hide),
+      { requireAligned: true, playerReview: true, returnRect: p.hide.returnRect });
+    if (!bounded.usable) return refuse('reproduced-join-refused');
+    const shipping = await sharp(bounded.candidate).extract(p.authority.crop).png().toBuffer();
+    check(sha(shipping) === sha(made.png), 'free normalized replay changed native head composition');
+    const measured = await localPatchGeometry({ contentVersion: 13, boardPng: before, patchPng: shipping,
+      board: p.authority.source, hide: p.hide, journeyHead: p.authority });
+    const geometry = { rectJson: JSON.stringify(measured.geometry.rect), hitRectJson: JSON.stringify(measured.geometry.hitRect), headAnchorJson: JSON.stringify(measured.geometry.anchor) };
+    const candidateSha256 = sha(shipping), assetId = 'ast_jnh_frame_' + hash([gameId, hideId, candidateSha256]).slice(0, 24);
+    const storagePath = 'game/' + assetId + '.png';
+    const receipt = { ...old, verdict: null, renderFault: null, wireFault: null, seam: bounded.report,
+      compositionVersion: AUTHORED_PATCH_COMPOSITION_VERSION, compositionPermission: bounded.compositionPermission,
+      journeyHeadComposition: made.proof, journeyHeadFrame: decoded.frame, judgedSha256: candidateSha256,
+      geometrySha256: localPatchPublicationGeometryHash(geometry), geometryBasis: measured.basis,
+      measuredFraction: Number(measured.measuredFraction.toFixed(4)), headPolicyVersion: TARGET_HEAD_VISIBLE_VERSION, reviewState: 'pending-board-review' };
+    const retired = JSON.parse(row.rejectedAssetIdsJson ?? '[]');
+    check(Array.isArray(retired) && retired.every(x => typeof x === 'string'), 'rejected inventory changed');
+    const revision = await tx.worldBudgetLedger.updateMany({ where: { worldId: pin.worldId, revision: ledger.revision }, data: { revision: { increment: 1 } } });
+    check(revision.count === 1, 'concurrent paid-frame replay');
+    await tx.auditLog.create({ data: { id: auditId, actorType: 'SYSTEM', action: JOURNEY_HEAD_FRAME_REPLAY_ACTION,
+      entityType: 'Game', entityId: gameId, metaJson: JSON.stringify({ version: decoded.frame.version, pinSha256: pin.authorizationSha256,
+        rowId: row.id, hideId, assetId, candidateSha256, frame: decoded.frame, previousRow: row, previousRowSha256: hash(row),
+        originalRequests: ledger.snapshot.requests.map(r => ({ requestKey: r.requestKey, sha256: hash(r) })), providerCalls: 0, approvalTransferred: false }) } });
+    await tx.asset.create({ data: { id: assetId, ownerId: p.game.ownerId, type: 'TARGET_SPRITE', visibility: 'GAME', status: 'READY',
+      storagePath, mimeType: 'image/png', width: 512, height: 768, bytes: shipping.length, costCents: 0, provider: 'local-patch', providerRequestId: gameId } });
+    await new DbStorage(tx).put(storagePath, shipping, 'image/png');
+    await tx.targetVariantAsset.update({ where: { id: row.id }, data: { status: 'GENERATED', assetId, ...geometry, lastError: null,
+      judgeJson: JSON.stringify(receipt), rejectedAssetIdsJson: JSON.stringify([...new Set([...retired, ...(row.assetId ? [row.assetId] : [])])]) } });
+    await tx.targetInstance.update({ where: { id: row.targetInstanceId }, data: { status: 'GENERATED', spriteKind: 'image', spriteAssetId: assetId } });
+    await tx.gameScene.update({ where: { id: p.game.scenes.find(s => s.sceneSlug === p.board.board)!.id }, data: { generationStatus: 'NEEDS_REGENERATION', configJson: null } });
+    await tx.generationJob.update({ where: { id: job.id }, data: { status: 'QUEUED', currentStep: 'local-patch', lastError: null } });
+    const after = await PrismaWorldBudgetStore.forReadOnlyTransaction(tx).read(pin.worldId);
+    check(hash(after?.snapshot) === hash(ledger.snapshot), 'free frame replay changed a bill');
+    return true;
+  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, timeout: 60000 });
+}
 export async function fenceJourneyHeadPurchase(db: Db, gameId: string, rowId: string, marker: JourneyHeadMarker) {
   const pin = (await journeyHeadPinsOf(db, gameId)).find(p => p.rowId === rowId), row = await db.targetVariantAsset.findUnique({ where: { id: rowId } });
   check(pin && row && hash(marker) === hash(journeyHeadMarkerFor(pin)) && journeyHeadCandidate(pin, row), 'finite painting checkpoint changed');
@@ -205,6 +275,19 @@ export async function journeyHeadCompositionMatches(db: Db, input: { gameId: str
       || hash(input.receipt.authoredReturn) !== hash(p.parent) || input.receipt.authoredRecovery !== undefined) return false;
     const paid = await readSettledTargetRaw(db, input.gameId, pin.requestKey);
     if (hash(paid.wire.authoredReturn) !== hash(p.parent) || hash(paid.wire.journeyHeadRecovery) !== hash(marker)) return false;
+    if (row.assetId?.startsWith('ast_jnh_frame_')) {
+      const frame = (await normalizeJourneyHeadProviderPng(paid.original)).frame;
+      const record = await db.auditLog.findUnique({ where: { id: 'aud_journey_frame_' + hash([input.gameId, input.hideId]).slice(0, 40) } });
+      const saved = JSON.parse(record?.metaJson ?? 'null');
+      if (!record || record.actorType !== 'SYSTEM' || record.actorId !== null || record.action !== JOURNEY_HEAD_FRAME_REPLAY_ACTION
+        || record.entityType !== 'Game' || record.entityId !== input.gameId || saved?.pinSha256 !== pin.authorizationSha256
+        || saved.rowId !== row.id || saved.assetId !== row.assetId || saved.candidateSha256 !== input.receipt.judgedSha256
+        || saved.providerCalls !== 0 || saved.approvalTransferred !== false || hash(saved.frame) !== hash(frame)
+        || hash(input.receipt.journeyHeadFrame) !== hash(frame) || hash(saved.previousRow) !== saved.previousRowSha256) return false;
+      const ledger = await PrismaWorldBudgetStore.forReadOnlyTransaction(db).read(pin.worldId);
+      if (!ledger || !Array.isArray(saved.originalRequests) || !saved.originalRequests.every((old: { requestKey: string; sha256: string }) =>
+        ledger.snapshot.requests.some(r => r.requestKey === old.requestKey && hash(r) === old.sha256))) return false;
+    }
     const before = input.beforePng ?? await readArt(p.authority.source.art, p.authority.source.sha256), made = await applyJourneyHeadPixels(before, paid.normalized, p.authority);
     const measured = await localPatchGeometry({ contentVersion: 13, boardPng: before, patchPng: made.png, board: p.authority.source, hide: p.hide, journeyHead: p.authority });
     const geometry = { rectJson: JSON.stringify(measured.geometry.rect), hitRectJson: JSON.stringify(measured.geometry.hitRect), headAnchorJson: JSON.stringify(measured.geometry.anchor) };

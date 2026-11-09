@@ -6,6 +6,15 @@ import type { AuthoredLocalPatchReturnContract } from '../scene/local-patch-retu
 
 export const JOURNEY_SOURCE_HEAD_VERSION = 'source-head-recovery/v2' as const;
 export const JOURNEY_SOURCE_HEAD_ACTION = 'generation:journey-source-head/v2' as const;
+/** Provider encoding is normalized once before native-pixel composition. */
+export const JOURNEY_HEAD_PROVIDER_FRAME_VERSION = 'journey-head-provider-frame/v1' as const;
+export const JOURNEY_HEAD_FRAME_REPLAY_ACTION = 'generation:journey-head-provider-frame/v1' as const;
+export function journeyHeadProviderFrame(width: number | undefined, height: number | undefined) {
+  if (!(width === 512 && height === 768 || width === 768 && height === 1152))
+    throw Error('JOURNEY_HEAD: unsupported provider frame');
+  return { version: JOURNEY_HEAD_PROVIDER_FRAME_VERSION, width, height, outputWidth: 512 as const, outputHeight: 768 as const,
+    resized: width !== 512, kernel: 'lanczos3' as const };
+}
 /** Prospective image admission allowance, verified against BOTH prepared tiers.
  * The ledger still reserves each exact full standard-rate maximum, never an
  * average bill or a discounted Flex estimate. */

@@ -69,10 +69,16 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'unsupported-work-mode' }, { status: 400 });
     if (restore !== null) {
       const hideId = query.get('hideId'), sourceKey = query.get('sourceKey');
-      if (!['retained-window-v1','journey-source-head-v2'].includes(restore) || requestedMode !== 'review-existing' || !gameId || env().APP_ENV !== 'qa'
+      if (!['retained-window-v1','retained-window-alternate-v1','journey-source-head-v2','journey-head-frame-v1'].includes(restore) || requestedMode !== 'review-existing' || !gameId || env().APP_ENV !== 'qa'
         || c.storage.id !== 'db' || !hideId || !/^[A-Za-z0-9._:-]{1,160}$/.test(hideId)
         || sourceKey !== null && !/^[A-Za-z0-9._:-]{1,240}$/.test(sourceKey))
         return NextResponse.json({ error: 'unsupported-free-restore' }, { status: 400 });
+      if(restore==='journey-head-frame-v1'){
+        if(sourceKey!==null)return NextResponse.json({error:'unsupported-head-source-key'},{status:400});
+        enter('retained-journey-head-frame');
+        const restored=await (await import('@/services/generation/journey-source-head-recovery')).restoreJourneyHeadProviderFrame(c,gameId,hideId);
+        return NextResponse.json({restored,providerCalls:0,approvalTransferred:false},{headers:{'Cache-Control':'no-store'}});
+      }
       if(restore==='journey-source-head-v2'){
         if(sourceKey!==null)return NextResponse.json({error:'unsupported-head-source-key'},{status:400});
         enter('finite-journey-head-enrollment');
@@ -81,6 +87,11 @@ export async function POST(req: Request) {
       }
       enter('retained-window-free-restore');
       const recovery = await import('@/services/generation/retained-window-recovery');
+      if(restore==='retained-window-alternate-v1'){
+        if(sourceKey!==null)return NextResponse.json({error:'unsupported-alternate-source-key'},{status:400});
+        const restored=await recovery.restoreRetainedWindowNeighborAlternate(c,gameId,hideId);
+        return NextResponse.json({restored,providerCalls:0,approvalTransferred:false},{headers:{'Cache-Control':'no-store'}});
+      }
       const restored = sourceKey === null ? await recovery.restoreRetainedWindow(c, gameId, hideId)
         : await recovery.restoreRetainedWindow(c, gameId, hideId, undefined, undefined, sourceKey);
       return NextResponse.json({ restored, providerCalls: 0, approvalTransferred: false }, { headers: { 'Cache-Control': 'no-store' } });

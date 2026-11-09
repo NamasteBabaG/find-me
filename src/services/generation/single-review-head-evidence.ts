@@ -4,6 +4,7 @@ import { extractWholeSourceContextShipping } from "./whole-source-context-pixels
 import { sourcePlacementForHide } from "./source-placement-release";
 import { resolveLocalPatchBoardsForGame } from "./source-placement-release";
 import sharp from 'sharp';
+import { normalizeJourneyHeadProviderPng } from './journey-head-provider-frame';
 import type { Prisma } from '@prisma/client';
 import { targetHeadEvidenceSchema, targetHeadVersionOfReceipt, TARGET_HEAD_VISIBLE_VERSION, type TargetHeadEvidence } from '../../domain/generation/target-head-return';
 import { retainedNormalHeadSchema,RETAINED_NORMAL_HEAD_VERSION,RETAINED_NORMAL_HEAD_ACTION } from '../../domain/generation/retained-normal-head';
@@ -192,13 +193,11 @@ export async function readSettledTargetRaw(db:Prisma.TransactionClient,gameId:st
  const wire=JSON.parse(kept.bytes.toString());
  if(wire.version!=='local-patch-render/v1'||wire.rejected!==null||typeof wire.bytesBase64!=='string')throw Error('HEAD_RETURN: retained painting is unreadable');
  const original=Buffer.from(wire.bytesBase64,'base64');if(original.toString('base64')!==wire.bytesBase64)throw Error('HEAD_RETURN: invalid retained painting bytes');
+ let normalized:Buffer;
  if(wire.journeyHeadRecovery!==undefined){
   journeyHeadMarkerSchema.parse(wire.journeyHeadRecovery);
-  const shape=await sharp(original,{limitInputPixels:8294400}).metadata();
-  if(shape.width!==512||shape.height!==768)throw Error('HEAD_RETURN: journey paid head is not native512x768');
- }
- let normalized:Buffer;
- if(wire.wholeSourceContext!==undefined||key==='greatwall-v12-2:peeking:render:4'){
+  normalized=(await normalizeJourneyHeadProviderPng(original)).png;
+ }else if(wire.wholeSourceContext!==undefined||key==='greatwall-v12-2:peeking:render:4'){
   const marker=wholeSourceContextMarkerSchema.parse(wire.wholeSourceContext?.marker),pin=await readWholeSourceContextPin(db,gameId);
   if(!pin||key!==pin.selected.requestKey||JSON.stringify(marker)!==JSON.stringify(wholeSourceContextMarkerFor(pin))
     ||JSON.stringify(wire.wholeSourceContext?.plan)!==JSON.stringify(pin.selected.plan)

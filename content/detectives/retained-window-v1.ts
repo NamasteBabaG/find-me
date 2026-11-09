@@ -51,6 +51,14 @@ export function retainedWindowAuthorityFor(parent: AuthoredLocalPatchReturnContr
 
 // Frozen public-only inventory. This permission is not a visual or spending approval.
 export const RETAINED_WINDOW_MANIFEST_SHA256 = '5ddc3e7511e0d5ecd32ccba31442c11a9892e177df072c3dc7b8fb95b3bed4e6';
+/** Separate finite changed-source recovery. No old composition permission or
+ * verdict changes; the rejected image and its paid answer remain in lineage. */
+export const RETAINED_WINDOW_NEIGHBOR_ALTERNATE = Object.freeze({
+  version: 'retained-window-neighbor-alternate/v1' as const,
+  hideId: 'cloudcity-detectives-hide-2',
+  failedSourceKey: 'cloudcity-detectives-hide-2:walking:render:3',
+  replacementSourceKey: 'cloudcity-detectives-hide-2:walking:render:1',
+});
 export function assertRetainedWindowManifest() {
   if (retainedWindowHash(RETAINED_WINDOW_AUTHORITIES) !== RETAINED_WINDOW_MANIFEST_SHA256)
     throw Error('RETAINED_WINDOW: public permissions differ from the frozen release');

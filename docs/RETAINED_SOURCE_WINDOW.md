@@ -68,3 +68,27 @@ answers fail closed with their actual bill. No reservation is released from an
 error or an absent answer. The profile is not proof that a whole27-hide game can
 finish within four dollars; that requires a real completed run including all full
 UNKNOWN/PENDING reservations.
+# Finite changed-source neighbor recovery
+
+`retained-window-neighbor-alternate/v1` is a separate, explicit QA recovery for
+Cloud City 2. Its third paid RAW erased a neighboring carpet carrier's head
+and upper body while retaining the lower body. The first paid RAW retains that
+whole neighbor. This is a changed existing painting, not another opinion about
+the rejected pixels.
+
+The new action is `restore=retained-window-alternate-v1` together with the named
+game/hide and `mode=review-existing`; a supplied source override is refused.
+Admission requires an authenticated, completed ordinary refusal whose exact
+faults are `pictureWhole` and `neighborsIntact`, the original third-RAW marker
+and composition, and the fixed first-RAW replacement. It cannot retry an age,
+identity, style, pending, unanswered or passing assessment. Existing source,
+payment, ownership, identity, 27-row, private-asset, budget and RAW guards apply.
+
+Both old immutable audits, the rejected image, original paid answer and every
+bill remain untouched. One additional immutable lineage record binds the new
+candidate to the old once record. No attempt or cost is reset and no provider
+is called in the restore action. Publication reproduces the exact new paid
+source and lineage and requires a fresh ordinary MEDIUM pass. Failure of this
+different candidate does not open a third selection. The ordinary v1 path
+remains once-only, and another failed restored sibling still blocks expansion.
+Deletion clears the additional private lineage with the original audits.

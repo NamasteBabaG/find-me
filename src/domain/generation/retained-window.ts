@@ -5,6 +5,14 @@ import type { PatchRectangle } from '../scene/local-patch-return-region';
 /** A new composition of paid pixels. This never changes an older return contract. */
 export const RETAINED_WINDOW_VERSION = 'retained-source-window/v1' as const;
 export const RETAINED_WINDOW_ACTION = 'generation:retained-source-window/v1' as const;
+export function retainedWindowNeighborAlternateAllowed(input: { currentSourceKey: string; failedSourceKey: string; replacementSourceKey: string;
+  reviewState: unknown; disposition: unknown; verdict: unknown; faults: unknown }) {
+  const faults = input.faults;
+  return input.currentSourceKey === input.failedSourceKey && input.replacementSourceKey !== input.failedSourceKey
+    && input.reviewState === 'board-review-complete' && input.disposition === 'retry' && input.verdict === 'fail'
+    && Array.isArray(faults) && faults.length === 2
+    && ['pictureWhole', 'neighborsIntact'].every(x => faults.includes(x));
+}
 export const retainedWindowHash = (value: unknown) => createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const rectangle = z.object({ left: z.number().int().nonnegative(), top: z.number().int().nonnegative(),
   width: z.number().int().positive(), height: z.number().int().positive() }).strict();

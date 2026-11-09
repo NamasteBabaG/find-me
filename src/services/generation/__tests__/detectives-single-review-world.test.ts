@@ -38,7 +38,7 @@ import { BOUND_SOURCE_CONTRACT_READER } from '../../../domain/generation/bound-s
 import { REVIEW_EXISTING_WORK_MODE } from '../../../domain/generation/work-mode';
 import { authenticateBoundSourceNeighborReading } from '../bound-source-neighbor-reading';
 import { correctSourceFigureReturn, sourceFigurePublicationMatches } from '../source-figure-return';
-import { restoreRetainedWindow, retainedWindowEvidenceMatches } from '../retained-window-recovery';
+import { restoreRetainedWindow, restoreRetainedWindowNeighborAlternate, retainedWindowEvidenceMatches } from '../retained-window-recovery';
 import { RETAINED_WINDOW_ACTION, RETAINED_WINDOW_VERSION } from '../../../domain/generation/retained-window';
 import { SOURCE_FIGURE_ACTION, SOURCE_FIGURE_RETURN_VERSION, sourceFigureAuditId, sourceFigureHash } from '../../../domain/generation/source-figure-return';
 import { KINGDOM_FIGURE_RETURNS } from '../../../../content/detectives/kingdom/figure-return-v1';
@@ -958,10 +958,10 @@ it.each(["recompose-retained", "redraw-with-new-placement", "restyle-retained"] 
   } finally { vi.useRealTimers(); }
 }, 300000);
 
-async function legacyKingdomHeadFixture(gameId: string, action: "redraw-with-new-placement" | "recompose-retained", explorer = true, normalOnly = false, wholeFigure = false, windowShift = 0) {
+async function legacyKingdomHeadFixture(gameId: string, action: "redraw-with-new-placement" | "recompose-retained", explorer = true, normalOnly = false, wholeFigure = false, windowShift = 0, windowHideIndex = 0) {
   await newDetectiveWorld(gameId, 7, true, explorer, true);
   await ensureSingleMediumReviewPolicy(c, gameId, async () => {});
-  const version = explorer ? 12 : 13, context = await resolveLocalPatchBoardsForGame(db, gameId, version), board = context.boards.find(b => b.board === (wholeFigure ? 'cloudcity' : "dragoncave"))!, hide = board.hides[wholeFigure ? 0 : 2]!;
+  const version = explorer ? 12 : 13, context = await resolveLocalPatchBoardsForGame(db, gameId, version), board = context.boards.find(b => b.board === (wholeFigure ? 'cloudcity' : "dragoncave"))!, hide = board.hides[wholeFigure ? windowHideIndex : 2]!;
   const parent = expectedAuthoredLocalPatchReturn(board, hide, version, context);
   if (explorer) expect(parent).toBeNull(); else expect(parent?.source).toMatchObject({ width: 3344, height: 1882 });
   const decision: SelfRepairDecision = { cause: "composition-clipping", action,
@@ -973,7 +973,7 @@ async function legacyKingdomHeadFixture(gameId: string, action: "redraw-with-new
     decision.protectedCore = { left: parent.child.left + 20, top: parent.child.top + 20, width: parent.child.width - 40, height: parent.child.height - 40 };
     decision.faceRect = { left: decision.protectedCore.left + 10, top: decision.protectedCore.top + 10, width: 40, height: 40 };
   }
-  if (wholeFigure) {
+  if (wholeFigure && windowHideIndex === 0) {
     decision.returnWindow = KINGDOM_FIGURE_RETURNS[0]!.baselineReturned;
     decision.protectedCore = { left: 92, top: 230, width: 232, height: 304 };
     decision.faceRect = { left: 160, top: 236, width: 80, height: 76 };
@@ -981,7 +981,7 @@ async function legacyKingdomHeadFixture(gameId: string, action: "redraw-with-new
   const render = vi.fn<LocalPatchHideDeps["render"]>(async input => {
     if (wholeFigure) {
       const head = await sharp({ create: { width: 140, height: 170, channels: 4, background: '#88663d' } }).png().toBuffer();
-      const body = await sharp({ create: { width: 148, height: 362, channels: 4, background: '#294c93' } }).png().toBuffer();
+      const body = await sharp({ create: { width: 148, height: 362, channels: 4, background: windowHideIndex===1&&input.requestKey.endsWith(':render:3')?'#914c93':'#294c93' } }).png().toBuffer();
       let png=await sharp(input.stylePng).composite([{ input: head, left: 154, top: 184 }, { input: body, left: 154, top: 222 }]).png().toBuffer();
       if(windowShift&&input.requestKey.includes(':self-repair:')){const {data,info}=await sharp(png).ensureAlpha().raw().toBuffer({resolveWithObject:true}),moved=Buffer.from(data);
         for(let y=windowShift;y<768;y++)data.copy(moved,y*512*4,(y-windowShift)*512*4,(y-windowShift+1)*512*4);
@@ -3705,12 +3705,15 @@ it("local-patch-no-route-rest/v1: permanent failures rest four first pictures, g
   } finally { vi.useRealTimers(); }
 }, 1_500_000);
 
-it.each([{index:0,refuseAge:false,label:'New York full native head'}, {index:1,refuseAge:false,label:'Paris active body route and protected feet'}, {index:0,refuseAge:true,label:'unchanged strict age refusal'}])('journey native head v2: $label binds one second purchase, full MEDIUM coverage and all26 unchanged siblings',async({index,refuseAge})=>{
+it.each([{index:0,refuseAge:false,providerWidth:512,replaySizeFailure:false,label:'New York full native head'},
+ {index:1,refuseAge:false,providerWidth:768,replaySizeFailure:false,label:'Paris provider frame, active body route and protected feet'},
+ {index:0,refuseAge:true,providerWidth:768,replaySizeFailure:false,label:'unchanged strict age refusal'},
+ {index:0,refuseAge:false,providerWidth:768,replaySizeFailure:true,label:'settled provider frame resumes free from old size refusal'}])('journey native head v2: $label binds one second purchase, full MEDIUM coverage and all26 unchanged siblings',async({index,refuseAge,providerWidth,replaySizeFailure})=>{
  vi.useFakeTimers({toFake:['Date']});
  try{
   const jh=await import('../../../domain/generation/journey-source-head'),service=await import('../journey-source-head-recovery');
   const {JOURNEY_SOURCE_HEAD_AUTHORITIES}=await import('../../../../content/detectives/journey-source-head-v2');
-  const a=JOURNEY_SOURCE_HEAD_AUTHORITIES[index]!,gameId='journey-native-head-synthetic-'+index+'-'+Number(refuseAge);
+  const a=JOURNEY_SOURCE_HEAD_AUTHORITIES[index]!,gameId='journey-native-head-synthetic-'+index+'-'+Number(refuseAge)+'-'+Number(replaySizeFailure);
   await newDetectiveWorld(gameId,7,true,false,false,true);
   const payment=await db.order.findUniqueOrThrow({where:{id:'order-'+gameId}});
   await db.game.update({where:{id:gameId},data:{paidAt:payment.paidAt}});
@@ -3743,7 +3746,9 @@ it.each([{index:0,refuseAge:false,label:'New York full native head'}, {index:1,r
     let maskMismatches=0;for(let i=0;i<alpha.length;i++){if(mask[i*4+3]!==255-alpha[i]!)maskMismatches++;if(alpha[i]){pixels[i*4]=32;pixels[i*4+1]=108;pixels[i*4+2]=139;}}expect(maskMismatches).toBe(0);
    }else{expect(input.requestKey).toBe(a.hideId+':'+a.pose+':render:1');const r=maskForHide(hide);
     for(let y=r.top+30;y<r.top+80;y++)for(let x=r.left+30;x<r.left+80;x++){const i=(y*512+x)*4;pixels[i]=84;pixels[i+1]=54;pixels[i+2]=121;}}
-   return paintedOk(await sharp(pixels,{raw:{width:512,height:768,channels:4}}).png().toBuffer(),bill('synthetic-journey-head-'+input.requestKey,50000));
+   const png=sharp(pixels,{raw:{width:512,height:768,channels:4}});
+   if(headBought&&providerWidth===768)png.resize(768,1152);
+   return paintedOk(await png.png().toBuffer(),bill('synthetic-journey-head-'+input.requestKey,50000));
   });
   let interruptedCheckpoint=false;
   const deps:LocalPatchHideDeps={readBoardArt:readArt,renderPolicySha256:localPatchRenderPolicySha256(LOCAL_PATCH_IMAGE_POLICY),render,judge:forbidden,
@@ -3781,6 +3786,32 @@ it.each([{index:0,refuseAge:false,label:'New York full native head'}, {index:1,r
    expect(await row()).toMatchObject({status:'PENDING',attempts:2});expect(render).toHaveBeenCalledTimes(2);}
   const result=await runLocalPatchHide(container,deps,{gameId,board,hide,finalRepair:true,journeyHeadRecovery:true});expect(result.state,result.reason??'').toBe('generated');
   expect(render).toHaveBeenCalledTimes(2);
+  if(replaySizeFailure){
+   // Reproduce the previous release's concluded failure AFTER this exact RAW
+   // was retained and settled. No new transport, altered bill or reset cost.
+   const stopped=await row(),current=JSON.parse(stopped.judgeJson!);
+   const originalFailure={journeyHeadRecovery:current.journeyHeadRecovery,authoredReturn:current.authoredReturn,
+    compositionVersion:'bounded-return/v4-authored-source-boundaries',renderFault:'JOURNEY_HEAD: paid RAW is not native512x768',
+    hide:hide.id,pose:hide.pose,...(current.selfRepair?{selfRepair:current.selfRepair}:{}),...(current.guidedFrameRecovery?{guidedFrameRecovery:current.guidedFrameRecovery}:{})};
+   await db.targetVariantAsset.update({where:{id:stopped.id},data:{status:'FAILED',assetId:before.assetId,rectJson:before.rectJson,
+    hitRectJson:before.hitRectJson,headAnchorJson:before.headAnchorJson,judgeJson:JSON.stringify(originalFailure),lastError:'Synthetic previous provider-size guard'}});
+   const failed=await row(),paidLedger=await db.worldBudgetLedger.findUniqueOrThrow({where:{worldId}});
+   const why:string[]=[];
+   expect(await service.restoreJourneyHeadProviderFrame(container,gameId,hide.id,readArt,r=>why.push(r)),why.join(',')).toBe(true);
+   expect(await service.restoreJourneyHeadProviderFrame(container,gameId,hide.id,readArt)).toBe(false);
+   const replayed=await row();expect(replayed.costCents).toBe(failed.costCents);expect(replayed.attempts).toBe(2);
+   expect(replayed.assetId).toMatch(/^ast_jnh_frame_/);expect(render).toHaveBeenCalledTimes(2);
+   expect((await db.worldBudgetLedger.findUniqueOrThrow({where:{worldId}})).snapshotJson).toBe(paidLedger.snapshotJson);
+   expect(await siblings()).toEqual(protectedRows);
+   const kept=JSON.parse((await db.auditLog.findFirstOrThrow({where:{entityId:gameId,action:jh.JOURNEY_HEAD_FRAME_REPLAY_ACTION}})).metaJson!);
+   expect(kept.previousRow.judgeJson).toBe(failed.judgeJson);expect(kept.frame).toMatchObject({width:768,height:1152,resized:true});
+   expect(kept).toMatchObject({providerCalls:0,approvalTransferred:false});
+   const replayReceipt=JSON.parse(replayed.judgeJson!),stripped={...replayReceipt};delete stripped.journeyHeadFrame;
+   await db.targetVariantAsset.update({where:{id:replayed.id},data:{judgeJson:JSON.stringify(stripped)}});
+   try{expect(await service.journeyHeadCompositionMatches(db,{gameId,hideId:hide.id,receipt:stripped},readArt),
+    'a normalized replay cannot lose its provider-frame receipt').toBe(false);}
+   finally{await db.targetVariantAsset.update({where:{id:replayed.id},data:{judgeJson:replayed.judgeJson}});}
+  }
   const generated=await row(),j=JSON.parse(generated.judgeJson!);expect(generated).toMatchObject({attempts:2,status:'GENERATED'});expect(generated.assetId).toMatch(/^ast_jnh_/);
   const hit=JSON.parse(generated.hitRectJson!);const sourceFeet={x:(a.crop.left+a.child.left+a.child.width/2)/a.source.width,y:(a.crop.top+a.child.top+a.child.height-2)/a.source.height};
   expect(rectContains({x0:hit.x,y0:hit.y,x1:hit.x+hit.w,y1:hit.y+hit.h},sourceFeet.x,sourceFeet.y),'unchanged SOURCE feet remain tappable').toBe(true);
@@ -3829,7 +3860,72 @@ it.each([{index:0,refuseAge:false,label:'New York full native head'}, {index:1,r
   const closed=await db.worldBudgetLedger.findUniqueOrThrow({where:{worldId}}),game=await db.game.findUniqueOrThrow({where:{id:gameId}});
   expect(await deleteLocalPatchGame(container,gameId,{type:'USER',id:game.ownerId!},game.ownerId!)).toBe(true);
   expect((await db.auditLog.findFirstOrThrow({where:{entityId:gameId,action:jh.JOURNEY_SOURCE_HEAD_ACTION}})).metaJson).toBeNull();
+  if(replaySizeFailure)expect((await db.auditLog.findFirstOrThrow({where:{entityId:gameId,action:jh.JOURNEY_HEAD_FRAME_REPLAY_ACTION}})).metaJson).toBeNull();
   expect((await db.worldBudgetLedger.findUniqueOrThrow({where:{worldId}})).snapshotJson).toBe(closed.snapshotJson);
   expect(fetch).not.toHaveBeenCalled();
  }finally{vi.useRealTimers();}
 },180_000);
+
+it('retained neighbor alternate v1 preserves the real rejected answer, changes paid source once, and requires a fresh ordinary pass',async()=>{
+ vi.useFakeTimers({toFake:['Date']});
+ try{
+  const f=await legacyKingdomHeadFixture('retained-neighbor-alternate-synthetic','redraw-with-new-placement',false,true,true,0,1);
+  const payment=await db.order.findUniqueOrThrow({where:{id:'order-'+f.gameId}});
+  await db.game.update({where:{id:f.gameId},data:{paidAt:payment.paidAt}});
+  await db.targetVariantAsset.update({where:{id:f.candidate.id},data:{status:'FAILED'}});
+  expect((await runLocalPatchHide(c,f.deps,{gameId:f.gameId,board:f.board,hide:f.hide,finalRepair:true})).state).toBe('generated');
+  const row=()=>db.targetVariantAsset.findUniqueOrThrow({where:{id:f.candidate.id}});
+  await db.targetVariantAsset.update({where:{id:f.candidate.id},data:{status:'FAILED'}});
+  const placement=await resolveLocalPatchBoardsForGame(db,f.gameId,13);
+  for(const board of placement.boards)for(const hide of board.hides){if(hide.id===f.hide.id)continue;
+   const scene=await db.gameScene.findFirstOrThrow({where:{gameId:f.gameId,sceneSlug:board.board}}),target=sceneBySlug(board.board,13).targets.find(t=>t.id===hide.targetId)!;
+   const instance=await db.targetInstance.create({data:{id:'alt-tgt-'+f.gameId+'-'+hide.id,gameSceneId:scene.id,targetId:target.id,targetType:target.targetType,spriteKind:'image',slotAId:target.slots[0].id,slotBId:target.slots[1].id}});
+   await db.targetVariantAsset.create({data:{id:'alt-tva-'+f.gameId+'-'+hide.id,targetInstanceId:instance.id,variant:'A',slotId:target.slots[0].id,status:'PENDING',provider:'local-patch',attempts:0}});
+  }
+  const provider=controlledSol(false,false,undefined,true),retrieve=provider.fake.retrieve.bind(provider.fake);let acceptAlternate=false;
+  provider.fake.retrieve=async id=>{const response=await retrieve(id);if(response.status!=='completed')return response;
+   const value=JSON.parse(response.reading.raw!);value.head.rawHead=value.head.shippingHead={left:154,top:184,width:140,height:170};
+   if(!acceptAlternate){const assessment=value.assessment.version===SOURCE_NEIGHBOR_BUNDLE_VERSION?value.assessment.assessment:value.assessment;
+    const verdict=assessment.quality.hides.find((h:{hideId:string})=>h.hideId===f.hide.id).verdict;
+    Object.assign(verdict,{verdict:'fail',pictureWhole:'fail',neighborsIntact:'fail',faults:[
+     {check:'pictureWhole',where:'Synthetic paid third image retains a separate lower body without its head.'},
+     {check:'neighborsIntact',where:'Synthetic third image lost a source neighbor head.'}]});
+   }
+   return{...response,reading:{...response.reading,raw:JSON.stringify(value)}};
+  };
+  const container={...c,backgroundReview:provider.fake,visualReview:{request:async()=>{throw Error('No extra synchronous opinion');}}} as Container;
+  const source3=f.hide.id+':'+f.hide.pose+':render:3';
+  expect(await restoreRetainedWindow(container,f.gameId,f.hide.id,readArt,undefined,source3)).toBe(true);
+  expect(await restoreRetainedWindowNeighborAlternate(container,f.gameId,f.hide.id,readArt)).toBe(false);
+  async function review(){for(let i=0;i<8;i++){
+   await reviewLocalPatchBoard(container,{gameId:f.gameId,sceneId:f.scene.id,deadlineAt:Date.now()+270000},{fence:async()=>{},readBoardArt:readArt},{onlyHideId:f.hide.id});
+   await advanceContinuityInBackground(container,f.gameId,{deadlineAt:Date.now()+270000});await vi.advanceTimersByTimeAsync(LEAN_RECOVERY_BACKOFF_MS+1);
+   if(JSON.parse((await row()).judgeJson!).reviewState==='board-review-complete')return;
+  }}
+  await review();const failed=await row(),first=JSON.parse(failed.judgeJson!);
+  expect(first.qualityDisposition).toMatchObject({state:'retry',faults:['pictureWhole','neighborsIntact']});expect(failed.status).toBe('FAILED');
+  const ledger=await db.worldBudgetLedger.findUniqueOrThrow({where:{worldId:boardWizardWorldId(f.gameId)}}),renderCalls=f.render.mock.calls.length;
+  const siblings=await db.targetVariantAsset.findMany({where:{id:{not:failed.id},targetInstance:{gameScene:{gameId:f.gameId}}},orderBy:{id:'asc'}});
+  const firstAudits=await db.auditLog.findMany({where:{entityId:f.gameId,action:{in:[RETAINED_WINDOW_ACTION,RETAINED_WINDOW_ACTION+':once']}},orderBy:{id:'asc'}});
+  expect(await restoreRetainedWindow(container,f.gameId,f.hide.id,readArt)).toBe(false);
+  expect(await restoreRetainedWindowNeighborAlternate(container,f.gameId,'another-hide',readArt)).toBe(false);
+  const reasons:string[]=[];expect(await restoreRetainedWindowNeighborAlternate(container,f.gameId,f.hide.id,readArt,r=>reasons.push(r)),reasons.join(',')).toBe(true);
+  const next=await row(),nextJ=JSON.parse(next.judgeJson!);
+  expect(nextJ.retainedWindow.sourceRequestKey).toBe(f.hide.id+':'+f.hide.pose+':render:1');expect(nextJ.judgedSha256).not.toBe(first.judgedSha256);
+  expect(next.attempts).toBe(failed.attempts);expect(next.costCents).toBe(failed.costCents);expect(nextJ.reviewState).toBe('pending-board-review');expect(nextJ.boardReview).toBeUndefined();
+  expect((await db.worldBudgetLedger.findUniqueOrThrow({where:{worldId:ledger.worldId}})).snapshotJson).toBe(ledger.snapshotJson);
+  for(const old of firstAudits)expect(await db.auditLog.findUniqueOrThrow({where:{id:old.id}})).toEqual(old);
+  expect(await db.targetVariantAsset.findMany({where:{id:{not:failed.id},targetInstance:{gameScene:{gameId:f.gameId}}},orderBy:{id:'asc'}})).toEqual(siblings);
+  expect(await retainedWindowEvidenceMatches(db,{gameId:f.gameId,sceneVersion:13,hideId:f.hide.id,variantId:next.id,assetId:next.assetId!,judgeJson:next.judgeJson},readArt)).toBe(true);
+  expect(await allowedDualPublication(db,{gameId:f.gameId,sceneVersion:13,hideId:f.hide.id,variantId:next.id,attempts:next.attempts,
+   identityAssetId:'ast-sheet-'+f.gameId,identitySha256:f.identitySha256,assetId:next.assetId!,imageSha256:nextJ.judgedSha256,
+   geometrySha256:localPatchPublicationGeometryHash(next),judgeJson:next.judgeJson})).toBe(false);
+  acceptAlternate=true;await review();const approved=await row();expect(approved.status,approved.lastError??'').toBe('GENERATED');
+  expect(provider.creates).toHaveLength(2);expect(f.render).toHaveBeenCalledTimes(renderCalls);
+  expect(await allowedDualPublication(db,{...publicationBinding(f.gameId,approved),sceneVersion:13})).toBe(true);
+  expect(await restoreRetainedWindowNeighborAlternate(container,f.gameId,f.hide.id,readArt)).toBe(false);
+  const game=await db.game.findUniqueOrThrow({where:{id:f.gameId}});expect(await deleteLocalPatchGame(container,f.gameId,{type:'USER',id:game.ownerId!},game.ownerId!)).toBe(true);
+  const privateRecords=await db.auditLog.findMany({where:{entityId:f.gameId,action:{in:[RETAINED_WINDOW_ACTION,RETAINED_WINDOW_ACTION+':once',RETAINED_WINDOW_ACTION+':alternate-once']}}});
+  expect(privateRecords.length).toBe(4);expect(privateRecords.every(r=>r.metaJson===null)).toBe(true);expect(fetch).not.toHaveBeenCalled();
+ }finally{vi.useRealTimers();}
+},300_000);

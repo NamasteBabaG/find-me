@@ -4,6 +4,7 @@ import { sourceHeadMarkerSchema, sourceHeadAuthorityForPlacement, sourceHeadHash
 import { sourceHeadMaskPng, applySourceHeadPixels } from './source-head-pixels';
 import { journeyHeadMarkerSchema, journeyHeadAuthorityFor, journeyHeadHash, journeyHeadPaintDirection, type JourneyHeadMarker, type JourneyHeadAuthority } from '../../domain/generation/journey-source-head';
 import { journeyHeadMaskPng, applyJourneyHeadPixels } from './journey-source-head-recovery';
+import { normalizeJourneyHeadProviderPng } from './journey-head-provider-frame';
 import { sourceHeadJoinMarkerSchema, type SourceHeadJoinMarker } from '../../domain/generation/source-head-join';
 import { wholeSourceContextMarkerSchema, type WholeSourceContextMarker } from "../../domain/generation/whole-source-context-purchase";
 import { assertWholeSourceContextPlan, WHOLE_SOURCE_CONTEXT_VERSION, type WholeSourceContextPlan } from "../../domain/scene/whole-source-context";
@@ -748,14 +749,16 @@ async function renderLocalPatchHideInner(deps: LocalPatchRenderDeps, input: Loca
     throw Error('SOURCE_HEAD: retained native source-head permission changed');
   if(sourceHead?.join&&(sourceHead.join.sourceFingerprint!==renderFingerprint||sourceHead.join.sourcePayloadSha256!==sha(bought.bytes)))
     throw Error('SOURCE_HEAD_JOIN: already-paid request fingerprint or payload differs');
+  let journeyNormalized:Buffer|null=null;
   if(journeyHead){
     if(JSON.stringify(painted.journeyHeadRecovery)!==JSON.stringify(journeyHead.marker))throw Error('JOURNEY_HEAD: retained permission changed');
-    const rawShape=await sharp(Buffer.from(painted.bytesBase64,'base64')).metadata();
-    if(rawShape.width!==512||rawShape.height!==768) return refusedRender('JOURNEY_HEAD: paid RAW is not native512x768',renderCents);
+    try { journeyNormalized=(await normalizeJourneyHeadProviderPng(Buffer.from(painted.bytesBase64,'base64'))).png; }
+    catch(error){if(!(error instanceof Error)||error.message!=='JOURNEY_HEAD: unsupported provider frame')throw error;
+      return refusedRender(error.message,renderCents);}
   }
-  const patchPng = input.wholeSourceContext && painterNeighbors?.ok
+  const patchPng = journeyNormalized ?? (input.wholeSourceContext && painterNeighbors?.ok
     ? await extractWholeSourceContextShipping(Buffer.from(painted.bytesBase64, "base64"), input.wholeSourceContext.plan, painterNeighbors.contract, authoredMask)
-    : await sharp(Buffer.from(painted.bytesBase64, "base64")).resize(LOCAL_PATCH_CROP.width, LOCAL_PATCH_CROP.height, { fit: "fill" }).png().toBuffer();
+    : await sharp(Buffer.from(painted.bytesBase64, "base64")).resize(LOCAL_PATCH_CROP.width, LOCAL_PATCH_CROP.height, { fit: "fill" }).png().toBuffer());
   // The outline is restored before the join, so the seam report describes the published pixels.
   const occluded = !sourceHead && !journeyHead && foreground ? await occludeLocalPatch(patchPng,
     await sharp(input.composedPng, { limitInputPixels: 8_294_400 }).extract(crop).png().toBuffer(), foreground) : null;

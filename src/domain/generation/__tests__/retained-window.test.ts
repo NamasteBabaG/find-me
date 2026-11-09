@@ -4,8 +4,18 @@ import { KINGDOM_DETECTIVE_SOURCE_PLACEMENT_RELEASE } from '../../../../content/
 import { DETECTIVE_SOURCE_PLACEMENT_RELEASE } from '../../../../content/detectives/source-placement-release';
 import { assertRetainedWindowAuthority, composeRetainedWindow, retainedWindowProtectedHeads, retainedWindowRegistration,
   retainedWindowHeadMask, alignRetainedWindowRaw, retainedWindowCanonicalHash,
-  RETAINED_WINDOW_VERSION, type RetainedWindowAuthority, type RetainedWindowPixels } from '../retained-window';
+  RETAINED_WINDOW_VERSION, retainedWindowNeighborAlternateAllowed, type RetainedWindowAuthority, type RetainedWindowPixels } from '../retained-window';
 import { targetHeadReturnDecision, TARGET_HEAD_VISIBLE_VERSION, type TargetHeadEvidence } from '../target-head-return';
+
+it('allows a changed paid source only after the exact completed neighbor refusal, never another opinion on unchanged pixels',()=>{
+ const valid={currentSourceKey:'synthetic:walking:render:3',failedSourceKey:'synthetic:walking:render:3',replacementSourceKey:'synthetic:walking:render:1',
+  reviewState:'board-review-complete',disposition:'retry',verdict:'fail',faults:['pictureWhole','neighborsIntact']};
+ expect(retainedWindowNeighborAlternateAllowed(valid)).toBe(true);
+ for(const mutation of [{reviewState:'pending-board-review'},{verdict:'pass'},{disposition:'acceptable'},
+  {faults:['ageAppropriate']},{faults:['neighborsIntact']},{faults:['pictureWhole','neighborsIntact','styleMatch']},
+  {replacementSourceKey:valid.failedSourceKey},{currentSourceKey:'another-source'}])
+  expect(retainedWindowNeighborAlternateAllowed({...valid,...mutation})).toBe(false);
+});
 
 function authority(): RetainedWindowAuthority {
   return { version: RETAINED_WINDOW_VERSION, sceneVersion: 13, family: 'kingdom-detectives/v1', boardId: 'synthetic', hideId: 'synthetic-hide',

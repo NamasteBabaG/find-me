@@ -8,7 +8,7 @@ import { authoredLocalPatchReturnContract } from '../../scene/local-patch-return
 import { sourceHeadMarkerSchema, pointInSourceHeadPolygon } from '../source-head-recovery';
 import { assertJourneyHeadManifest, journeyHeadAuthorityFor, journeyHeadAlpha, journeyHeadBytesHash, journeyHeadHash,
   journeyHeadMarkerSchema, journeyHeadMarker, journeyHeadPaintDirection, composeJourneySourceHead,
-  JOURNEY_SOURCE_HEAD_VERSION, type JourneyHeadPixels } from '../journey-source-head';
+  JOURNEY_SOURCE_HEAD_VERSION, journeyHeadProviderFrame, type JourneyHeadPixels } from '../journey-source-head';
 
 const image = (): JourneyHeadPixels => {
   const data = new Uint8Array(512 * 768 * 4);
@@ -17,6 +17,13 @@ const image = (): JourneyHeadPixels => {
 };
 
 describe('prospective journey SOURCE heads', () => {
+  it('admits the observed provider frame without allowing stretched, cropped or unbounded output', () => {
+    expect(journeyHeadProviderFrame(512,768)).toMatchObject({resized:false,outputWidth:512,outputHeight:768});
+    expect(()=>journeyHeadProviderFrame(768,1152)).not.toThrow();
+    expect(journeyHeadProviderFrame(768,1152)).toMatchObject({version:'journey-head-provider-frame/v1',resized:true,kernel:'lanczos3'});
+    for(const [w,h] of [[768,1024],[512,512],[1536,1024],[1024,1536],[0,0],[undefined,768]])
+      expect(()=>journeyHeadProviderFrame(w,h)).toThrow('unsupported provider frame');
+  });
   it('binds both public roles to the original active body geometry and native SOURCE bytes', async () => {
     expect(() => assertJourneyHeadManifest()).not.toThrow();
     expect(journeyHeadHash(JOURNEY_SOURCE_HEAD_AUTHORITIES)).toBe(JOURNEY_SOURCE_HEAD_MANIFEST_SHA256);

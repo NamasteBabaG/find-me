@@ -20,6 +20,25 @@ or translation. The unchanged exterior threshold is 24. A diagnostic RAW
 background shift never moves the published head or SOURCE body. The full
 SOURCE body remains tappable even though only its head changes.
 
+Provider encoding is a separate step before those native-copy guarantees.
+`journey-head-provider-frame/v1` admits the original 512x768 response and the
+observed 768x1152 response, both with exactly the same aspect ratio. The latter
+receives the existing single full-frame Lanczos3 normalization to 512x768;
+there is no crop or aspect-ratio stretch. Every other frame fails closed.
+The original bytes and bill remain immutable. All native head-pixel comparisons
+refer to that normalized RAW, with no subsequent head resampling or enhancement.
+Renderer, retained-RAW reader, reviewer and publication use the same mapping.
+
+An earlier release stopped a settled 768x1152 head before normalization. The
+explicit QA-only `journey-head-frame-v1` restore recovers precisely that failure
+once. It requires the original head pin, settled retained RAW, exact failed
+receipt, unchanged 26 siblings, payment, owner, original identity/photo and
+full ledger. It composes a new unapproved GAME asset without buying anything,
+incrementing an attempt or counting the same cost twice. The private audit
+preserves the failed row, all request hashes and both RAW hashes. A normalized
+replay asset cannot publish with its frame receipt missing or altered. Deletion
+clears that duplicated private audit as well as the original retained files.
+
 Enrollment is a free, named QA operation. It requires the verified payment,
 owner, original identity/photo/crop, original MEDIUM birth authority, all 27
 rows, a concluded failed first attempt, its settled retained painting, and an
