@@ -150,7 +150,7 @@ export function authoredLocalPatchReturnMatches(receipt: AuthoredLocalPatchRecei
   }
   if(receipt?.journeyHeadRecovery!==undefined){
     const m=journeyHeadMarkerSchema.safeParse(receipt.journeyHeadRecovery),parent=expectedAuthoredLocalPatchReturn(board,hide,contentVersion,placementContext);
-    const a=parent&&journeyHeadAuthorityFor(parent);
+    const a=parent&&journeyHeadAuthorityFor(parent,receipt.journeyHeadRecovery);
     if(!m.success||!a||m.data.hideId!==hide.id||journeyHeadHash(a)!==m.data.authoritySha256
       ||receipt.authoredRecovery!==undefined||receipt.compositionVersion!==AUTHORED_PATCH_COMPOSITION_VERSION)return false;
   }

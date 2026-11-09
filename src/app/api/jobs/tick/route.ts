@@ -69,7 +69,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'unsupported-work-mode' }, { status: 400 });
     if (restore !== null) {
       const hideId = query.get('hideId'), sourceKey = query.get('sourceKey');
-      if (!['retained-window-v1','retained-window-alternate-v1','journey-source-head-v2','journey-source-head-sunburst-v1','journey-head-frame-v1'].includes(restore) || requestedMode !== 'review-existing' || !gameId || env().APP_ENV !== 'qa'
+      if (!['retained-window-v1','retained-window-alternate-v1','journey-source-head-v2','journey-source-head-sunburst-v1','journey-source-head-sunburst-tail-v1','journey-head-frame-v1'].includes(restore) || requestedMode !== 'review-existing' || !gameId || env().APP_ENV !== 'qa'
         || c.storage.id !== 'db' || !hideId || !/^[A-Za-z0-9._:-]{1,160}$/.test(hideId)
         || sourceKey !== null && !/^[A-Za-z0-9._:-]{1,240}$/.test(sourceKey))
         return NextResponse.json({ error: 'unsupported-free-restore' }, { status: 400 });
@@ -89,6 +89,12 @@ export async function POST(req: Request) {
         if(sourceKey!==null||hideId!=='paris-detectives-hide-1')return NextResponse.json({error:'unsupported-head-source-key'},{status:400});
         enter('finite-journey-sunburst-head-enrollment');
         const enrolled=await (await import('@/services/generation/journey-source-head-recovery')).resumeJourneySunburstHead(c,gameId);
+        return NextResponse.json({enrolled,providerCalls:0,approvalTransferred:false},{headers:{'Cache-Control':'no-store'}});
+      }
+      if(restore==='journey-source-head-sunburst-tail-v1'){
+        if(sourceKey!==null)return NextResponse.json({error:'unsupported-head-source-key'},{status:400});
+        enter('finite-journey-sunburst-tail-enrollment');
+        const enrolled=await (await import('@/services/generation/journey-source-head-recovery')).resumeJourneySunburstTailHead(c,gameId,hideId);
         return NextResponse.json({enrolled,providerCalls:0,approvalTransferred:false},{headers:{'Cache-Control':'no-store'}});
       }
       enter('retained-window-free-restore');

@@ -10,6 +10,8 @@ import { sha256Bytes } from "./fixed-sprite";
 import { retainedWindowMeasurementBounds, retainedWindowCanonicalHash, type RetainedWindowAuthority } from '../../domain/generation/retained-window';
 import { RETAINED_WINDOW_AUTHORITIES, assertRetainedWindowManifest } from '../../../content/detectives/retained-window-v1';
 import { JOURNEY_SOURCE_HEAD_AUTHORITIES } from '../../../content/detectives/journey-source-head-v2';
+import { JOURNEY_SUNBURST_TAIL_AUTHORITIES } from '../../../content/detectives/journey-sunburst-tail-v1';
+import { assertJourneySunburstTailManifest } from '../../domain/generation/journey-sunburst-tail';
 import { assertJourneyHeadManifest, journeyHeadHash, type JourneyHeadAuthority } from '../../domain/generation/journey-source-head';
 
 /**
@@ -108,9 +110,12 @@ export async function localPatchGeometry(input: {
   if (input.journeyHead) {
     const a = input.journeyHead, same = (x: unknown, y: unknown) => journeyHeadHash(x) === journeyHeadHash(y);
     assertJourneyHeadManifest();
+    const legacyPermission = JOURNEY_SOURCE_HEAD_AUTHORITIES.some(known => same(known, a));
+    if (!legacyPermission) assertJourneySunburstTailManifest();
     if (input.sourceFigure || input.retainedWindow || input.contentVersion !== 13 || hide.id !== a.hideId || hide.pose !== a.pose
       || !same(crop, a.crop) || !same(requested, a.child) || art.width !== a.source.width || art.height !== a.source.height
-      || sha256Bytes(input.boardPng) !== a.sourcePngSha256 || !JOURNEY_SOURCE_HEAD_AUTHORITIES.some(known => same(known, a)))
+      || sha256Bytes(input.boardPng) !== a.sourcePngSha256
+      || !legacyPermission && !JOURNEY_SUNBURST_TAIL_AUTHORITIES.some(known => same(known, a)))
       throw Error('JOURNEY_HEAD: full SOURCE-body geometry differs from public permission');
   }
 

@@ -24,6 +24,7 @@ import { identityRevisionPending, identityRevisionHeldOf } from "@/services/gene
 import { openAdmittedInterruptions } from "@/services/generation/subject-upgrade";
 import { readLocalPatchExtraAttemptPlan } from "@/services/generation/local-patch-extra-attempt";
 import { qaFiveCompletionStatus } from "@/services/generation/qa-five-dollar-completion";
+import { qaSunburstTailCompletionStatus } from "@/services/generation/qa-sunburst-tail-completion";
 
 export const runtime = "nodejs";
 
@@ -136,7 +137,7 @@ export async function GET(req: Request, ctx: { params: Promise<{ gameId: string 
   let qaCompletionAuthority: { kind: "explicit-five-dollar-completion"; birthCapCents: number; capCents: number; status: "active" | "withdrawn" | "invalid" } | null = null;
   if (game.styleVersion === LOCAL_PATCH_STYLE && env().APP_ENV === "qa" && user && (user.id === game.ownerId || isAdminEmail(user.email))) {
     try {
-      const five = await qaFiveCompletionStatus(c, gameId);
+      const five = await qaFiveCompletionStatus(c, gameId) ?? await qaSunburstTailCompletionStatus(c, gameId);
       if (five) qaCompletionAuthority = { kind: "explicit-five-dollar-completion", birthCapCents: five.baseCapMicroUsd / 10_000, capCents: five.capMicroUsd / 10_000, status: five.status };
     } catch { qaCompletionAuthority = { kind: "explicit-five-dollar-completion", birthCapCents: 400, capCents: 500, status: "invalid" }; }
   }

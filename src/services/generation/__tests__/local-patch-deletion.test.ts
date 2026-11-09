@@ -16,6 +16,9 @@ import { runLocalPatchHide, type LocalPatchHideDeps } from "../local-patch-hide"
 import { LocalPatchDeleted } from "../local-patch-lifecycle";
 import { seedAdminAlertNotification, expectAdminAlertPurged, expectAdminAlertUnchanged } from "../../__tests__/admin-alert-deletion-fixture";
 import { boardWizardBudgetOf, boardWizardWorldId } from "../board-conditioned-wizard";
+import { JOURNEY_SUNBURST_TAIL_ACTION } from "../../../domain/generation/journey-sunburst-tail";
+import { QA_FIVE_COMPLETION_ACTION, qaFiveCompletionId } from "../../../domain/generation/qa-five-dollar-completion";
+import { QA_SUNBURST_TAIL_COMPLETION_ACTION, qaSunburstTailCompletionId } from "../../../domain/generation/qa-sunburst-tail-completion";
 import { LOCAL_PATCH_TEST_BOARD, bill, boardPng, clearWorld, paintedCrop, paintedOk, reply, seedApprovedGame } from "./local-patch-fixtures";
 
 const fakes = vi.hoisted(() => ({ testers: [] as string[] }));
@@ -69,10 +72,13 @@ describe("local-patch deletion through the owner/admin game action", () => {
     const other = await seedApprovedGame(c, db, { gameId: "other-pilot-game", styleVersion: LOCAL_PATCH_STYLE,
       status: "TARGETS_GENERATING", withJob: true, scenes: [{ slug: BOARD.board, version: LOCAL_PATCH_SCENE_VERSION }] });
     const actions = ["local-patch:quality-pilot", "local-patch:quality-pilot:review-requeued", "local-patch:extra-attempt", "local-patch:partial-release",
-      "local-patch:legacy-head-source-corrected", "local-patch:qa-guided-repair-context", "local-patch:visible-head-policy-corrected", "local-patch:retained-normal-head-restored"];
+      "local-patch:legacy-head-source-corrected", "local-patch:qa-guided-repair-context", "local-patch:visible-head-policy-corrected", "local-patch:retained-normal-head-restored", JOURNEY_SUNBURST_TAIL_ACTION,
+      QA_FIVE_COMPLETION_ACTION, QA_SUNBURST_TAIL_COMPLETION_ACTION];
+    const auditId = (prefix: string, entityId: string, index: number) => actions[index] === QA_FIVE_COMPLETION_ACTION ? qaFiveCompletionId(entityId)
+      : actions[index] === QA_SUNBURST_TAIL_COMPLETION_ACTION ? qaSunburstTailCompletionId(entityId) : `pilot-${prefix}-${index}`;
     for (const [prefix, entityId] of [["deleted", gameId], ["retained", other.gameId]] as const) {
       for (const [index, action] of actions.entries()) await db.auditLog.create({ data: {
-        id: `pilot-${prefix}-${index}`, actorType: "SYSTEM", action, entityType: "Game", entityId,
+        id: auditId(prefix, entityId, index), actorType: "SYSTEM", action, entityType: "Game", entityId,
         metaJson: JSON.stringify({ previousJudgeJson: JSON.stringify({ raw: "Private child face assessment", hide: `${prefix}-hide` }) }),
       } });
     }
@@ -80,18 +86,30 @@ describe("local-patch deletion through the owner/admin game action", () => {
       entityType: "Game", entityId: gameId, metaJson: '{"accounting":"retained"}' } });
     await db.auditLog.create({ data: { id: "other-entity-pilot-audit", actorType: "SYSTEM", action: actions[0]!,
       entityType: "Asset", entityId: gameId, metaJson: '{"unrelatedEntity":true}' } });
+    const finance = await import('../qa-five-dollar-completion'), tail = await import('../qa-sunburst-tail-completion');
+    for (const [id, reader] of [[qaFiveCompletionId(gameId), finance.readQaFiveCompletionBudget],
+      [qaSunburstTailCompletionId(gameId), tail.readQaSunburstTailCompletionBudget]] as const) {
+      const authority = await db.auditLog.findUniqueOrThrow({ where: { id } });
+      await db.auditLog.update({ where: { id }, data: { metaJson: null } });
+      await expect(reader(c, boardWizardWorldId(gameId))).rejects.toThrow('without completed deletion');
+      await db.auditLog.update({ where: { id }, data: { metaJson: authority.metaJson } });
+    }
     const ledgerBefore = await db.worldBudgetLedger.findMany({ orderBy: { worldId: "asc" } });
-    const othersBefore = await db.auditLog.findMany({ where: { id: { in: [...actions.map((_, index) => `pilot-retained-${index}`),
+    const othersBefore = await db.auditLog.findMany({ where: { id: { in: [...actions.map((_, index) => auditId('retained', other.gameId, index)),
       "unrelated-pilot-audit", "other-entity-pilot-audit"] } }, orderBy: { id: "asc" } });
     const otherGameBefore = await db.game.findUniqueOrThrow({ where: { id: other.gameId } });
 
     expect(await remove(gameId, userId)).toBe(true);
-    for (const [index, action] of actions.entries()) expect(await db.auditLog.findUnique({ where: { id: `pilot-deleted-${index}` } }))
+    for (const [index, action] of actions.entries()) expect(await db.auditLog.findUnique({ where: { id: auditId('deleted', gameId, index) } }))
       .toMatchObject({ action, entityType: "Game", entityId: gameId, metaJson: null });
     expect(await db.auditLog.findMany({ where: { id: { in: othersBefore.map(row => row.id) } }, orderBy: { id: "asc" } })).toEqual(othersBefore);
     expect(await db.worldBudgetLedger.findMany({ orderBy: { worldId: "asc" } })).toEqual(ledgerBefore);
     expect(await db.game.findUniqueOrThrow({ where: { id: other.gameId } })).toEqual(otherGameBefore);
     expect(await c.storage.exists(`private/sheet-${other.gameId}.png`)).toBe(true);
+    // A real receipt's private state is redacted, its audit event and bills stay.
+    // Null metadata on a live world is still corruption, never a silent fallback.
+    expect(await finance.readQaFiveCompletionBudget(c, boardWizardWorldId(gameId))).toBeNull();
+    expect(await tail.readQaSunburstTailCompletionBudget(c, boardWizardWorldId(gameId))).toBeNull();
   }, 180_000);
 
   it("purges published, retained, rejected and orphan imagery, revokes the claim and links, and retains accounting", async () => {

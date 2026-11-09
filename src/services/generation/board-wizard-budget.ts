@@ -1,4 +1,5 @@
 import { QA_PILOT_COMPLETION_CAP_MICRO_USD } from "../../domain/generation/qa-world-budget-policy";
+import { SUNBURST_IMAGE_RESERVE_MICRO_USD } from "../../domain/generation/sunburst-painter";
 import { auditWorldBudget, WorldBudget, WorldBudgetError, type WorldBudgetAudit, type WorldBudgetRepository, type WorldReservationInput, type WorldLinkInput, type WorldChargeEvidence, type WorldBudgetOptions, type WorldUnknownContinuationInput, type WorldAutomaticImageRecoveryInput, type WorldAutomaticReviewRecoveryInput, type WorldAutomaticReviewRecoveryV2Input, type WorldAutomaticReviewRecoveryV3Input, type WorldAutomaticReviewRecoveryV4Input, type WorldAutomaticReviewRecoveryV5Input } from "./world-budget";
 
 export const BOARD_WIZARD_CAP_MICRO_USD = 4_000_000;
@@ -20,7 +21,13 @@ export function applyBoardWizardBudgetCap(audit: WorldBudgetAudit, capMicroUsd =
 export interface BoardWizardBudgetGrant { worldId: string; capMicroUsd: 5_000_000 | 6_000_000 | 8_000_000 | 10_000_000 | typeof QA_PILOT_COMPLETION_CAP_MICRO_USD; authorizationSha256: string;
   /** The extra dollar admits only the named new painting. Old pictures replay,
    * and their full ordinary review reservations still use the cumulative cap. */
-  readonly imageAboveBaseOnly?: { readonly baseCapMicroUsd: 4_000_000; readonly requestKey: string; readonly reserveMicroUsd: number } }
+  readonly imageAboveBaseOnly?: { readonly baseCapMicroUsd: 4_000_000; readonly requestKey: string; readonly reserveMicroUsd: number };
+  /** explicit-existing-qa-sunburst-tail-completion/v1: the same rule for a frozen finite set
+   * of at most three named Sunburst images, each at exactly its 150000 reservation. Never
+   * beside `imageAboveBaseOnly`. */
+  readonly imageAboveBaseSet?: { readonly baseCapMicroUsd: 4_000_000; readonly requests: readonly { readonly requestKey: string; readonly reserveMicroUsd: number }[] } }
+/** At most this many named images in one finite set. */
+export const IMAGE_ABOVE_BASE_SET_MAX = 3;
 /** A lean world's lower ceiling (local-patch-lean/v1): never a grant. */
 export interface BoardWizardBudgetCeiling { worldId: string; capMicroUsd: typeof LEAN_BOARD_WIZARD_CAP_MICRO_USD; authorizationSha256: string }
 export type BoardWizardBudgetExtension = BoardWizardBudgetGrant | BoardWizardBudgetCeiling;
@@ -31,7 +38,7 @@ export function boardWizardBudget(repository: WorldBudgetRepository, attempt = 1
   if (attempt !== 1 && attempt !== 2) throw new Error("Only two board attempts are authorized");
   const authorityFor = async (worldId: string) => {
     const extension = await resolveExtension?.(worldId);
-    if (!extension) return { cap: BOARD_WIZARD_CAP_MICRO_USD, imageAboveBaseOnly: undefined };
+    if (!extension) return { cap: BOARD_WIZARD_CAP_MICRO_USD, imageAboveBaseOnly: undefined, imageAboveBaseSet: undefined };
     if (extension.worldId !== worldId || (extension.capMicroUsd !== LEAN_BOARD_WIZARD_CAP_MICRO_USD && extension.capMicroUsd !== 5_000_000
       && extension.capMicroUsd !== 6_000_000 && extension.capMicroUsd !== 8_000_000 && extension.capMicroUsd !== 10_000_000 && extension.capMicroUsd !== QA_PILOT_COMPLETION_CAP_MICRO_USD) || !/^[a-f0-9]{64}$/.test(extension.authorizationSha256)) {
       throw new WorldBudgetError("invalid_input", "Verified budget extension does not bind this exact world");
@@ -41,11 +48,24 @@ export function boardWizardBudget(repository: WorldBudgetRepository, attempt = 1
       || !/^[A-Za-z0-9_:.-]{1,240}$/.test(imageAboveBaseOnly.requestKey)
       || !Number.isSafeInteger(imageAboveBaseOnly.reserveMicroUsd) || imageAboveBaseOnly.reserveMicroUsd <= 0))
       throw new WorldBudgetError("invalid_input", "Finite image capacity must bind one exact request at the original ceiling");
-    return { cap: extension.capMicroUsd, imageAboveBaseOnly };
+    const imageAboveBaseSet = "imageAboveBaseSet" in extension ? extension.imageAboveBaseSet : undefined;
+    if (imageAboveBaseSet && (imageAboveBaseOnly || extension.capMicroUsd !== 5_000_000 || imageAboveBaseSet.baseCapMicroUsd !== 4_000_000
+      || !Array.isArray(imageAboveBaseSet.requests) || imageAboveBaseSet.requests.length < 1 || imageAboveBaseSet.requests.length > IMAGE_ABOVE_BASE_SET_MAX
+      || new Set(imageAboveBaseSet.requests.map(r => r.requestKey)).size !== imageAboveBaseSet.requests.length
+      || imageAboveBaseSet.requests.some(r => !/^[A-Za-z0-9_:.-]{1,240}$/.test(r.requestKey) || r.reserveMicroUsd !== SUNBURST_IMAGE_RESERVE_MICRO_USD)))
+      throw new WorldBudgetError("invalid_input", "Finite image set must bind at most three distinct exact requests at the original ceiling");
+    return { cap: extension.capMicroUsd, imageAboveBaseOnly, imageAboveBaseSet };
   };
   const capFor = async (worldId: string) => (await authorityFor(worldId)).cap;
   const reservationCapFor = async (worldId: string, request: { scope: string; requestKey: string; reserveMicroUsd: number }) => {
-    const { cap, imageAboveBaseOnly: only } = await authorityFor(worldId);
+    const { cap, imageAboveBaseOnly: only, imageAboveBaseSet: set } = await authorityFor(worldId);
+    if (set) {
+      // Like the single named image: a named key with the wrong scope or reservation refuses even below four dollars.
+      const named = set.requests.find(r => r.requestKey === request.requestKey);
+      if (named && (request.scope !== "image" || request.reserveMicroUsd !== named.reserveMicroUsd))
+        throw new WorldBudgetError("invalid_input", "Named completion image requires its exact scope and reservation");
+      return request.scope !== "judge" && !named ? set.baseCapMicroUsd : cap;
+    }
     if (only && request.requestKey === only.requestKey && (request.scope !== "image" || request.reserveMicroUsd !== only.reserveMicroUsd))
       throw new WorldBudgetError("invalid_input", "Named completion image requires its exact scope and reservation");
     return only && request.scope !== "judge" && request.requestKey !== only.requestKey ? only.baseCapMicroUsd : cap;

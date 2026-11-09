@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-const f = vi.hoisted(() => ({ tick: vi.fn(), restore: vi.fn(), notify: vi.fn(), health: vi.fn(), retention: vi.fn(), appEnv:'qa', storageId:'db' }));
+const f = vi.hoisted(() => ({ tick: vi.fn(), restore: vi.fn(), tail:vi.fn(), notify: vi.fn(), health: vi.fn(), retention: vi.fn(), appEnv:'qa', storageId:'db' }));
 vi.mock('@/services/generation/retained-window-recovery', () => ({ restoreRetainedWindow: f.restore }));
+vi.mock('@/services/generation/journey-source-head-recovery',()=>({resumeJourneySunburstTailHead:f.tail}));
 vi.mock("@/services/container", () => ({ getContainer: () => ({storage:{id:f.storageId}}) }));
 vi.mock("@/lib/server/qa-access", () => ({ qaAccessDenied: async () => null }));
 vi.mock("@/lib/env", () => ({ env: () => ({ CRON_SECRET: "synthetic-cron", APP_ENV:f.appEnv }) }));
@@ -21,6 +22,20 @@ beforeEach(() => { repairSelection.id = null;
 });
 afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); });
 describe("tick diagnostics and remaining budget", () => {
+  it.each(['amazon-detectives-hide-3','greatwall-detectives-hide-1','paris-detectives-hide-1'])('enrolls only a named finite tail operation without buying anything: %s',async hideId=>{
+    f.tail.mockResolvedValue(true);
+    const response=await POST(new Request('https://qa.example/api/jobs/tick?gameId=synthetic&mode=review-existing&restore=journey-source-head-sunburst-tail-v1&hideId='+hideId,
+      {method:'POST',headers:{authorization:'Bearer synthetic-cron'}}));
+    expect(await response.json()).toEqual({enrolled:true,providerCalls:0,approvalTransferred:false});
+    expect(response.headers.get('cache-control')).toBe('no-store');
+    expect(f.tail).toHaveBeenCalledWith(expect.anything(),'synthetic',hideId);
+    expect(f.tick).not.toHaveBeenCalled();expect(f.restore).not.toHaveBeenCalled();expect(f.notify).not.toHaveBeenCalled();expect(f.retention).not.toHaveBeenCalled();
+  });
+  it('refuses a paid source override for a SOURCE-only finite tail before enrollment',async()=>{
+    const response=await POST(new Request('https://qa.example/api/jobs/tick?gameId=synthetic&mode=review-existing&restore=journey-source-head-sunburst-tail-v1&hideId=amazon-detectives-hide-3&sourceKey=foreign:standing:render:1',
+      {method:'POST',headers:{authorization:'Bearer synthetic-cron'}}));
+    expect(response.status).toBe(400);expect(f.tail).not.toHaveBeenCalled();expect(f.tick).not.toHaveBeenCalled();
+  });
   it('an explicit free restore yields without dispatching any generation or review', async () => {
     f.restore.mockResolvedValue(true);
     const response=await POST(new Request('https://qa.example/api/jobs/tick?gameId=synthetic&mode=review-existing&restore=retained-window-v1&hideId=synthetic-hide',

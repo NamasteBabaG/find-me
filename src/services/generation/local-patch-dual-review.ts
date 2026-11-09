@@ -1145,7 +1145,7 @@ async function prepareSingleLowQuestion(c: Pick<Container, "db" | "storage">, pr
     mediumPrompt += '\n' + (await import('../../domain/generation/source-body-gap')).sourceBodyGapReviewDirection();
   }
   if(receipt.journeyHeadRecovery!==undefined){
-    const jh=await import('../../domain/generation/journey-source-head'),a=jh.journeyHeadAuthorityFor(receipt.authoredReturn);
+    const jh=await import('../../domain/generation/journey-source-head'),a=jh.journeyHeadAuthorityFor(receipt.authoredReturn,receipt.journeyHeadRecovery);
     if(!a||singleVersion!==SINGLE_MEDIUM_VISUAL_REVIEW_VERSION)throw Error('JOURNEY_HEAD: fresh ordinary MEDIUM required');
     mediumPrompt+=jh.journeyHeadReviewDirection(a);
   }

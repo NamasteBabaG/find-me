@@ -3,6 +3,7 @@ import { sourceHeadMarkerSchema, sourceHeadAuthorityForPlacement, sourceHeadHash
   type SourceHeadMarker, type SourceHeadAuthority } from '../../domain/generation/source-head-recovery';
 import { sourceHeadMaskPng, applySourceHeadPixels } from './source-head-pixels';
 import { journeyHeadMarkerSchema, journeyHeadAuthorityFor, journeyHeadHash, journeyHeadPaintDirection, JOURNEY_SUNBURST_HEAD_PAINTER, JOURNEY_SUNBURST_HEAD_HIDE_ID, type JourneyHeadMarker, type JourneyHeadAuthority } from '../../domain/generation/journey-source-head';
+import { JOURNEY_SUNBURST_TAIL_VERSION } from '../../domain/generation/journey-sunburst-tail';
 import { journeyHeadMaskPng, applyJourneyHeadPixels } from './journey-source-head-recovery';
 import { normalizeJourneyHeadProviderPng } from './journey-head-provider-frame';
 import { sourceHeadJoinMarkerSchema, type SourceHeadJoinMarker } from '../../domain/generation/source-head-join';
@@ -420,12 +421,12 @@ export async function renderLocalPatchHide(deps: LocalPatchRenderDeps, input: Lo
         ||join.sourceRequestKey!==marker.requestKey)throw Error('SOURCE_HEAD_JOIN: finite replay binding differs');}
   }
   if(journeyHead){
-    const marker=journeyHeadMarkerSchema.parse(journeyHead.marker),authority=authoredReturn&&journeyHeadAuthorityFor(authoredReturn);
+    const marker=journeyHeadMarkerSchema.parse(journeyHead.marker),authority=authoredReturn&&journeyHeadAuthorityFor(authoredReturn,marker);
     const sunburstHead=marker.painterRelease===JOURNEY_SUNBURST_HEAD_PAINTER;
     if(!authority||journeyHeadHash(authority)!==journeyHeadHash(journeyHead.authority)||marker.authoritySha256!==journeyHeadHash(authority)
       ||marker.hideId!==input.hide.id||marker.requestKey!==input.hide.id+':'+input.hide.pose+':render:2'
       ||input.contentVersion!==13||input.attempt!==2||!input.subjectDirection||input.subjectDirection.quality!==(sunburstHead?'high':'medium')
-      ||sunburstHead!==sunburst||sunburstHead&&marker.hideId!==JOURNEY_SUNBURST_HEAD_HIDE_ID
+      ||sunburstHead!==sunburst||sunburstHead&&marker.version!==JOURNEY_SUNBURST_TAIL_VERSION&&marker.hideId!==JOURNEY_SUNBURST_HEAD_HIDE_ID
       ||input.ageYears!==7||sha(input.composedPng)!==authority.sourcePngSha256
       ||sourceHead||input.guidedFrameRecovery||input.placementGuide||input.nativeMaskTail||input.sourceBodyRepair||input.sourceBodyBirth
       ||input.wholeSourceContext||input.selfRepair||input.adaptiveRecovery||input.recoveryDirective||input.nativeDetailRepair)
@@ -786,7 +787,8 @@ async function renderLocalPatchHideInner(deps: LocalPatchRenderDeps, input: Loca
     ? await composeBoundedLocalPatch(input.composedPng, crop, journeyApplied?.png ?? headApplied?.png ?? bodyApplied?.png ?? occluded?.png ?? patchPng, mask, {
       requireAligned: !!journeyApplied || !!headApplied || !!bodyGeometry || hasLocalPatchCapability(input.contentVersion, "integratedQuality") && !playerReviewEnabled(),
       playerReview: hasLocalPatchCapability(input.contentVersion, "integratedQuality") && playerReviewEnabled(),
-      ...(hide.returnRect ? { returnRect: hide.returnRect } : {}),
+      ...(journeyHead?.marker.version === JOURNEY_SUNBURST_TAIL_VERSION ? { returnRect: journeyHead.authority.returned }
+        : hide.returnRect ? { returnRect: hide.returnRect } : {}),
     }) : null;
   const seam = bounded?.report ?? await analysePatchSeam(input.composedPng, crop, patchPng, { allowedRect: { left: 0, top: 0, ...LOCAL_PATCH_CROP } });
   const fade = seam.verdict === "clean" || seam.verdict === "fade-recommended";

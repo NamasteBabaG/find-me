@@ -1,6 +1,8 @@
 import { createHash } from 'node:crypto';
 import { z } from 'zod';
 import { JOURNEY_SOURCE_HEAD_AUTHORITIES, JOURNEY_SOURCE_HEAD_MANIFEST_SHA256 } from '../../../content/detectives/journey-source-head-v2';
+import { JOURNEY_SUNBURST_TAIL_AUTHORITIES } from '../../../content/detectives/journey-sunburst-tail-v1';
+import { JOURNEY_SUNBURST_TAIL_VERSION, assertJourneySunburstTailManifest, journeySunburstTailAuthorityFor, type JourneySunburstTailAuthority } from './journey-sunburst-tail';
 import { pointInSourceHeadPolygon } from './source-head-recovery';
 import type { AuthoredLocalPatchReturnContract } from '../scene/local-patch-return-region';
 
@@ -19,7 +21,7 @@ export function journeyHeadProviderFrame(width: number | undefined, height: numb
  * The ledger still reserves each exact full standard-rate maximum, never an
  * average bill or a discounted Flex estimate. */
 export const JOURNEY_HEAD_REVIEW_COVERAGE_MICRO_USD = 178_000;
-export type JourneyHeadAuthority = typeof JOURNEY_SOURCE_HEAD_AUTHORITIES[number];
+export type JourneyHeadAuthority = typeof JOURNEY_SOURCE_HEAD_AUTHORITIES[number] | JourneySunburstTailAuthority;
 export type JourneyHeadPixels = { data: Uint8Array; width: number; height: number; channels: number };
 export const journeyHeadBytesHash = (b: Uint8Array) => createHash('sha256').update(b).digest('hex');
 export function journeyHeadHash(value: unknown): string {
@@ -33,7 +35,15 @@ export function assertJourneyHeadManifest() {
   if (journeyHeadHash(JOURNEY_SOURCE_HEAD_AUTHORITIES) !== JOURNEY_SOURCE_HEAD_MANIFEST_SHA256)
     throw Error('JOURNEY_HEAD: public SOURCE permission changed');
 }
-export function journeyHeadAuthorityFor(parent: AuthoredLocalPatchReturnContract): JourneyHeadAuthority | null {
+export function journeyHeadAuthorityFor(parent: AuthoredLocalPatchReturnContract, marker?: unknown): JourneyHeadAuthority | null {
+  if (marker !== undefined) {
+    const parsed = journeyHeadMarkerSchema.safeParse(marker);
+    if (!parsed.success) return null;
+    if (parsed.data.version === JOURNEY_SUNBURST_TAIL_VERSION) {
+      const a = journeySunburstTailAuthorityFor(parent);
+      return a && a.hideId === parsed.data.hideId && journeyHeadHash(a) === parsed.data.authoritySha256 ? a : null;
+    }
+  }
   assertJourneyHeadManifest();
   const a = JOURNEY_SOURCE_HEAD_AUTHORITIES.find(a => a.hideId === parent?.hideId);
   return a && parent.contentVersion === 13 && a.boardId === parent.boardId && same(a.source, parent.source)
@@ -51,7 +61,10 @@ const protectedAt = (a: JourneyHeadAuthority, x: number, y: number) => a.protect
  * belong to that continuing person, not to the target head to replace. */
 export function journeyHeadAlpha(a: JourneyHeadAuthority) {
   assertJourneyHeadManifest();
-  if (!JOURNEY_SOURCE_HEAD_AUTHORITIES.some(p => same(p, a))) throw Error('JOURNEY_HEAD: unknown permission');
+  if (!JOURNEY_SOURCE_HEAD_AUTHORITIES.some(p => same(p, a))) {
+    assertJourneySunburstTailManifest();
+    if (!JOURNEY_SUNBURST_TAIL_AUTHORITIES.some(p => same(p, a))) throw Error('JOURNEY_HEAD: unknown permission');
+  }
   const alpha = new Uint8Array(512 * 768);
   for (let y = 0; y < 768; y++) for (let x = 0; x < 512; x++) {
     const editable = pointInSourceHeadPolygon(a.editableHead, x + .5, y + .5) && y < a.protectedBelow && !protectedAt(a, x, y);
@@ -127,11 +140,13 @@ export const journeyHeadPinId = (gameId: string, hideId: string) => 'aud_journey
 export const journeySunburstHeadPinId = (gameId: string) => 'aud_journey_head_sb_' + journeyHeadHash([gameId, JOURNEY_SUNBURST_HEAD_HIDE_ID]).slice(0, 40);
 
 const digest = z.string().regex(/^[a-f0-9]{64}$/), id = z.string().regex(/^[A-Za-z0-9_:.-]{1,240}$/);
-export const journeyHeadMarkerSchema = z.object({ version: z.literal(JOURNEY_SOURCE_HEAD_VERSION), authorizationSha256: digest,
+export const journeyHeadMarkerSchema = z.object({ version: z.enum([JOURNEY_SOURCE_HEAD_VERSION, JOURNEY_SUNBURST_TAIL_VERSION]), authorizationSha256: digest,
   authoritySha256: digest, rowId: id, hideId: id, originalAttempts: z.literal(1), authorizedAttempt: z.literal(2),
   previousJudgeSha256: digest, requestKey: id,
   // Absent on every v2 purchase (unchanged bytes); present only on the one Sunburst head.
-  painterRelease: z.literal(JOURNEY_SUNBURST_HEAD_PAINTER).optional() }).strict();
+  painterRelease: z.literal(JOURNEY_SUNBURST_HEAD_PAINTER).optional() }).strict()
+  .refine(p => p.version !== JOURNEY_SUNBURST_TAIL_VERSION || p.painterRelease === JOURNEY_SUNBURST_HEAD_PAINTER,
+    { message: 'A finite Sunburst tail requires the exact HIGH/LOW painter' });
 export type JourneyHeadMarker = z.infer<typeof journeyHeadMarkerSchema>;
 export function journeyHeadMarker(row: { judgeJson: string | null }) {
   try { const p = journeyHeadMarkerSchema.safeParse(JSON.parse(row.judgeJson ?? 'null')?.journeyHeadRecovery); return p.success ? p.data : null; }
@@ -141,8 +156,10 @@ export function journeyHeadPaintDirection(a: JourneyHeadAuthority, ageYears: num
   journeyHeadAlpha(a);
   if (ageYears !== 7) throw Error('JOURNEY_HEAD: original stated age7 required');
   const target = a.hideId === 'newyork-detectives-hide-1' ? 'the orange-jacket flower child holding flowers beside the florist'
+    : a.hideId === 'amazon-detectives-hide-3' ? 'the orange-shirt ponytailed child watching the forest instrument beside the guide'
+    : a.hideId === 'greatwall-detectives-hide-1' ? 'the pink-jacket child holding the pinwheel beside the stone wall'
     : 'the crouching blue-hoodie petanque child looking toward the metal ball';
-  return 'NATIVE SOURCE HEAD ' + JOURNEY_SOURCE_HEAD_VERSION + '. FIRST image is the unchanged original512x768 SOURCE crop. '
+  return 'NATIVE SOURCE HEAD ' + (a.version === JOURNEY_SUNBURST_TAIL_VERSION ? JOURNEY_SUNBURST_TAIL_VERSION : JOURNEY_SOURCE_HEAD_VERSION) + '. FIRST image is the unchanged original512x768 SOURCE crop. '
     + 'Replace ONLY the complete head, hair, hairline, face and neck of ' + target + ' with the exact canonical child at stated age7. '
     + 'Keep the SOURCE head angle, natural task-focused gaze, body, jacket, shoulders, hands, props, stance and support. Do not turn it into a portrait or redraw the body. '
     + 'The native alpha mask is the only editable footprint. Draw the complete canonical hairstyle wholly inside it with no residual original hair, clipped strands, fade or hard cut. '
@@ -162,6 +179,8 @@ export function journeyHeadReviewDirection(a:JourneyHeadAuthority){
     +'The public edit footprint below is SOURCE role geometry, NOT a segmentation of the generated head. Fail a head clipped at ANY internal polygon or protected-fragment edge even when its bounding rectangle fits the outer return. '
     +'Require no residual original hair/face, halo, fade, hard cut, duplicate head, moved SOURCE feet, anatomical break, photographic texture, oversharp face or blurred hair. '
     +'Native head contrast, edge softness, painted style and sharpness must agree with nearby SOURCE people. No previous approval transfers. '
-    +'The unchanged age reader requires a narrow independently estimated range containing stated age7: no lower than5, no upper above8, span at most3. Report genuine7-9 or uncertainty honestly; do not narrow an estimate to pass. '
+    +(a.version === JOURNEY_SUNBURST_TAIL_VERSION
+      ? 'Independently judge perceived age from PHOTO versus both face and body; state the honest evidence-based age interval. Never narrow an interval, invent certainty or pass a child who looks older merely to finish. '
+      : 'The unchanged age reader requires a narrow independently estimated range containing stated age7: no lower than5, no upper above8, span at most3. Report genuine7-9 or uncertainty honestly; do not narrow an estimate to pass. ')
     +'PUBLIC SOURCE HEAD FOOTPRINT, crop-local512x768: '+JSON.stringify({editablePolygon:a.editableHead,protectedBelow:a.protectedBelow,protectedRects:a.protectedRects,protectedSourceFragments:a.protectedSourceFragments,otherHeads:a.protectedHeads});
 }

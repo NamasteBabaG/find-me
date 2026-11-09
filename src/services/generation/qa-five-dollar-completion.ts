@@ -23,6 +23,8 @@ import { applyBoardWizardBudgetCap, type BoardWizardBudgetGrant } from "./board-
 import { backgroundReviewWaiting } from "./continuity-background";
 import { fenceLocalPatchImages } from "./local-patch-lifecycle";
 import { resolveLocalPatchBoardsForGame } from "./source-placement-release";
+import { qaSunburstTailCompletionId } from "../../domain/generation/qa-sunburst-tail-completion";
+import { qaSunburstTailCompletionActive, readQaSunburstTailCompletionBudget } from "./qa-sunburst-tail-completion";
 
 /**
  * explicit-existing-qa-five-dollar-completion/v1: one ADMIN owner grant that
@@ -47,7 +49,8 @@ const worldOf = (gameId: string) => gameId + ":board-wizard";
 function otherGrantIds(gameId: string) {
   const worldId = worldOf(gameId);
   return [qaCompletionCapacityId(gameId), detectivesCompletionId(gameId), detectivesExtensionId(gameId), detectivesTailId(gameId),
-    leanCapacityRecoveryId(gameId), leanCompletionBudgetAuditId(gameId), localPatchEmergencyBudgetAuditId(worldId)];
+    leanCapacityRecoveryId(gameId), leanCompletionBudgetAuditId(gameId), localPatchEmergencyBudgetAuditId(worldId),
+    qaSunburstTailCompletionId(gameId)];
 }
 async function otherGrantPresent(db: Pick<Prisma.TransactionClient, "auditLog">, gameId: string) {
   return (await db.auditLog.count({ where: { id: { in: otherGrantIds(gameId) } } })) > 0;
@@ -56,6 +59,11 @@ async function otherGrantPresent(db: Pick<Prisma.TransactionClient, "auditLog">,
 async function receiptOf(c: Pick<Container, "db">, gameId: string): Promise<QaFiveCompletionReceipt | null> {
   const row = await c.db.auditLog.findUnique({ where: { id: qaFiveCompletionId(gameId) } });
   if (!row) return null;
+  if (row.metaJson === null) {
+    const game = await c.db.game.findUnique({ where: { id: gameId }, select: { status: true, deletedAt: true } });
+    demand(game?.status === 'DELETED' && game.deletedAt, 'Purged five-dollar authority without completed deletion');
+    return null;
+  }
   const receipt = qaFiveCompletionReceiptSchema.parse(JSON.parse(row.metaJson ?? "null")), { authorizationSha256, ...body } = receipt;
   demand(row.actorType === "ADMIN" && row.actorId === receipt.operatorId && receipt.operatorId === receipt.plan.state.ownerId
     && row.action === QA_FIVE_COMPLETION_ACTION && row.entityType === "Game" && row.entityId === gameId
@@ -67,13 +75,16 @@ async function receiptOf(c: Pick<Container, "db">, gameId: string): Promise<QaFi
 
 /** Budget resolver input. Exclusive: a recorded five-dollar grant beside any
  * other completion grant is an invalid world, never a silent fallback or sum.
- * Withdrawn (null) by refund, deletion, ownership, identity or source change. */
+ * Withdrawn (null) by refund, deletion, ownership, identity or source change.
+ * The resolver's one five-dollar entry also returns the separate Sunburst tail
+ * receipt's grant (explicit-existing-qa-sunburst-tail-completion/v1); both
+ * receipts at once refuse. */
 export async function readQaFiveCompletionBudget(c: Container, worldId: string): Promise<BoardWizardBudgetGrant | null> {
   if (!qualified(c) || !worldId.endsWith(":board-wizard")) return null;
   const gameId = worldId.slice(0, -":board-wizard".length);
   if (!validId(gameId)) return null;
   const receipt = await receiptOf(c, gameId);
-  if (!receipt) return null;
+  if (!receipt) return readQaSunburstTailCompletionBudget(c, worldId);
   demand(!await otherGrantPresent(c.db, gameId), "Five-dollar authority cannot coexist with another completion grant");
   let live; try { live = await qaCompletionSourceState(c, gameId); } catch { return null; }
   return hash(live.state) === hash(receipt.plan.state)
@@ -95,10 +106,11 @@ export async function qaFiveCompletionActive(c: Container, gameId: string): Prom
 }
 
 /** P1-A: the original four dollars, or exactly this game's verified explicit
- * five-dollar completion. Every other widened ceiling still refuses. */
+ * five-dollar completion (the single-Paris v1 receipt or the Sunburst tail
+ * receipt, each authentic and active). Every other widened ceiling still refuses. */
 export async function originalOrFiveDollarCap(c: Container, gameId: string, capMicroUsd: number): Promise<boolean> {
   if (capMicroUsd === QA_FIVE_COMPLETION_BASE_CAP) return true;
-  return capMicroUsd === QA_FIVE_COMPLETION_CAP && !!await qaFiveCompletionActive(c, gameId);
+  return capMicroUsd === QA_FIVE_COMPLETION_CAP && (!!await qaFiveCompletionActive(c, gameId) || !!await qaSunburstTailCompletionActive(c, gameId));
 }
 
 /** Owner/admin visibility: a recorded grant never silently disappears. */

@@ -25,6 +25,7 @@ import { retainedWindowMarkerSchema, retainedWindowCanonicalHash, RETAINED_WINDO
   retainedWindowHeadMask, alignRetainedWindowRaw } from '../../domain/generation/retained-window';
 import { retainedWindowAuthorityFor } from '../../../content/detectives/retained-window-v1';
 import { JOURNEY_SOURCE_HEAD_VERSION, journeyHeadMarkerSchema, journeyHeadAuthorityFor, journeyHeadHash } from '../../domain/generation/journey-source-head';
+import { JOURNEY_SUNBURST_TAIL_VERSION } from '../../domain/generation/journey-sunburst-tail';
 
 type Receipt=Record<string,unknown>;
 const tabHash=(r:Receipt)=>sha(Buffer.from(JSON.stringify({compositionVersion:r.compositionVersion,authoredReturn:r.authoredReturn,crownTab:r.crownTab})));
@@ -36,6 +37,15 @@ const windowHash=(r:Receipt)=>sha(Buffer.from(JSON.stringify({compositionVersion
 const journeyCompositionHash=(r:Receipt)=>journeyHeadHash({journeyHeadRecovery:r.journeyHeadRecovery,journeyHeadComposition:r.journeyHeadComposition,compositionVersion:r.compositionVersion,authoredReturn:r.authoredReturn});
 const bindingOf=(r:Receipt)=>r.journeyHeadRecovery!==undefined?JOURNEY_SOURCE_HEAD_VERSION:r.retainedWindow!==undefined?RETAINED_WINDOW_VERSION:r.sourceFigureReturn!==undefined?SOURCE_FIGURE_RETURN_VERSION:r.crownTab!==undefined?CROWN_TAB_VERSION:r.retainedNormalHead!==undefined?RETAINED_NORMAL_HEAD_VERSION:r.headPixelCorrection!==undefined?HEAD_PIXEL_CORRECTION_VERSION:r.headSourceVersion??undefined;
 const compositionOf=(version:unknown,r:Receipt)=>version===JOURNEY_SOURCE_HEAD_VERSION?journeyCompositionHash(r):version===RETAINED_WINDOW_VERSION?windowHash(r):version===SOURCE_FIGURE_RETURN_VERSION?figureHash(r):version===CROWN_TAB_VERSION?tabHash(r):version===RETAINED_NORMAL_HEAD_VERSION?normalCompositionHash(r):version===HEAD_PIXEL_CORRECTION_VERSION?correctionHash(r):legacyCompositionHash(r);
+/** The new tail changes the SOURCE head permission, never its saved authored
+ * parent. Preparation and publication must rederive the same judged frame. */
+function journeyTailReturned(r:Receipt){
+ if(object(r.journeyHeadRecovery)?.version!==JOURNEY_SUNBURST_TAIL_VERSION)return undefined;
+ const marker=journeyHeadMarkerSchema.parse(r.journeyHeadRecovery);
+ const a=journeyHeadAuthorityFor(r.authoredReturn as Parameters<typeof journeyHeadAuthorityFor>[0],marker);
+ if(!a)throw Error('HEAD_RETURN: finite Sunburst tail permission differs');
+ return a.returned;
+}
 function windowAuthority(receipt:Receipt){
  const m=retainedWindowMarkerSchema.parse(receipt.retainedWindow),a=retainedWindowAuthorityFor(receipt.authoredReturn as Parameters<typeof retainedWindowAuthorityFor>[0]);
  if(!a||retainedWindowCanonicalHash(a)!==m.authoritySha256)throw Error('HEAD_RETURN: retained window public permission differs');
@@ -64,7 +74,7 @@ const judgedWindow=(receipt:Receipt,returned:PatchRectangle):PatchRectangle=>{
 };
 function sourceKey(hide:Pick<LocalPatchHide,'id'|'pose'>,attempt:number,receipt:Receipt):string{
  if(receipt.journeyHeadRecovery!==undefined){
-  const m=journeyHeadMarkerSchema.parse(receipt.journeyHeadRecovery),a=journeyHeadAuthorityFor(receipt.authoredReturn as Parameters<typeof journeyHeadAuthorityFor>[0]);
+  const m=journeyHeadMarkerSchema.parse(receipt.journeyHeadRecovery),a=journeyHeadAuthorityFor(receipt.authoredReturn as Parameters<typeof journeyHeadAuthorityFor>[0],m);
   if(!a||journeyHeadHash(a)!==m.authoritySha256||hide.id!==m.hideId||attempt!==2||a.pose!==hide.pose
    ||m.requestKey!==hide.id+':'+hide.pose+':render:2'||targetHeadVersionOfReceipt(receipt)!==TARGET_HEAD_VISIBLE_VERSION)
    throw Error('HEAD_RETURN: finite journey-head source binding differs');
@@ -231,7 +241,7 @@ export async function singleReviewHeadEvidence(db:Prisma.TransactionClient,input
  const legacy=input.receipt.headSourceVersion===LEGACY_PAID_JOIN_HEAD_VERSION?legacyPaidJoinHeadPlan(input.receipt,input.hide,input.attempt):null;
  if(legacy&&(legacy.rawSha256!==sha(paid.normalized)||JSON.stringify(legacy.crop)!==JSON.stringify(cropOf(input.hide))))
   throw Error('HEAD_RETURN: legacy retained RAW differs from its actual composition');
- const returned=judgedWindow(input.receipt,(legacy?.returned??object(input.receipt.crownReturn)?.returned??object(input.receipt.authoredRecovery)?.returnWindow??object(input.receipt.authoredReturn)?.local
+ const returned=judgedWindow(input.receipt,(journeyTailReturned(input.receipt)??legacy?.returned??object(input.receipt.crownReturn)?.returned??object(input.receipt.authoredRecovery)?.returnWindow??object(input.receipt.authoredReturn)?.local
   ??localPatchReturnRegion(cropOf(input.hide),maskForHide(input.hide),input.hide.returnRect).local) as PatchRectangle);
  const version=targetHeadVersionOfReceipt(input.receipt);
  const evidence=targetHeadEvidenceSchema.parse({version,gameId:input.gameId,hideId:input.hide.id,
@@ -275,7 +285,7 @@ export async function singleReviewHeadEvidenceMatches(db:Prisma.TransactionClien
   if(j.headPixelCorrection!==undefined&&headPixelCorrectionSchema.parse(j.headPixelCorrection).identitySha256!==input.identitySha256)return false;
   const legacy=p.sourceBindingVersion===LEGACY_PAID_JOIN_HEAD_VERSION?legacyPaidJoinHeadPlan(j,{id:input.hideId,pose:j.pose},input.attempts):null;
   if(p.sourceBindingVersion===LEGACY_PAID_JOIN_HEAD_VERSION&&(!legacy||legacy.rawSha256!==sha(paid.normalized)))return false;
-  let returned=legacy?.returned??j?.crownReturn?.returned??j?.authoredRecovery?.returnWindow??j?.authoredReturn?.local;
+  let returned=journeyTailReturned(j)??legacy?.returned??j?.crownReturn?.returned??j?.authoredRecovery?.returnWindow??j?.authoredReturn?.local;
   if(!returned){const context=await resolveLocalPatchBoardsForGame(db,input.gameId,input.sceneVersion),hide=context.boards.flatMap(b=>b.hides).find(h=>h.id===input.hideId);if(!hide)return false;returned=localPatchReturnRegion(cropOf(hide),maskForHide(hide),hide.returnRect).local;}
   returned=judgedWindow(j,returned);
   if(paid.kept.operationFingerprint!==p.sourceFingerprint||paid.kept.payloadSha256!==p.sourcePayloadSha256

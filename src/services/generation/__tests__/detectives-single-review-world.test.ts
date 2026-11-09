@@ -4088,6 +4088,202 @@ it('explicit five-dollar completion admits exactly one Paris Sunburst head witho
  }finally{vi.useRealTimers();}
 },300_000);
 
+it.each(['pass','age-refusal'] as const)('finite Sunburst tail completes all27 through native SOURCE heads, preserving a paid window failure, the old NY head and full UNKNOWN; outcome=%s',async outcome=>{
+ vi.useFakeTimers({toFake:['Date']});
+ try{
+  const gameId='synthetic-finite-sunburst-tail-native-27-'+outcome;
+  await newDetectiveWorld(gameId,7,true,false,false,true);
+  const payment=await db.order.findUniqueOrThrow({where:{id:'order-'+gameId}});
+  await db.game.update({where:{id:gameId},data:{paidAt:payment.paidAt}});
+  await ensureSingleMediumReviewPolicy(c,gameId,async()=>{});
+  const jh=await import('../../../domain/generation/journey-source-head');
+  const tailDomain=await import('../../../domain/generation/journey-sunburst-tail');
+  const heads=await import('../journey-source-head-recovery');
+  const finance=await import('../qa-sunburst-tail-completion');
+  const {JOURNEY_SOURCE_HEAD_AUTHORITIES}=await import('../../../../content/detectives/journey-source-head-v2');
+  const {JOURNEY_SUNBURST_TAIL_AUTHORITIES}=await import('../../../../content/detectives/journey-sunburst-tail-v1');
+  const {retainedWindowCanonicalHash:hash}=await import('../../../domain/generation/retained-window');
+  const placement=await resolveLocalPatchBoardsForGame(db,gameId,13),hides=placement.boards.flatMap(b=>b.hides);
+  const tailIds=tailDomain.JOURNEY_SUNBURST_TAIL_HIDE_IDS,nyId='newyork-detectives-hide-1';
+  const originalFailures=new Set<string>([...tailIds,nyId]),boughtHeads=new Map<string,'medium'|'sunburst'>();
+  let retainedHead:{left:number;top:number;width:number;height:number}|undefined;
+  const provider=controlledSol(true,false,undefined,true,true),retrieve=provider.fake.retrieve.bind(provider.fake);
+  provider.fake.retrieve=async id=>{
+   const result=await retrieve(id);if(result.status!=='completed'||!result.reading.raw)return result;
+   const value=JSON.parse(result.reading.raw),assessment=value.assessment.version===SOURCE_NEIGHBOR_BUNDLE_VERSION?value.assessment.assessment:value.assessment;
+   const hideId=assessment.quality.hides[0].hideId;
+   if(originalFailures.has(hideId)&&!boughtHeads.has(hideId)||outcome==='age-refusal'&&hideId==='amazon-detectives-hide-3'){
+    // A deliberately unchanged subject-read/v2 refusal at confirmed age seven.
+    assessment.subject.checks.perceivedAge.estimatedMinYears=7;
+    assessment.subject.checks.perceivedAge.estimatedMaxYears=9;
+   }
+   const a=boughtHeads.get(hideId)==='sunburst'?JOURNEY_SUNBURST_TAIL_AUTHORITIES.find(x=>x.hideId===hideId)
+    :boughtHeads.has(hideId)?JOURNEY_SOURCE_HEAD_AUTHORITIES.find(x=>x.hideId===hideId):null;
+   const head=a?.targetRegisteredHead??(hideId==='amazon-detectives-hide-3'?retainedHead:undefined);
+   if(head)value.head={...value.head,rawHead:head,shippingHead:head,rawCrown:'pass',shippingCrown:'pass'};
+   return {...result,reading:{...result.reading,raw:JSON.stringify(value)}};
+  };
+  const forbidden=vi.fn(async()=>{throw Error('No duplicate judge, planner, extra painting or real provider');});
+  const container={...c,backgroundReview:provider.fake,visualReview:{request:forbidden}} as Container;
+  const render=vi.fn<LocalPatchHideDeps['render']>(async input=>{
+   const hide=hides.find(h=>input.requestKey.startsWith(h.id+':'))!;
+   expect(hide).toBeDefined();const second=input.requestKey.endsWith(':render:2');
+   let png:Buffer;
+   if(second){
+    expect(boughtHeads.has(hide.id)).toBe(false);expect(input.subjectPhotoPng).toBeDefined();
+    const sunburst=(tailIds as readonly string[]).includes(hide.id);
+    expect(input.subjectQuality).toBe(sunburst?'high':'medium');
+    expect(input.prompt).toContain('NATIVE SOURCE HEAD '+(sunburst?tailDomain.JOURNEY_SUNBURST_TAIL_VERSION:jh.JOURNEY_SOURCE_HEAD_VERSION));
+    const a=(sunburst?JOURNEY_SUNBURST_TAIL_AUTHORITIES:JOURNEY_SOURCE_HEAD_AUTHORITIES).find(x=>x.hideId===hide.id)!;
+    const alpha=jh.journeyHeadAlpha(a),pixels=await sharp(input.stylePng).ensureAlpha().raw().toBuffer();
+    for(let i=0;i<alpha.length;i++)if(alpha[i]){pixels[i*4]=42;pixels[i*4+1]=91;pixels[i*4+2]=137;}
+    png=await sharp(pixels,{raw:{width:512,height:768,channels:4}}).png().toBuffer();
+    boughtHeads.set(hide.id,sunburst?'sunburst':'medium');
+   }else{
+    expect(input.requestKey).toBe(hide.id+':'+hide.pose+':render:1');expect(input.subjectQuality).toBe('medium');
+    const m=maskForHide(hide),r={left:m.left+Math.round(m.width*.2),top:m.top+Math.round(m.height*.2),width:Math.round(m.width*.6),height:Math.round(m.height*.8)};
+    const figure=await sharp({create:{width:r.width,height:r.height,channels:4,background:'#315782'}}).png().toBuffer();
+    png=await sharp(input.stylePng).composite([{input:figure,left:r.left,top:r.top}]).png().toBuffer();
+    if(hide.id==='amazon-detectives-hide-3'){
+     // A real retained-window recomposition must change paid pixels before a new review.
+     const detail=await sharp({create:{width:12,height:12,channels:4,background:'#3c6058'}}).png().toBuffer();
+     png=await sharp(png).composite([{input:detail,left:32,top:680}]).png().toBuffer();
+    }
+   }
+   return paintedOk(png,bill('synthetic-tail-'+gameId+'-'+input.requestKey,50_000));
+  });
+  const deps:LocalPatchHideDeps={readBoardArt:readArt,renderPolicySha256:localPatchRenderPolicySha256(LOCAL_PATCH_IMAGE_POLICY),render,judge:forbidden,fence:async()=>{}};
+  const rowOf=async(hideId:string)=>{const board=placement.boards.find(b=>b.hides.some(h=>h.id===hideId))!,hide=board.hides.find(h=>h.id===hideId)!;
+   return db.targetVariantAsset.findFirstOrThrow({where:{variant:'A',targetInstance:{targetId:hide.targetId,gameScene:{gameId,sceneSlug:board.board}}}});};
+  const review=async(hideId:string)=>{
+   const board=placement.boards.find(b=>b.hides.some(h=>h.id===hideId))!;
+   const scene=await db.gameScene.findUniqueOrThrow({where:{gameId_sceneSlug:{gameId,sceneSlug:board.board}}});
+   for(let turn=0;turn<20;turn++){
+    await reviewLocalPatchBoard(container,{gameId,sceneId:scene.id,deadlineAt:Date.now()+270000},{fence:async()=>{},readBoardArt:readArt},{onlyHideId:hideId});
+    await advanceContinuityInBackground(container,gameId,{deadlineAt:Date.now()+270000});
+    const continued=await (await import('../subject-upgrade')).continueAdmittedReviewInterruptions(container,gameId,{readBoardArt:readArt},Date.now()+270000,async()=>{});
+    expect(continued).not.toBe('blocked');
+    await vi.advanceTimersByTimeAsync(LEAN_RECOVERY_BACKOFF_MS+1);
+    const current=await rowOf(hideId);
+    if(JSON.parse(current.judgeJson!).reviewState==='board-review-complete'
+      &&(hideId!=='antarctica-detectives-hide-1'||current.status==='GENERATED'))break;
+   }
+   const row=await rowOf(hideId);expect(JSON.parse(row.judgeJson!).reviewState,row.lastError??'').toBe('board-review-complete');return row;
+  };
+  // The one unanswered request belongs to a hide that is NOT repainted. Its
+  // native MEDIUM continuation and full UNKNOWN hold must survive the tail.
+  const paintOrder=[...placement.boards].sort((a,b)=>Number(b.board==='antarctica')-Number(a.board==='antarctica'));
+  for(const board of paintOrder){
+   for(const hide of board.hides){const generated=await runLocalPatchHide(container,deps,{gameId,board,hide});expect(generated.state,generated.reason??hide.id).toBe('generated');}
+   for(const hide of board.hides){const row=await review(hide.id);expect(row.status,hide.id+': '+row.lastError).toBe(originalFailures.has(hide.id)?'FAILED':'GENERATED');}
+   if(render.mock.calls.length%9===0)console.info('finite-tail-native-checkpoint',{phase:'initial-pictures-reviewed',count:render.mock.calls.length});
+  }
+  expect(render).toHaveBeenCalledTimes(27);expect(provider.creates).toHaveLength(28);
+  // The genuine, already-reviewed legacy NY1 head remains publishable after the new grant.
+  expect(await heads.resumeJourneySourceHead(container,gameId,nyId)).toBe(true);
+  const nyBoard=placement.boards.find(b=>b.board==='newyork')!,nyHide=nyBoard.hides.find(h=>h.id===nyId)!;
+  expect((await runLocalPatchHide(container,deps,{gameId,board:nyBoard,hide:nyHide,finalRepair:true,journeyHeadRecovery:true})).state).toBe('generated');
+  const ny=await review(nyId);expect(ny.status,ny.lastError??'').toBe('GENERATED');
+  expect(await allowedDualPublication(db,{...publicationBinding(gameId,ny),sceneVersion:13})).toBe(true);
+  const windowId='amazon-detectives-hide-3',windowReasons:string[]=[];
+  expect(await restoreRetainedWindow(container,gameId,windowId,readArt,r=>windowReasons.push(r)),windowReasons.join(',')).toBe(true);
+  const window=await rowOf(windowId),windowReceipt=JSON.parse(window.judgeJson!);
+  const windowAuthority=(await import('../../../../content/detectives/retained-window-v1')).retainedWindowAuthorityFor(windowReceipt.authoredReturn)!;
+  const registered=windowAuthority.sourceHeads.find(h=>h.sourceId===windowAuthority.targetSourceId)!.head;
+  retainedHead={left:registered.left-windowAuthority.crop.left,top:registered.top-windowAuthority.crop.top,width:registered.width,height:registered.height};
+  const refusedWindow=await review(windowId);
+  expect(refusedWindow.status).toBe('FAILED');expect(JSON.parse(refusedWindow.judgeJson!).retainedWindow).toBeDefined();
+  // Nothing relaxes the deliberate seven-to-nine age refusal; the art needs a new finite head.
+  const worldId=boardWizardWorldId(gameId),budget=boardWizardBudgetOf(container);
+  const unknownKeys=(await budget.audit(worldId)).unknownRequestKeys;expect(unknownKeys).toHaveLength(1);
+  const unknownKey=unknownKeys[0]!,unknown=(await budget.readRequest(worldId,unknownKey))!,owner=(await db.game.findUniqueOrThrow({where:{id:gameId}})).ownerId!;
+  expect(unknown.state).toBe('unknown');
+  expect(await budget.readContinuationApproval(worldId,unknownKey)).toMatchObject({version:'world-automatic-review-recovery/v5',policyId:'single-sol-medium-transport-recovery/v1'});
+  const fill=3_738_580-(await budget.audit(worldId)).committedMicroUsd;expect(fill).toBeGreaterThan(0);
+  await budget.reserve(worldId,{requestKey:'synthetic-tail-prior-costs',scope:'image',operationFingerprint:'e'.repeat(64),reserveMicroUsd:fill});
+  await budget.settle(worldId,'synthetic-tail-prior-costs',bill('synthetic-tail-prior-costs-'+gameId,fill));
+  const allRows=()=>db.targetVariantAsset.findMany({where:{variant:'A',targetInstance:{gameScene:{gameId}}},orderBy:{id:'asc'}});
+  const beforeGrantRows=await allRows(),beforeGrantLedger=await db.worldBudgetLedger.findUniqueOrThrow({where:{worldId}});
+  expect(beforeGrantRows.filter(r=>r.status==='GENERATED')).toHaveLength(24);
+  const {plan,planSha256}=await finance.planQaSunburstTailCompletion(container,gameId);
+  expect(plan.operations.map(op=>op.hideId)).toEqual(tailIds);expect(plan.requiredMicroUsd).toBe(1_200_000);
+  expect(plan.committedMicroUsd+plan.requiredMicroUsd).toBe(4_938_580);
+  const receipt=await finance.authorizeQaSunburstTailCompletion(container,{gameId,operatorId:owner,expectedPlanSha256:planSha256,ownerAuthorizationSha256:'9'.repeat(64)});
+  expect(await allRows()).toEqual(beforeGrantRows);
+  expect((await db.worldBudgetLedger.findUniqueOrThrow({where:{worldId}})).snapshotJson).toBe(beforeGrantLedger.snapshotJson);
+  expect(await budget.audit(worldId)).toMatchObject({capMicroUsd:5_000_000,committedMicroUsd:3_738_580,held:false});
+  expect(await localPatchPainterRelease(db,gameId)).toBeNull();
+  expect(await allowedDualPublication(db,{...publicationBinding(gameId,ny),sceneVersion:13}),'Old NY v2 approval survives the distinct five-dollar receipt').toBe(true);
+  for(const op of plan.operations){
+   const before=await rowOf(op.hideId),allBefore=await allRows(),siblings=allBefore.filter(r=>r.id!==before.id);
+   const ledgerBefore=await db.worldBudgetLedger.findUniqueOrThrow({where:{worldId}}),reasons:string[]=[];
+   expect(await heads.resumeJourneySunburstTailHead(container,gameId,op.hideId,r=>reasons.push(r)),reasons.join(',')).toBe(true);
+   expect(await rowOf(op.hideId)).toEqual(before);expect((await db.worldBudgetLedger.findUniqueOrThrow({where:{worldId}})).snapshotJson).toBe(ledgerBefore.snapshotJson);
+   const pin=(await heads.journeyHeadPinsOf(db,gameId)).find(p=>p.hideId===op.hideId)!;
+   expect(heads.isJourneySunburstTailPin(pin)).toBe(true);
+   expect(pin).toMatchObject({version:tailDomain.JOURNEY_SUNBURST_TAIL_VERSION,capMicroUsd:5_000_000,completionAuthorizationSha256:receipt.authorizationSha256,
+    previousJudgeJson:before.judgeJson,imageReserveMicroUsd:150_000,reviewCoverageMicroUsd:250_000});
+   const board=placement.boards.find(b=>b.hides.some(h=>h.id===op.hideId))!,hide=board.hides.find(h=>h.id===op.hideId)!;
+   await expect(runLocalPatchHide(container,deps,{gameId,board,hide,finalRepair:true,journeyHeadRecovery:true})).rejects.toThrow('JOURNEY_HEAD');
+   expect(await budget.readRequest(worldId,op.requestKey)).toBeNull();
+   const bought=await runLocalPatchHide(container,{...deps,sunburstHeadRender:render},{gameId,board,hide,finalRepair:true,journeyHeadRecovery:true});
+   expect(bought.state,bought.reason??op.hideId).toBe('generated');
+   expect(await budget.readRequest(worldId,op.requestKey)).toMatchObject({state:'settled',reserveMicroUsd:150_000});
+   const pending=await rowOf(op.hideId);expect(pending.attempts).toBe(2);
+   expect(JSON.parse(pending.judgeJson!).reviewState).toBe('pending-board-review');
+   const pendingReceipt=JSON.parse(pending.judgeJson!);
+   expect(await heads.journeyHeadCompositionMatches(db,{gameId,hideId:op.hideId,receipt:pendingReceipt},readArt),'The paid candidate must reproduce exactly before any new question').toBe(true);
+   expect(await allowedDualPublication(db,{gameId,sceneVersion:13,hideId:op.hideId,variantId:pending.id,attempts:2,
+    identityAssetId:pin.identityAssetId,identitySha256:pin.identitySha256,assetId:pending.assetId!,
+    imageSha256:pendingReceipt.judgedSha256,geometrySha256:pendingReceipt.geometrySha256,judgeJson:pending.judgeJson})).toBe(false);
+   const reviewed=await review(op.hideId);
+   if(outcome==='age-refusal'){
+    expect(op.hideId).toBe('amazon-detectives-hide-3');expect(reviewed.status).toBe('FAILED');
+    expect(await allowedDualPublication(db,{...publicationBinding(gameId,reviewed),sceneVersion:13})).toBe(false);
+    expect((await allRows()).filter(r=>r.id!==before.id)).toEqual(siblings);
+    for(const next of plan.operations.slice(1)){
+     const refused:string[]=[];expect(await heads.resumeJourneySunburstTailHead(container,gameId,next.hideId,r=>refused.push(r))).toBe(false);
+     expect(refused).toEqual(['previous-head-awaits-ordinary-pass']);expect(await budget.readRequest(worldId,next.requestKey)).toBeNull();
+     expect((await rowOf(next.hideId)).attempts).toBe(1);
+    }
+    const stopped=await budget.audit(worldId);expect(stopped.pendingRequestKeys).toEqual([]);expect(stopped.committedMicroUsd).toBeLessThanOrEqual(5_000_000);
+    const stoppedLedger=JSON.parse((await db.worldBudgetLedger.findUniqueOrThrow({where:{worldId}})).snapshotJson);
+    for(const old of JSON.parse(beforeGrantLedger.snapshotJson).requests)expect(stoppedLedger.requests.find((r:{requestKey:string})=>r.requestKey===old.requestKey)).toEqual(old);
+    expect(await budget.readRequest(worldId,unknownKey)).toEqual(unknown);
+    expect(await db.game.findUniqueOrThrow({where:{id:gameId}})).toMatchObject({status:'TARGETS_GENERATING',configJson:null});
+    expect(render).toHaveBeenCalledTimes(29);expect(provider.creates).toHaveLength(31);expect(forbidden).not.toHaveBeenCalled();expect(fetch).not.toHaveBeenCalled();
+    return;
+   }
+   expect(reviewed.status,reviewed.lastError??'').toBe('GENERATED');
+   expect(await allowedDualPublication(db,{...publicationBinding(gameId,reviewed),sceneVersion:13})).toBe(true);
+   expect(await heads.journeyHeadCompositionMatches(db,{gameId,hideId:op.hideId,receipt:JSON.parse(reviewed.judgeJson!)},readArt)).toBe(true);
+   expect((await allRows()).filter(r=>r.id!==before.id)).toEqual(siblings);
+   expect(await heads.resumeJourneySunburstTailHead(container,gameId,op.hideId)).toBe(false);
+   console.info('finite-tail-native-checkpoint',{phase:'named-head-reviewed',hideId:op.hideId});
+  }
+  const finalRows=await allRows();expect(finalRows).toHaveLength(27);expect(finalRows.every(r=>r.status==='GENERATED')).toBe(true);
+  for(const row of finalRows)expect(await allowedDualPublication(db,{...publicationBinding(gameId,row),sceneVersion:13})).toBe(true);
+  const finalLedger=JSON.parse((await db.worldBudgetLedger.findUniqueOrThrow({where:{worldId}})).snapshotJson);
+  for(const old of JSON.parse(beforeGrantLedger.snapshotJson).requests)expect(finalLedger.requests.find((r:{requestKey:string})=>r.requestKey===old.requestKey)).toEqual(old);
+  expect(await budget.readRequest(worldId,unknownKey)).toEqual(unknown);
+  expect(render).toHaveBeenCalledTimes(31);expect(provider.creates).toHaveLength(33);
+  expect(boughtHeads.size).toBe(4);expect(await localPatchPainterRelease(db,gameId)).toBeNull();
+  expect((await budget.audit(worldId)).committedMicroUsd).toBeLessThanOrEqual(5_000_000);
+  // Finish through the real world assembler; it cannot buy any further picture.
+  let result={pending:true,attention:null as string|null};
+  for(let turn=0;turn<30&&result.pending;turn++){
+   result=await runLocalPatchWorldSlice(container,deps,gameId,{hardDeadlineAt:Date.now()+270_000,workMode:REVIEW_EXISTING_WORK_MODE,diagnose:forbidden});
+   expect(result.attention).toBeNull();await vi.advanceTimersByTimeAsync(LEAN_RECOVERY_BACKOFF_MS+1);
+  }
+  expect(result.pending).toBe(false);
+  const game=await db.game.findUniqueOrThrow({where:{id:gameId}});expect(['READY','DELIVERED']).toContain(game.status);
+  expect(parseGameConfig(game.configJson!).scenes.flatMap(s=>s.targets)).toHaveLength(27);
+  expect(render).toHaveBeenCalledTimes(31);expect(forbidden).not.toHaveBeenCalled();expect(fetch).not.toHaveBeenCalled();
+  // Record the cap in the real publication path, not a synthetic aggregate alone.
+  expect(hash(finalLedger.requests.find((r:{requestKey:string})=>r.requestKey===unknownKey))).toBe(hash(JSON.parse(beforeGrantLedger.snapshotJson).requests.find((r:{requestKey:string})=>r.requestKey===unknownKey)));
+ }finally{vi.useRealTimers();}
+},600_000);
+
 it.each([false,true])('P2-D: a Sunburst world with 700k left preserves review coverage and bounded progress; permanent blocked review=%s',async(blockReview)=>{
  vi.useFakeTimers({toFake:['Date']});
  try{
