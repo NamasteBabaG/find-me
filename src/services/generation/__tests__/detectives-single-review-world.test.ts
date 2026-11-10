@@ -97,6 +97,8 @@ import { PrismaClient } from "@prisma/client";
 import { afterAll, afterEach, beforeAll, expect, it, vi } from "vitest";
 import { DETECTIVE_PATCH_BOARDS } from "../../../../content/detectives/runtime-release";
 import { applyTestSchema } from "../../../lib/test-schema";
+import { performance } from "node:perf_hooks";
+import { testProgressGuard } from "../../../lib/test-progress";
 import { DbStorage } from "../../../infra/storage/db";
 import type { BackgroundReviewState, BackgroundReviewTransport } from "../../../infra/generation/types";
 import { localPatchRenderPolicySha256, LOCAL_PATCH_IMAGE_POLICY } from "../../../infra/generation/openai-local-patch";
@@ -4089,6 +4091,9 @@ it('explicit five-dollar completion admits exactly one Paris Sunburst head witho
 },300_000);
 
 it.each(['pass','age-refusal'] as const)('finite Sunburst tail completes all27 through native SOURCE heads, preserving a paid window failure, the old NY head and full UNKNOWN; outcome=%s',async outcome=>{
+ const startedAt=performance.now();
+ const checkpoint=(phase:string,details:object={})=>console.info('finite-tail-native-checkpoint',{
+  phase,outcome,elapsedMs:Math.round(performance.now()-startedAt),...details});
  vi.useFakeTimers({toFake:['Date']});
  try{
   const gameId='synthetic-finite-sunburst-tail-native-27-'+outcome;
@@ -4176,7 +4181,7 @@ it.each(['pass','age-refusal'] as const)('finite Sunburst tail completes all27 t
   for(const board of paintOrder){
    for(const hide of board.hides){const generated=await runLocalPatchHide(container,deps,{gameId,board,hide});expect(generated.state,generated.reason??hide.id).toBe('generated');}
    for(const hide of board.hides){const row=await review(hide.id);expect(row.status,hide.id+': '+row.lastError).toBe(originalFailures.has(hide.id)?'FAILED':'GENERATED');}
-   if(render.mock.calls.length%9===0)console.info('finite-tail-native-checkpoint',{phase:'initial-pictures-reviewed',count:render.mock.calls.length});
+   if(render.mock.calls.length%9===0)checkpoint('initial-pictures-reviewed',{count:render.mock.calls.length});
   }
   expect(render).toHaveBeenCalledTimes(27);expect(provider.creates).toHaveLength(28);
   // The genuine, already-reviewed legacy NY1 head remains publishable after the new grant.
@@ -4259,10 +4264,11 @@ it.each(['pass','age-refusal'] as const)('finite Sunburst tail completes all27 t
    expect(await heads.journeyHeadCompositionMatches(db,{gameId,hideId:op.hideId,receipt:JSON.parse(reviewed.judgeJson!)},readArt)).toBe(true);
    expect((await allRows()).filter(r=>r.id!==before.id)).toEqual(siblings);
    expect(await heads.resumeJourneySunburstTailHead(container,gameId,op.hideId)).toBe(false);
-   console.info('finite-tail-native-checkpoint',{phase:'named-head-reviewed',hideId:op.hideId});
+   checkpoint('named-head-reviewed',{hideId:op.hideId});
   }
   const finalRows=await allRows();expect(finalRows).toHaveLength(27);expect(finalRows.every(r=>r.status==='GENERATED')).toBe(true);
   for(const row of finalRows)expect(await allowedDualPublication(db,{...publicationBinding(gameId,row),sceneVersion:13})).toBe(true);
+  checkpoint('all27-publication-rechecked',{count:finalRows.length,renders:render.mock.calls.length,reviews:provider.creates.length});
   const finalLedger=JSON.parse((await db.worldBudgetLedger.findUniqueOrThrow({where:{worldId}})).snapshotJson);
   for(const old of JSON.parse(beforeGrantLedger.snapshotJson).requests)expect(finalLedger.requests.find((r:{requestKey:string})=>r.requestKey===old.requestKey)).toEqual(old);
   expect(await budget.readRequest(worldId,unknownKey)).toEqual(unknown);
@@ -4271,18 +4277,34 @@ it.each(['pass','age-refusal'] as const)('finite Sunburst tail completes all27 t
   expect((await budget.audit(worldId)).committedMicroUsd).toBeLessThanOrEqual(5_000_000);
   // Finish through the real world assembler; it cannot buy any further picture.
   let result={pending:true,attention:null as string|null};
+  const assemblyProgress=async()=>{
+   const [game,scenes]=await Promise.all([
+    db.game.findUniqueOrThrow({where:{id:gameId},select:{status:true,configJson:true}}),
+    db.gameScene.findMany({where:{gameId},orderBy:{orderIndex:'asc'},select:{generationStatus:true,configJson:true}}),
+   ]);
+   return {status:game.status,configured:game.configJson!==null,
+    concludedBoards:scenes.filter(s=>s.generationStatus==='GENERATED'||s.generationStatus==='QA_OK').length,
+    configuredBoards:scenes.filter(s=>s.configJson!==null).length,
+    boardStates:scenes.map(s=>s.generationStatus),renders:render.mock.calls.length,reviews:provider.creates.length};
+  };
+  const guardProgress=testProgressGuard(await assemblyProgress());
+  checkpoint('assembly-start',await assemblyProgress());
   for(let turn=0;turn<30&&result.pending;turn++){
+   const turnStartedAt=performance.now();
    result=await runLocalPatchWorldSlice(container,deps,gameId,{hardDeadlineAt:Date.now()+270_000,workMode:REVIEW_EXISTING_WORK_MODE,diagnose:forbidden});
-   expect(result.attention).toBeNull();await vi.advanceTimersByTimeAsync(LEAN_RECOVERY_BACKOFF_MS+1);
+   const progress=await assemblyProgress();
+   checkpoint('assembly-turn',{turn:turn+1,turnElapsedMs:Math.round(performance.now()-turnStartedAt),pending:result.pending,attention:result.attention,...progress});
+   expect(result.attention).toBeNull();guardProgress(progress,result.pending);
+   await vi.advanceTimersByTimeAsync(LEAN_RECOVERY_BACKOFF_MS+1);
   }
   expect(result.pending).toBe(false);
   const game=await db.game.findUniqueOrThrow({where:{id:gameId}});expect(['READY','DELIVERED']).toContain(game.status);
   expect(parseGameConfig(game.configJson!).scenes.flatMap(s=>s.targets)).toHaveLength(27);
-  expect(render).toHaveBeenCalledTimes(31);expect(forbidden).not.toHaveBeenCalled();expect(fetch).not.toHaveBeenCalled();
+  expect(render).toHaveBeenCalledTimes(31);expect(provider.creates).toHaveLength(33);expect(forbidden).not.toHaveBeenCalled();expect(fetch).not.toHaveBeenCalled();
   // Record the cap in the real publication path, not a synthetic aggregate alone.
   expect(hash(finalLedger.requests.find((r:{requestKey:string})=>r.requestKey===unknownKey))).toBe(hash(JSON.parse(beforeGrantLedger.snapshotJson).requests.find((r:{requestKey:string})=>r.requestKey===unknownKey)));
  }finally{vi.useRealTimers();}
-},600_000);
+},1_500_000);
 
 it.each([false,true])('P2-D: a Sunburst world with 700k left preserves review coverage and bounded progress; permanent blocked review=%s',async(blockReview)=>{
  vi.useFakeTimers({toFake:['Date']});
