@@ -4090,7 +4090,7 @@ it('explicit five-dollar completion admits exactly one Paris Sunburst head witho
  }finally{vi.useRealTimers();}
 },300_000);
 
-it.each(['pass','age-refusal'] as const)('finite Sunburst tail completes all27 through native SOURCE heads, preserving a paid window failure, the old NY head and full UNKNOWN; outcome=%s',async outcome=>{
+it.each(['pass','age-refusal','wall-replacement'] as const)('finite Sunburst tail completes all27 through native SOURCE heads, preserving a paid window failure, the old NY head and full UNKNOWN; outcome=%s',async outcome=>{
  const startedAt=performance.now();
  const checkpoint=(phase:string,details:object={})=>console.info('finite-tail-native-checkpoint',{
   phase,outcome,elapsedMs:Math.round(performance.now()-startedAt),...details});
@@ -4132,16 +4132,23 @@ it.each(['pass','age-refusal'] as const)('finite Sunburst tail completes all27 t
   const container={...c,backgroundReview:provider.fake,visualReview:{request:forbidden}} as Container;
   const render=vi.fn<LocalPatchHideDeps['render']>(async input=>{
    const hide=hides.find(h=>input.requestKey.startsWith(h.id+':'))!;
-   expect(hide).toBeDefined();const second=input.requestKey.endsWith(':render:2');
+   expect(hide).toBeDefined();
+   const second=input.requestKey.endsWith(':render:2'),replacement=input.requestKey===jh.JOURNEY_WALL_REPLACEMENT_KEY;
    let png:Buffer;
-   if(second){
-    expect(boughtHeads.has(hide.id)).toBe(false);expect(input.subjectPhotoPng).toBeDefined();
+   if(second||replacement){
+    expect(boughtHeads.has(hide.id)).toBe(replacement);expect(input.subjectPhotoPng).toBeDefined();
     const sunburst=(tailIds as readonly string[]).includes(hide.id);
     expect(input.subjectQuality).toBe(sunburst?'high':'medium');
     expect(input.prompt).toContain('NATIVE SOURCE HEAD '+(sunburst?tailDomain.JOURNEY_SUNBURST_TAIL_VERSION:jh.JOURNEY_SOURCE_HEAD_VERSION));
+    if(replacement)expect(input.prompt).toContain('GREAT WALL REPLACEMENT v1');
     const a=(sunburst?JOURNEY_SUNBURST_TAIL_AUTHORITIES:JOURNEY_SOURCE_HEAD_AUTHORITIES).find(x=>x.hideId===hide.id)!;
     const alpha=jh.journeyHeadAlpha(a),pixels=await sharp(input.stylePng).ensureAlpha().raw().toBuffer();
-    for(let i=0;i<alpha.length;i++)if(alpha[i]){pixels[i*4]=42;pixels[i*4+1]=91;pixels[i*4+2]=137;}
+    for(let i=0;i<alpha.length;i++){
+     if(alpha[i]){pixels[i*4]=42;pixels[i*4+1]=91;pixels[i*4+2]=137;}
+     else if(outcome==='wall-replacement'&&second&&hide.id===jh.JOURNEY_WALL_REPLACEMENT_HIDE){
+      for(let channel=0;channel<3;channel++)pixels[i*4+channel]=pixels[i*4+channel]!<128?255:0;
+     }
+    }
     png=await sharp(pixels,{raw:{width:512,height:768,channels:4}}).png().toBuffer();
     boughtHeads.set(hide.id,sunburst?'sunburst':'medium');
    }else{
@@ -4231,14 +4238,36 @@ it.each(['pass','age-refusal'] as const)('finite Sunburst tail completes all27 t
    const board=placement.boards.find(b=>b.hides.some(h=>h.id===op.hideId))!,hide=board.hides.find(h=>h.id===op.hideId)!;
    await expect(runLocalPatchHide(container,deps,{gameId,board,hide,finalRepair:true,journeyHeadRecovery:true})).rejects.toThrow('JOURNEY_HEAD');
    expect(await budget.readRequest(worldId,op.requestKey)).toBeNull();
+   const replacement=outcome==='wall-replacement'&&op.hideId===jh.JOURNEY_WALL_REPLACEMENT_HIDE;
    const bought=await runLocalPatchHide(container,{...deps,sunburstHeadRender:render},{gameId,board,hide,finalRepair:true,journeyHeadRecovery:true});
-   expect(bought.state,bought.reason??op.hideId).toBe('generated');
+   if(replacement){
+    expect(bought.state).toBe('gave-up');
+    const rejected=await rowOf(op.hideId),unchangedLedger=await db.worldBudgetLedger.findUniqueOrThrow({where:{worldId}});
+    expect(JSON.parse(rejected.judgeJson!).renderFault).toBe('quality-seam: JOURNEY_HEAD: protected SOURCE exterior exceeds unchanged24 limit');
+    const paid=await budget.readRequest(worldId,op.requestKey);
+    expect(paid?.state).toBe('settled');
+    expect(await heads.resumeJourneySunburstTailHead(container,gameId,jh.JOURNEY_SUNBURST_HEAD_HIDE_ID)).toBe(false);
+    const preview=await heads.previewJourneyWallReplacement(container,gameId);
+    expect(preview).toMatchObject({recorded:false,requiredMicroUsd:800_000,capMicroUsd:5_000_000});
+    const authorization={gameId,operatorId:owner,expectedPlanSha256:preview.planSha256,ownerAuthorizationSha256:'a'.repeat(64)};
+    await expect(heads.authorizeJourneyWallReplacement(container,{...authorization,expectedPlanSha256:'b'.repeat(64)})).rejects.toThrow('replacement plan changed');
+    const grant=await heads.authorizeJourneyWallReplacement(container,authorization);
+    expect(await heads.authorizeJourneyWallReplacement(container,authorization)).toEqual(grant);
+    expect(await rowOf(op.hideId)).toEqual(rejected);
+    expect((await db.worldBudgetLedger.findUniqueOrThrow({where:{worldId}})).snapshotJson).toBe(unchangedLedger.snapshotJson);
+    expect(await heads.resumeJourneySunburstTailHead(container,gameId,jh.JOURNEY_SUNBURST_HEAD_HIDE_ID)).toBe(false);
+    const replaced=await runLocalPatchHide(container,{...deps,sunburstHeadRender:render},{gameId,board,hide,finalRepair:true,journeyHeadRecovery:true});
+    expect(replaced.state,replaced.reason??'replacement').toBe('generated');
+    expect(await budget.readRequest(worldId,op.requestKey)).toEqual(paid);
+    expect(await budget.readRequest(worldId,jh.JOURNEY_WALL_REPLACEMENT_KEY)).toMatchObject({state:'settled',reserveMicroUsd:150_000});
+    checkpoint('wall-replacement-painted');
+   }else expect(bought.state,bought.reason??op.hideId).toBe('generated');
    expect(await budget.readRequest(worldId,op.requestKey)).toMatchObject({state:'settled',reserveMicroUsd:150_000});
-   const pending=await rowOf(op.hideId);expect(pending.attempts).toBe(2);
+   const pending=await rowOf(op.hideId);expect(pending.attempts).toBe(replacement?3:2);
    expect(JSON.parse(pending.judgeJson!).reviewState).toBe('pending-board-review');
    const pendingReceipt=JSON.parse(pending.judgeJson!);
    expect(await heads.journeyHeadCompositionMatches(db,{gameId,hideId:op.hideId,receipt:pendingReceipt},readArt),'The paid candidate must reproduce exactly before any new question').toBe(true);
-   expect(await allowedDualPublication(db,{gameId,sceneVersion:13,hideId:op.hideId,variantId:pending.id,attempts:2,
+   expect(await allowedDualPublication(db,{gameId,sceneVersion:13,hideId:op.hideId,variantId:pending.id,attempts:pending.attempts,
     identityAssetId:pin.identityAssetId,identitySha256:pin.identitySha256,assetId:pending.assetId!,
     imageSha256:pendingReceipt.judgedSha256,geometrySha256:pendingReceipt.geometrySha256,judgeJson:pending.judgeJson})).toBe(false);
    const reviewed=await review(op.hideId);
@@ -4272,7 +4301,7 @@ it.each(['pass','age-refusal'] as const)('finite Sunburst tail completes all27 t
   const finalLedger=JSON.parse((await db.worldBudgetLedger.findUniqueOrThrow({where:{worldId}})).snapshotJson);
   for(const old of JSON.parse(beforeGrantLedger.snapshotJson).requests)expect(finalLedger.requests.find((r:{requestKey:string})=>r.requestKey===old.requestKey)).toEqual(old);
   expect(await budget.readRequest(worldId,unknownKey)).toEqual(unknown);
-  expect(render).toHaveBeenCalledTimes(31);expect(provider.creates).toHaveLength(33);
+  expect(render).toHaveBeenCalledTimes(outcome==='wall-replacement'?32:31);expect(provider.creates).toHaveLength(33);
   expect(boughtHeads.size).toBe(4);expect(await localPatchPainterRelease(db,gameId)).toBeNull();
   expect((await budget.audit(worldId)).committedMicroUsd).toBeLessThanOrEqual(5_000_000);
   // Finish through the real world assembler; it cannot buy any further picture.
@@ -4300,7 +4329,7 @@ it.each(['pass','age-refusal'] as const)('finite Sunburst tail completes all27 t
   expect(result.pending).toBe(false);
   const game=await db.game.findUniqueOrThrow({where:{id:gameId}});expect(['READY','DELIVERED']).toContain(game.status);
   expect(parseGameConfig(game.configJson!).scenes.flatMap(s=>s.targets)).toHaveLength(27);
-  expect(render).toHaveBeenCalledTimes(31);expect(provider.creates).toHaveLength(33);expect(forbidden).not.toHaveBeenCalled();expect(fetch).not.toHaveBeenCalled();
+  expect(render).toHaveBeenCalledTimes(outcome==='wall-replacement'?32:31);expect(provider.creates).toHaveLength(33);expect(forbidden).not.toHaveBeenCalled();expect(fetch).not.toHaveBeenCalled();
   // Record the cap in the real publication path, not a synthetic aggregate alone.
   expect(hash(finalLedger.requests.find((r:{requestKey:string})=>r.requestKey===unknownKey))).toBe(hash(JSON.parse(beforeGrantLedger.snapshotJson).requests.find((r:{requestKey:string})=>r.requestKey===unknownKey)));
  }finally{vi.useRealTimers();}

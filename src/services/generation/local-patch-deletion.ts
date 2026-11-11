@@ -11,6 +11,7 @@ import { purgeAdminAlertNotifications } from "../admin-alert-deletion";
 import { SOURCE_FIGURE_ACTION } from '../../domain/generation/source-figure-return';
 import { JOURNEY_SOURCE_HEAD_ACTION, JOURNEY_HEAD_FRAME_REPLAY_ACTION, JOURNEY_SUNBURST_HEAD_ACTION } from '../../domain/generation/journey-source-head';
 import { JOURNEY_SUNBURST_TAIL_ACTION } from '../../domain/generation/journey-sunburst-tail';
+import { JOURNEY_WALL_REPLACEMENT_ACTION } from '../../domain/generation/journey-source-head';
 import { QA_FIVE_COMPLETION_ACTION } from '../../domain/generation/qa-five-dollar-completion';
 import { QA_SUNBURST_TAIL_COMPLETION_ACTION } from '../../domain/generation/qa-sunburst-tail-completion';
 import { RETAINED_WINDOW_ACTION } from '../../domain/generation/retained-window';
@@ -70,7 +71,8 @@ export async function deleteLocalPatchGame(c: Container, gameId: string, actor: 
       action: { in: ["local-patch:extra-attempt", "local-patch:partial-release", "local-patch:legacy-head-source-corrected",
         "local-patch:qa-guided-repair-context", "local-patch:visible-head-policy-corrected", "local-patch:retained-normal-head-restored",
         "local-patch:head-pixel-correction", SOURCE_FIGURE_ACTION, JOURNEY_SOURCE_HEAD_ACTION, JOURNEY_SUNBURST_HEAD_ACTION, JOURNEY_SUNBURST_TAIL_ACTION, JOURNEY_HEAD_FRAME_REPLAY_ACTION,
-        QA_FIVE_COMPLETION_ACTION, QA_SUNBURST_TAIL_COMPLETION_ACTION, RETAINED_WINDOW_ACTION, RETAINED_WINDOW_ACTION + ':once', RETAINED_WINDOW_ACTION + ':alternate-once'] } }, data: { metaJson: null } });
+        QA_FIVE_COMPLETION_ACTION, QA_SUNBURST_TAIL_COMPLETION_ACTION, JOURNEY_WALL_REPLACEMENT_ACTION,
+        RETAINED_WINDOW_ACTION, RETAINED_WINDOW_ACTION + ':once', RETAINED_WINDOW_ACTION + ':alternate-once'] } }, data: { metaJson: null } });
     let sharedAssetsRetained = 0;
     for (const asset of await tx.asset.findMany({ where: { id: { in: inventory.assetIds } } })) {
       demand(asset.ownerId === game.ownerId && asset.provider === LOCAL_PATCH_PROVIDER && asset.providerRequestId === gameId

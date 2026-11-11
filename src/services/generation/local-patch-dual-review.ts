@@ -1144,10 +1144,15 @@ async function prepareSingleLowQuestion(c: Pick<Container, "db" | "storage">, pr
     if (singleVersion !== SINGLE_MEDIUM_VISUAL_REVIEW_VERSION) throw Error('BODY_GAP: fresh ordinary MEDIUM required');
     mediumPrompt += '\n' + (await import('../../domain/generation/source-body-gap')).sourceBodyGapReviewDirection();
   }
+  let journeyReviewCoverage = 250_000;
   if(receipt.journeyHeadRecovery!==undefined){
     const jh=await import('../../domain/generation/journey-source-head'),a=jh.journeyHeadAuthorityFor(receipt.authoredReturn,receipt.journeyHeadRecovery);
     if(!a||singleVersion!==SINGLE_MEDIUM_VISUAL_REVIEW_VERSION)throw Error('JOURNEY_HEAD: fresh ordinary MEDIUM required');
-    mediumPrompt+=jh.journeyHeadReviewDirection(a);
+    const marker = jh.journeyHeadMarkerSchema.parse(receipt.journeyHeadRecovery);
+    journeyReviewCoverage = marker.authorizedAttempt === 3
+      ? (await import('../../domain/generation/sunburst-painter')).SUNBURST_REVIEW_COVERAGE_MICRO_USD
+      : jh.JOURNEY_HEAD_REVIEW_COVERAGE_MICRO_USD;
+    mediumPrompt+=jh.journeyHeadReviewDirection(a,marker);
   }
   if(receipt.sourceHeadRecovery!==undefined){
     if(singleVersion!==SINGLE_MEDIUM_VISUAL_REVIEW_VERSION)throw Error('SOURCE_HEAD: fresh ordinary MEDIUM required');
@@ -1191,7 +1196,7 @@ async function prepareSingleLowQuestion(c: Pick<Container, "db" | "storage">, pr
   const bound = visualReviewMaxCharge(question);
   if (!bound.ok) throw Error('SINGLE_REVIEW: unbounded prepared evidence: ' + bound.reason);
   if (bound.microUsd > 250_000) throw Error('SINGLE_REVIEW: exact request exceeds its qualified maximum');
-  if(receipt.journeyHeadRecovery!==undefined&&bound.microUsd>(await import('../../domain/generation/journey-source-head')).JOURNEY_HEAD_REVIEW_COVERAGE_MICRO_USD)
+  if(receipt.journeyHeadRecovery!==undefined&&bound.microUsd>journeyReviewCoverage)
     throw Error('JOURNEY_HEAD: full actual prepared MEDIUM maximum '+bound.microUsd+' input '+bound.inputTokens+' tier '+question.tier+' exceeds prospective coverage');
   return { binding, hideId, entry, receipt, sourceNeighbors, combined, question, requestKey, bound, attempt, continued, singleVersion, head, anchor, nativeDetailEvidence };
 }

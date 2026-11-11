@@ -363,7 +363,7 @@ export async function runLocalPatchHide(c: Container, deps: LocalPatchHideDeps, 
   const extra = input.extraAttemptAuthorizationId ? await requireLocalPatchExtraAttempt(c, {
     gameId, hideId: hide.id, rowId: row.id, authorizationId: input.extraAttemptAuthorizationId,
   }) : null;
-  const attemptLimit = journeyRecovery ? 2 : headRecovery || wholeContext || nativeMaskTail ? 4 : extra?.authorizedAttempt ?? (input.finalRepair ? LOCAL_PATCH_MAX_ATTEMPTS : LOCAL_PATCH_NORMAL_ATTEMPTS);
+  const attemptLimit = journeyRecovery ? journeyRecovery.pin.authorizedAttempt : headRecovery || wholeContext || nativeMaskTail ? 4 : extra?.authorizedAttempt ?? (input.finalRepair ? LOCAL_PATCH_MAX_ATTEMPTS : LOCAL_PATCH_NORMAL_ATTEMPTS);
   const { attempt, exhausted } = bodyRepair ? {attempt:bodyRepair.selected.authorizedAttempt,exhausted:false} : nextLocalPatchAttempt(row, attemptLimit);
   const birthPolicy=sourceBodyBirthForHide(placementContext,hide.id),bodyBirth=birthPolicy&&!journeyRecovery&&!exhausted?sourceBodyBirthMarkerFor(birthPolicy,row.id,hide.id,attempt):null;
   if(bodyBirth)demand(!bodyRepair&&!guidedFrame&&!nativeMaskTail&&!extra&&scene.sceneVersion===13,'From-birth footprints keep normal finite image attempts');

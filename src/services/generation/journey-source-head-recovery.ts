@@ -16,7 +16,8 @@ import { JOURNEY_SOURCE_HEAD_VERSION, JOURNEY_SOURCE_HEAD_ACTION, JOURNEY_HEAD_R
   journeyHeadHash as hash, journeyHeadBytesHash as sha, journeyHeadAlpha, journeyHeadAuthorityFor,
   journeyHeadMarker, journeyHeadMarkerSchema, composeJourneySourceHead, JOURNEY_HEAD_FRAME_REPLAY_ACTION,
   JOURNEY_SUNBURST_HEAD_VERSION, JOURNEY_SUNBURST_HEAD_ACTION, JOURNEY_SUNBURST_HEAD_HIDE_ID, JOURNEY_SUNBURST_HEAD_PAINTER,
-  journeyHeadPinId, journeySunburstHeadPinId,
+  journeyHeadPinId, journeySunburstHeadPinId, journeyWallReplacementId,
+  JOURNEY_WALL_REPLACEMENT_HIDE, JOURNEY_WALL_REPLACEMENT_KEY, JOURNEY_WALL_REPLACEMENT_ACTION,
   type JourneyHeadAuthority, type JourneyHeadMarker } from '../../domain/generation/journey-source-head';
 import { SUNBURST_IMAGE_RESERVE_MICRO_USD, SUNBURST_REVIEW_COVERAGE_MICRO_USD } from '../../domain/generation/sunburst-painter';
 import { LOCAL_PATCH_SUNBURST_IMAGE_POLICY, localPatchRenderPolicySha256 } from '../../infra/generation/openai-local-patch';
@@ -67,12 +68,33 @@ const sunburstPinSchema = sunburstPinBody.extend({ authorizationSha256: digest }
 const sunburstTailPinBody = sunburstPinBody.extend({ version: z.literal(JOURNEY_SUNBURST_TAIL_VERSION),
   hideId: z.enum(JOURNEY_SUNBURST_TAIL_HIDE_IDS) }).strict();
 const sunburstTailPinSchema = sunburstTailPinBody.extend({ authorizationSha256: digest }).strict();
+const wallReplacementPlanSchema = sunburstTailPinBody.extend({
+  version: z.literal(JOURNEY_WALL_REPLACEMENT_ACTION),
+  hideId: z.literal(JOURNEY_WALL_REPLACEMENT_HIDE),
+  requestKey: z.literal(JOURNEY_WALL_REPLACEMENT_KEY),
+  originalAttempts: z.literal(2),
+  authorizedAttempt: z.literal(3),
+  priorHeadAuthorizationSha256: digest,
+  rejectedPayloadSha256: digest,
+  ledgerRevision: z.number().int().nonnegative(),
+  jobSha256: digest,
+  committedMicroUsd: z.number().int().nonnegative(),
+}).omit({ createdAt: true }).strict();
+const wallReplacementPinSchema = wallReplacementPlanSchema.extend({
+  operatorId: id,
+  ownerAuthorizationSha256: digest,
+  planSha256: digest,
+  createdAt: z.string().datetime(),
+  authorizationSha256: digest,
+}).strict();
+type JourneyWallReplacementPin = z.infer<typeof wallReplacementPinSchema>;
 export type JourneyHeadMediumPin = z.infer<typeof pinSchema>;
 export type JourneySunburstHeadPin = z.infer<typeof sunburstPinSchema>;
 export type JourneySunburstTailPin = z.infer<typeof sunburstTailPinSchema>;
-export type JourneyHeadPin = JourneyHeadMediumPin | JourneySunburstHeadPin | JourneySunburstTailPin;
-export const isJourneySunburstTailPin = (p: JourneyHeadPin): p is JourneySunburstTailPin => p.version === JOURNEY_SUNBURST_TAIL_VERSION;
-export const isJourneySunburstHeadPin = (p: JourneyHeadPin): p is JourneySunburstHeadPin | JourneySunburstTailPin =>
+export type JourneyHeadPin = JourneyHeadMediumPin | JourneySunburstHeadPin | JourneySunburstTailPin | JourneyWallReplacementPin;
+export const isJourneySunburstTailPin = (p: JourneyHeadPin): p is JourneySunburstTailPin | JourneyWallReplacementPin =>
+  p.version === JOURNEY_SUNBURST_TAIL_VERSION || p.version === JOURNEY_WALL_REPLACEMENT_ACTION;
+export const isJourneySunburstHeadPin = (p: JourneyHeadPin): p is JourneySunburstHeadPin | JourneySunburstTailPin | JourneyWallReplacementPin =>
   p.version === JOURNEY_SUNBURST_HEAD_VERSION || isJourneySunburstTailPin(p);
 /** Typed routing state for the one Sunburst head; null for every v2 head. */
 export type JourneySunburstHeadState = { readonly painterRelease: typeof JOURNEY_SUNBURST_HEAD_PAINTER; readonly imagePolicySha256: string;
@@ -93,14 +115,38 @@ const scoped = (db: Db) => ({ db, storage: new DbStorage(db) } as unknown as Con
 
 export function journeyHeadMarkerFor(p: JourneyHeadPin): JourneyHeadMarker {
   return journeyHeadMarkerSchema.parse({ version: isJourneySunburstTailPin(p) ? JOURNEY_SUNBURST_TAIL_VERSION : JOURNEY_SOURCE_HEAD_VERSION, authorizationSha256: p.authorizationSha256,
-    authoritySha256: p.authoritySha256, rowId: p.rowId, hideId: p.hideId, originalAttempts: 1, authorizedAttempt: 2,
+    authoritySha256: p.authoritySha256, rowId: p.rowId, hideId: p.hideId, originalAttempts: p.originalAttempts, authorizedAttempt: p.authorizedAttempt,
     previousJudgeSha256: p.previousJudgeSha256, requestKey: p.requestKey,
     ...(isJourneySunburstHeadPin(p) ? { painterRelease: p.painterRelease } : {}) });
 }
 export function journeyHeadCandidate(p: JourneyHeadPin, row: Row) {
-  return row.id === p.rowId && (row.status === 'FAILED' && row.attempts === 1 && rowHash(row) === p.previousRowSha256
-    || row.status === 'PENDING' && row.attempts === 2 && hash(journeyHeadMarker(row)) === hash(journeyHeadMarkerFor(p))
+  return row.id === p.rowId && (row.status === 'FAILED' && row.attempts === p.originalAttempts && rowHash(row) === p.previousRowSha256
+    || row.status === 'PENDING' && row.attempts === p.authorizedAttempt && hash(journeyHeadMarker(row)) === hash(journeyHeadMarkerFor(p))
       && invariant(row) === p.rowInvariantSha256);
+}
+
+/** The supplement is a single owner-admin decision under the existing ceiling.
+ * Its ledger history is also checked by the budget resolver before dispatch. */
+export async function readJourneyWallReplacementPin(db: Db, gameId: string) {
+  const record = await db.auditLog.findUnique({ where: { id: journeyWallReplacementId(gameId) } });
+  if (!record) return null;
+  if (record.metaJson === null) {
+    const game = await db.game.findUnique({ where: { id: gameId }, select: { status: true, deletedAt: true } });
+    check(game?.status === 'DELETED' && game.deletedAt, 'replacement evidence missing');
+    return null;
+  }
+  const pin = wallReplacementPinSchema.parse(JSON.parse(record.metaJson));
+  const { authorizationSha256, ...body } = pin;
+  const { operatorId, ownerAuthorizationSha256: _decision, planSha256, createdAt: _created, ...plan } = body;
+  check(record.actorType === 'ADMIN' && record.actorId === operatorId && pin.ownerId === operatorId
+    && record.action === JOURNEY_WALL_REPLACEMENT_ACTION && record.entityType === 'Game' && record.entityId === gameId
+    && pin.gameId === gameId && pin.worldId === gameId + ':board-wizard'
+    && hash(plan) === planSha256 && hash(body) === authorizationSha256
+    && sha(Buffer.from(pin.previousJudgeJson)) === pin.previousJudgeSha256, 'invalid replacement authority');
+  const ledger = await PrismaWorldBudgetStore.forReadOnlyTransaction(db).read(pin.worldId);
+  check(ledger && pin.originalRequests.every(old => ledger.snapshot.requests.some(r => r.requestKey === old.requestKey && hash(r) === old.sha256)),
+    'replacement ledger history changed');
+  return pin;
 }
 /** Absent pins are a cheap no-op for every historical world. There are only the
  * two named public SOURCE strategies, never an unbounded extra attempt list. */
@@ -124,6 +170,19 @@ export async function journeyHeadPinsOf(db: Db, gameId: string): Promise<Journey
     result.push(p);
   }
   check(new Set(result.map(p => p.hideId)).size === result.length, 'two finite head authorities name one appearance');
+  const replacement = await readJourneyWallReplacementPin(db, gameId);
+  if (replacement) {
+    const index = result.findIndex(p => p.hideId === JOURNEY_WALL_REPLACEMENT_HIDE);
+    const prior = result[index];
+    check(prior?.version === JOURNEY_SUNBURST_TAIL_VERSION && prior.authorizationSha256 === replacement.priorHeadAuthorizationSha256
+      && prior.completionAuthorizationSha256 === replacement.completionAuthorizationSha256
+      && prior.rowId === replacement.rowId && prior.authoritySha256 === replacement.authoritySha256
+      && prior.identityAssetId === replacement.identityAssetId && prior.identitySha256 === replacement.identitySha256
+      && prior.originalPhotoSha256 === replacement.originalPhotoSha256 && prior.mediumAuthorizationSha256 === replacement.mediumAuthorizationSha256
+      && prior.originalPhotoAssetId === replacement.originalPhotoAssetId && prior.photoCropSha256 === replacement.photoCropSha256
+      && prior.ownerId === replacement.ownerId, 'replacement does not extend its exact original head');
+    result[index] = replacement;
+  }
   return result;
 }
 
@@ -161,6 +220,98 @@ async function context(c: Container, gameId: string, hideId: string, painting: b
   const tail = budget.capMicroUsd === QA_FIVE_COMPLETION_CAP ? await qaSunburstTailCompletionActive(c, gameId) : null;
   if (budget.capMicroUsd !== 4_000_000 && !five && !tail || budget.overCapMicroUsd || budget.conflictRequestKeys.length || budget.overrunRequestKeys.length) return null;
   return { game, child, policy, identity, board, hide, parent, authority, budget, photoSha256, photoCropSha256, five, tail };
+}
+
+const wallSeamRefusal = 'quality-seam: JOURNEY_HEAD: protected SOURCE exterior exceeds unchanged24 limit';
+const wallTailCapacity = 2 * (SUNBURST_IMAGE_RESERVE_MICRO_USD + SUNBURST_REVIEW_COVERAGE_MICRO_USD);
+
+async function wallReplacementPlan(c: Container, gameId: string) {
+  check(env().APP_ENV === 'qa' && c.storage.id === 'db', 'replacement is QA only');
+  const p = await context(c, gameId, JOURNEY_WALL_REPLACEMENT_HIDE, true, true);
+  check(p?.tail && p.budget.capMicroUsd === QA_FIVE_COMPLETION_CAP && !p.budget.held
+    && p.budget.remainingMicroUsd >= wallTailCapacity, 'replacement and Paris full coverage required');
+  const tail = p!.tail!;
+  const wall = qaSunburstTailOperationOf(tail, JOURNEY_WALL_REPLACEMENT_HIDE);
+  const paris = qaSunburstTailOperationOf(tail, JOURNEY_SUNBURST_HEAD_HIDE_ID);
+  const pins = await journeyHeadPinsOf(c.db, gameId);
+  const prior = pins.find(pin => pin.hideId === JOURNEY_WALL_REPLACEMENT_HIDE);
+  check(prior?.version === JOURNEY_SUNBURST_TAIL_VERSION && prior.completionAuthorizationSha256 === tail.authorizationSha256
+    && wall?.rowId === prior.rowId && wall?.requestKey === prior.requestKey && paris
+    && !pins.some(pin => pin.hideId === paris.hideId), 'replacement requires its spent wall pin and unstarted Paris');
+  if (prior?.version !== JOURNEY_SUNBURST_TAIL_VERSION || !paris) throw Error('JOURNEY_HEAD: replacement prerequisites');
+  const job = await c.db.generationJob.findUniqueOrThrow({ where: { id: 'job_' + gameId } });
+  check(['FAILED', 'QUEUED'].includes(job.status), 'replacement job is active');
+  const rows = await c.db.targetVariantAsset.findMany({ where: { variant: 'A', targetInstance: { gameScene: { gameId } } } });
+  const row = rows.find(r => r.id === prior.rowId), parisRow = rows.find(r => r.id === paris.rowId);
+  check(rows.length === 27 && row && row.status === 'FAILED' && row.attempts === 2
+    && row.assetId === prior.previousAssetId && row.provider === 'local-patch'
+    && parisRow?.status === 'FAILED' && parisRow.attempts === 1
+    && sha(Buffer.from(parisRow.judgeJson ?? '')) === paris.previousJudgeSha256, 'original finite tail rows changed');
+  const receipt = JSON.parse(row!.judgeJson ?? 'null');
+  check(receipt?.renderFault === wallSeamRefusal && receipt.verdict === null && receipt.wireFault === null
+    && receipt.boardReview === undefined && hash(receipt.authoredReturn) === hash(p!.parent)
+    && hash(journeyHeadMarker(row!)) === hash(journeyHeadMarkerFor(prior)), 'expected unreviewed exterior-seam refusal');
+  check(rows.every(other => other.id === prior.rowId || other.id === paris.rowId
+    || other.status === 'GENERATED' && !localPatchReadyReviewOwed(other, { required: true })
+      && JSON.parse(other.judgeJson ?? 'null')?.qualityDisposition?.state === 'acceptable'), '25 ordinary approvals required');
+  const ledger = await PrismaWorldBudgetStore.forReadOnlyTransaction(c.db).read(prior.worldId);
+  check(ledger && !ledger.snapshot.requests.some(request => request.state === 'pending'
+    || request.requestKey === JOURNEY_WALL_REPLACEMENT_KEY || request.requestKey === paris.requestKey)
+    && !await new PrismaRetainedPurchaseStore(c.db).get(prior.worldId, JOURNEY_WALL_REPLACEMENT_KEY), 'replacement or Paris purchase already exists');
+  const paid = await readSettledTargetRaw(c.db, gameId, prior.requestKey);
+  check(hash(paid.wire.journeyHeadRecovery) === hash(journeyHeadMarkerFor(prior))
+    && hash(paid.wire.authoredReturn) === hash(p!.parent), 'rejected paid evidence differs');
+  const { authorizationSha256: priorHeadAuthorizationSha256, createdAt: _time, ...original } = prior;
+  return wallReplacementPlanSchema.parse({ ...original, version: JOURNEY_WALL_REPLACEMENT_ACTION,
+    originalAttempts: 2, authorizedAttempt: 3, requestKey: JOURNEY_WALL_REPLACEMENT_KEY, priorHeadAuthorizationSha256,
+    previousJudgeJson: row!.judgeJson, previousJudgeSha256: sha(Buffer.from(row!.judgeJson!)), previousRowSha256: rowHash(row!),
+    rowInvariantSha256: invariant(row!), rejectedPayloadSha256: paid.kept.payloadSha256,
+    protectedRows: rows.filter(other => other.id !== row!.id).map(other => ({ id: other.id, sha256: rowHash(other) }))
+      .sort((a, b) => a.id.localeCompare(b.id)),
+    originalRequests: ledger!.snapshot.requests.map(request => ({ requestKey: request.requestKey, sha256: hash(request) })),
+    ledgerRevision: ledger!.revision, jobSha256: hash(job), committedMicroUsd: p!.budget.committedMicroUsd });
+}
+
+export async function previewJourneyWallReplacement(c: Container, gameId: string) {
+  check(env().APP_ENV === 'qa' && c.storage.id === 'db', 'replacement is QA only');
+  const recorded = await readJourneyWallReplacementPin(c.db, gameId);
+  const plan = recorded ?? await wallReplacementPlan(c, gameId);
+  return { recorded: !!recorded, planSha256: recorded?.planSha256 ?? hash(plan), capMicroUsd: QA_FIVE_COMPLETION_CAP,
+    committedMicroUsd: plan.committedMicroUsd, requiredMicroUsd: wallTailCapacity,
+    requestKey: JOURNEY_WALL_REPLACEMENT_KEY, authorizationSha256: recorded?.authorizationSha256 };
+}
+
+export async function authorizeJourneyWallReplacement(c: Container, input: {
+  gameId: string; operatorId: string; expectedPlanSha256: string; ownerAuthorizationSha256: string;
+}) {
+  check(env().APP_ENV === 'qa' && c.storage.id === 'db', 'replacement is QA only');
+  const { gameId, operatorId } = input;
+  const actor = await c.db.user.findUnique({ where: { id: operatorId }, select: { email: true } });
+  check(actor && c.adminEmails?.some(email => email.trim().toLowerCase() === actor.email.trim().toLowerCase()),
+    'replacement requires an owner administrator');
+  digest.parse(input.ownerAuthorizationSha256);
+  return c.db.$transaction(async tx => {
+    await fenceLocalPatchImages(tx, gameId);
+    const cc = { ...c, db: tx, storage: new DbStorage(tx) } as unknown as Container;
+    const existing = await readJourneyWallReplacementPin(tx, gameId);
+    if (existing) {
+      check(existing.operatorId === operatorId && existing.planSha256 === input.expectedPlanSha256
+        && existing.ownerAuthorizationSha256 === input.ownerAuthorizationSha256, 'replacement already recorded with other evidence');
+      return existing;
+    }
+    const plan = await wallReplacementPlan(cc, gameId);
+    check(plan.ownerId === operatorId && hash(plan) === input.expectedPlanSha256, 'replacement plan changed');
+    const body = { ...plan, operatorId, ownerAuthorizationSha256: input.ownerAuthorizationSha256,
+      planSha256: input.expectedPlanSha256, createdAt: new Date().toISOString() };
+    const pin = wallReplacementPinSchema.parse({ ...body, authorizationSha256: hash(body) });
+    const revision = await tx.worldBudgetLedger.updateMany({ where: { worldId: pin.worldId, revision: plan.ledgerRevision },
+      data: { revision: { increment: 1 } } });
+    check(revision.count === 1, 'replacement ledger changed concurrently');
+    await tx.auditLog.create({ data: { id: journeyWallReplacementId(gameId), action: JOURNEY_WALL_REPLACEMENT_ACTION,
+      actorType: 'ADMIN', actorId: operatorId, entityType: 'Game', entityId: gameId, metaJson: JSON.stringify(pin) } });
+    await tx.generationJob.update({ where: { id: 'job_' + gameId }, data: { status: 'QUEUED', currentStep: 'local-patch', lastError: null } });
+    return pin;
+  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, timeout: 60_000 });
 }
 
 /** A free, finite recipe enrollment, not a painting or an art approval. The two
@@ -273,8 +424,8 @@ export async function requireJourneyHeadPurchase(c: Container, gameId: string, r
   if (sunburst) check(p!.budget.capMicroUsd === QA_FIVE_COMPLETION_CAP && (isJourneySunburstTailPin(pin!) ? p!.tail : p!.five)?.authorizationSha256 === sunburst.completionAuthorizationSha256,
     'explicit five-dollar completion authority changed');
   const existing = await boardWizardBudgetOf(c).readRequest(pin!.worldId, pin!.requestKey);
-  if (!existing) check(!p!.budget.held && p!.budget.remainingMicroUsd >= (sunburst ? sunburst.imageReserveMicroUsd + sunburst.reviewCoverageMicroUsd
-    : LOCAL_PATCH_RESERVE.renderMicroUsd + JOURNEY_HEAD_REVIEW_COVERAGE_MICRO_USD),
+  if (!existing) check(!p!.budget.held && p!.budget.remainingMicroUsd >= (pin!.version === JOURNEY_WALL_REPLACEMENT_ACTION ? wallTailCapacity
+    : sunburst ? sunburst.imageReserveMicroUsd + sunburst.reviewCoverageMicroUsd : LOCAL_PATCH_RESERVE.renderMicroUsd + JOURNEY_HEAD_REVIEW_COVERAGE_MICRO_USD),
     sunburst ? 'Sunburst image and full ordinary assessment coverage do not fit' : 'image and full bounded ordinary MEDIUM coverage do not fit');
   return { pin: pin!, marker: journeyHeadMarkerFor(pin!), authority: p!.authority, sunburst };
 }
@@ -366,7 +517,7 @@ export async function applyJourneyHeadPixels(before: Buffer, raw: Buffer, a: Jou
 export async function journeyHeadPublicationAuthorized(db: Db, input: { gameId: string; variantId: string; hideId: string; attempts: number; sceneVersion: number; judgeJson: string | null }) {
   try {
     const pin = (await journeyHeadPinsOf(db, input.gameId)).find(p => p.rowId === input.variantId), marker = journeyHeadMarker(input);
-    return !!pin && input.sceneVersion === 13 && input.hideId === pin.hideId && input.attempts === 2 && hash(marker) === hash(journeyHeadMarkerFor(pin));
+    return !!pin && input.sceneVersion === 13 && input.hideId === pin.hideId && input.attempts === pin.authorizedAttempt && hash(marker) === hash(journeyHeadMarkerFor(pin));
   } catch { return false; }
 }
 export async function journeyHeadCompositionMatches(db: Db, input: { gameId: string; hideId: string; receipt: Record<string, any>; beforePng?: Buffer; variantId?:string; assetId?:string; identitySha256?:string }, readArt: ReadArt = readShippedBoardArt) {
@@ -374,7 +525,7 @@ export async function journeyHeadCompositionMatches(db: Db, input: { gameId: str
     const pin = (await journeyHeadPinsOf(db, input.gameId)).find(p => p.hideId === input.hideId), marker = journeyHeadMarker({ judgeJson: JSON.stringify(input.receipt) });
     if (!pin || hash(marker) !== hash(journeyHeadMarkerFor(pin))) return false;
     const p = await context(scoped(db), input.gameId, input.hideId, false, isJourneySunburstTailPin(pin)), row = await db.targetVariantAsset.findUnique({ where: { id: pin.rowId } });
-    if (!p || !row || row.attempts !== 2 || row.status !== 'GENERATED'
+    if (!p || !row || row.attempts !== pin.authorizedAttempt || row.status !== 'GENERATED'
       ||input.variantId!==undefined&&input.variantId!==pin.rowId||input.assetId!==undefined&&input.assetId!==row.assetId
       ||input.identitySha256!==undefined&&input.identitySha256!==pin.identitySha256
       ||p.photoCropSha256!==pin.photoCropSha256||p.child.originalPhotoAssetId!==null&&p.child.originalPhotoAssetId!==pin.originalPhotoAssetId

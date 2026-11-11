@@ -75,8 +75,8 @@ const judgedWindow=(receipt:Receipt,returned:PatchRectangle):PatchRectangle=>{
 function sourceKey(hide:Pick<LocalPatchHide,'id'|'pose'>,attempt:number,receipt:Receipt):string{
  if(receipt.journeyHeadRecovery!==undefined){
   const m=journeyHeadMarkerSchema.parse(receipt.journeyHeadRecovery),a=journeyHeadAuthorityFor(receipt.authoredReturn as Parameters<typeof journeyHeadAuthorityFor>[0],m);
-  if(!a||journeyHeadHash(a)!==m.authoritySha256||hide.id!==m.hideId||attempt!==2||a.pose!==hide.pose
-   ||m.requestKey!==hide.id+':'+hide.pose+':render:2'||targetHeadVersionOfReceipt(receipt)!==TARGET_HEAD_VISIBLE_VERSION)
+  if(!a||journeyHeadHash(a)!==m.authoritySha256||hide.id!==m.hideId||attempt!==m.authorizedAttempt||a.pose!==hide.pose
+   ||m.requestKey!==hide.id+':'+hide.pose+':render:'+m.authorizedAttempt||targetHeadVersionOfReceipt(receipt)!==TARGET_HEAD_VISIBLE_VERSION)
    throw Error('HEAD_RETURN: finite journey-head source binding differs');
   return m.requestKey;
  }

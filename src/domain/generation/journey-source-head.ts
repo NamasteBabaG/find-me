@@ -140,19 +140,30 @@ export const journeyHeadPinId = (gameId: string, hideId: string) => 'aud_journey
 export const journeySunburstHeadPinId = (gameId: string) => 'aud_journey_head_sb_' + journeyHeadHash([gameId, JOURNEY_SUNBURST_HEAD_HIDE_ID]).slice(0, 40);
 
 const digest = z.string().regex(/^[a-f0-9]{64}$/), id = z.string().regex(/^[A-Za-z0-9_:.-]{1,240}$/);
+export const JOURNEY_WALL_REPLACEMENT_HIDE = 'greatwall-detectives-hide-1';
+export const JOURNEY_WALL_REPLACEMENT_KEY = 'greatwall-detectives-hide-1:standing:render:3';
+export const JOURNEY_WALL_REPLACEMENT_ACTION = 'generation:journey-greatwall-replacement/v1';
+export const JOURNEY_WALL_REPLACEMENT_SELECTOR = 'greatwall-replacement-v1';
+export const JOURNEY_WALL_REPLACEMENT_CONFIRMATION = 'owner-authorized-one-greatwall-replacement-within-existing-five-dollar-cap-v1';
+export const journeyWallReplacementId = (gameId: string) => 'aud_journey_wall_replacement_' + gameId;
+
 export const journeyHeadMarkerSchema = z.object({ version: z.enum([JOURNEY_SOURCE_HEAD_VERSION, JOURNEY_SUNBURST_TAIL_VERSION]), authorizationSha256: digest,
-  authoritySha256: digest, rowId: id, hideId: id, originalAttempts: z.literal(1), authorizedAttempt: z.literal(2),
+  authoritySha256: digest, rowId: id, hideId: id, originalAttempts: z.union([z.literal(1), z.literal(2)]), authorizedAttempt: z.union([z.literal(2), z.literal(3)]),
   previousJudgeSha256: digest, requestKey: id,
   // Absent on every v2 purchase (unchanged bytes); present only on the one Sunburst head.
   painterRelease: z.literal(JOURNEY_SUNBURST_HEAD_PAINTER).optional() }).strict()
   .refine(p => p.version !== JOURNEY_SUNBURST_TAIL_VERSION || p.painterRelease === JOURNEY_SUNBURST_HEAD_PAINTER,
-    { message: 'A finite Sunburst tail requires the exact HIGH/LOW painter' });
+    { message: 'A finite Sunburst tail requires the exact HIGH/LOW painter' })
+  .refine(p => p.authorizedAttempt === 2 ? p.originalAttempts === 1
+    : p.originalAttempts === 2 && p.version === JOURNEY_SUNBURST_TAIL_VERSION
+      && p.hideId === JOURNEY_WALL_REPLACEMENT_HIDE && p.requestKey === JOURNEY_WALL_REPLACEMENT_KEY,
+  { message: 'Only the finite Great Wall replacement can use a third journey key' });
 export type JourneyHeadMarker = z.infer<typeof journeyHeadMarkerSchema>;
 export function journeyHeadMarker(row: { judgeJson: string | null }) {
   try { const p = journeyHeadMarkerSchema.safeParse(JSON.parse(row.judgeJson ?? 'null')?.journeyHeadRecovery); return p.success ? p.data : null; }
   catch { return null; }
 }
-export function journeyHeadPaintDirection(a: JourneyHeadAuthority, ageYears: number) {
+export function journeyHeadPaintDirection(a: JourneyHeadAuthority, ageYears: number, marker?: JourneyHeadMarker) {
   journeyHeadAlpha(a);
   if (ageYears !== 7) throw Error('JOURNEY_HEAD: original stated age7 required');
   const target = a.hideId === 'newyork-detectives-hide-1' ? 'the orange-jacket flower child holding flowers beside the florist'
@@ -163,6 +174,10 @@ export function journeyHeadPaintDirection(a: JourneyHeadAuthority, ageYears: num
     + 'Replace ONLY the complete head, hair, hairline, face and neck of ' + target + ' with the exact canonical child at stated age7. '
     + 'Keep the SOURCE head angle, natural task-focused gaze, body, jacket, shoulders, hands, props, stance and support. Do not turn it into a portrait or redraw the body. '
     + 'The native alpha mask is the only editable footprint. Draw the complete canonical hairstyle wholly inside it with no residual original hair, clipped strands, fade or hard cut. '
+    + (marker?.authorizedAttempt === 3 ? 'GREAT WALL REPLACEMENT v1. Keep the SOURCE pink pinwheel child in the same right-facing three-quarter angle and at the same native head size. '
+      + 'Use the unmarked first image as the geometry reference: in crop-local 512x768 coordinates the SOURCE crown is near y=300, the chin near y=358 and the top collar join near y=365. Match those landmarks to the visible SOURCE pixels. '
+      + 'Keep the original collar, jacket and shoulders pixel-stable, even where the mask overlaps them. Keep the canonical hair fully inside the mask by laying it behind the shoulder within the head silhouette. No loose strand may cross the left or lower edge. '
+      + 'Do not enlarge the face, turn it toward the viewer, lower the chin or extend the neck toward the pinwheel. ' : '')
     + 'Other original people continuing beyond the crop must keep their exact SOURCE fragments. In Paris the feet of the upper green-skirt child are protected SOURCE, including where the padded target head registration overlaps them; never redraw or relocate those feet. '
     + 'PHOTO and CANONICAL define identity, facial geometry, hair pattern/length and stated age. SOURCE people define painted contour weight, local contrast, softness, lighting and native sharpness. Avoid photographic microdetail, blur, halos or a style mismatch. '
     + 'Return only the unmarked512x768 original frame. A fresh ordinary MEDIUM assessment still decides complete head/hair, likeness, age, people, body, pose, all joins and style; no old verdict transfers.';
@@ -170,7 +185,7 @@ export function journeyHeadPaintDirection(a: JourneyHeadAuthority, ageYears: num
 
 /** Additional native inspection in the same ordinary MEDIUM answer. Geometry
  * supplies roles and edit permission, never an accepted hairstyle or age. */
-export function journeyHeadReviewDirection(a:JourneyHeadAuthority){
+export function journeyHeadReviewDirection(a:JourneyHeadAuthority, marker?: JourneyHeadMarker){
   journeyHeadAlpha(a);
   return '\nNATIVE SOURCE HEAD '+JOURNEY_SOURCE_HEAD_VERSION+': a NEW canonical head/hair/neck is painted on the exact unchanged SOURCE body. '
     +'SOURCE jacket, shoulders, hands, flowers or petanque task, body, feet and continuing people are intentional preserved pixels. '
@@ -179,6 +194,9 @@ export function journeyHeadReviewDirection(a:JourneyHeadAuthority){
     +'The public edit footprint below is SOURCE role geometry, NOT a segmentation of the generated head. Fail a head clipped at ANY internal polygon or protected-fragment edge even when its bounding rectangle fits the outer return. '
     +'Require no residual original hair/face, halo, fade, hard cut, duplicate head, moved SOURCE feet, anatomical break, photographic texture, oversharp face or blurred hair. '
     +'Native head contrast, edge softness, painted style and sharpness must agree with nearby SOURCE people. No previous approval transfers. '
+    +(marker?.authorizedAttempt === 3
+      ? 'Great Wall replacement: compare the actual SOURCE crown, chin, collar join and right-facing angle to both RAW and SHIPPING. Fail a larger portrait, a lowered chin or collar, a horizontal jacket seam, or hair cut by the left/lower permission boundary. '
+      : '')
     +(a.version === JOURNEY_SUNBURST_TAIL_VERSION
       ? 'Independently judge perceived age from PHOTO versus both face and body; state the honest evidence-based age interval. Never narrow an interval, invent certainty or pass a child who looks older merely to finish. '
       : 'The unchanged age reader requires a narrow independently estimated range containing stated age7: no lower than5, no upper above8, span at most3. Report genuine7-9 or uncertainty honestly; do not narrow an estimate to pass. ')

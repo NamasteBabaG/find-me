@@ -424,8 +424,8 @@ export async function renderLocalPatchHide(deps: LocalPatchRenderDeps, input: Lo
     const marker=journeyHeadMarkerSchema.parse(journeyHead.marker),authority=authoredReturn&&journeyHeadAuthorityFor(authoredReturn,marker);
     const sunburstHead=marker.painterRelease===JOURNEY_SUNBURST_HEAD_PAINTER;
     if(!authority||journeyHeadHash(authority)!==journeyHeadHash(journeyHead.authority)||marker.authoritySha256!==journeyHeadHash(authority)
-      ||marker.hideId!==input.hide.id||marker.requestKey!==input.hide.id+':'+input.hide.pose+':render:2'
-      ||input.contentVersion!==13||input.attempt!==2||!input.subjectDirection||input.subjectDirection.quality!==(sunburstHead?'high':'medium')
+      ||marker.hideId!==input.hide.id||marker.requestKey!==input.hide.id+':'+input.hide.pose+':render:'+marker.authorizedAttempt
+      ||input.contentVersion!==13||input.attempt!==marker.authorizedAttempt||!input.subjectDirection||input.subjectDirection.quality!==(sunburstHead?'high':'medium')
       ||sunburstHead!==sunburst||sunburstHead&&marker.version!==JOURNEY_SUNBURST_TAIL_VERSION&&marker.hideId!==JOURNEY_SUNBURST_HEAD_HIDE_ID
       ||input.ageYears!==7||sha(input.composedPng)!==authority.sourcePngSha256
       ||sourceHead||input.guidedFrameRecovery||input.placementGuide||input.nativeMaskTail||input.sourceBodyRepair||input.sourceBodyBirth
@@ -587,7 +587,7 @@ async function renderLocalPatchHideInner(deps: LocalPatchRenderDeps, input: Loca
   const basePromptWith = (plan: SubjectRenderDirection | undefined) => {
     if(journeyHead){
       if(!plan||!input.ageYears)throw Error('JOURNEY_HEAD: original identity/age plan required');
-      return journeyHeadPaintDirection(journeyHead.authority,input.ageYears);
+      return journeyHeadPaintDirection(journeyHead.authority,input.ageYears,journeyHead.marker);
     }
     if(sourceHead){
       if(!plan||!input.ageYears)throw Error('SOURCE_HEAD: original identity/age plan required');
