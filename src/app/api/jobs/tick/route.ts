@@ -13,7 +13,8 @@ import { currentUser, draftTokenFromCookie, isAdminEmail } from "@/lib/server/se
 import { safeEqual } from "@/lib/ids";
 import { REVIEW_EXISTING_WORK_MODE } from '@/domain/generation/work-mode';
 import { JOURNEY_WALL_COAT_SELECTOR } from '@/domain/generation/journey-wall-coat';
-import { JOURNEY_WALL_REPLACEMENT_HIDE } from '@/domain/generation/journey-source-head';
+import { JOURNEY_PARIS_CHAIR_SELECTOR } from '@/domain/generation/journey-paris-chair';
+import { JOURNEY_SUNBURST_HEAD_HIDE_ID, JOURNEY_WALL_REPLACEMENT_HIDE } from '@/domain/generation/journey-source-head';
 
 export const runtime = "nodejs";
 /** Generating one hiding spot is ~55s, so the slice needs room for at least one. */
@@ -71,18 +72,21 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'unsupported-work-mode' }, { status: 400 });
     if (restore !== null) {
       const hideId = query.get('hideId'), sourceKey = query.get('sourceKey');
-      if (!['retained-window-v1','retained-window-alternate-v1','journey-source-head-v2','journey-source-head-sunburst-v1','journey-source-head-sunburst-tail-v1','journey-head-frame-v1',JOURNEY_WALL_COAT_SELECTOR].includes(restore) || requestedMode !== 'review-existing' || !gameId || env().APP_ENV !== 'qa'
+      if (!['retained-window-v1','retained-window-alternate-v1','journey-source-head-v2','journey-source-head-sunburst-v1','journey-source-head-sunburst-tail-v1','journey-head-frame-v1',JOURNEY_WALL_COAT_SELECTOR,JOURNEY_PARIS_CHAIR_SELECTOR].includes(restore) || requestedMode !== 'review-existing' || !gameId || env().APP_ENV !== 'qa'
         || c.storage.id !== 'db' || !hideId || !/^[A-Za-z0-9._:-]{1,160}$/.test(hideId)
         || sourceKey !== null && !/^[A-Za-z0-9._:-]{1,240}$/.test(sourceKey))
         return NextResponse.json({ error: 'unsupported-free-restore' }, { status: 400 });
-      if (restore === JOURNEY_WALL_COAT_SELECTOR) {
+      if (restore === JOURNEY_WALL_COAT_SELECTOR || restore === JOURNEY_PARIS_CHAIR_SELECTOR) {
+        const chair = restore === JOURNEY_PARIS_CHAIR_SELECTOR;
         const candidates = query.getAll('previousCandidateSha256');
-        if (sourceKey !== null || hideId !== JOURNEY_WALL_REPLACEMENT_HIDE || candidates.length !== 1 || !/^[a-f0-9]{64}$/.test(candidates[0]!))
-          return NextResponse.json({ error: 'unsupported-retained-coat' }, { status: 400 });
+        if (sourceKey !== null || hideId !== (chair ? JOURNEY_SUNBURST_HEAD_HIDE_ID : JOURNEY_WALL_REPLACEMENT_HIDE)
+          || candidates.length !== 1 || !/^[a-f0-9]{64}$/.test(candidates[0]!))
+          return NextResponse.json({ error: chair ? 'unsupported-retained-chair' : 'unsupported-retained-coat' }, { status: 400 });
         const owner = await currentUser();
         if (!owner) return NextResponse.json({ error: 'forbidden' }, { status: 403 });
-        enter('retained-journey-wall-coat');
-        const restored = await (await import('@/services/generation/journey-source-head-recovery')).restoreJourneyWallCoat(c, gameId, owner.id, candidates[0]!);
+        enter(chair ? 'retained-journey-paris-chair' : 'retained-journey-wall-coat');
+        const { restoreJourneyParisChair, restoreJourneyWallCoat } = await import('@/services/generation/journey-source-head-recovery');
+        const restored = await (chair ? restoreJourneyParisChair : restoreJourneyWallCoat)(c, gameId, owner.id, candidates[0]!);
         return NextResponse.json({ restored, providerCalls: 0, approvalTransferred: false }, { headers: { 'Cache-Control': 'no-store' } });
       }
       if(restore==='journey-head-frame-v1'){

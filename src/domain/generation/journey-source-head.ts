@@ -191,7 +191,7 @@ export function journeyHeadPaintDirection(a: JourneyHeadAuthority, ageYears: num
 
 /** Additional native inspection in the same ordinary MEDIUM answer. Geometry
  * supplies roles and edit permission, never an accepted hairstyle or age. */
-export function journeyHeadReviewDirection(a:JourneyHeadAuthority, marker?: JourneyHeadMarker, retainedCoat = false){
+export function journeyHeadReviewDirection(a:JourneyHeadAuthority, marker?: JourneyHeadMarker, retainedCoat = false, retainedChair = false){
   journeyHeadAlpha(a);
   return '\nNATIVE SOURCE HEAD '+JOURNEY_SOURCE_HEAD_VERSION+': '
     +(retainedCoat ? 'The already-paid canonical head/hair/neck is unchanged. A bounded local refit of the same paid jacket between crop y421 and y471 follows the standing SOURCE torso; hands, pinwheel, feet and continuing people are preserved. Inspect the complete collar, shoulder, sleeves and chest in SHIPPING for a continuous garment with natural shape, paint texture and sharpness. '
@@ -208,5 +208,6 @@ export function journeyHeadReviewDirection(a:JourneyHeadAuthority, marker?: Jour
       ? 'Independently judge perceived age from PHOTO versus both face and body; state the honest evidence-based age interval. Never narrow an interval, invent certainty or pass a child who looks older merely to finish. '
       : 'The unchanged age reader requires a narrow independently estimated range containing stated age7: no lower than5, no upper above8, span at most3. Report genuine7-9 or uncertainty honestly; do not narrow an estimate to pass. ')
     +(retainedCoat ? 'The head footprint describes the original head join. The only subsequent exception is the bounded jacket refit described above; it gives no visual approval. ' : '')
+    +(retainedChair ? 'The original green chair rail was restored at the left edge of the head footprint from the SOURCE board. Inspect its continuity where the rails meet in SHIPPING, and independently fail any clipped hair, residual original head, change to a continuing person, or new visible seam. The repair gives no visual approval. ' : '')
     +'PUBLIC SOURCE HEAD FOOTPRINT, crop-local512x768: '+JSON.stringify({editablePolygon:a.editableHead,protectedBelow:a.protectedBelow,protectedRects:a.protectedRects,protectedSourceFragments:a.protectedSourceFragments,otherHeads:a.protectedHeads});
 }

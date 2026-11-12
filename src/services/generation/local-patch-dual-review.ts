@@ -1152,7 +1152,7 @@ async function prepareSingleLowQuestion(c: Pick<Container, "db" | "storage">, pr
     journeyReviewCoverage = marker.authorizedAttempt >= 3
       ? (await import('../../domain/generation/sunburst-painter')).SUNBURST_REVIEW_COVERAGE_MICRO_USD
       : jh.JOURNEY_HEAD_REVIEW_COVERAGE_MICRO_USD;
-    mediumPrompt+=jh.journeyHeadReviewDirection(a,marker,receipt.journeyWallCoat!==undefined);
+    mediumPrompt+=jh.journeyHeadReviewDirection(a,marker,receipt.journeyWallCoat!==undefined,receipt.journeyParisChair!==undefined);
   }
   if(receipt.sourceHeadRecovery!==undefined){
     if(singleVersion!==SINGLE_MEDIUM_VISUAL_REVIEW_VERSION)throw Error('SOURCE_HEAD: fresh ordinary MEDIUM required');
@@ -1175,7 +1175,7 @@ async function prepareSingleLowQuestion(c: Pick<Container, "db" | "storage">, pr
     geometrySha256: binding.geometrySha256, identitySha256: binding.identitySha256 }) : undefined;
   const shared = singleVersion === SINGLE_MEDIUM_VISUAL_REVIEW_VERSION ? await singleMediumEvidence(assessment,anatomy,hideId) : undefined;
   let question = singleVersion === SINGLE_VISUAL_REVIEW_VERSION ? lowQuestion : prepareVisualReview({ ...lowQuestion,
-    combined: singleVersion, effort: 'medium', tier: continued || receipt.journeyWallCoat !== undefined ? 'default' : 'flex',
+    combined: singleVersion, effort: 'medium', tier: continued || receipt.journeyWallCoat !== undefined || receipt.journeyParisChair !== undefined ? 'default' : 'flex',
     ...(receipt.retainedWindow !== undefined || receipt.journeyHeadRecovery !== undefined ? { outputProfile: 'single-medium-6000/v1' as const } : {}),
     prompt: mediumPrompt + '\nMEDIUM SHARED NATIVE EVIDENCE: the quality AFTER image contains the anatomy context at LEFT and its exact native head detail at RIGHT across the 24px white gutter. Inspect both panels for every anatomy requirement; neither is a new appearance. All four AFTER-only joins remain supplied as the RIGHT native panels of their labelled BEFORE/AFTER return comparisons. Anatomy must inspect RIGHT AFTER only; never borrow a head from LEFT BEFORE. No required pixels or inspections were removed.' + targetHeadReturnPrompt(head!.evidence), images: [...shared!.images, head!.raw, entry.bytes],
     labels: [...shared!.labels.map(label=>anchor&&label.includes(hideId+':original-photo')?'EVIDENCE_ID='+hideId+':original-photo PRIOR PHOTO-APPROVED TARGET FACE ANCHOR, NOT the deleted photograph':label), 'EVIDENCE_ID='+hideId+':native-provider-raw 512x768 WHOLE RAW TARGET HEAD, crop-local axes',

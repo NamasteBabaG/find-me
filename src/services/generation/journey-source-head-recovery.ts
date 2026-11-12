@@ -15,6 +15,7 @@ import { JOURNEY_SUNBURST_TAIL_VERSION, JOURNEY_SUNBURST_TAIL_ACTION, JOURNEY_SU
 import { qaSunburstTailOperationOf } from '../../domain/generation/qa-sunburst-tail-completion';
 import { qaSunburstTailCompletionActive } from './qa-sunburst-tail-completion';
 import { composeJourneyWallCoat, journeyWallCoatMarkerSchema, JOURNEY_WALL_COAT_ACTION, JOURNEY_WALL_COAT_VERSION } from '../../domain/generation/journey-wall-coat';
+import { composeJourneyParisChair, journeyParisChairMarkerSchema, JOURNEY_PARIS_CHAIR_ACTION, JOURNEY_PARIS_CHAIR_VERSION } from '../../domain/generation/journey-paris-chair';
 import { JOURNEY_SOURCE_HEAD_VERSION, JOURNEY_SOURCE_HEAD_ACTION, JOURNEY_HEAD_REVIEW_COVERAGE_MICRO_USD,
   journeyHeadHash as hash, journeyHeadBytesHash as sha, journeyHeadAlpha, journeyHeadAuthorityFor,
   journeyHeadMarker, journeyHeadMarkerSchema, composeJourneySourceHead, JOURNEY_HEAD_FRAME_REPLAY_ACTION,
@@ -270,6 +271,7 @@ const wallSeamRefusal = 'quality-seam: JOURNEY_HEAD: protected SOURCE exterior e
 const wallTailCapacity = 2 * (SUNBURST_IMAGE_RESERVE_MICRO_USD + SUNBURST_REVIEW_COVERAGE_MICRO_USD);
 const wallCoatCapacity = wallTailCapacity - SUNBURST_IMAGE_RESERVE_MICRO_USD;
 const wallCoatAuditId = (gameId: string) => 'aud_journey_coat_' + hash([gameId, JOURNEY_WALL_REPLACEMENT_HIDE]).slice(0, 40);
+const parisChairAuditId = (gameId: string) => 'aud_journey_chair_' + hash([gameId, JOURNEY_SUNBURST_HEAD_HIDE_ID]).slice(0, 40);
 
 async function wallReplacementPlan(c: Container, gameId: string) {
   check(env().APP_ENV === 'qa' && c.storage.id === 'db', 'replacement is QA only');
@@ -668,21 +670,46 @@ async function refitWallCoat(base: Buffer, raw: Buffer) {
   return sharp(Buffer.from(pixels), { raw: { width: 512, height: 768, channels: 4 } }).png().toBuffer();
 }
 
-/** One free retained-pixel revision after the ordinary coat refusal. The old
+async function restoreParisChairPixels(base: Buffer, board: Buffer, authority: JourneyHeadAuthority) {
+  const [shipping, source] = await Promise.all([
+    sharp(base, { limitInputPixels: 512 * 768 }).ensureAlpha().raw().toBuffer(),
+    sharp(board).extract(authority.crop).ensureAlpha().raw().toBuffer(),
+  ]);
+  const { pixels, changed } = composeJourneyParisChair(shipping, source, journeyHeadAlpha(authority));
+  check(changed > 0, 'retained chair did not change the refused candidate');
+  return sharp(Buffer.from(pixels), { raw: { width: 512, height: 768, channels: 4 } }).png().toBuffer();
+}
+
+/** One free retained-pixel revision after the named ordinary refusal. The old
  * asset, refusal, image attempt, all settled charges and UNKNOWNs survive. */
 export async function restoreJourneyWallCoat(c: Container, gameId: string, ownerId: string, previousCandidateSha256: string,
   readArt: ReadArt = readShippedBoardArt) {
+  return restoreJourneyRetainedJoin(c, gameId, ownerId, previousCandidateSha256, 'wall-coat', readArt);
+}
+
+export async function restoreJourneyParisChair(c: Container, gameId: string, ownerId: string, previousCandidateSha256: string,
+  readArt: ReadArt = readShippedBoardArt) {
+  return restoreJourneyRetainedJoin(c, gameId, ownerId, previousCandidateSha256, 'paris-chair', readArt);
+}
+
+async function restoreJourneyRetainedJoin(c: Container, gameId: string, ownerId: string, previousCandidateSha256: string,
+  repair: 'wall-coat' | 'paris-chair', readArt: ReadArt) {
   if (env().APP_ENV !== 'qa' || c.storage.id !== 'db' || !digest.safeParse(previousCandidateSha256).success) return false;
+  const chair = repair === 'paris-chair';
+  const hideId = chair ? JOURNEY_SUNBURST_HEAD_HIDE_ID : JOURNEY_WALL_REPLACEMENT_HIDE;
+  const capacity = chair ? SUNBURST_REVIEW_COVERAGE_MICRO_USD : wallCoatCapacity;
+  const faults = chair ? ['pictureWhole', 'severeSeam'] : ['childComplete', 'pictureWhole', 'severeSeam'];
   return c.db.$transaction(async tx => {
     await fenceLocalPatchImages(tx, gameId);
     const storage = new DbStorage(tx), cc = { ...c, db: tx, storage } as unknown as Container;
-    const auditId = wallCoatAuditId(gameId);
+    const auditId = chair ? parisChairAuditId(gameId) : wallCoatAuditId(gameId);
     if (await tx.auditLog.findUnique({ where: { id: auditId } })) return false;
-    const pin = (await journeyHeadPinsOf(tx, gameId)).find(p => p.version === JOURNEY_WALL_PROVIDER_RETRY_ACTION);
-    if (!pin || pin.ownerId !== ownerId) return false;
+    const pin = (await journeyHeadPinsOf(tx, gameId)).find(p => p.hideId === hideId &&
+      (chair ? p.version === JOURNEY_SUNBURST_TAIL_VERSION : p.version === JOURNEY_WALL_PROVIDER_RETRY_ACTION));
+    if (!pin || !('completionAuthorizationSha256' in pin) || pin.ownerId !== ownerId) return false;
     const p = await context(cc, gameId, pin.hideId, true, true);
     if (!p?.tail || p.tail.authorizationSha256 !== pin.completionAuthorizationSha256 || p.budget.held
-      || p.budget.capMicroUsd !== QA_FIVE_COMPLETION_CAP || p.budget.remainingMicroUsd < wallCoatCapacity
+      || p.budget.capMicroUsd !== QA_FIVE_COMPLETION_CAP || p.budget.remainingMicroUsd < capacity
       || p.child.originalPhotoAssetId !== pin.originalPhotoAssetId || p.photoSha256 !== pin.originalPhotoSha256
       || p.photoCropSha256 !== pin.photoCropSha256) return false;
     const job = await tx.generationJob.findUnique({ where: { id: 'job_' + gameId } });
@@ -690,12 +717,13 @@ export async function restoreJourneyWallCoat(c: Container, gameId: string, owner
     if (!job || !['QUEUED', 'FAILED'].includes(job.status) || !row || row.status !== 'FAILED'
       || row.attempts !== pin.authorizedAttempt || !row.assetId || !row.judgeJson) return false;
     const old = JSON.parse(row.judgeJson), dual = old?.boardReview?.dual, quality = dual?.quality;
-    if (old?.journeyWallCoat !== undefined || old?.reviewState !== 'board-review-complete' || old.judgedSha256 !== previousCandidateSha256
+    if (old?.journeyWallCoat !== undefined || old?.journeyParisChair !== undefined
+      || old?.reviewState !== 'board-review-complete' || old.judgedSha256 !== previousCandidateSha256
       || dual?.single !== 'single-sol-medium/v1' || dual.imageSha256 !== previousCandidateSha256 || !quality
-      || old.verdict?.verdict !== 'fail' || old.verdict.childComplete !== 'fail' || old.verdict.pictureWhole !== 'fail'
+      || old.verdict?.verdict !== 'fail' || old.verdict.childComplete !== (chair ? 'pass' : 'fail') || old.verdict.pictureWhole !== 'fail'
       || old.verdict.severeSeam !== 'fail' || old.verdict.faceReadable !== 'pass' || old.verdict.neighborsIntact !== 'pass'
       || old.qualityDisposition?.state !== 'retry' || !Array.isArray(old.qualityDisposition.faults)
-      || hash([...old.qualityDisposition.faults].sort()) !== hash(['childComplete', 'pictureWhole', 'severeSeam'])
+      || hash([...old.qualityDisposition.faults].sort()) !== hash(faults)
       || hash(journeyHeadMarker(row)) !== hash(journeyHeadMarkerFor(pin))) return false;
     const geometrySha256 = localPatchPublicationGeometryHash(row);
     const binding = authoredLocalPatchReviewBinding({ hideId: pin.hideId, imageSha256: previousCandidateSha256,
@@ -716,7 +744,7 @@ export async function restoreJourneyWallCoat(c: Container, gameId: string, owner
     const before = await readArt(p.authority.source.art, p.authority.source.sha256);
     const base = await applyJourneyHeadPixels(before, paid.normalized, p.authority);
     if (sha(base.png) !== previousCandidateSha256 || hash(base.proof) !== hash(old.journeyHeadComposition)) return false;
-    const shipping = await refitWallCoat(base.png, paid.normalized);
+    const shipping = chair ? await restoreParisChairPixels(base.png, before, p.authority) : await refitWallCoat(base.png, paid.normalized);
     const bounded = await composeBoundedLocalPatch(before, p.authority.crop, shipping, maskForHide(p.hide),
       { requireAligned: true, playerReview: true, returnRect: p.authority.returned });
     if (!bounded.usable || sha(await sharp(bounded.candidate).extract(p.authority.crop).png().toBuffer()) !== sha(shipping)) return false;
@@ -724,20 +752,22 @@ export async function restoreJourneyWallCoat(c: Container, gameId: string, owner
       board: p.authority.source, hide: p.hide, journeyHead: p.authority });
     if (localPatchPublicationGeometryHash({ rectJson: JSON.stringify(measured.geometry.rect), hitRectJson: JSON.stringify(measured.geometry.hitRect),
       headAnchorJson: JSON.stringify(measured.geometry.anchor) }) !== geometrySha256) return false;
-    const candidateSha256 = sha(shipping), assetId = 'ast_jnh_coat_' + hash([gameId, candidateSha256]).slice(0, 24);
+    const candidateSha256 = sha(shipping), assetId = (chair ? 'ast_jnh_chair_' : 'ast_jnh_coat_') + hash([gameId, candidateSha256]).slice(0, 24);
     const storagePath = 'game/' + assetId + '.png';
-    const marker = journeyWallCoatMarkerSchema.parse({ version: JOURNEY_WALL_COAT_VERSION, auditId, previousCandidateSha256, candidateSha256 });
+    const marker = chair
+      ? journeyParisChairMarkerSchema.parse({ version: JOURNEY_PARIS_CHAIR_VERSION, auditId, previousCandidateSha256, candidateSha256 })
+      : journeyWallCoatMarkerSchema.parse({ version: JOURNEY_WALL_COAT_VERSION, auditId, previousCandidateSha256, candidateSha256 });
     const receipt = { ...old };
     for (const key of ['boardReview', 'qualityDisposition', 'dualQualityCheckpoint', 'dualContinuityCheckpoint', 'evidenceDiagnosis',
       'evidenceAttempts', 'reviewInterruption', 'reviewInterruptions']) delete receipt[key];
-    Object.assign(receipt, { journeyWallCoat: marker, judgedSha256: candidateSha256, geometryBasis: measured.basis,
+    Object.assign(receipt, { [chair ? 'journeyParisChair' : 'journeyWallCoat']: marker, judgedSha256: candidateSha256, geometryBasis: measured.basis,
       measuredFraction: Number(measured.measuredFraction.toFixed(4)), seam: bounded.report, compositionPermission: bounded.compositionPermission,
       verdict: null, renderFault: null, wireFault: null, reviewState: 'pending-board-review' });
     const retired = JSON.parse(row.rejectedAssetIdsJson ?? '[]');
     if (!Array.isArray(retired) || !retired.every(x => typeof x === 'string')) return false;
     const revised = await tx.worldBudgetLedger.updateMany({ where: { worldId: pin.worldId, revision: ledger.revision }, data: { revision: { increment: 1 } } });
-    check(revised.count === 1, 'concurrent retained-coat operation');
-    await tx.auditLog.create({ data: { id: auditId, actorType: 'SYSTEM', action: JOURNEY_WALL_COAT_ACTION, entityType: 'Game', entityId: gameId,
+    check(revised.count === 1, 'concurrent retained head join operation');
+    await tx.auditLog.create({ data: { id: auditId, actorType: 'SYSTEM', action: chair ? JOURNEY_PARIS_CHAIR_ACTION : JOURNEY_WALL_COAT_ACTION, entityType: 'Game', entityId: gameId,
       metaJson: JSON.stringify({ marker, pinSha256: pin.authorizationSha256, assetId, previousRow: row, previousRowSha256: hash(row),
         rawSha256: sha(paid.original), originalRequests: ledger.snapshot.requests.map(r => ({ requestKey: r.requestKey, sha256: hash(r) })),
         providerCalls: 0, approvalTransferred: false }) } });
@@ -750,9 +780,9 @@ export async function restoreJourneyWallCoat(c: Container, gameId: string, owner
     await tx.gameScene.update({ where: { id: p.game.scenes.find(s => s.sceneSlug === p.board.board)!.id }, data: { generationStatus: 'NEEDS_REGENERATION', configJson: null } });
     await tx.generationJob.update({ where: { id: job.id }, data: { status: 'QUEUED', currentStep: 'local-patch', lastError: null } });
     const after = await PrismaWorldBudgetStore.forReadOnlyTransaction(tx).read(pin.worldId);
-    check(hash(after?.snapshot) === hash(ledger.snapshot), 'retained coat changed a bill');
+    check(hash(after?.snapshot) === hash(ledger.snapshot), 'retained head join changed a bill');
     return true;
-  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, timeout: 60_000 });
+  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, timeout: chair ? 180_000 : 60_000 });
 }
 
 export async function journeyHeadPublicationAuthorized(db: Db, input: { gameId: string; variantId: string; hideId: string; attempts: number; sceneVersion: number; judgeJson: string | null }) {
@@ -813,22 +843,28 @@ export async function journeyHeadCompositionMatches(db: Db, input: { gameId: str
     }
     const before = input.beforePng ?? await readArt(p.authority.source.art, p.authority.source.sha256), made = await applyJourneyHeadPixels(before, paid.normalized, p.authority);
     let shipping = made.png;
-    if (input.receipt.journeyWallCoat !== undefined || row.assetId?.startsWith('ast_jnh_coat_')) {
-      const coat = journeyWallCoatMarkerSchema.parse(input.receipt.journeyWallCoat);
-      if (pin.version !== JOURNEY_WALL_PROVIDER_RETRY_ACTION || !row.assetId?.startsWith('ast_jnh_coat_')
-        || coat.auditId !== wallCoatAuditId(input.gameId) || coat.previousCandidateSha256 !== sha(made.png)
-        || coat.candidateSha256 !== input.receipt.judgedSha256) return false;
-      const record = await db.auditLog.findUnique({ where: { id: coat.auditId } }), saved = JSON.parse(record?.metaJson ?? 'null');
-      if (!record || record.actorType !== 'SYSTEM' || record.actorId !== null || record.action !== JOURNEY_WALL_COAT_ACTION
-        || record.entityType !== 'Game' || record.entityId !== input.gameId || hash(saved?.marker) !== hash(coat)
+    const chair = input.receipt.journeyParisChair !== undefined || row.assetId?.startsWith('ast_jnh_chair_');
+    const coat = input.receipt.journeyWallCoat !== undefined || row.assetId?.startsWith('ast_jnh_coat_');
+    if (chair && coat) return false;
+    if (chair || coat) {
+      const join = chair ? journeyParisChairMarkerSchema.parse(input.receipt.journeyParisChair)
+        : journeyWallCoatMarkerSchema.parse(input.receipt.journeyWallCoat);
+      if (chair ? pin.version !== JOURNEY_SUNBURST_TAIL_VERSION || pin.hideId !== JOURNEY_SUNBURST_HEAD_HIDE_ID || !row.assetId?.startsWith('ast_jnh_chair_')
+        : pin.version !== JOURNEY_WALL_PROVIDER_RETRY_ACTION || !row.assetId?.startsWith('ast_jnh_coat_')) return false;
+      if (join.auditId !== (chair ? parisChairAuditId(input.gameId) : wallCoatAuditId(input.gameId))
+        || join.previousCandidateSha256 !== sha(made.png) || join.candidateSha256 !== input.receipt.judgedSha256) return false;
+      const record = await db.auditLog.findUnique({ where: { id: join.auditId } }), saved = JSON.parse(record?.metaJson ?? 'null');
+      if (!record || record.actorType !== 'SYSTEM' || record.actorId !== null
+        || record.action !== (chair ? JOURNEY_PARIS_CHAIR_ACTION : JOURNEY_WALL_COAT_ACTION)
+        || record.entityType !== 'Game' || record.entityId !== input.gameId || hash(saved?.marker) !== hash(join)
         || saved.pinSha256 !== pin.authorizationSha256 || saved.assetId !== row.assetId || saved.rawSha256 !== sha(paid.original)
         || saved.providerCalls !== 0 || saved.approvalTransferred !== false || hash(saved.previousRow) !== saved.previousRowSha256
         || saved.previousRow.id !== row.id || saved.previousRow.attempts !== row.attempts || saved.previousRow.status !== 'FAILED'
-        || JSON.parse(saved.previousRow.judgeJson ?? 'null')?.judgedSha256 !== coat.previousCandidateSha256) return false;
+        || JSON.parse(saved.previousRow.judgeJson ?? 'null')?.judgedSha256 !== join.previousCandidateSha256) return false;
       const ledger = await PrismaWorldBudgetStore.forReadOnlyTransaction(db).read(pin.worldId);
       if (!ledger || !Array.isArray(saved.originalRequests) || !saved.originalRequests.every((old: { requestKey: string; sha256: string }) =>
         ledger.snapshot.requests.some(r => r.requestKey === old.requestKey && hash(r) === old.sha256))) return false;
-      shipping = await refitWallCoat(made.png, paid.normalized);
+      shipping = chair ? await restoreParisChairPixels(made.png, before, p.authority) : await refitWallCoat(made.png, paid.normalized);
     }
     const measured = await localPatchGeometry({ contentVersion: 13, boardPng: before, patchPng: shipping, board: p.authority.source, hide: p.hide, journeyHead: p.authority });
     const geometry = { rectJson: JSON.stringify(measured.geometry.rect), hitRectJson: JSON.stringify(measured.geometry.hitRect), headAnchorJson: JSON.stringify(measured.geometry.anchor) };
