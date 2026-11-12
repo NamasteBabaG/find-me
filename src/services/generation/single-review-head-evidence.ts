@@ -176,7 +176,7 @@ async function windowSourceAuthorized(db:Prisma.TransactionClient,gameId:string,
 }
 async function journeySourceAuthorized(db:Prisma.TransactionClient,gameId:string,receipt:Receipt){
  if(receipt.journeyHeadRecovery===undefined)return;
- if(!await(await import('./journey-source-head-recovery')).journeyHeadCompositionMatches(db,{gameId,hideId:journeyHeadMarkerSchema.parse(receipt.journeyHeadRecovery).hideId,receipt}))
+ if(!await(await import('./journey-source-head-recovery')).journeyHeadCompositionMatches(db,{gameId,hideId:journeyHeadMarkerSchema.parse(receipt.journeyHeadRecovery).hideId,receipt,allowInterruptedReview:true}))
   throw Error('HEAD_RETURN: finite journey SOURCE, paid RAW or candidate differs');
 }
 const decoded=async(png:Buffer)=>{const {data,info}=await sharp(png,{limitInputPixels:8294400}).removeAlpha().raw().toBuffer({resolveWithObject:true});

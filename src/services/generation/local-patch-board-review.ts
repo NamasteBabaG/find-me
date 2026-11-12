@@ -192,7 +192,8 @@ export async function prepareLocalPatchBoardReview(c: Container, input: { gameId
     "Shipping image or geometry no longer matches its render-completion binding");
     demand(authoredLocalPatchReturnMatches(completed, board, hide, scene.sceneVersion, false, placementContext), "Authored return source, child envelope or window changed");
     demand(await authoredLocalPatchRecoveryEvidenceMatches(c.db, { gameId: game.id, board, hide, sceneVersion: scene.sceneVersion,
-      receipt: completed, placementContext, promptVersion: row.promptVersion, beforePng: before }), "Authored recovery paid evidence or deterministic candidate changed");
+      receipt: completed, placementContext, promptVersion: row.promptVersion, beforePng: before,
+      allowInterruptedReview: row.status === 'FAILED' }), "Authored recovery paid evidence or deterministic candidate changed");
     if (strict && completed.compositionVersion !== LOCAL_PATCH_COMPOSITION_VERSION
       && completed.compositionVersion !== RETAINED_WINDOW_VERSION
       && completed.compositionVersion !== AUTHORED_PATCH_COMPOSITION_VERSION

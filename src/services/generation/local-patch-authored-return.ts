@@ -184,7 +184,7 @@ export function authoredLocalPatchReturnMatches(receipt: AuthoredLocalPatchRecei
  * join before a new review or publication. Forged audit zeros are not proof. */
 export async function authoredLocalPatchRecoveryEvidenceMatches(db: Prisma.TransactionClient, input: { gameId: string;
   board: LocalPatchBoard; hide: LocalPatchHide; sceneVersion: number; receipt: AuthoredLocalPatchReceipt;
-  placementContext: TrustedSourcePlacementContext; promptVersion: string | null; beforePng?: Buffer }): Promise<boolean> {
+  placementContext: TrustedSourcePlacementContext; promptVersion: string | null; beforePng?: Buffer; allowInterruptedReview?: boolean }): Promise<boolean> {
   const { receipt, placementContext, board, hide } = input;
   if (receipt.retainedWindow !== undefined || receipt.compositionVersion === RETAINED_WINDOW_VERSION) {
     const m = retainedWindowMarkerSchema.safeParse(receipt.retainedWindow);
@@ -194,7 +194,7 @@ export async function authoredLocalPatchRecoveryEvidenceMatches(db: Prisma.Trans
         assetId: row.assetId, judgeJson: JSON.stringify(receipt) }, input.beforePng ? async () => input.beforePng! : undefined);
   }
   if(receipt.journeyHeadRecovery!==undefined)return input.sceneVersion===13&&await (await import('./journey-source-head-recovery')).journeyHeadCompositionMatches(db,
-    {gameId:input.gameId,hideId:hide.id,receipt:receipt as Record<string,any>,beforePng:input.beforePng});
+    {gameId:input.gameId,hideId:hide.id,receipt:receipt as Record<string,any>,beforePng:input.beforePng,allowInterruptedReview:input.allowInterruptedReview});
   if((receipt as Record<string,unknown>).sourceHeadRecovery!==undefined)
     return input.sceneVersion===12 && await (await import('./source-head-recovery')).sourceHeadCompositionEvidenceMatches(db,
       {gameId:input.gameId,hideId:hide.id,receipt:receipt as Record<string,any>,beforePng:input.beforePng});

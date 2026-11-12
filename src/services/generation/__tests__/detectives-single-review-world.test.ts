@@ -4112,12 +4112,24 @@ it.each(['pass','age-refusal','wall-replacement','wall-provider-retry'] as const
   const placement=await resolveLocalPatchBoardsForGame(db,gameId,13),hides=placement.boards.flatMap(b=>b.hides);
   const providerRetry=outcome==='wall-provider-retry',wallReplacement=outcome==='wall-replacement'||providerRetry;
   const expectedRenders=providerRetry?33:wallReplacement?32:31;
+  const expectedReviews=providerRetry?34:33;
   const tailIds=tailDomain.JOURNEY_SUNBURST_TAIL_HIDE_IDS,nyId='newyork-detectives-hide-1';
   const originalFailures=new Set<string>([...tailIds,nyId]),boughtHeads=new Map<string,'medium'|'sunburst'>();
   let retainedHead:{left:number;top:number;width:number;height:number}|undefined;
+  let wallFlexResponse:string|undefined,wallTransportChecked=false;
   const provider=controlledSol(true,false,undefined,true,true),retrieve=provider.fake.retrieve.bind(provider.fake);
+  const create=provider.fake.create.bind(provider.fake);
+  provider.fake.create=async body=>{
+   const result=await create(body),request=provider.creates.at(-1)!;
+   if(providerRetry&&request.hideId===jh.JOURNEY_WALL_REPLACEMENT_HIDE&&boughtHeads.has(request.hideId)&&request.tier==='flex'){
+    expect(wallFlexResponse).toBeUndefined();wallFlexResponse=result.responseId;
+   }
+   return result;
+  };
   provider.fake.retrieve=async id=>{
    const result=await retrieve(id);if(result.status!=='completed'||!result.reading.raw)return result;
+   if(id===wallFlexResponse)return {status:'failed',reading:{responseId:id,raw:null,usage:null,model:'gpt-6.1-sol',
+    finishReason:'failed',serviceTier:'flex',providerError:{code:'server_is_overloaded',message:'Synthetic Wall review overload'}}};
    const value=JSON.parse(result.reading.raw),assessment=value.assessment.version===SOURCE_NEIGHBOR_BUNDLE_VERSION?value.assessment.assessment:value.assessment;
    const hideId=assessment.quality.hides[0].hideId;
    if(originalFailures.has(hideId)&&!boughtHeads.has(hideId)||outcome==='age-refusal'&&hideId==='amazon-detectives-hide-3'){
@@ -4187,9 +4199,21 @@ it.each(['pass','age-refusal','wall-replacement','wall-provider-retry'] as const
     const continued=await (await import('../subject-upgrade')).continueAdmittedReviewInterruptions(container,gameId,{readBoardArt:readArt},Date.now()+270000,async()=>{});
     expect(continued).not.toBe('blocked');
     await vi.advanceTimersByTimeAsync(LEAN_RECOVERY_BACKOFF_MS+1);
-    const current=await rowOf(hideId);
-    if(JSON.parse(current.judgeJson!).reviewState==='board-review-complete'
-      &&(hideId!=='antarctica-detectives-hide-1'||current.status==='GENERATED'))break;
+    const current=await rowOf(hideId),receipt=JSON.parse(current.judgeJson!);
+    const interruptedWall=providerRetry&&hideId===jh.JOURNEY_WALL_REPLACEMENT_HIDE;
+    if(interruptedWall&&current.status==='FAILED'&&receipt.reviewInterruption&&!wallTransportChecked){
+     const input={gameId,hideId,receipt},auditId=receipt.reviewInterruption.recoveryId;
+     expect(await heads.journeyHeadCompositionMatches(db,input,readArt),'Failed candidate must still be unpublishable').toBe(false);
+     expect(await heads.resumeJourneySunburstTailHead(container,gameId,jh.JOURNEY_SUNBURST_HEAD_HIDE_ID)).toBe(false);
+     const audit=await db.auditLog.findUniqueOrThrow({where:{id:auditId}});
+     await db.auditLog.update({where:{id:auditId},data:{actorType:'ADMIN'}});
+     try{expect(await heads.journeyHeadCompositionMatches(db,{...input,allowInterruptedReview:true},readArt)).toBe(false);}
+     finally{await db.auditLog.update({where:{id:auditId},data:{actorType:audit.actorType}});}
+     expect(await heads.journeyHeadCompositionMatches(db,{...input,allowInterruptedReview:true},readArt)).toBe(true);
+     wallTransportChecked=true;
+    }
+    if(receipt.reviewState==='board-review-complete'
+      &&(!(hideId==='antarctica-detectives-hide-1'||interruptedWall&&wallFlexResponse)||current.status==='GENERATED'))break;
    }
    const row=await rowOf(hideId);expect(JSON.parse(row.judgeJson!).reviewState,row.lastError??'').toBe('board-review-complete');return row;
   };
@@ -4344,7 +4368,11 @@ it.each(['pass','age-refusal','wall-replacement','wall-provider-retry'] as const
   const finalLedger=JSON.parse((await db.worldBudgetLedger.findUniqueOrThrow({where:{worldId}})).snapshotJson);
   for(const old of JSON.parse(beforeGrantLedger.snapshotJson).requests)expect(finalLedger.requests.find((r:{requestKey:string})=>r.requestKey===old.requestKey)).toEqual(old);
   expect(await budget.readRequest(worldId,unknownKey)).toEqual(unknown);
-  expect(render).toHaveBeenCalledTimes(expectedRenders);expect(provider.creates).toHaveLength(33);
+  expect(render).toHaveBeenCalledTimes(expectedRenders);expect(provider.creates).toHaveLength(expectedReviews);
+  if(providerRetry){
+   expect(wallTransportChecked).toBe(true);
+   expect(provider.creates.filter(r=>r.hideId===jh.JOURNEY_WALL_REPLACEMENT_HIDE).map(r=>r.tier)).toEqual(['flex','flex','default']);
+  }
   expect(boughtHeads.size).toBe(4);expect(await localPatchPainterRelease(db,gameId)).toBeNull();
   expect((await budget.audit(worldId)).committedMicroUsd).toBeLessThanOrEqual(5_000_000);
   // Finish through the real world assembler; it cannot buy any further picture.
@@ -4372,7 +4400,7 @@ it.each(['pass','age-refusal','wall-replacement','wall-provider-retry'] as const
   expect(result.pending).toBe(false);
   const game=await db.game.findUniqueOrThrow({where:{id:gameId}});expect(['READY','DELIVERED']).toContain(game.status);
   expect(parseGameConfig(game.configJson!).scenes.flatMap(s=>s.targets)).toHaveLength(27);
-  expect(render).toHaveBeenCalledTimes(expectedRenders);expect(provider.creates).toHaveLength(33);expect(forbidden).not.toHaveBeenCalled();expect(fetch).not.toHaveBeenCalled();
+  expect(render).toHaveBeenCalledTimes(expectedRenders);expect(provider.creates).toHaveLength(expectedReviews);expect(forbidden).not.toHaveBeenCalled();expect(fetch).not.toHaveBeenCalled();
   // Record the cap in the real publication path, not a synthetic aggregate alone.
   expect(hash(finalLedger.requests.find((r:{requestKey:string})=>r.requestKey===unknownKey))).toBe(hash(JSON.parse(beforeGrantLedger.snapshotJson).requests.find((r:{requestKey:string})=>r.requestKey===unknownKey)));
  }finally{vi.useRealTimers();}

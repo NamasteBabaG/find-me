@@ -658,17 +658,41 @@ export async function journeyHeadPublicationAuthorized(db: Db, input: { gameId: 
     return !!pin && input.sceneVersion === 13 && input.hideId === pin.hideId && input.attempts === pin.authorizedAttempt && hash(marker) === hash(journeyHeadMarkerFor(pin));
   } catch { return false; }
 }
-export async function journeyHeadCompositionMatches(db: Db, input: { gameId: string; hideId: string; receipt: Record<string, any>; beforePng?: Buffer; variantId?:string; assetId?:string; identitySha256?:string }, readArt: ReadArt = readShippedBoardArt) {
+
+/** A transport interruption changes the review state, not the paid pixels.
+ * Recheck the live held request and its system proof before the same image can
+ * be prepared again. Publication still requires a generated, approved row. */
+async function journeyInterruptedReviewMatches(db: Db, pin: JourneyHeadPin, row: Row, receipt: Record<string, any>) {
+  const interruption = receipt.reviewInterruption;
+  if (row.status !== 'FAILED' || receipt.reviewState !== 'board-review-complete' || receipt.verdict !== null
+    || interruption?.policyId !== 'single-sol-medium-transport-recovery/v1' || interruption.single !== 'single-sol-medium/v1'
+    || interruption.variantId !== row.id || interruption.assetId !== row.assetId || interruption.hideId !== pin.hideId
+    || interruption.imageSha256 !== receipt.judgedSha256 || interruption.geometrySha256 !== receipt.geometrySha256
+    || interruption.identitySha256 !== pin.identitySha256 || interruption.attempts !== row.attempts
+    || typeof interruption.requestKey !== 'string' || receipt.boardReview?.requestKey !== interruption.requestKey) return false;
+  const ledger = await PrismaWorldBudgetStore.forReadOnlyTransaction(db).read(pin.worldId);
+  const approval = ledger && getMatchingUnknownContinuationApproval(ledger.snapshot, interruption.requestKey);
+  if (approval?.version !== 'world-automatic-review-recovery/v5' || approval.policyId !== interruption.policyId
+    || approval.approvalId !== interruption.recoveryId || approval.operationFingerprint !== interruption.operationFingerprint
+    || approval.reserveMicroUsd !== interruption.reservedMicroUsd || approval.variantId !== row.id
+    || approval.imageSha256 !== receipt.judgedSha256) return false;
+  const { recoveryId, reservedMicroUsd, ...proof } = interruption;
+  return sha(Buffer.from(JSON.stringify(proof))) === approval.authorizationSha256
+    && await (await import('./detectives-completion-budget')).singleLowContinuationPublishable(db, pin.gameId, approval);
+}
+
+export async function journeyHeadCompositionMatches(db: Db, input: { gameId: string; hideId: string; receipt: Record<string, any>; beforePng?: Buffer; variantId?:string; assetId?:string; identitySha256?:string; allowInterruptedReview?: boolean }, readArt: ReadArt = readShippedBoardArt) {
   try {
     const pin = (await journeyHeadPinsOf(db, input.gameId)).find(p => p.hideId === input.hideId), marker = journeyHeadMarker({ judgeJson: JSON.stringify(input.receipt) });
     if (!pin || hash(marker) !== hash(journeyHeadMarkerFor(pin))) return false;
     const p = await context(scoped(db), input.gameId, input.hideId, false, isJourneySunburstTailPin(pin)), row = await db.targetVariantAsset.findUnique({ where: { id: pin.rowId } });
-    if (!p || !row || row.attempts !== pin.authorizedAttempt || row.status !== 'GENERATED'
+    if (!p || !row || row.attempts !== pin.authorizedAttempt
       ||input.variantId!==undefined&&input.variantId!==pin.rowId||input.assetId!==undefined&&input.assetId!==row.assetId
       ||input.identitySha256!==undefined&&input.identitySha256!==pin.identitySha256
       ||p.photoCropSha256!==pin.photoCropSha256||p.child.originalPhotoAssetId!==null&&p.child.originalPhotoAssetId!==pin.originalPhotoAssetId
       ||p.photoSha256!==null&&p.photoSha256!==pin.originalPhotoSha256||hash(JSON.parse(row.judgeJson ?? 'null')) !== hash(input.receipt)
       || hash(input.receipt.authoredReturn) !== hash(p.parent) || input.receipt.authoredRecovery !== undefined) return false;
+    if (row.status !== 'GENERATED' && (!input.allowInterruptedReview || !await journeyInterruptedReviewMatches(db, pin, row, input.receipt))) return false;
     const paid = await readSettledTargetRaw(db, input.gameId, pin.requestKey);
     if (hash(paid.wire.authoredReturn) !== hash(p.parent) || hash(paid.wire.journeyHeadRecovery) !== hash(marker)) return false;
     if (row.assetId?.startsWith('ast_jnh_frame_')) {
