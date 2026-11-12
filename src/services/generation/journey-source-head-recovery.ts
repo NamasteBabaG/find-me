@@ -465,6 +465,10 @@ async function enrollJourneyHead(c: Container, gameId: string, hideId: string, s
   if (env().APP_ENV !== 'qa' || c.storage.id !== 'db'
     || !(tailMode ? JOURNEY_SUNBURST_TAIL_AUTHORITIES : JOURNEY_SOURCE_HEAD_AUTHORITIES).some(a => a.hideId === hideId)
     || sunburst && !tailMode && hideId !== JOURNEY_SUNBURST_HEAD_HIDE_ID) return refuse('qa-scope');
+  // The final tail enrollment revalidates every earlier paid head, including
+  // its stored pixels and ordinary verdict. Keep those reads under the same
+  // game fence with room for remote DB latency, inside the 300s QA tick.
+  const timeout = tailMode && hideId === JOURNEY_SUNBURST_HEAD_HIDE_ID ? 180_000 : 60_000;
   return c.db.$transaction(async tx => {
     await fenceLocalPatchImages(tx, gameId);
     const cc = { ...c, db: tx, storage: new DbStorage(tx) } as unknown as Container;
@@ -537,7 +541,7 @@ async function enrollJourneyHead(c: Container, gameId: string, hideId: string, s
       check(wake.count === 1, 'concurrent finite tail job enrollment');
     } else await tx.generationJob.update({ where: { id: job.id }, data: { status: 'QUEUED', currentStep: 'local-patch', lastError: null } });
     return true;
-  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, timeout: 60_000 });
+  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, timeout });
 }
 
 export async function requireJourneyHeadPurchase(c: Container, gameId: string, rowId: string) {

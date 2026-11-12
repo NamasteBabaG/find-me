@@ -4273,7 +4273,13 @@ it.each(['pass','age-refusal','wall-replacement','wall-provider-retry'] as const
   for(const op of plan.operations){
    const before=await rowOf(op.hideId),allBefore=await allRows(),siblings=allBefore.filter(r=>r.id!==before.id);
    const ledgerBefore=await db.worldBudgetLedger.findUniqueOrThrow({where:{worldId}}),reasons:string[]=[];
-   expect(await heads.resumeJourneySunburstTailHead(container,gameId,op.hideId,r=>reasons.push(r)),reasons.join(',')).toBe(true);
+   const enrollment=vi.spyOn(db,'$transaction');
+   try {
+    expect(await heads.resumeJourneySunburstTailHead(container,gameId,op.hideId,r=>reasons.push(r)),reasons.join(',')).toBe(true);
+    expect(enrollment).toHaveBeenCalledTimes(1);
+    expect(enrollment.mock.calls[0]?.[1]).toEqual({isolationLevel:'Serializable',
+     timeout:op.hideId===jh.JOURNEY_SUNBURST_HEAD_HIDE_ID?180_000:60_000});
+   } finally { enrollment.mockRestore(); }
    expect(await rowOf(op.hideId)).toEqual(before);expect((await db.worldBudgetLedger.findUniqueOrThrow({where:{worldId}})).snapshotJson).toBe(ledgerBefore.snapshotJson);
    const pin=(await heads.journeyHeadPinsOf(db,gameId)).find(p=>p.hideId===op.hideId)!;
    expect(heads.isJourneySunburstTailPin(pin)).toBe(true);
