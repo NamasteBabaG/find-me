@@ -4403,7 +4403,9 @@ it.each(['pass','age-refusal','wall-replacement','wall-provider-retry'] as const
     expect(fixed.assetId).not.toBe(reviewed.assetId);
     expect(pending).toMatchObject({reviewState:'pending-board-review',verdict:null,journeyParisChair:{previousCandidateSha256:refused.judgedSha256}});
     expect(pending.boardReview).toBeUndefined();
-    expect(await allowedDualPublication(db,{...publicationBinding(gameId,fixed),sceneVersion:13})).toBe(false);
+    expect(await allowedDualPublication(db,{gameId,sceneVersion:13,hideId:op.hideId,variantId:fixed.id,attempts:fixed.attempts,
+     identityAssetId:pin.identityAssetId,identitySha256:pin.identitySha256,assetId:fixed.assetId!,
+     imageSha256:pending.judgedSha256,geometrySha256:pending.geometrySha256,judgeJson:fixed.judgeJson})).toBe(false);
     expect(await heads.journeyHeadCompositionMatches(db,{gameId,hideId:op.hideId,receipt:pending},readArt)).toBe(true);
     expect(await heads.restoreJourneyParisChair(container,gameId,owner,refused.judgedSha256,readArt)).toBe(false);
     expect((await allRows()).filter(r=>r.id!==fixed.id)).toEqual(beforeChair.filter(r=>r.id!==fixed.id));
