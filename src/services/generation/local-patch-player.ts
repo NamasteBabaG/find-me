@@ -159,7 +159,8 @@ export async function finishLocalPatchGame(c: Container, gameId: string, fence: 
       { reviewRecoveryV2: enrolled, reviewRecoveryV3: enrolled && (contentVersion === 13 ? await detectiveAutomaticRecoveryQualified(tx, gameId) : !!await leanReviewRecoveryOf(tx, gameId)),
         capacityContinuation: approval => capacityContinuationPublishable(tx, gameId, approval),
         singleLowContinuation: approval => singleLowContinuationPublishable(tx, gameId, approval),
-        sourceReferenceContinuation: approval => identityRevisionContinuationPublishable(tx, budget, gameId, approval) }),
+        sourceReferenceContinuation: approval => identityRevisionContinuationPublishable(tx, budget, gameId, approval),
+        journeyProviderRetryContinuation: async approval => (await import("./journey-source-head-recovery")).journeyWallProviderRetryPublishable(tx, gameId, approval) }),
       "unresolved spending must be reconciled before publication");
     const audit = await budget.audit(worldId);
     // QA uses durable FileBlob storage. Honor the parent's original-photo

@@ -1149,7 +1149,7 @@ async function prepareSingleLowQuestion(c: Pick<Container, "db" | "storage">, pr
     const jh=await import('../../domain/generation/journey-source-head'),a=jh.journeyHeadAuthorityFor(receipt.authoredReturn,receipt.journeyHeadRecovery);
     if(!a||singleVersion!==SINGLE_MEDIUM_VISUAL_REVIEW_VERSION)throw Error('JOURNEY_HEAD: fresh ordinary MEDIUM required');
     const marker = jh.journeyHeadMarkerSchema.parse(receipt.journeyHeadRecovery);
-    journeyReviewCoverage = marker.authorizedAttempt === 3
+    journeyReviewCoverage = marker.authorizedAttempt >= 3
       ? (await import('../../domain/generation/sunburst-painter')).SUNBURST_REVIEW_COVERAGE_MICRO_USD
       : jh.JOURNEY_HEAD_REVIEW_COVERAGE_MICRO_USD;
     mediumPrompt+=jh.journeyHeadReviewDirection(a,marker);

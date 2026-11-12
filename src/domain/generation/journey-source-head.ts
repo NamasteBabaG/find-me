@@ -146,18 +146,24 @@ export const JOURNEY_WALL_REPLACEMENT_ACTION = 'generation:journey-greatwall-rep
 export const JOURNEY_WALL_REPLACEMENT_SELECTOR = 'greatwall-replacement-v1';
 export const JOURNEY_WALL_REPLACEMENT_CONFIRMATION = 'owner-authorized-one-greatwall-replacement-within-existing-five-dollar-cap-v1';
 export const journeyWallReplacementId = (gameId: string) => 'aud_journey_wall_replacement_' + gameId;
+export const JOURNEY_WALL_PROVIDER_RETRY_KEY = 'greatwall-detectives-hide-1:standing:render:4';
+export const JOURNEY_WALL_PROVIDER_RETRY_ACTION = 'generation:journey-greatwall-provider-retry/v1';
+export const JOURNEY_WALL_PROVIDER_RETRY_SELECTOR = 'greatwall-provider-retry-v1';
+export const JOURNEY_WALL_PROVIDER_RETRY_CONFIRMATION = 'owner-authorized-one-greatwall-retry-after-provider-500-v1';
+export const journeyWallProviderRetryId = (gameId: string) => 'aud_journey_wall_provider_retry_' + gameId;
 
 export const journeyHeadMarkerSchema = z.object({ version: z.enum([JOURNEY_SOURCE_HEAD_VERSION, JOURNEY_SUNBURST_TAIL_VERSION]), authorizationSha256: digest,
-  authoritySha256: digest, rowId: id, hideId: id, originalAttempts: z.union([z.literal(1), z.literal(2)]), authorizedAttempt: z.union([z.literal(2), z.literal(3)]),
+  authoritySha256: digest, rowId: id, hideId: id, originalAttempts: z.union([z.literal(1), z.literal(2), z.literal(3)]), authorizedAttempt: z.union([z.literal(2), z.literal(3), z.literal(4)]),
   previousJudgeSha256: digest, requestKey: id,
   // Absent on every v2 purchase (unchanged bytes); present only on the one Sunburst head.
   painterRelease: z.literal(JOURNEY_SUNBURST_HEAD_PAINTER).optional() }).strict()
   .refine(p => p.version !== JOURNEY_SUNBURST_TAIL_VERSION || p.painterRelease === JOURNEY_SUNBURST_HEAD_PAINTER,
     { message: 'A finite Sunburst tail requires the exact HIGH/LOW painter' })
   .refine(p => p.authorizedAttempt === 2 ? p.originalAttempts === 1
-    : p.originalAttempts === 2 && p.version === JOURNEY_SUNBURST_TAIL_VERSION
-      && p.hideId === JOURNEY_WALL_REPLACEMENT_HIDE && p.requestKey === JOURNEY_WALL_REPLACEMENT_KEY,
-  { message: 'Only the finite Great Wall replacement can use a third journey key' });
+    : p.version === JOURNEY_SUNBURST_TAIL_VERSION && p.hideId === JOURNEY_WALL_REPLACEMENT_HIDE
+      && (p.authorizedAttempt === 3 ? p.originalAttempts === 2 && p.requestKey === JOURNEY_WALL_REPLACEMENT_KEY
+        : p.originalAttempts === 3 && p.requestKey === JOURNEY_WALL_PROVIDER_RETRY_KEY),
+  { message: 'Only an exact finite Great Wall authorization can use a later journey key' });
 export type JourneyHeadMarker = z.infer<typeof journeyHeadMarkerSchema>;
 export function journeyHeadMarker(row: { judgeJson: string | null }) {
   try { const p = journeyHeadMarkerSchema.safeParse(JSON.parse(row.judgeJson ?? 'null')?.journeyHeadRecovery); return p.success ? p.data : null; }
@@ -174,7 +180,7 @@ export function journeyHeadPaintDirection(a: JourneyHeadAuthority, ageYears: num
     + 'Replace ONLY the complete head, hair, hairline, face and neck of ' + target + ' with the exact canonical child at stated age7. '
     + 'Keep the SOURCE head angle, natural task-focused gaze, body, jacket, shoulders, hands, props, stance and support. Do not turn it into a portrait or redraw the body. '
     + 'The native alpha mask is the only editable footprint. Draw the complete canonical hairstyle wholly inside it with no residual original hair, clipped strands, fade or hard cut. '
-    + (marker?.authorizedAttempt === 3 ? 'GREAT WALL REPLACEMENT v1. Keep the SOURCE pink pinwheel child in the same right-facing three-quarter angle and at the same native head size. '
+    + (marker && marker.authorizedAttempt >= 3 ? 'GREAT WALL REPLACEMENT v1. Keep the SOURCE pink pinwheel child in the same right-facing three-quarter angle and at the same native head size. '
       + 'Use the unmarked first image as the geometry reference: in crop-local 512x768 coordinates the SOURCE crown is near y=300, the chin near y=358 and the top collar join near y=365. Match those landmarks to the visible SOURCE pixels. '
       + 'Keep the original collar, jacket and shoulders pixel-stable, even where the mask overlaps them. Keep the canonical hair fully inside the mask by laying it behind the shoulder within the head silhouette. No loose strand may cross the left or lower edge. '
       + 'Do not enlarge the face, turn it toward the viewer, lower the chin or extend the neck toward the pinwheel. ' : '')
@@ -194,7 +200,7 @@ export function journeyHeadReviewDirection(a:JourneyHeadAuthority, marker?: Jour
     +'The public edit footprint below is SOURCE role geometry, NOT a segmentation of the generated head. Fail a head clipped at ANY internal polygon or protected-fragment edge even when its bounding rectangle fits the outer return. '
     +'Require no residual original hair/face, halo, fade, hard cut, duplicate head, moved SOURCE feet, anatomical break, photographic texture, oversharp face or blurred hair. '
     +'Native head contrast, edge softness, painted style and sharpness must agree with nearby SOURCE people. No previous approval transfers. '
-    +(marker?.authorizedAttempt === 3
+    +(marker && marker.authorizedAttempt >= 3
       ? 'Great Wall replacement: compare the actual SOURCE crown, chin, collar join and right-facing angle to both RAW and SHIPPING. Fail a larger portrait, a lowered chin or collar, a horizontal jacket seam, or hair cut by the left/lower permission boundary. '
       : '')
     +(a.version === JOURNEY_SUNBURST_TAIL_VERSION

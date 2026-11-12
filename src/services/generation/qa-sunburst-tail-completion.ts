@@ -84,15 +84,19 @@ export async function readQaSunburstTailCompletionBudget(c: Container, worldId: 
   demand(!await otherGrantPresent(c.db, gameId), "Sunburst tail authority cannot coexist with another completion grant");
   let live; try { live = await qaCompletionSourceState(c, gameId); } catch { return null; }
   if (hash(live.state) !== hash(receipt.plan.state)) return null;
-  const { readJourneyWallReplacementPin } = await import('./journey-source-head-recovery');
+  const { readJourneyWallReplacementPin, readJourneyWallProviderRetryPin } = await import('./journey-source-head-recovery');
   const replacement = await readJourneyWallReplacementPin(c.db, gameId);
+  const retry = await readJourneyWallProviderRetryPin(c.db, gameId);
+  if (retry) demand(replacement && retry.priorHeadAuthorizationSha256 === replacement.authorizationSha256
+    && retry.completionAuthorizationSha256 === receipt.authorizationSha256 && retry.rowId === replacement.rowId
+    && retry.ownerId === receipt.plan.state.ownerId, 'provider retry belongs to a different finite tail');
   if (replacement) demand(replacement.completionAuthorizationSha256 === receipt.authorizationSha256
     && replacement.ownerId === receipt.plan.state.ownerId && receipt.plan.operations.some(op =>
       op.hideId === replacement.hideId && op.rowId === replacement.rowId), 'replacement belongs to a different finite tail');
   return { worldId, capMicroUsd: QA_SUNBURST_TAIL_CAP, authorizationSha256: receipt.authorizationSha256,
     imageAboveBaseSet: { baseCapMicroUsd: QA_SUNBURST_TAIL_BASE_CAP,
       requests: receipt.plan.operations.map(op => ({
-        requestKey: replacement && op.hideId === replacement.hideId ? replacement.requestKey : op.requestKey,
+        requestKey: replacement && op.hideId === replacement.hideId ? (retry ?? replacement).requestKey : op.requestKey,
         reserveMicroUsd: op.imageReserveMicroUsd,
       })) } };
 }

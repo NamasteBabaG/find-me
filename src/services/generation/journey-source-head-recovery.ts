@@ -6,6 +6,8 @@ import { env } from '../../lib/env';
 import { DbStorage } from '../../infra/storage/db';
 import { PrismaWorldBudgetStore } from '../../infra/db/prisma-world-budget-store';
 import { PrismaRetainedPurchaseStore } from '../../infra/db/prisma-retained-purchase-store';
+import { CasWorldBudgetRepository } from '../../infra/db/world-budget-repository';
+import { fixedSourceFailureReceiptSchema } from '../../infra/generation/fixed-source-diagnostics';
 import { JOURNEY_SOURCE_HEAD_AUTHORITIES } from '../../../content/detectives/journey-source-head-v2';
 import { JOURNEY_SUNBURST_TAIL_AUTHORITIES } from '../../../content/detectives/journey-sunburst-tail-v1';
 import { JOURNEY_SUNBURST_TAIL_VERSION, JOURNEY_SUNBURST_TAIL_ACTION, JOURNEY_SUNBURST_TAIL_HIDE_IDS,
@@ -18,6 +20,7 @@ import { JOURNEY_SOURCE_HEAD_VERSION, JOURNEY_SOURCE_HEAD_ACTION, JOURNEY_HEAD_R
   JOURNEY_SUNBURST_HEAD_VERSION, JOURNEY_SUNBURST_HEAD_ACTION, JOURNEY_SUNBURST_HEAD_HIDE_ID, JOURNEY_SUNBURST_HEAD_PAINTER,
   journeyHeadPinId, journeySunburstHeadPinId, journeyWallReplacementId,
   JOURNEY_WALL_REPLACEMENT_HIDE, JOURNEY_WALL_REPLACEMENT_KEY, JOURNEY_WALL_REPLACEMENT_ACTION,
+  journeyWallProviderRetryId, JOURNEY_WALL_PROVIDER_RETRY_ACTION, JOURNEY_WALL_PROVIDER_RETRY_KEY,
   type JourneyHeadAuthority, type JourneyHeadMarker } from '../../domain/generation/journey-source-head';
 import { SUNBURST_IMAGE_RESERVE_MICRO_USD, SUNBURST_REVIEW_COVERAGE_MICRO_USD } from '../../domain/generation/sunburst-painter';
 import { LOCAL_PATCH_SUNBURST_IMAGE_POLICY, localPatchRenderPolicySha256 } from '../../infra/generation/openai-local-patch';
@@ -29,7 +32,7 @@ import { TARGET_HEAD_VISIBLE_VERSION } from '../../domain/generation/target-head
 import { localPatchReadyReviewOwed } from '../../domain/scene/local-patch-progress';
 import { composeBoundedLocalPatch } from './local-patch-seam';
 import { AUTHORED_PATCH_COMPOSITION_VERSION } from '../../domain/scene/local-patch-return-region';
-import { LOCAL_PATCH_RESERVE } from './local-patch-render';
+import { LOCAL_PATCH_RESERVE, RETAINED_RENDER_VERSION } from './local-patch-render';
 import { singleMediumReviewPolicyOf } from './single-medium-policy';
 import { identityApprovedForDisplay } from './board-wizard-identity-gate';
 import { resolveLocalPatchBoardsForGame } from './source-placement-release';
@@ -40,6 +43,7 @@ import { readSettledTargetRaw } from './single-review-head-evidence';
 import { readShippedBoardArt, type LocalPatchHideDeps } from './local-patch-hide';
 import { localPatchGeometry } from './local-patch-geometry';
 import { localPatchPublicationGeometryHash, hasLocalPatchPublicationPolicy } from './local-patch-publication-policy';
+import { getMatchingUnknownContinuationApproval, WorldBudget, type WorldUnknownContinuationApproval } from './world-budget';
 
 type Db = Prisma.TransactionClient;
 type ReadArt = NonNullable<LocalPatchHideDeps['readBoardArt']>;
@@ -87,14 +91,28 @@ const wallReplacementPinSchema = wallReplacementPlanSchema.extend({
   createdAt: z.string().datetime(),
   authorizationSha256: digest,
 }).strict();
+const wallProviderRetryPlanSchema = wallReplacementPlanSchema.extend({
+  version: z.literal(JOURNEY_WALL_PROVIDER_RETRY_ACTION),
+  requestKey: z.literal(JOURNEY_WALL_PROVIDER_RETRY_KEY),
+  originalAttempts: z.literal(3),
+  authorizedAttempt: z.literal(4),
+  pendingRowSha256: digest,
+  failedOperationFingerprint: digest,
+  unknownReasons: z.array(z.string().min(1)).min(1),
+}).strict();
+const wallProviderRetryPinSchema = wallProviderRetryPlanSchema.extend(wallReplacementPinSchema.pick({
+  operatorId: true, ownerAuthorizationSha256: true, planSha256: true, createdAt: true, authorizationSha256: true,
+}).shape).strict();
 type JourneyWallReplacementPin = z.infer<typeof wallReplacementPinSchema>;
+type JourneyWallProviderRetryPin = z.infer<typeof wallProviderRetryPinSchema>;
+type WallSupplement = JourneyWallReplacementPin | JourneyWallProviderRetryPin;
 export type JourneyHeadMediumPin = z.infer<typeof pinSchema>;
 export type JourneySunburstHeadPin = z.infer<typeof sunburstPinSchema>;
 export type JourneySunburstTailPin = z.infer<typeof sunburstTailPinSchema>;
-export type JourneyHeadPin = JourneyHeadMediumPin | JourneySunburstHeadPin | JourneySunburstTailPin | JourneyWallReplacementPin;
-export const isJourneySunburstTailPin = (p: JourneyHeadPin): p is JourneySunburstTailPin | JourneyWallReplacementPin =>
-  p.version === JOURNEY_SUNBURST_TAIL_VERSION || p.version === JOURNEY_WALL_REPLACEMENT_ACTION;
-export const isJourneySunburstHeadPin = (p: JourneyHeadPin): p is JourneySunburstHeadPin | JourneySunburstTailPin | JourneyWallReplacementPin =>
+export type JourneyHeadPin = JourneyHeadMediumPin | JourneySunburstHeadPin | JourneySunburstTailPin | WallSupplement;
+export const isJourneySunburstTailPin = (p: JourneyHeadPin): p is JourneySunburstTailPin | WallSupplement =>
+  p.version === JOURNEY_SUNBURST_TAIL_VERSION || p.version === JOURNEY_WALL_REPLACEMENT_ACTION || p.version === JOURNEY_WALL_PROVIDER_RETRY_ACTION;
+export const isJourneySunburstHeadPin = (p: JourneyHeadPin): p is JourneySunburstHeadPin | JourneySunburstTailPin | WallSupplement =>
   p.version === JOURNEY_SUNBURST_HEAD_VERSION || isJourneySunburstTailPin(p);
 /** Typed routing state for the one Sunburst head; null for every v2 head. */
 export type JourneySunburstHeadState = { readonly painterRelease: typeof JOURNEY_SUNBURST_HEAD_PAINTER; readonly imagePolicySha256: string;
@@ -127,27 +145,42 @@ export function journeyHeadCandidate(p: JourneyHeadPin, row: Row) {
 
 /** The supplement is a single owner-admin decision under the existing ceiling.
  * Its ledger history is also checked by the budget resolver before dispatch. */
-export async function readJourneyWallReplacementPin(db: Db, gameId: string) {
-  const record = await db.auditLog.findUnique({ where: { id: journeyWallReplacementId(gameId) } });
+const wallSupplementId = (gameId: string, retry: boolean) => retry ? journeyWallProviderRetryId(gameId) : journeyWallReplacementId(gameId);
+function wallProviderContinuation(pin: JourneyWallProviderRetryPin): WorldUnknownContinuationApproval {
+  return {
+    version: 'world-unknown-continuation/v1', worldId: pin.worldId, approvalId: journeyWallProviderRetryId(pin.gameId),
+    requestKey: JOURNEY_WALL_REPLACEMENT_KEY, scope: 'image', operationFingerprint: pin.failedOperationFingerprint,
+    reserveMicroUsd: pin.imageReserveMicroUsd, unknownReasons: pin.unknownReasons, operatorId: pin.operatorId,
+    authorizationSha256: pin.authorizationSha256, authorizedAt: pin.createdAt,
+  };
+}
+async function readWallSupplement(db: Db, gameId: string, retry: boolean) {
+  const record = await db.auditLog.findUnique({ where: { id: wallSupplementId(gameId, retry) } });
   if (!record) return null;
   if (record.metaJson === null) {
     const game = await db.game.findUnique({ where: { id: gameId }, select: { status: true, deletedAt: true } });
     check(game?.status === 'DELETED' && game.deletedAt, 'replacement evidence missing');
     return null;
   }
-  const pin = wallReplacementPinSchema.parse(JSON.parse(record.metaJson));
+  const pin = (retry ? wallProviderRetryPinSchema : wallReplacementPinSchema).parse(JSON.parse(record.metaJson));
   const { authorizationSha256, ...body } = pin;
   const { operatorId, ownerAuthorizationSha256: _decision, planSha256, createdAt: _created, ...plan } = body;
   check(record.actorType === 'ADMIN' && record.actorId === operatorId && pin.ownerId === operatorId
-    && record.action === JOURNEY_WALL_REPLACEMENT_ACTION && record.entityType === 'Game' && record.entityId === gameId
+    && record.action === pin.version && record.entityType === 'Game' && record.entityId === gameId
     && pin.gameId === gameId && pin.worldId === gameId + ':board-wizard'
     && hash(plan) === planSha256 && hash(body) === authorizationSha256
     && sha(Buffer.from(pin.previousJudgeJson)) === pin.previousJudgeSha256, 'invalid replacement authority');
   const ledger = await PrismaWorldBudgetStore.forReadOnlyTransaction(db).read(pin.worldId);
   check(ledger && pin.originalRequests.every(old => ledger.snapshot.requests.some(r => r.requestKey === old.requestKey && hash(r) === old.sha256)),
     'replacement ledger history changed');
+  if (pin.version === JOURNEY_WALL_PROVIDER_RETRY_ACTION) {
+    const continuation = getMatchingUnknownContinuationApproval(ledger!.snapshot, JOURNEY_WALL_REPLACEMENT_KEY);
+    check(hash(continuation) === hash(wallProviderContinuation(pin)), 'provider retry continuation changed');
+  }
   return pin;
 }
+export const readJourneyWallReplacementPin = (db: Db, gameId: string) => readWallSupplement(db, gameId, false);
+export const readJourneyWallProviderRetryPin = (db: Db, gameId: string) => readWallSupplement(db, gameId, true);
 /** Absent pins are a cheap no-op for every historical world. There are only the
  * two named public SOURCE strategies, never an unbounded extra attempt list. */
 export async function journeyHeadPinsOf(db: Db, gameId: string): Promise<JourneyHeadPin[]> {
@@ -182,6 +215,16 @@ export async function journeyHeadPinsOf(db: Db, gameId: string): Promise<Journey
       && prior.originalPhotoAssetId === replacement.originalPhotoAssetId && prior.photoCropSha256 === replacement.photoCropSha256
       && prior.ownerId === replacement.ownerId, 'replacement does not extend its exact original head');
     result[index] = replacement;
+  }
+  const retry = await readJourneyWallProviderRetryPin(db, gameId);
+  if (retry) {
+    const index = result.findIndex(p => p.hideId === JOURNEY_WALL_REPLACEMENT_HIDE);
+    check(replacement && result[index] === replacement && retry.priorHeadAuthorizationSha256 === replacement.authorizationSha256
+      && retry.completionAuthorizationSha256 === replacement.completionAuthorizationSha256 && retry.rowId === replacement.rowId
+      && retry.authoritySha256 === replacement.authoritySha256 && retry.identitySha256 === replacement.identitySha256
+      && retry.originalPhotoSha256 === replacement.originalPhotoSha256 && retry.photoCropSha256 === replacement.photoCropSha256
+      && retry.ownerId === replacement.ownerId, 'provider retry does not extend its exact third dispatch');
+    result[index] = retry;
   }
   return result;
 }
@@ -272,18 +315,84 @@ async function wallReplacementPlan(c: Container, gameId: string) {
     ledgerRevision: ledger!.revision, jobSha256: hash(job), committedMicroUsd: p!.budget.committedMicroUsd });
 }
 
-export async function previewJourneyWallReplacement(c: Container, gameId: string) {
+/** A third-dispatch server failure can be left reserved while exactly one
+ * new key is authorized. A retained image, missing receipt or any other
+ * unresolved charge must go through its own reconciliation. */
+async function wallProviderRetryPlan(c: Container, gameId: string) {
+  const p = await context(c, gameId, JOURNEY_WALL_REPLACEMENT_HIDE, true, true);
+  const prior = await readJourneyWallReplacementPin(c.db, gameId);
+  check(p?.tail && prior?.version === JOURNEY_WALL_REPLACEMENT_ACTION && p.budget.held
+    && p.budget.capMicroUsd === QA_FIVE_COMPLETION_CAP && p.budget.remainingMicroUsd >= wallTailCapacity
+    && prior.completionAuthorizationSha256 === p.tail.authorizationSha256 && prior.authoritySha256 === hash(p.authority)
+    && prior.identityAssetId === p.identity.id && prior.identitySha256 === p.policy.identitySha256
+    && prior.originalPhotoAssetId === p.child.originalPhotoAssetId && prior.originalPhotoSha256 === p.photoSha256
+    && prior.photoCropSha256 === p.photoCropSha256 && prior.mediumAuthorizationSha256 === p.policy.authorizationSha256
+    && prior.ownerId === p.game.ownerId, 'provider retry requires the exact held five-dollar tail and full coverage');
+  if (!p?.tail || prior?.version !== JOURNEY_WALL_REPLACEMENT_ACTION) throw Error('JOURNEY_HEAD: provider retry prerequisites');
+  const paris = qaSunburstTailOperationOf(p.tail, JOURNEY_SUNBURST_HEAD_HIDE_ID);
+  const job = await c.db.generationJob.findUniqueOrThrow({ where: { id: 'job_' + gameId } });
+  const rows = await c.db.targetVariantAsset.findMany({ where: { variant: 'A', targetInstance: { gameScene: { gameId } } } });
+  const row = rows.find(r => r.id === prior.rowId), parisRow = rows.find(r => r.id === paris?.rowId);
+  check(job.status === 'FAILED' && paris && rows.length === 27 && row?.status === 'PENDING' && row.attempts === 3
+    && invariant(row) === prior.rowInvariantSha256 && hash(journeyHeadMarker(row)) === hash(journeyHeadMarkerFor(prior))
+    && parisRow?.status === 'FAILED' && parisRow.attempts === 1 && sha(Buffer.from(parisRow.judgeJson ?? '')) === paris.previousJudgeSha256
+    && prior.protectedRows.every(saved => rows.some(r => r.id === saved.id && rowHash(r) === saved.sha256))
+    && rows.filter(r => r.id !== row.id && r.id !== parisRow.id).every(r => r.status === 'GENERATED'
+      && JSON.parse(r.judgeJson ?? 'null')?.qualityDisposition?.state === 'acceptable')
+    && !await c.db.auditLog.findUnique({ where: { id: journeySunburstTailPinId(gameId, JOURNEY_SUNBURST_HEAD_HIDE_ID) } }),
+  'provider retry requires its exact pending row, 25 approvals and unstarted Paris');
+  const ledger = await PrismaWorldBudgetStore.forReadOnlyTransaction(c.db).read(prior.worldId);
+  if (!ledger || !row || !paris) throw Error('JOURNEY_HEAD: provider retry rows or ledger missing');
+  const requests = ledger.snapshot.requests;
+  const failed = requests.find(r => r.requestKey === JOURNEY_WALL_REPLACEMENT_KEY);
+  const retained = new PrismaRetainedPurchaseStore(c.db);
+  check(failed?.state === 'unknown' && failed.scope === 'image' && failed.reserveMicroUsd === SUNBURST_IMAGE_RESERVE_MICRO_USD
+    && requests.every(r => r.state !== 'pending' && (r.state !== 'unknown' || (r === failed
+      ? !getMatchingUnknownContinuationApproval(ledger.snapshot, r.requestKey)
+      : !!getMatchingUnknownContinuationApproval(ledger.snapshot, r.requestKey))))
+    && !requests.some(r => r.requestKey === JOURNEY_WALL_PROVIDER_RETRY_KEY || r.requestKey === paris.requestKey)
+    && !await retained.get(prior.worldId, JOURNEY_WALL_PROVIDER_RETRY_KEY) && !await retained.get(prior.worldId, paris.requestKey),
+  'exact single unapproved reservation required, with neither next purchase started');
+  if (failed?.state !== 'unknown') throw Error('JOURNEY_HEAD: third dispatch is not UNKNOWN');
+  const kept = await retained.get(prior.worldId, failed.requestKey);
+  const wire = kept && JSON.parse(kept.bytes.toString('utf8'));
+  const failure = fixedSourceFailureReceiptSchema.safeParse(wire?.failureReceipt);
+  // The retained envelope binds the ledger fingerprint; the embedded receipt
+  // records the provider transport's separate request fingerprint.
+  check(kept?.scope === 'image' && kept.evidence === null && kept.operationFingerprint === failed.operationFingerprint
+    && kept.unknownReason === 'image-charge-evidence-incomplete-or-model-unexpected'
+    && wire?.version === RETAINED_RENDER_VERSION && typeof wire.rejected === 'string' && wire.bytesBase64 === null
+    && hash(wire.authoredReturn) === hash(p.parent) && hash(wire.journeyHeadRecovery) === hash(journeyHeadMarkerFor(prior))
+    && failure.success && failure.data.worldId === prior.worldId && failure.data.requestKey === failed.requestKey
+    && failure.data.billing === 'unknown' && failure.data.reason === 'charge-evidence'
+    && failure.data.httpStatus === 500 && failure.data.providerErrorType === 'server_error' && failure.data.transport === null
+    && failure.data.jsonStatus === 'parsed' && failure.data.requestIdStatus === 'safe' && !!failure.data.requestId
+    && failure.data.requestedModel === 'gpt-image-2.6-sunburst' && failure.data.requestedQuality === 'high'
+    && failure.data.returnedModel === 'absent' && !failure.data.usage.present && !failure.data.usage.valid,
+  'the retained third dispatch must prove HTTP 500 without image or usage');
+  const { authorizationSha256: priorHeadAuthorizationSha256, operatorId: _operator, ownerAuthorizationSha256: _authority,
+    createdAt: _time, planSha256: _plan, ...original } = prior;
+  return wallProviderRetryPlanSchema.parse({ ...original, version: JOURNEY_WALL_PROVIDER_RETRY_ACTION,
+    originalAttempts: 3, authorizedAttempt: 4, requestKey: JOURNEY_WALL_PROVIDER_RETRY_KEY, priorHeadAuthorizationSha256,
+    pendingRowSha256: rowHash(row), previousJudgeJson: row.judgeJson, previousJudgeSha256: sha(Buffer.from(row.judgeJson!)),
+    previousRowSha256: rowHash({ ...row, status: 'FAILED' }), rejectedPayloadSha256: kept!.payloadSha256,
+    failedOperationFingerprint: failed.operationFingerprint, unknownReasons: failed.unknownReasons,
+    originalRequests: requests.map(request => ({ requestKey: request.requestKey, sha256: hash(request) })),
+    ledgerRevision: ledger.revision, jobSha256: hash(job), committedMicroUsd: p.budget.committedMicroUsd });
+}
+
+export async function previewJourneyWallReplacement(c: Container, gameId: string, retry = false) {
   check(env().APP_ENV === 'qa' && c.storage.id === 'db', 'replacement is QA only');
-  const recorded = await readJourneyWallReplacementPin(c.db, gameId);
-  const plan = recorded ?? await wallReplacementPlan(c, gameId);
+  const recorded = await readWallSupplement(c.db, gameId, retry);
+  const plan = recorded ?? await (retry ? wallProviderRetryPlan(c, gameId) : wallReplacementPlan(c, gameId));
   return { recorded: !!recorded, planSha256: recorded?.planSha256 ?? hash(plan), capMicroUsd: QA_FIVE_COMPLETION_CAP,
     committedMicroUsd: plan.committedMicroUsd, requiredMicroUsd: wallTailCapacity,
-    requestKey: JOURNEY_WALL_REPLACEMENT_KEY, authorizationSha256: recorded?.authorizationSha256 };
+    requestKey: plan.requestKey, authorizationSha256: recorded?.authorizationSha256 };
 }
 
 export async function authorizeJourneyWallReplacement(c: Container, input: {
   gameId: string; operatorId: string; expectedPlanSha256: string; ownerAuthorizationSha256: string;
-}) {
+}, retry = false) {
   check(env().APP_ENV === 'qa' && c.storage.id === 'db', 'replacement is QA only');
   const { gameId, operatorId } = input;
   const actor = await c.db.user.findUnique({ where: { id: operatorId }, select: { email: true } });
@@ -293,21 +402,36 @@ export async function authorizeJourneyWallReplacement(c: Container, input: {
   return c.db.$transaction(async tx => {
     await fenceLocalPatchImages(tx, gameId);
     const cc = { ...c, db: tx, storage: new DbStorage(tx) } as unknown as Container;
-    const existing = await readJourneyWallReplacementPin(tx, gameId);
+    const existing = await readWallSupplement(tx, gameId, retry);
     if (existing) {
       check(existing.operatorId === operatorId && existing.planSha256 === input.expectedPlanSha256
         && existing.ownerAuthorizationSha256 === input.ownerAuthorizationSha256, 'replacement already recorded with other evidence');
       return existing;
     }
-    const plan = await wallReplacementPlan(cc, gameId);
+    const plan = await (retry ? wallProviderRetryPlan(cc, gameId) : wallReplacementPlan(cc, gameId));
     check(plan.ownerId === operatorId && hash(plan) === input.expectedPlanSha256, 'replacement plan changed');
     const body = { ...plan, operatorId, ownerAuthorizationSha256: input.ownerAuthorizationSha256,
       planSha256: input.expectedPlanSha256, createdAt: new Date().toISOString() };
-    const pin = wallReplacementPinSchema.parse({ ...body, authorizationSha256: hash(body) });
-    const revision = await tx.worldBudgetLedger.updateMany({ where: { worldId: pin.worldId, revision: plan.ledgerRevision },
-      data: { revision: { increment: 1 } } });
-    check(revision.count === 1, 'replacement ledger changed concurrently');
-    await tx.auditLog.create({ data: { id: journeyWallReplacementId(gameId), action: JOURNEY_WALL_REPLACEMENT_ACTION,
+    const pin = (retry ? wallProviderRetryPinSchema : wallReplacementPinSchema).parse({ ...body, authorizationSha256: hash(body) });
+    if (pin.version === JOURNEY_WALL_PROVIDER_RETRY_ACTION) {
+      const { worldId, version: _version, ...approval } = wallProviderContinuation(pin);
+      const store = PrismaWorldBudgetStore.forContinuationApprovalTransaction(tx);
+      check((await store.read(worldId))?.revision === plan.ledgerRevision, 'provider retry ledger changed concurrently');
+      const budget = new WorldBudget(new CasWorldBudgetRepository(store), {
+        authorizeUnknownContinuation: async incoming => hash(incoming) === hash(wallProviderContinuation(pin)),
+      });
+      check((await budget.authorizeUnknownContinuation(worldId, approval)).acquired, 'provider continuation already exists');
+      const row = await tx.targetVariantAsset.findUniqueOrThrow({ where: { id: pin.rowId } });
+      check(rowHash(row) === pin.pendingRowSha256, 'provider retry row changed');
+      const closed = await tx.targetVariantAsset.updateMany({ where: { id: row.id, status: 'PENDING', attempts: 3,
+        updatedAt: row.updatedAt }, data: { status: 'FAILED' } });
+      check(closed.count === 1, 'provider retry row changed concurrently');
+    } else {
+      const revision = await tx.worldBudgetLedger.updateMany({ where: { worldId: pin.worldId, revision: plan.ledgerRevision },
+        data: { revision: { increment: 1 } } });
+      check(revision.count === 1, 'replacement ledger changed concurrently');
+    }
+    await tx.auditLog.create({ data: { id: wallSupplementId(gameId, retry), action: pin.version,
       actorType: 'ADMIN', actorId: operatorId, entityType: 'Game', entityId: gameId, metaJson: JSON.stringify(pin) } });
     await tx.generationJob.update({ where: { id: 'job_' + gameId }, data: { status: 'QUEUED', currentStep: 'local-patch', lastError: null } });
     return pin;
@@ -424,10 +548,24 @@ export async function requireJourneyHeadPurchase(c: Container, gameId: string, r
   if (sunburst) check(p!.budget.capMicroUsd === QA_FIVE_COMPLETION_CAP && (isJourneySunburstTailPin(pin!) ? p!.tail : p!.five)?.authorizationSha256 === sunburst.completionAuthorizationSha256,
     'explicit five-dollar completion authority changed');
   const existing = await boardWizardBudgetOf(c).readRequest(pin!.worldId, pin!.requestKey);
-  if (!existing) check(!p!.budget.held && p!.budget.remainingMicroUsd >= (pin!.version === JOURNEY_WALL_REPLACEMENT_ACTION ? wallTailCapacity
+  if (!existing) check(!p!.budget.held && p!.budget.remainingMicroUsd >= (pin!.version === JOURNEY_WALL_REPLACEMENT_ACTION || pin!.version === JOURNEY_WALL_PROVIDER_RETRY_ACTION ? wallTailCapacity
     : sunburst ? sunburst.imageReserveMicroUsd + sunburst.reviewCoverageMicroUsd : LOCAL_PATCH_RESERVE.renderMicroUsd + JOURNEY_HEAD_REVIEW_COVERAGE_MICRO_USD),
     sunburst ? 'Sunburst image and full ordinary assessment coverage do not fit' : 'image and full bounded ordinary MEDIUM coverage do not fit');
   return { pin: pin!, marker: journeyHeadMarkerFor(pin!), authority: p!.authority, sunburst };
+}
+
+/** Only this verified, consumed operator authorization can carry its one
+ * unresolved image reserve into a playable world. */
+export async function journeyWallProviderRetryPublishable(db: Db, gameId: string, approval: WorldUnknownContinuationApproval) {
+  if (approval.requestKey !== JOURNEY_WALL_REPLACEMENT_KEY || approval.approvalId !== journeyWallProviderRetryId(gameId)) return false;
+  const retry = (await journeyHeadPinsOf(db, gameId)).find(p => p.version === JOURNEY_WALL_PROVIDER_RETRY_ACTION);
+  if (!retry || hash(approval) !== hash(wallProviderContinuation(retry))) return false;
+  const row = await db.targetVariantAsset.findUnique({ where: { id: retry.rowId } });
+  if (!row || row.status !== 'GENERATED' || row.attempts !== retry.authorizedAttempt
+    || hash(journeyHeadMarker(row)) !== hash(journeyHeadMarkerFor(retry))
+    || JSON.parse(row.judgeJson ?? 'null')?.qualityDisposition?.state !== 'acceptable') return false;
+  const replacement = await readSettledTargetRaw(db, gameId, retry.requestKey);
+  return hash(replacement.wire.journeyHeadRecovery) === hash(journeyHeadMarkerFor(retry));
 }
 
 /** Free recovery of the one settled head that stopped at the old provider-size

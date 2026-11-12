@@ -4090,7 +4090,7 @@ it('explicit five-dollar completion admits exactly one Paris Sunburst head witho
  }finally{vi.useRealTimers();}
 },300_000);
 
-it.each(['pass','age-refusal','wall-replacement'] as const)('finite Sunburst tail completes all27 through native SOURCE heads, preserving a paid window failure, the old NY head and full UNKNOWN; outcome=%s',async outcome=>{
+it.each(['pass','age-refusal','wall-replacement','wall-provider-retry'] as const)('finite Sunburst tail completes all27 through native SOURCE heads, preserving a paid window failure, the old NY head and full UNKNOWN; outcome=%s',async outcome=>{
  const startedAt=performance.now();
  const checkpoint=(phase:string,details:object={})=>console.info('finite-tail-native-checkpoint',{
   phase,outcome,elapsedMs:Math.round(performance.now()-startedAt),...details});
@@ -4105,10 +4105,13 @@ it.each(['pass','age-refusal','wall-replacement'] as const)('finite Sunburst tai
   const tailDomain=await import('../../../domain/generation/journey-sunburst-tail');
   const heads=await import('../journey-source-head-recovery');
   const finance=await import('../qa-sunburst-tail-completion');
+  const { fixedSourceFailureReceipt }=await import('../../../infra/generation/fixed-source-diagnostics');
   const {JOURNEY_SOURCE_HEAD_AUTHORITIES}=await import('../../../../content/detectives/journey-source-head-v2');
   const {JOURNEY_SUNBURST_TAIL_AUTHORITIES}=await import('../../../../content/detectives/journey-sunburst-tail-v1');
   const {retainedWindowCanonicalHash:hash}=await import('../../../domain/generation/retained-window');
   const placement=await resolveLocalPatchBoardsForGame(db,gameId,13),hides=placement.boards.flatMap(b=>b.hides);
+  const providerRetry=outcome==='wall-provider-retry',wallReplacement=outcome==='wall-replacement'||providerRetry;
+  const expectedRenders=providerRetry?33:wallReplacement?32:31;
   const tailIds=tailDomain.JOURNEY_SUNBURST_TAIL_HIDE_IDS,nyId='newyork-detectives-hide-1';
   const originalFailures=new Set<string>([...tailIds,nyId]),boughtHeads=new Map<string,'medium'|'sunburst'>();
   let retainedHead:{left:number;top:number;width:number;height:number}|undefined;
@@ -4133,7 +4136,8 @@ it.each(['pass','age-refusal','wall-replacement'] as const)('finite Sunburst tai
   const render=vi.fn<LocalPatchHideDeps['render']>(async input=>{
    const hide=hides.find(h=>input.requestKey.startsWith(h.id+':'))!;
    expect(hide).toBeDefined();
-   const second=input.requestKey.endsWith(':render:2'),replacement=input.requestKey===jh.JOURNEY_WALL_REPLACEMENT_KEY;
+   const second=input.requestKey.endsWith(':render:2'),replacement=input.requestKey===jh.JOURNEY_WALL_REPLACEMENT_KEY
+     ||input.requestKey===jh.JOURNEY_WALL_PROVIDER_RETRY_KEY;
    let png:Buffer;
    if(second||replacement){
     expect(boughtHeads.has(hide.id)).toBe(replacement);expect(input.subjectPhotoPng).toBeDefined();
@@ -4141,11 +4145,18 @@ it.each(['pass','age-refusal','wall-replacement'] as const)('finite Sunburst tai
     expect(input.subjectQuality).toBe(sunburst?'high':'medium');
     expect(input.prompt).toContain('NATIVE SOURCE HEAD '+(sunburst?tailDomain.JOURNEY_SUNBURST_TAIL_VERSION:jh.JOURNEY_SOURCE_HEAD_VERSION));
     if(replacement)expect(input.prompt).toContain('GREAT WALL REPLACEMENT v1');
+    if(providerRetry&&input.requestKey===jh.JOURNEY_WALL_REPLACEMENT_KEY){
+     return {png:null,quarantined:null,rejected:'synthetic provider 500 with no image',evidence:null,
+      unknownReason:'image-charge-evidence-incomplete-or-model-unexpected',
+      failureReceipt:fixedSourceFailureReceipt({worldId:input.worldId,requestKey:input.requestKey,fingerprint:'8'.repeat(64),
+       model:'gpt-image-2.6-sunburst',quality:'high',reason:'charge-evidence',billing:'unknown',jsonStatus:'parsed',
+       json:{error:{type:'server_error'}},response:{status:500,headers:new Headers({'x-request-id':'req_synthetic_500'})}})};
+    }
     const a=(sunburst?JOURNEY_SUNBURST_TAIL_AUTHORITIES:JOURNEY_SOURCE_HEAD_AUTHORITIES).find(x=>x.hideId===hide.id)!;
     const alpha=jh.journeyHeadAlpha(a),pixels=await sharp(input.stylePng).ensureAlpha().raw().toBuffer();
     for(let i=0;i<alpha.length;i++){
      if(alpha[i]){pixels[i*4]=42;pixels[i*4+1]=91;pixels[i*4+2]=137;}
-     else if(outcome==='wall-replacement'&&second&&hide.id===jh.JOURNEY_WALL_REPLACEMENT_HIDE){
+     else if(wallReplacement&&second&&hide.id===jh.JOURNEY_WALL_REPLACEMENT_HIDE){
       for(let channel=0;channel<3;channel++)pixels[i*4+channel]=pixels[i*4+channel]!<128?255:0;
      }
     }
@@ -4238,7 +4249,7 @@ it.each(['pass','age-refusal','wall-replacement'] as const)('finite Sunburst tai
    const board=placement.boards.find(b=>b.hides.some(h=>h.id===op.hideId))!,hide=board.hides.find(h=>h.id===op.hideId)!;
    await expect(runLocalPatchHide(container,deps,{gameId,board,hide,finalRepair:true,journeyHeadRecovery:true})).rejects.toThrow('JOURNEY_HEAD');
    expect(await budget.readRequest(worldId,op.requestKey)).toBeNull();
-   const replacement=outcome==='wall-replacement'&&op.hideId===jh.JOURNEY_WALL_REPLACEMENT_HIDE;
+   const replacement=wallReplacement&&op.hideId===jh.JOURNEY_WALL_REPLACEMENT_HIDE;
    const bought=await runLocalPatchHide(container,{...deps,sunburstHeadRender:render},{gameId,board,hide,finalRepair:true,journeyHeadRecovery:true});
    if(replacement){
     expect(bought.state).toBe('gave-up');
@@ -4256,14 +4267,46 @@ it.each(['pass','age-refusal','wall-replacement'] as const)('finite Sunburst tai
     expect(await rowOf(op.hideId)).toEqual(rejected);
     expect((await db.worldBudgetLedger.findUniqueOrThrow({where:{worldId}})).snapshotJson).toBe(unchangedLedger.snapshotJson);
     expect(await heads.resumeJourneySunburstTailHead(container,gameId,jh.JOURNEY_SUNBURST_HEAD_HIDE_ID)).toBe(false);
-    const replaced=await runLocalPatchHide(container,{...deps,sunburstHeadRender:render},{gameId,board,hide,finalRepair:true,journeyHeadRecovery:true});
-    expect(replaced.state,replaced.reason??'replacement').toBe('generated');
+    const paintHead=()=>runLocalPatchHide(container,{...deps,sunburstHeadRender:render},{gameId,board,hide,finalRepair:true,journeyHeadRecovery:true});
+    const replaced=await paintHead();
+    if(providerRetry){
+     expect(replaced).toMatchObject({state:'stopped',costUnknown:true});
+     const third=await budget.readRequest(worldId,jh.JOURNEY_WALL_REPLACEMENT_KEY);
+     expect(third).toMatchObject({state:'unknown',reserveMicroUsd:150_000});
+     await expect(heads.previewJourneyWallReplacement(container,gameId,true)).rejects.toThrow('pending row');
+     await db.generationJob.update({where:{id:'job_'+gameId},data:{status:'FAILED'}});
+     const frozen=JSON.parse((await db.worldBudgetLedger.findUniqueOrThrow({where:{worldId}})).snapshotJson);
+     const retryPreview=await heads.previewJourneyWallReplacement(container,gameId,true);
+     expect(retryPreview).toMatchObject({recorded:false,requestKey:jh.JOURNEY_WALL_PROVIDER_RETRY_KEY,requiredMicroUsd:800_000,capMicroUsd:5_000_000});
+     const retryInput={...authorization,expectedPlanSha256:retryPreview.planSha256,ownerAuthorizationSha256:'c'.repeat(64)};
+     await expect(heads.authorizeJourneyWallReplacement(container,{...retryInput,expectedPlanSha256:'d'.repeat(64)},true)).rejects.toThrow('replacement plan changed');
+     const retry=await heads.authorizeJourneyWallReplacement(container,retryInput,true);
+     expect(await heads.authorizeJourneyWallReplacement(container,retryInput,true)).toEqual(retry);
+     expect(await rowOf(op.hideId)).toMatchObject({status:'FAILED',attempts:3});
+     const afterGrant=JSON.parse((await db.worldBudgetLedger.findUniqueOrThrow({where:{worldId}})).snapshotJson);
+     expect(afterGrant.requests).toEqual(frozen.requests);
+     const approval=await budget.readContinuationApproval(worldId,jh.JOURNEY_WALL_REPLACEMENT_KEY);
+     expect(approval?.version).toBe('world-unknown-continuation/v1');
+     if(approval?.version!=='world-unknown-continuation/v1')throw Error('Missing scoped retry continuation');
+     expect(await heads.journeyWallProviderRetryPublishable(db,gameId,approval)).toBe(false);
+     expect(await heads.resumeJourneySunburstTailHead(container,gameId,jh.JOURNEY_SUNBURST_HEAD_HIDE_ID)).toBe(false);
+     const fourth=await runLocalPatchWorldSlice(container,{...deps,sunburstHeadRender:render},gameId,
+      {hardDeadlineAt:Date.now()+270_000,diagnose:forbidden});
+     expect(fourth.attention).toBeNull();
+     expect(await rowOf(op.hideId)).toMatchObject({status:'GENERATED',attempts:4});
+     expect(await heads.journeyWallProviderRetryPublishable(db,gameId,approval)).toBe(false);
+     expect(await budget.readRequest(worldId,jh.JOURNEY_WALL_REPLACEMENT_KEY)).toEqual(third);
+     expect(await budget.readRequest(worldId,jh.JOURNEY_WALL_PROVIDER_RETRY_KEY)).toMatchObject({state:'settled',reserveMicroUsd:150_000});
+     checkpoint('wall-provider-retry-painted');
+    }else{
+     expect(replaced.state,replaced.reason??'replacement').toBe('generated');
+     expect(await budget.readRequest(worldId,jh.JOURNEY_WALL_REPLACEMENT_KEY)).toMatchObject({state:'settled',reserveMicroUsd:150_000});
+    }
     expect(await budget.readRequest(worldId,op.requestKey)).toEqual(paid);
-    expect(await budget.readRequest(worldId,jh.JOURNEY_WALL_REPLACEMENT_KEY)).toMatchObject({state:'settled',reserveMicroUsd:150_000});
     checkpoint('wall-replacement-painted');
    }else expect(bought.state,bought.reason??op.hideId).toBe('generated');
    expect(await budget.readRequest(worldId,op.requestKey)).toMatchObject({state:'settled',reserveMicroUsd:150_000});
-   const pending=await rowOf(op.hideId);expect(pending.attempts).toBe(replacement?3:2);
+   const pending=await rowOf(op.hideId);expect(pending.attempts).toBe(replacement?(providerRetry?4:3):2);
    expect(JSON.parse(pending.judgeJson!).reviewState).toBe('pending-board-review');
    const pendingReceipt=JSON.parse(pending.judgeJson!);
    expect(await heads.journeyHeadCompositionMatches(db,{gameId,hideId:op.hideId,receipt:pendingReceipt},readArt),'The paid candidate must reproduce exactly before any new question').toBe(true);
@@ -4301,7 +4344,7 @@ it.each(['pass','age-refusal','wall-replacement'] as const)('finite Sunburst tai
   const finalLedger=JSON.parse((await db.worldBudgetLedger.findUniqueOrThrow({where:{worldId}})).snapshotJson);
   for(const old of JSON.parse(beforeGrantLedger.snapshotJson).requests)expect(finalLedger.requests.find((r:{requestKey:string})=>r.requestKey===old.requestKey)).toEqual(old);
   expect(await budget.readRequest(worldId,unknownKey)).toEqual(unknown);
-  expect(render).toHaveBeenCalledTimes(outcome==='wall-replacement'?32:31);expect(provider.creates).toHaveLength(33);
+  expect(render).toHaveBeenCalledTimes(expectedRenders);expect(provider.creates).toHaveLength(33);
   expect(boughtHeads.size).toBe(4);expect(await localPatchPainterRelease(db,gameId)).toBeNull();
   expect((await budget.audit(worldId)).committedMicroUsd).toBeLessThanOrEqual(5_000_000);
   // Finish through the real world assembler; it cannot buy any further picture.
@@ -4329,7 +4372,7 @@ it.each(['pass','age-refusal','wall-replacement'] as const)('finite Sunburst tai
   expect(result.pending).toBe(false);
   const game=await db.game.findUniqueOrThrow({where:{id:gameId}});expect(['READY','DELIVERED']).toContain(game.status);
   expect(parseGameConfig(game.configJson!).scenes.flatMap(s=>s.targets)).toHaveLength(27);
-  expect(render).toHaveBeenCalledTimes(outcome==='wall-replacement'?32:31);expect(provider.creates).toHaveLength(33);expect(forbidden).not.toHaveBeenCalled();expect(fetch).not.toHaveBeenCalled();
+  expect(render).toHaveBeenCalledTimes(expectedRenders);expect(provider.creates).toHaveLength(33);expect(forbidden).not.toHaveBeenCalled();expect(fetch).not.toHaveBeenCalled();
   // Record the cap in the real publication path, not a synthetic aggregate alone.
   expect(hash(finalLedger.requests.find((r:{requestKey:string})=>r.requestKey===unknownKey))).toBe(hash(JSON.parse(beforeGrantLedger.snapshotJson).requests.find((r:{requestKey:string})=>r.requestKey===unknownKey)));
  }finally{vi.useRealTimers();}

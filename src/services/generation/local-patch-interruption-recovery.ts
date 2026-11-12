@@ -22,7 +22,7 @@ export async function localPatchBudgetReadyForPublication(budget: Pick<WorldBudg
   worldId: string, contentVersion: number | undefined,
   /** Only a world enrolled in the subject upgrade may also carry v2 review continuations, and only a world pinned to
    * local-patch-lean-review-recovery/v1 v3 ones. */
-  options: { singleLowContinuation?: (approval: WorldAutomaticReviewRecoveryV5) => Promise<boolean>; reviewRecoveryV2?: boolean; reviewRecoveryV3?: boolean; capacityContinuation?: (approval: WorldAutomaticReviewRecoveryV4) => Promise<boolean>; sourceReferenceContinuation?: (approval: WorldUnknownContinuationApproval) => Promise<boolean> } = {}): Promise<boolean> {
+  options: { singleLowContinuation?: (approval: WorldAutomaticReviewRecoveryV5) => Promise<boolean>; reviewRecoveryV2?: boolean; reviewRecoveryV3?: boolean; capacityContinuation?: (approval: WorldAutomaticReviewRecoveryV4) => Promise<boolean>; sourceReferenceContinuation?: (approval: WorldUnknownContinuationApproval) => Promise<boolean>; journeyProviderRetryContinuation?: (approval: WorldUnknownContinuationApproval) => Promise<boolean> } = {}): Promise<boolean> {
   const audit = await budget.audit(worldId);
   if (audit.held || audit.pendingRequestKeys.length) return false;
   if (audit.reservedMicroUsd === 0) return true;
@@ -35,6 +35,7 @@ export async function localPatchBudgetReadyForPublication(budget: Pick<WorldBudg
     // held; the callback still binds the original grant, image and SYSTEM proof.
     if ((contentVersion === 12 || contentVersion === 13) && approval?.version === "world-automatic-review-recovery/v5" && options.singleLowContinuation && await options.singleLowContinuation(approval)) continue;
     if (contentVersion === 12 && approval?.version === "world-unknown-continuation/v1" && options.sourceReferenceContinuation && await options.sourceReferenceContinuation(approval)) continue;
+    if (contentVersion === 13 && approval?.version === "world-unknown-continuation/v1" && options.journeyProviderRetryContinuation && await options.journeyProviderRetryContinuation(approval)) continue;
     if (contentVersion === 12 && approval?.version === "world-automatic-review-recovery/v4" && options.capacityContinuation && await options.capacityContinuation(approval)) continue;
     if (version !== "world-automatic-image-recovery/v1" && version !== "world-automatic-review-recovery/v1"
       && !(options.reviewRecoveryV2 && version === "world-automatic-review-recovery/v2")

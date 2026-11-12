@@ -7,7 +7,8 @@ import { QA_FIVE_COMPLETION_CONFIRMATION } from "@/domain/generation/qa-five-dol
 import { authorizeQaFiveCompletion, previewQaFiveCompletion, qaFiveCompletionStatus } from "@/services/generation/qa-five-dollar-completion";
 import { QA_SUNBURST_TAIL_COMPLETION_CONFIRMATION, QA_SUNBURST_TAIL_PLAN_SELECTOR } from "@/domain/generation/qa-sunburst-tail-completion";
 import { authorizeQaSunburstTailCompletion, previewQaSunburstTailCompletion, qaSunburstTailCompletionStatus } from "@/services/generation/qa-sunburst-tail-completion";
-import { JOURNEY_WALL_REPLACEMENT_CONFIRMATION, JOURNEY_WALL_REPLACEMENT_SELECTOR } from "@/domain/generation/journey-source-head";
+import { JOURNEY_WALL_PROVIDER_RETRY_CONFIRMATION, JOURNEY_WALL_PROVIDER_RETRY_SELECTOR,
+  JOURNEY_WALL_REPLACEMENT_CONFIRMATION, JOURNEY_WALL_REPLACEMENT_SELECTOR } from "@/domain/generation/journey-source-head";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -26,14 +27,14 @@ export const maxDuration = 60;
  * (the frozen finite Sunburst list) on both GET and POST, with its own
  * confirmation. Without a selector both methods keep the single-Paris v1 plan.
  */
-type Plan = "five-v1" | "sunburst-tail-v1" | typeof JOURNEY_WALL_REPLACEMENT_SELECTOR;
+type Plan = "five-v1" | "sunburst-tail-v1" | typeof JOURNEY_WALL_REPLACEMENT_SELECTOR | typeof JOURNEY_WALL_PROVIDER_RETRY_SELECTOR;
 /** Absent: the original v1 plan. Exactly the tail selector: the tail plan. Anything else: refused. */
 const planOf = (req: Request): Plan | null => {
   const values = new URL(req.url).searchParams.getAll("plan");
   if (values.length === 0) return "five-v1";
   if (values.length !== 1) return null;
   const value = values[0];
-  return value === QA_SUNBURST_TAIL_PLAN_SELECTOR || value === JOURNEY_WALL_REPLACEMENT_SELECTOR ? value : null;
+  return value === QA_SUNBURST_TAIL_PLAN_SELECTOR || value === JOURNEY_WALL_REPLACEMENT_SELECTOR || value === JOURNEY_WALL_PROVIDER_RETRY_SELECTOR ? value : null;
 };
 const NO_STORE = { "Cache-Control": "no-store" };
 const HTML = { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store", "X-Frame-Options": "DENY",
@@ -81,11 +82,12 @@ export async function GET(req: Request) {
   const plan = planOf(req);
   if (!plan) return form ? page("Five-dollar completion", "<p>Unknown plan.</p>", 400) : refused("INVALID_REQUEST", 400);
   const c = getContainer();
-  if (plan === JOURNEY_WALL_REPLACEMENT_SELECTOR) {
+  if (plan === JOURNEY_WALL_REPLACEMENT_SELECTOR || plan === JOURNEY_WALL_PROVIDER_RETRY_SELECTOR) {
     try {
       const { previewJourneyWallReplacement } = await import("@/services/generation/journey-source-head-recovery");
-      return NextResponse.json({ ok: true, plan, confirmation: JOURNEY_WALL_REPLACEMENT_CONFIRMATION,
-        ...await previewJourneyWallReplacement(c, gameId) }, { headers: NO_STORE });
+      const retry = plan === JOURNEY_WALL_PROVIDER_RETRY_SELECTOR;
+      return NextResponse.json({ ok: true, plan, confirmation: retry ? JOURNEY_WALL_PROVIDER_RETRY_CONFIRMATION : JOURNEY_WALL_REPLACEMENT_CONFIRMATION,
+        ...await previewJourneyWallReplacement(c, gameId, retry) }, { headers: NO_STORE });
     } catch { return refused("GREAT_WALL_REPLACEMENT_REFUSED"); }
   }
   if (plan === "sunburst-tail-v1") return tailGet(c, gameId, form);
@@ -164,7 +166,8 @@ export async function POST(req: Request) {
   const plan = planOf(req), title = plan === "sunburst-tail-v1" ? TAIL_TITLE : "Five-dollar completion";
   const fail = (code: string, status = 409) => form ? page(title, `<p>Not recorded (${esc(code)}). Nothing was changed.</p>`, status) : refused(code, status);
   if (!plan) return fail("INVALID_REQUEST", 400);
-  const confirmation = plan === JOURNEY_WALL_REPLACEMENT_SELECTOR ? JOURNEY_WALL_REPLACEMENT_CONFIRMATION
+  const confirmation = plan === JOURNEY_WALL_PROVIDER_RETRY_SELECTOR ? JOURNEY_WALL_PROVIDER_RETRY_CONFIRMATION
+    : plan === JOURNEY_WALL_REPLACEMENT_SELECTOR ? JOURNEY_WALL_REPLACEMENT_CONFIRMATION
     : plan === "sunburst-tail-v1" ? QA_SUNBURST_TAIL_COMPLETION_CONFIRMATION : QA_FIVE_COMPLETION_CONFIRMATION;
   const origin = req.headers.get("origin"), host = req.headers.get("x-forwarded-host") ?? req.headers.get("host");
   let sameOrigin = false;
@@ -189,11 +192,11 @@ export async function POST(req: Request) {
     || !shaOk(value.ownerAuthorizationSha256) || value.confirmation !== confirmation) return fail("INVALID_REQUEST", 400);
   const actor = await owner(value.gameId);
   if (!actor) return fail("FORBIDDEN", 403);
-  if (plan === JOURNEY_WALL_REPLACEMENT_SELECTOR) {
+  if (plan === JOURNEY_WALL_REPLACEMENT_SELECTOR || plan === JOURNEY_WALL_PROVIDER_RETRY_SELECTOR) {
     try {
       const { authorizeJourneyWallReplacement } = await import("@/services/generation/journey-source-head-recovery");
       const receipt = await authorizeJourneyWallReplacement(getContainer(), { gameId: value.gameId, operatorId: actor.id,
-        expectedPlanSha256: value.planSha256, ownerAuthorizationSha256: value.ownerAuthorizationSha256 });
+        expectedPlanSha256: value.planSha256, ownerAuthorizationSha256: value.ownerAuthorizationSha256 }, plan === JOURNEY_WALL_PROVIDER_RETRY_SELECTOR);
       return NextResponse.json({ ok: true, plan, capMicroUsd: receipt.capMicroUsd, requestKey: receipt.requestKey,
         authorizationSha256: receipt.authorizationSha256, providerCalls: 0 }, { headers: NO_STORE });
     } catch { return fail("GREAT_WALL_REPLACEMENT_REFUSED"); }
