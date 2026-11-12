@@ -4112,11 +4112,11 @@ it.each(['pass','age-refusal','wall-replacement','wall-provider-retry'] as const
   const placement=await resolveLocalPatchBoardsForGame(db,gameId,13),hides=placement.boards.flatMap(b=>b.hides);
   const providerRetry=outcome==='wall-provider-retry',wallReplacement=outcome==='wall-replacement'||providerRetry;
   const expectedRenders=providerRetry?33:wallReplacement?32:31;
-  const expectedReviews=providerRetry?34:33;
+  const expectedReviews=providerRetry?35:33;
   const tailIds=tailDomain.JOURNEY_SUNBURST_TAIL_HIDE_IDS,nyId='newyork-detectives-hide-1';
   const originalFailures=new Set<string>([...tailIds,nyId]),boughtHeads=new Map<string,'medium'|'sunburst'>();
   let retainedHead:{left:number;top:number;width:number;height:number}|undefined;
-  let wallFlexResponse:string|undefined,wallTransportChecked=false;
+  let wallFlexResponse:string|undefined,wallDefaultRefusal:string|undefined,wallTransportChecked=false;
   const provider=controlledSol(true,false,undefined,true,true),retrieve=provider.fake.retrieve.bind(provider.fake);
   const create=provider.fake.create.bind(provider.fake);
   provider.fake.create=async body=>{
@@ -4124,6 +4124,8 @@ it.each(['pass','age-refusal','wall-replacement','wall-provider-retry'] as const
    if(providerRetry&&request.hideId===jh.JOURNEY_WALL_REPLACEMENT_HIDE&&boughtHeads.has(request.hideId)&&request.tier==='flex'){
     expect(wallFlexResponse).toBeUndefined();wallFlexResponse=result.responseId;
    }
+   if(providerRetry&&request.hideId===jh.JOURNEY_WALL_REPLACEMENT_HIDE&&request.tier==='default'&&!wallDefaultRefusal)
+    wallDefaultRefusal=result.responseId;
    return result;
   };
   provider.fake.retrieve=async id=>{
@@ -4132,6 +4134,12 @@ it.each(['pass','age-refusal','wall-replacement','wall-provider-retry'] as const
     finishReason:'failed',serviceTier:'flex',providerError:{code:'server_is_overloaded',message:'Synthetic Wall review overload'}}};
    const value=JSON.parse(result.reading.raw),assessment=value.assessment.version===SOURCE_NEIGHBOR_BUNDLE_VERSION?value.assessment.assessment:value.assessment;
    const hideId=assessment.quality.hides[0].hideId;
+   if(id===wallDefaultRefusal){
+    const faults=['childComplete','pictureWhole','severeSeam'];
+    Object.assign(assessment.quality.hides[0].verdict,{verdict:'fail',childComplete:'fail',pictureWhole:'fail',severeSeam:'fail',
+     reason:'Synthetic horizontal jacket splice through the chest and sleeves',
+     faults:faults.map(check=>({check,where:'Synthetic jacket splice at the collar and chest'}))});
+   }
    if(originalFailures.has(hideId)&&!boughtHeads.has(hideId)||outcome==='age-refusal'&&hideId==='amazon-detectives-hide-3'){
     // A deliberately unchanged subject-read/v2 refusal at confirmed age seven.
     assessment.subject.checks.perceivedAge.estimatedMinYears=7;
@@ -4213,7 +4221,8 @@ it.each(['pass','age-refusal','wall-replacement','wall-provider-retry'] as const
      wallTransportChecked=true;
     }
     if(receipt.reviewState==='board-review-complete'
-      &&(!(hideId==='antarctica-detectives-hide-1'||interruptedWall&&wallFlexResponse)||current.status==='GENERATED'))break;
+      &&(!(hideId==='antarctica-detectives-hide-1'||interruptedWall&&wallFlexResponse)||current.status==='GENERATED'
+        ||interruptedWall&&receipt.boardReview?.dual?.quality))break;
    }
    const row=await rowOf(hideId);expect(JSON.parse(row.judgeJson!).reviewState,row.lastError??'').toBe('board-review-complete');return row;
   };
@@ -4337,7 +4346,34 @@ it.each(['pass','age-refusal','wall-replacement','wall-provider-retry'] as const
    expect(await allowedDualPublication(db,{gameId,sceneVersion:13,hideId:op.hideId,variantId:pending.id,attempts:pending.attempts,
     identityAssetId:pin.identityAssetId,identitySha256:pin.identitySha256,assetId:pending.assetId!,
     imageSha256:pendingReceipt.judgedSha256,geometrySha256:pendingReceipt.geometrySha256,judgeJson:pending.judgeJson})).toBe(false);
-   const reviewed=await review(op.hideId);
+   let reviewed=await review(op.hideId);
+   if(providerRetry&&op.hideId===jh.JOURNEY_WALL_REPLACEMENT_HIDE){
+    const refused=JSON.parse(reviewed.judgeJson!),beforeCoat=await allRows();
+    expect(reviewed.status).toBe('FAILED');
+    expect(refused.verdict).toMatchObject({verdict:'fail',childComplete:'fail',pictureWhole:'fail',severeSeam:'fail'});
+    expect(await heads.resumeJourneySunburstTailHead(container,gameId,jh.JOURNEY_SUNBURST_HEAD_HIDE_ID)).toBe(false);
+    const priorLedger=await db.worldBudgetLedger.findUniqueOrThrow({where:{worldId}});
+    const rendersBefore=render.mock.calls.length,reviewsBefore=provider.creates.length;
+    expect(await heads.restoreJourneyWallCoat(container,gameId,'other-owner',refused.judgedSha256,readArt)).toBe(false);
+    expect(await heads.restoreJourneyWallCoat(container,gameId,owner,'d'.repeat(64),readArt)).toBe(false);
+    expect(await heads.restoreJourneyWallCoat(container,gameId,owner,refused.judgedSha256,readArt)).toBe(true);
+    const fixed=await rowOf(op.hideId),pendingCoat=JSON.parse(fixed.judgeJson!);
+    expect(fixed).toMatchObject({status:'GENERATED',attempts:4,rectJson:reviewed.rectJson,hitRectJson:reviewed.hitRectJson,headAnchorJson:reviewed.headAnchorJson});
+    expect(fixed.assetId).not.toBe(reviewed.assetId);
+    expect(pendingCoat).toMatchObject({reviewState:'pending-board-review',verdict:null,journeyWallCoat:{previousCandidateSha256:refused.judgedSha256}});
+    expect(pendingCoat.boardReview).toBeUndefined();expect(pendingCoat.qualityDisposition).toBeUndefined();
+    expect(await heads.journeyHeadCompositionMatches(db,{gameId,hideId:op.hideId,receipt:pendingCoat},readArt)).toBe(true);
+    expect(await heads.resumeJourneySunburstTailHead(container,gameId,jh.JOURNEY_SUNBURST_HEAD_HIDE_ID)).toBe(false);
+    expect(await heads.restoreJourneyWallCoat(container,gameId,owner,refused.judgedSha256,readArt)).toBe(false);
+    expect((await allRows()).filter(r=>r.id!==fixed.id)).toEqual(beforeCoat.filter(r=>r.id!==fixed.id));
+    expect((await db.worldBudgetLedger.findUniqueOrThrow({where:{worldId}})).snapshotJson).toBe(priorLedger.snapshotJson);
+    expect(render).toHaveBeenCalledTimes(rendersBefore);expect(provider.creates).toHaveLength(reviewsBefore);
+    const stored=await db.auditLog.findUniqueOrThrow({where:{id:pendingCoat.journeyWallCoat.auditId}});
+    expect(JSON.parse(stored.metaJson!).previousRow.judgeJson).toBe(reviewed.judgeJson);
+    reviewed=await review(op.hideId);
+    expect(render).toHaveBeenCalledTimes(rendersBefore);expect(provider.creates).toHaveLength(reviewsBefore+1);
+    checkpoint('retained-wall-coat-reviewed');
+   }
    if(outcome==='age-refusal'){
     expect(op.hideId).toBe('amazon-detectives-hide-3');expect(reviewed.status).toBe('FAILED');
     expect(await allowedDualPublication(db,{...publicationBinding(gameId,reviewed),sceneVersion:13})).toBe(false);
@@ -4371,7 +4407,7 @@ it.each(['pass','age-refusal','wall-replacement','wall-provider-retry'] as const
   expect(render).toHaveBeenCalledTimes(expectedRenders);expect(provider.creates).toHaveLength(expectedReviews);
   if(providerRetry){
    expect(wallTransportChecked).toBe(true);
-   expect(provider.creates.filter(r=>r.hideId===jh.JOURNEY_WALL_REPLACEMENT_HIDE).map(r=>r.tier)).toEqual(['flex','flex','default']);
+   expect(provider.creates.filter(r=>r.hideId===jh.JOURNEY_WALL_REPLACEMENT_HIDE).map(r=>r.tier)).toEqual(['flex','flex','default','default']);
   }
   expect(boughtHeads.size).toBe(4);expect(await localPatchPainterRelease(db,gameId)).toBeNull();
   expect((await budget.audit(worldId)).committedMicroUsd).toBeLessThanOrEqual(5_000_000);
