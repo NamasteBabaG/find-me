@@ -46,6 +46,16 @@ function journeyTailReturned(r:Receipt){
  if(!a)throw Error('HEAD_RETURN: finite Sunburst tail permission differs');
  return a.returned;
 }
+/** journey-face-scale/v1: only a pin enrolled under it asks both faces, against
+ * its own public SOURCE head registration. Every earlier receipt yields none. */
+function journeyFaceScaleOf(r:Receipt){
+ if(r.journeyHeadRecovery===undefined)return undefined;
+ const marker=journeyHeadMarkerSchema.parse(r.journeyHeadRecovery);
+ if(marker.faceScale===undefined)return undefined;
+ const a=journeyHeadAuthorityFor(r.authoredReturn as Parameters<typeof journeyHeadAuthorityFor>[0],marker);
+ if(!a)throw Error('HEAD_RETURN: face-scale SOURCE head permission differs');
+ return{version:marker.faceScale,sourceHead:a.targetRegisteredHead};
+}
 function windowAuthority(receipt:Receipt){
  const m=retainedWindowMarkerSchema.parse(receipt.retainedWindow),a=retainedWindowAuthorityFor(receipt.authoredReturn as Parameters<typeof retainedWindowAuthorityFor>[0]);
  if(!a||retainedWindowCanonicalHash(a)!==m.authoritySha256)throw Error('HEAD_RETURN: retained window public permission differs');
@@ -256,7 +266,8 @@ export async function singleReviewHeadEvidence(db:Prisma.TransactionClient,input
    :input.receipt.crownTab!==undefined?{sourceBindingVersion:CROWN_TAB_VERSION,sourceCompositionSha256:tabHash(input.receipt)}
    :input.receipt.headPixelCorrection!==undefined?{sourceBindingVersion:HEAD_PIXEL_CORRECTION_VERSION,sourceCompositionSha256:correctionHash(input.receipt)}:{}),
   // v1 questions and decisions stay byte-identical; only visible-head evidence is measured.
-  ...(version===TARGET_HEAD_VISIBLE_VERSION?{retention:await headRetentionOf(await windowRetentionRaw(input.receipt,paid.normalized),input.shipping,returned)}:{})});
+  ...(version===TARGET_HEAD_VISIBLE_VERSION?{retention:await headRetentionOf(await windowRetentionRaw(input.receipt,paid.normalized),input.shipping,returned)}:{}),
+  ...(version===TARGET_HEAD_VISIBLE_VERSION&&journeyFaceScaleOf(input.receipt)?{faceScale:journeyFaceScaleOf(input.receipt)}:{})});
  return{evidence,raw:paid.normalized};
 }
 /** Re-read the retained bill and original provider bytes on publication. A
@@ -270,6 +281,9 @@ export async function singleReviewHeadEvidenceMatches(db:Prisma.TransactionClien
   if(bindingOf(j)!==p.sourceBindingVersion)return false;
   if(p.sourceBindingVersion&&p.sourceCompositionSha256!==compositionOf(p.sourceBindingVersion,j))return false;
   if(!j||sourceKey({id:input.hideId,pose:j.pose},input.attempts,j)!==p.sourceRequestKey)return false;
+  // The face question belongs to exactly the pin that asked it, never added or dropped later.
+  const expectedFace=p.version===TARGET_HEAD_VISIBLE_VERSION?journeyFaceScaleOf(j):undefined;
+  if(JSON.stringify(expectedFace)!==JSON.stringify(p.faceScale))return false;
   const paid=await readSettledTargetRaw(db,input.gameId,p.sourceRequestKey);
   await normalSourceAuthorized(db,input.gameId,j,paid);
   await correctionSourceAuthorized(db,input.gameId,j,paid);

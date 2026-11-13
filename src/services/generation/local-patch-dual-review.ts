@@ -1151,7 +1151,7 @@ async function prepareSingleLowQuestion(c: Pick<Container, "db" | "storage">, pr
     const marker = jh.journeyHeadMarkerSchema.parse(receipt.journeyHeadRecovery);
     journeyReviewCoverage = marker.authorizedAttempt >= 3
       ? (await import('../../domain/generation/sunburst-painter')).SUNBURST_REVIEW_COVERAGE_MICRO_USD
-      : jh.JOURNEY_HEAD_REVIEW_COVERAGE_MICRO_USD;
+      : marker.faceScale ? jh.JOURNEY_FACE_SCALE_REVIEW_COVERAGE_MICRO_USD : jh.JOURNEY_HEAD_REVIEW_COVERAGE_MICRO_USD;
     mediumPrompt+=jh.journeyHeadReviewDirection(a,marker,receipt.journeyWallCoat!==undefined,receipt.journeyParisChair!==undefined);
   }
   if(receipt.sourceHeadRecovery!==undefined){

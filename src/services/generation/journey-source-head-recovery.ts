@@ -22,7 +22,7 @@ import { JOURNEY_SOURCE_HEAD_VERSION, JOURNEY_SOURCE_HEAD_ACTION, JOURNEY_HEAD_R
   JOURNEY_SUNBURST_HEAD_VERSION, JOURNEY_SUNBURST_HEAD_ACTION, JOURNEY_SUNBURST_HEAD_HIDE_ID, JOURNEY_SUNBURST_HEAD_PAINTER,
   journeyHeadPinId, journeySunburstHeadPinId, journeyWallReplacementId,
   JOURNEY_WALL_REPLACEMENT_HIDE, JOURNEY_WALL_REPLACEMENT_KEY, JOURNEY_WALL_REPLACEMENT_ACTION,
-  journeyWallProviderRetryId, JOURNEY_WALL_PROVIDER_RETRY_ACTION, JOURNEY_WALL_PROVIDER_RETRY_KEY,
+  journeyWallProviderRetryId, JOURNEY_WALL_PROVIDER_RETRY_ACTION, JOURNEY_WALL_PROVIDER_RETRY_KEY, JOURNEY_FACE_SCALE_VERSION, JOURNEY_FACE_SCALE_REVIEW_COVERAGE_MICRO_USD,
   type JourneyHeadAuthority, type JourneyHeadMarker } from '../../domain/generation/journey-source-head';
 import { SUNBURST_IMAGE_RESERVE_MICRO_USD, SUNBURST_REVIEW_COVERAGE_MICRO_USD } from '../../domain/generation/sunburst-painter';
 import { LOCAL_PATCH_SUNBURST_IMAGE_POLICY, localPatchRenderPolicySha256 } from '../../infra/generation/openai-local-patch';
@@ -58,7 +58,10 @@ const pinBody = z.object({ version: z.literal(JOURNEY_SOURCE_HEAD_VERSION), game
   capMicroUsd: z.literal(4_000_000), originalAttempts: z.literal(1), authorizedAttempt: z.literal(2), requestKey: id,
   previousJudgeJson: z.string().max(250_000), previousJudgeSha256: digest, previousRowSha256: digest, rowInvariantSha256: digest,
   previousAssetId: id, protectedRows: z.array(z.object({ id, sha256: digest }).strict()).length(26),
-  originalRequests: z.array(requestHash).min(1), createdAt: z.string().datetime() }).strict();
+  originalRequests: z.array(requestHash).min(1), createdAt: z.string().datetime(),
+  // journey-face-scale/v1: every pin enrolled from this release asks for and
+  // compares both faces. Absent on every earlier pin, whose bytes and hash stand.
+  faceScale: z.literal(JOURNEY_FACE_SCALE_VERSION).optional() }).strict();
 const pinSchema = pinBody.extend({ authorizationSha256: digest }).strict();
 /** journey-source-head-sunburst/v1: the same finite second purchase, for Paris
  * only, bound to the active explicit five-dollar completion and the reviewed
@@ -137,7 +140,8 @@ export function journeyHeadMarkerFor(p: JourneyHeadPin): JourneyHeadMarker {
   return journeyHeadMarkerSchema.parse({ version: isJourneySunburstTailPin(p) ? JOURNEY_SUNBURST_TAIL_VERSION : JOURNEY_SOURCE_HEAD_VERSION, authorizationSha256: p.authorizationSha256,
     authoritySha256: p.authoritySha256, rowId: p.rowId, hideId: p.hideId, originalAttempts: p.originalAttempts, authorizedAttempt: p.authorizedAttempt,
     previousJudgeSha256: p.previousJudgeSha256, requestKey: p.requestKey,
-    ...(isJourneySunburstHeadPin(p) ? { painterRelease: p.painterRelease } : {}) });
+    ...(isJourneySunburstHeadPin(p) ? { painterRelease: p.painterRelease } : {}),
+    ...(p.faceScale ? { faceScale: p.faceScale } : {}) });
 }
 export function journeyHeadCandidate(p: JourneyHeadPin, row: Row) {
   return row.id === p.rowId && (row.status === 'FAILED' && row.attempts === p.originalAttempts && rowHash(row) === p.previousRowSha256
@@ -480,7 +484,8 @@ async function enrollJourneyHead(c: Container, gameId: string, hideId: string, s
       || hideId === JOURNEY_SUNBURST_HEAD_HIDE_ID && await tx.auditLog.findUnique({ where: { id: journeySunburstHeadPinId(gameId) } })
       || (JOURNEY_SUNBURST_TAIL_HIDE_IDS as readonly string[]).includes(hideId) && await tx.auditLog.findUnique({ where: { id: journeySunburstTailPinId(gameId, hideId as JourneySunburstTailHideId) } })) return refuse('job-or-existing-pin');
     const p = await context(cc, gameId, hideId, true, tailMode);
-    const need = sunburst ? SUNBURST_IMAGE_RESERVE_MICRO_USD + SUNBURST_REVIEW_COVERAGE_MICRO_USD : LOCAL_PATCH_RESERVE.renderMicroUsd + JOURNEY_HEAD_REVIEW_COVERAGE_MICRO_USD;
+    // Every pin enrolled here carries journey-face-scale/v1 and its longer question's allowance.
+    const need = sunburst ? SUNBURST_IMAGE_RESERVE_MICRO_USD + SUNBURST_REVIEW_COVERAGE_MICRO_USD : LOCAL_PATCH_RESERVE.renderMicroUsd + JOURNEY_FACE_SCALE_REVIEW_COVERAGE_MICRO_USD;
     if (!p || p.budget.held || p.budget.remainingMicroUsd < need) return refuse('payment-identity-or-full-capacity');
     // The five-dollar grant was justified by THIS Sunburst head: while it is
     // active, its named appearance cannot be re-enrolled as a MEDIUM v2 head.
@@ -522,7 +527,8 @@ async function enrollJourneyHead(c: Container, gameId: string, hideId: string, s
     }
     const common = { gameId, worldId: gameId + ':board-wizard', ownerId: p.game.ownerId,
       rowId: row.id, hideId, authoritySha256: hash(p.authority), identityAssetId: p.identity.id, identitySha256: p.policy.identitySha256,
-      mediumAuthorizationSha256: p.policy.authorizationSha256, originalPhotoAssetId:p.child.originalPhotoAssetId, originalPhotoSha256:p.photoSha256, photoCropSha256:p.photoCropSha256 };
+      mediumAuthorizationSha256: p.policy.authorizationSha256, originalPhotoAssetId:p.child.originalPhotoAssetId, originalPhotoSha256:p.photoSha256, photoCropSha256:p.photoCropSha256,
+      faceScale: JOURNEY_FACE_SCALE_VERSION };
     const tail = { originalAttempts: 1, authorizedAttempt: 2, requestKey,
       previousJudgeJson: row.judgeJson, previousJudgeSha256: sha(Buffer.from(row.judgeJson!)), previousRowSha256: rowHash(row), rowInvariantSha256: invariant(row), previousAssetId: row.assetId,
       protectedRows: all.filter(r => r.id !== row.id).map(r => ({ id: r.id, sha256: rowHash(r) })),
@@ -558,7 +564,8 @@ export async function requireJourneyHeadPurchase(c: Container, gameId: string, r
     'explicit five-dollar completion authority changed');
   const existing = await boardWizardBudgetOf(c).readRequest(pin!.worldId, pin!.requestKey);
   if (!existing) check(!p!.budget.held && p!.budget.remainingMicroUsd >= (pin!.version === JOURNEY_WALL_REPLACEMENT_ACTION || pin!.version === JOURNEY_WALL_PROVIDER_RETRY_ACTION ? wallTailCapacity
-    : sunburst ? sunburst.imageReserveMicroUsd + sunburst.reviewCoverageMicroUsd : LOCAL_PATCH_RESERVE.renderMicroUsd + JOURNEY_HEAD_REVIEW_COVERAGE_MICRO_USD),
+    : sunburst ? sunburst.imageReserveMicroUsd + sunburst.reviewCoverageMicroUsd
+      : LOCAL_PATCH_RESERVE.renderMicroUsd + (pin!.faceScale ? JOURNEY_FACE_SCALE_REVIEW_COVERAGE_MICRO_USD : JOURNEY_HEAD_REVIEW_COVERAGE_MICRO_USD)),
     sunburst ? 'Sunburst image and full ordinary assessment coverage do not fit' : 'image and full bounded ordinary MEDIUM coverage do not fit');
   return { pin: pin!, marker: journeyHeadMarkerFor(pin!), authority: p!.authority, sunburst };
 }
