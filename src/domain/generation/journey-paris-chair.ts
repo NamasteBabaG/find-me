@@ -18,7 +18,7 @@ export function composeJourneyParisChair(shipping: Uint8Array, source: Uint8Arra
   const pixels = Uint8Array.from(shipping);
   let changed = 0;
   for (let y = 241; y < 350; y++) {
-    const right = y <= 251 ? 153 : y <= 266 ? 159 : 161;
+    const right = y <= 251 ? 153 : y <= 266 ? 159 : 160;
     for (let x = 124; x <= right; x++) {
       const i = y * width + x;
       if (!headMask[i]) continue;
