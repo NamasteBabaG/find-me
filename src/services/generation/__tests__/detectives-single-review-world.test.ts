@@ -120,7 +120,7 @@ import { pinLocalPatchSourceFamily, resolveLocalPatchBoardsForGame, sourceBodyFo
 import { pinIdentitySourceRelease } from "../identity-source-release";
 import { allowedDualPublication } from "../local-patch-dual-publication";
 import { hasLocalPatchPublicationPolicy } from "../local-patch-publication-policy";
-import { LEAN_RECOVERY_BACKOFF_MS, runLocalPatchWorldSlice } from "../local-patch-world";
+import { LEAN_RECOVERY_BACKOFF_MS, LOCAL_PATCH_LEASE_MS, runLocalPatchWorldSlice } from "../local-patch-world";
 import { DUAL_VISUAL_REVIEW_V3, pinVisualReviewRelease } from "../visual-review-release";
 import { localPatchHideEvidenceIds } from "../local-patch-judge";
 import { sha256Bytes } from "../fixed-sprite";
@@ -4456,6 +4456,28 @@ it.each(['pass','age-refusal','wall-replacement','wall-provider-retry'] as const
   }
   expect(boughtHeads.size).toBe(4);expect(await localPatchPainterRelease(db,gameId)).toBeNull();
   expect((await budget.audit(worldId)).committedMicroUsd).toBeLessThanOrEqual(5_000_000);
+  // Reproduce the hosted retry: all boards reviewed, but the first assembly
+  // invocation expired before committing READY. A live worker still owns its
+  // lease, and an expired worker can be replaced without entering recovery.
+  const finalJobId='job_'+gameId;
+  if(providerRetry){
+   await db.gameScene.updateMany({where:{gameId},data:{generationStatus:'GENERATED'}});
+   await db.generationJob.update({where:{id:finalJobId},data:{status:'RUNNING',currentStep:'local-patch',updatedAt:new Date()}});
+   const busy=await runLocalPatchWorldSlice(container,deps,gameId,{hardDeadlineAt:Date.now()+270_000,workMode:REVIEW_EXISTING_WORK_MODE,diagnose:forbidden});
+   expect(busy).toMatchObject({claimed:false,pending:true,attention:null});
+   await vi.advanceTimersByTimeAsync(LOCAL_PATCH_LEASE_MS+1);
+   // A stored acceptable flag alone cannot publish if its paid receipt changed.
+   const changed=finalRows[0]!,original=JSON.parse(changed.judgeJson!);
+   await db.targetVariantAsset.update({where:{id:changed.id},data:{judgeJson:JSON.stringify({...original,judgedSha256:'e'.repeat(64)})}});
+   try{
+    const blocked=await runLocalPatchWorldSlice(container,deps,gameId,{hardDeadlineAt:Date.now()+270_000,workMode:REVIEW_EXISTING_WORK_MODE,diagnose:forbidden});
+    expect(blocked).toMatchObject({claimed:true,pending:false,attention:expect.stringContaining('has no publication policy')});
+    expect(await db.game.findUniqueOrThrow({where:{id:gameId}})).toMatchObject({status:'TARGETS_GENERATING',configJson:null});
+   }finally{
+    await db.targetVariantAsset.update({where:{id:changed.id},data:{judgeJson:changed.judgeJson,updatedAt:changed.updatedAt}});
+    await db.generationJob.update({where:{id:finalJobId},data:{status:'QUEUED',currentStep:'local-patch',lastError:null}});
+   }
+  }
   // Finish through the real world assembler; it cannot buy any further picture.
   let result={pending:true,attention:null as string|null};
   const assemblyProgress=async()=>{
@@ -4482,6 +4504,8 @@ it.each(['pass','age-refusal','wall-replacement','wall-provider-retry'] as const
   const game=await db.game.findUniqueOrThrow({where:{id:gameId}});expect(['READY','DELIVERED']).toContain(game.status);
   expect(parseGameConfig(game.configJson!).scenes.flatMap(s=>s.targets)).toHaveLength(27);
   expect(render).toHaveBeenCalledTimes(expectedRenders);expect(provider.creates).toHaveLength(expectedReviews);expect(forbidden).not.toHaveBeenCalled();expect(fetch).not.toHaveBeenCalled();
+  expect(await allRows()).toEqual(finalRows);
+  expect(JSON.parse((await db.worldBudgetLedger.findUniqueOrThrow({where:{worldId}})).snapshotJson)).toEqual(finalLedger);
   // Record the cap in the real publication path, not a synthetic aggregate alone.
   expect(hash(finalLedger.requests.find((r:{requestKey:string})=>r.requestKey===unknownKey))).toBe(hash(JSON.parse(beforeGrantLedger.snapshotJson).requests.find((r:{requestKey:string})=>r.requestKey===unknownKey)));
  }finally{vi.useRealTimers();}

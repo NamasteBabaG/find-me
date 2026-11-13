@@ -1,6 +1,7 @@
 import { readWholeSourceContextPin, wholeSourceContextCandidate } from "./whole-source-context-pin";
 import { windowStoppedRows } from './repeat-window-stop';
 import { generationWorkMode, REVIEW_EXISTING_WORK_MODE, type GenerationWorkMode } from '../../domain/generation/work-mode';
+import { QA_SUNBURST_TAIL_CAP } from '../../domain/generation/qa-sunburst-tail-completion';
 import { boardConditioningHash } from "./board-conditioned-source";
 import { wholeSourceContextExhausted } from "../../domain/generation/whole-source-context-purchase";
 import { wholeSourceContextImagePolicy } from "../../infra/generation/openai-local-patch";
@@ -21,6 +22,7 @@ import { nativeMaskTailCandidate, nativeMaskTailExhausted } from "../../domain/g
 import { guidedFrameCandidate, guidedFrameExhausted } from "../../domain/generation/guided-frame-recovery";
 import { qaCompletionGuidedRepair } from "../../domain/generation/qa-completion-recovery";
 import { readQaCompletionCapacity, resumeQaCompletionRecovery } from "./qa-completion-capacity";
+import { qaSunburstTailCompletionActive } from "./qa-sunburst-tail-completion";
 import { reconcileLegacyPaidJoinHead } from "./legacy-paid-join-head-recovery";
 import { legacyHeadCorrectionCandidate } from "../../domain/generation/legacy-paid-join-head";
 import { reconcileVisibleHeadPolicy } from "./visible-head-policy-recovery";
@@ -47,7 +49,7 @@ import { SUNBURST_REVIEW_COVERAGE_MICRO_USD } from "../../domain/generation/sunb
 import { fenceLocalPatchImages } from "./local-patch-lifecycle";
 import { env } from "../../lib/env";
 import { identityRevisionPending } from "./identity-source-revision-state";
-import { finishLocalPatchGame } from "./local-patch-player";
+import { finishLocalPatchGame, LocalPatchPublicationDeadline } from "./local-patch-player";
 import { deliverGameMail } from "../publish.service";
 import { SYSTEM } from "../audit.service";
 import { prepareLocalPatchBoardReview, reviewLocalPatchBoard, localPatchBoardReviewKeys, type LocalPatchBoardReviewDeps } from "./local-patch-board-review";
@@ -278,6 +280,21 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
   if (game.scenes.length >= 9 && (game.scenes.length !== 9 || worldsOwned(game.scenes.map(scene => scene.sceneSlug)).length !== 1)) {
     throw new Error("LOCAL_PATCH_WORLD: all nine boards must belong to one complete world");
   }
+  // A fully reviewed finite tail needs only the strict publisher. The ordinary
+  // slice also walks old purchases and repair plans, which can consume the
+  // entire hosted request before publication on a remote database.
+  const candidateTail = workMode === REVIEW_EXISTING_WORK_MODE && game.scenes.length === 9
+    && game.scenes.every(scene => scene.sceneVersion === 13);
+  const finalizingTail = candidateTail && await c.db.targetVariantAsset.findMany({
+    where: { variant: LOCAL_PATCH_VARIANT, targetInstance: { gameScene: { gameId } } },
+    select: { status: true, assetId: true, judgeJson: true },
+  }).then(rows => rows.length === 27 && rows.every(row => {
+    if (row.status !== "GENERATED" || !row.assetId) return false;
+    try {
+      const receipt = JSON.parse(row.judgeJson ?? "null");
+      return receipt?.reviewState === "board-review-complete" && receipt.qualityDisposition?.state === "acceptable";
+    } catch { return false; }
+  })) && await qaSunburstTailCompletionActive(c, gameId);
   // Resolve the draft's immutable source/placement companion once per content
   // version. No pin retains the original catalog objects and geometry exactly.
   const placementContexts = await Promise.all([...new Set(game.scenes.map(scene => scene.sceneVersion))]
@@ -294,7 +311,7 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
   // defer it beyond the background response's short retention. No new request here.
   // A job parked for a person reviews nothing this slice: its responses get the whole slice. The world's claim
   // counter, one step per slice, decides where each pass starts.
-  if (automatic && await subjectUpgradeOf(c.db, gameId)) {
+  if (!finalizingTail && automatic && await subjectUpgradeOf(c.db, gameId)) {
     const ahead = await c.db.generationJob.findUnique({ where: { id: `job_${gameId}` }, select: { currentStep: true, attempts: true } });
     const parked = !!ahead?.currentStep && PARKED_STEPS.includes(ahead.currentStep);
     await advanceContinuityInBackground(c, gameId, { deadlineAt: parked ? options.hardDeadlineAt : pollDeadlineAt, running: stillRunning,
@@ -310,12 +327,12 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
   let job = await c.db.generationJob.findUnique({ where: { id: `job_${gameId}` } });
   if (!job) return { ...empty, pending: false, claimed: false, paused: false };
   // local-patch-continue-in-slice/v1: a world the engine parked on one of its own interruptions that is now admitted.
-  if (automatic && job.currentStep === LOCAL_PATCH_NEEDS_RELEASE && await subjectUpgradeOf(c.db, gameId)) {
+  if (!finalizingTail && automatic && job.currentStep === LOCAL_PATCH_NEEDS_RELEASE && await subjectUpgradeOf(c.db, gameId)) {
     await resumeParkedInterruption(c, gameId, job, { readBoardArt: deps.readBoardArt },
       (options.hardDeadlineAt ?? Date.now() + 270_000) - LOCAL_PATCH_PHASE_MARGIN_MS);
     job = await c.db.generationJob.findUniqueOrThrow({ where: { id: job.id } });
   }
-  if (automatic && job.currentStep === LOCAL_PATCH_NEEDS_RELEASE) {
+  if (!finalizingTail && automatic && job.currentStep === LOCAL_PATCH_NEEDS_RELEASE) {
     await recoverLocalPatchImageInterruptions(c, gameId);
     const budget = boardWizardBudgetOf(c), worldId = boardWizardWorldId(gameId);
     const audit = await budget.audit(worldId);
@@ -357,11 +374,11 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
   // not.
   // A bounded free compositor correction can resume ONLY its authenticated
   // from-birth prop refusal. It grants no picture, opinion or budget.
-  if (job.currentStep === LOCAL_PATCH_RECOVERY_EXHAUSTED && await resumeBoundEnvelopeReconciliation(c, gameId))
+  if (!finalizingTail && job.currentStep === LOCAL_PATCH_RECOVERY_EXHAUSTED && await resumeBoundEnvelopeReconciliation(c, gameId))
     job = await c.db.generationJob.findUniqueOrThrow({ where: { id: job.id } });
-  if (job.currentStep === LOCAL_PATCH_RECOVERY_EXHAUSTED && await resumePropJoinRepair(c, gameId))
+  if (!finalizingTail && job.currentStep === LOCAL_PATCH_RECOVERY_EXHAUSTED && await resumePropJoinRepair(c, gameId))
     job = await c.db.generationJob.findUniqueOrThrow({ where: { id: job.id } });
-  if (job.currentStep === LOCAL_PATCH_RECOVERY_EXHAUSTED && await resumeQaCompletionRecovery(c, gameId))
+  if (!finalizingTail && job.currentStep === LOCAL_PATCH_RECOVERY_EXHAUSTED && await resumeQaCompletionRecovery(c, gameId))
     job = await c.db.generationJob.findUniqueOrThrow({ where: { id: job.id } });
   // A job parked for a person is not a job to take. Every OTHER failure stays
   // claimable, because those do get better by trying again.
@@ -399,6 +416,28 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
     });
     if (held.count !== 1 || live.count !== 1) throw new Error("LOCAL_PATCH_WORLD: this claim is no longer ours; a stale worker may not write child imagery");
   };
+  if (finalizingTail) {
+    try {
+      await finishLocalPatchGame(c, gameId, fence, { transactionTimeoutMs: 120_000,
+        sunburstTail: { capMicroUsd: QA_SUNBURST_TAIL_CAP, authorizationSha256: finalizingTail.authorizationSha256,
+          deadlineAt: options.hardDeadlineAt } });
+    } catch (error) {
+      // Keep the accepted pictures and ledger intact. The same claim can be
+      // released on a database fault, or parked on a failed publication proof.
+      const reason = (error instanceof Error ? error.message : String(error)).slice(0, 500);
+      const timedOut = error instanceof LocalPatchPublicationDeadline;
+      const refused = reason.startsWith("LOCAL_PATCH_PLAYER:") && !timedOut;
+      await c.db.generationJob.updateMany({ where: { id: job.id, attempts: claim, status: "RUNNING", currentStep: "local-patch" }, data: {
+        status: timedOut ? "QUEUED" : "FAILED", currentStep: refused ? LOCAL_PATCH_NEEDS_RELEASE : "local-patch", lastError: reason,
+      } });
+      if (timedOut) return { ...empty, claimed: true, pending: true, paused: false };
+      if (!refused) throw error;
+      return { ...empty, claimed: true, pending: false, paused: false, attention: reason };
+    }
+    await deliverLocalPatchNotifications(c, gameId, { deadlineAt: options.hardDeadlineAt })
+      .catch(error => console.error("[local-patch] ready; Sunburst completion notification unavailable", error));
+    return { ...empty, claimed: true, pending: false, paused: false };
+  }
   const failStrictQuality = async (reason: string) => c.db.$transaction(async tx => {
     await fence(tx);
     await transitionGame({ ...c, db: tx as Container["db"] }, gameId, "GENERATION_FAILED", SYSTEM, { reason });

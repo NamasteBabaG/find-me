@@ -5,7 +5,7 @@ import { INTEGRATED_WIZARD_CATALOG } from "../../../content/adventures/wizard-in
 import { REFRESHED_WIZARD_CATALOG } from "../../../content/adventures/wizard-refresh-release";
 import { isCollectionVersion, REFRESHED_COLLECTION_VERSION, INTEGRATED_COLLECTION_VERSION } from "../../domain/scene/local-patch-versions";
 import { createHash } from "node:crypto";
-import type { Prisma } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 import { GameConfigSchema, SpriteRefSchema, type GameConfig, type PlayWorld } from "../../domain/game/config";
 import { composeGame, composeScene, composeWorld } from "../../domain/game/compose";
 import { isLocalPatchAdvisoryVersion } from "../../domain/scene/local-patch-catalog";
@@ -25,6 +25,8 @@ import { hasLocalPatchHumanApproval, localPatchGeometryDigest } from "./local-pa
 import { hasLocalPatchPublicationPolicy, localPatchPublicationGeometryHash } from "./local-patch-publication-policy";
 import { enqueueLocalPatchNotifications } from "../local-patch-notifications";
 import { readLocalPatchPartialRelease } from "./local-patch-partial-release";
+import { qaSunburstTailCompletionActive } from "./qa-sunburst-tail-completion";
+import { DbStorage } from "../../infra/storage/db";
 import { identityRevisionPending, identityRevisionContinuationPublishable } from "./identity-source-revision-state";
 import { subjectUpgradeOf } from "./subject-enrollment";
 import { leanReviewRecoveryOf } from "./lean-review-recovery-pin";
@@ -38,8 +40,18 @@ function demand(value: unknown, reason: string): asserts value {
   if (!value) throw new Error(`LOCAL_PATCH_PLAYER: ${reason}`);
 }
 
+export class LocalPatchPublicationDeadline extends Error {
+  constructor() {
+    super("LOCAL_PATCH_PLAYER: not enough time remains to commit the verified Sunburst world");
+  }
+}
+
 /** Strict assembly: no avatar/body fallback and no unpainted B variant. */
 export async function composeLocalPatchGame(c: Container, gameId: string): Promise<GameConfig> {
+  return assembleLocalPatchGame(c, gameId);
+}
+
+async function assembleLocalPatchGame(c: Container, gameId: string, deadlineAt?: number, completeSunburstTail = false): Promise<GameConfig> {
   demand(!await identityRevisionPending(c.db, gameId), "reference revision must finish before assembly");
   const partialRelease = await readLocalPatchPartialRelease(c, gameId);
   const game = await c.db.game.findUniqueOrThrow({ where: { id: gameId },
@@ -59,15 +71,21 @@ export async function composeLocalPatchGame(c: Container, gameId: string): Promi
   const locale = game.locale === "he" ? "he" : "en";
   const scenes = [];
   const worlds = new Map<string, PlayWorld>();
-  let humanIdentitySha256: string | undefined;
+  const assemblyStartedAt = Date.now();
+  let humanIdentitySha256: Promise<string> | undefined;
+  const readIdentityHash = async (identityAssetId: string) => {
+    const identity = await c.db.asset.findUniqueOrThrow({ where: { id: identityAssetId } });
+    demand(identity.ownerId === game.ownerId && identity.status === "READY" && !identity.deletedAt && identity.type === "IDENTITY_SHEET", "human approval identity is unavailable");
+    return sha(await c.storage.get(identity.storagePath));
+  };
   for (const scene of game.scenes) {
+    if (deadlineAt !== undefined && deadlineAt - Date.now() < 50_000) throw new LocalPatchPublicationDeadline();
     const board = placements.boards.find(board => board.board === scene.sceneSlug);
     const def = sceneBySlug(scene.sceneSlug, scene.sceneVersion);
     demand(board && `public${def.art.base}` === board.art, `the ${scene.sceneSlug} board is not the authored artwork`);
     demand(scene.targets.length === board.hides.length, `${scene.sceneSlug} needs exactly ${board.hides.length} painted targets`);
-    const sprites = [];
     const includedHides = board.hides.filter(hide => !partialRelease?.omittedHideIds.includes(hide.id));
-    for (const hide of includedHides) {
+    const verifySprite = async (hide: (typeof includedHides)[number]) => {
       const target = scene.targets.find(t => t.targetId === hide.targetId);
       const row = target?.variants.find(v => v.variant === LOCAL_PATCH_VARIANT);
       demand(target && row && ["GENERATED", "APPROVED"].includes(row.status) && row.provider === LOCAL_PATCH_PROVIDER && row.assetId,
@@ -79,13 +97,9 @@ export async function composeLocalPatchGame(c: Container, gameId: string): Promi
       const imageSha256 = sha(await c.storage.get(asset.storagePath));
       if (row.status === "APPROVED" || isLocalPatchAdvisoryVersion(scene.sceneVersion)) {
         demand(child.identityAssetId, "human approval requires its original identity");
-        if (!humanIdentitySha256) {
-          const identity = await c.db.asset.findUniqueOrThrow({ where: { id: child.identityAssetId } });
-          demand(identity.ownerId === game.ownerId && identity.status === "READY" && !identity.deletedAt && identity.type === "IDENTITY_SHEET", "human approval identity is unavailable");
-          humanIdentitySha256 = sha(await c.storage.get(identity.storagePath));
-        }
+        humanIdentitySha256 ??= readIdentityHash(child.identityAssetId);
         const binding = { gameId, hideId: hide.id, identityAssetId: child.identityAssetId,
-          identitySha256: humanIdentitySha256, assetId: asset.id, imageSha256, variantId: row.id, attempts: row.attempts,
+          identitySha256: await humanIdentitySha256, assetId: asset.id, imageSha256, variantId: row.id, attempts: row.attempts,
           geometrySha256: localPatchGeometryDigest(row), judgeJson: row.judgeJson };
         if (isLocalPatchAdvisoryVersion(scene.sceneVersion)) {
           const humanSubset = partialRelease?.selected.some(item => item.hideId === hide.id && item.variantId === row.id
@@ -108,7 +122,19 @@ export async function composeLocalPatchGame(c: Container, gameId: string): Promi
       demand(row.rectJson && row.hitRectJson && row.headAnchorJson, `${hide.id} has no tap geometry`);
       const sprite = SpriteRefSchema.parse({ kind: "image", url: signedAssetUrl(c, asset.id), width: asset.width, height: asset.height,
         rect: JSON.parse(row.rectJson), hitRect: JSON.parse(row.hitRectJson), anchor: JSON.parse(row.headAnchorJson) });
-      sprites.push({ targetId: hide.targetId, sprite, spriteByVariant: { A: sprite, B: sprite } });
+      return { targetId: hide.targetId, sprite, spriteByVariant: { A: sprite, B: sprite } };
+    };
+    const sprites: Awaited<ReturnType<typeof verifySprite>>[] = [];
+    if (completeSunburstTail) {
+      // A complete Detectives board has three appearances. Read their proofs
+      // together, keeping authored order and waiting for all reads on failure.
+      demand(includedHides.length === 3, "Sunburst completion requires three appearances on every board");
+      for (const result of await Promise.allSettled(includedHides.map(verifySprite))) {
+        if (result.status === "rejected") throw result.reason;
+        sprites.push(result.value);
+      }
+    } else {
+      for (const hide of includedHides) sprites.push(await verifySprite(hide));
     }
     const world = worldForBoard(scene.sceneSlug);
     demand(world, `${scene.sceneSlug} has no world map`);
@@ -127,6 +153,9 @@ export async function composeLocalPatchGame(c: Container, gameId: string): Promi
       slot.flip = false; slot.rotation = 0; slot.layer = "front";
     }
     scenes.push({ ...composed, worldSlug: world.slug });
+    if (completeSunburstTail) console.info("[local-patch] Sunburst publication", {
+      stage: "verified-board", boards: scenes.length, elapsedMs: Date.now() - assemblyStartedAt,
+    });
   }
   demand(worlds.size === 1, "the nine boards must belong to one world");
   const config = GameConfigSchema.parse(composeGame({ gameId, child: who, locale, packageTier: "ONE_WORLD", styleVersion: STYLE,
@@ -139,8 +168,14 @@ export async function composeLocalPatchGame(c: Container, gameId: string): Promi
 
 /** Publish only an entirely verified world, atomically with the worker fence. */
 export async function finishLocalPatchGame(c: Container, gameId: string, fence: (tx: Prisma.TransactionClient) => Promise<void>,
-  options: { transactionTimeoutMs?: 30_000 | 120_000 } = {}): Promise<void> {
-  const config = await composeLocalPatchGame(c, gameId);
+  options: { transactionTimeoutMs?: 30_000 | 120_000; sunburstTail?: { capMicroUsd: number; authorizationSha256: string; deadlineAt?: number } } = {}): Promise<void> {
+  const config = await assembleLocalPatchGame(c, gameId, options.sunburstTail?.deadlineAt, !!options.sunburstTail);
+  if (options.sunburstTail) {
+    demand(config.scenes.length === 9 && config.scenes.every(scene => scene.targets.length === 3), "Sunburst completion requires all 27 appearances");
+    if (options.sunburstTail.deadlineAt !== undefined && options.sunburstTail.deadlineAt - Date.now() < 25_000)
+      throw new LocalPatchPublicationDeadline();
+    console.info("[local-patch] Sunburst publication", { stage: "commit" });
+  }
   const assetIds = [config.child.avatarUrl, ...config.scenes.flatMap(s => s.targets.map(t => t.sprite.kind === "image" ? t.sprite.url : ""))]
     .map(url => /\/api\/assets\/([^?]+)/.exec(url)?.[1]).filter((id): id is string => !!id);
   await c.db.$transaction(async tx => {
@@ -153,6 +188,11 @@ export async function finishLocalPatchGame(c: Container, gameId: string, fence: 
     const contentVersions = await tx.gameScene.findMany({ where: { gameId }, select: { sceneVersion: true } });
     const contentVersion = contentVersions[0]?.sceneVersion;
     demand(contentVersions.length === 9 && contentVersions.every(scene => scene.sceneVersion === contentVersion), "publication needs one pinned content version");
+    if (options.sunburstTail) {
+      const grant = await qaSunburstTailCompletionActive({ ...c, db: tx as Container["db"], storage: new DbStorage(tx) }, gameId);
+      demand(contentVersion === 13 && grant?.authorizationSha256 === options.sunburstTail.authorizationSha256,
+        "the original paid Sunburst world and its exact completion grant must still be active");
+    }
     const budget = boardWizardBudgetOf({ ...c, db: tx as unknown as Container["db"] }), worldId = boardWizardWorldId(gameId);
     const enrolled = !!await subjectUpgradeOf(tx, gameId);
     demand(await localPatchBudgetReadyForPublication(budget, worldId, contentVersion,
@@ -163,6 +203,9 @@ export async function finishLocalPatchGame(c: Container, gameId: string, fence: 
         journeyProviderRetryContinuation: async approval => (await import("./journey-source-head-recovery")).journeyWallProviderRetryPublishable(tx, gameId, approval) }),
       "unresolved spending must be reconciled before publication");
     const audit = await budget.audit(worldId);
+    if (options.sunburstTail)
+      demand(audit.capMicroUsd === options.sunburstTail.capMicroUsd && audit.committedMicroUsd <= audit.capMicroUsd,
+        "the Sunburst completion must remain within its original cumulative cap");
     // QA uses durable FileBlob storage. Honor the parent's original-photo
     // privacy choice in the same commit that first exposes a playable config.
     const child = game.childProfile;
@@ -187,5 +230,7 @@ export async function finishLocalPatchGame(c: Container, gameId: string, fence: 
     await tx.auditLog.create({ data: { id: newId("aud"), actorType: "SYSTEM", action: "local-patch:ready", entityType: "Game", entityId: gameId,
       metaJson: JSON.stringify({ boards: 9, targets: expectedAssets - 1, configSha256: sha(Buffer.from(JSON.stringify(config))), settledMicroUsd: audit.settledMicroUsd }) } });
     if (isLocalPatchAdvisoryVersion(contentVersion ?? 0)) await enqueueLocalPatchNotifications(c, tx, gameId, config);
-  }, { maxWait: 10_000, timeout: options.transactionTimeoutMs ?? 30_000 });
+  }, { ...(options.sunburstTail ? { isolationLevel: Prisma.TransactionIsolationLevel.Serializable } : {}),
+    maxWait: 10_000, timeout: Math.min(options.transactionTimeoutMs ?? 30_000,
+    options.sunburstTail?.deadlineAt === undefined ? Infinity : Math.max(1, options.sunburstTail.deadlineAt - Date.now() - 11_000)) });
 }
