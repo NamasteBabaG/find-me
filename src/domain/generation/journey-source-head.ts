@@ -139,6 +139,24 @@ export const JOURNEY_SUNBURST_HEAD_PAINTER = 'local-patch-painter/sunburst-high-
 export const journeyHeadPinId = (gameId: string, hideId: string) => 'aud_journey_head_' + journeyHeadHash([gameId, hideId]).slice(0, 40);
 export const journeySunburstHeadPinId = (gameId: string) => 'aud_journey_head_sb_' + journeyHeadHash([gameId, JOURNEY_SUNBURST_HEAD_HIDE_ID]).slice(0, 40);
 
+/**
+ * journey-face-scale/v1. A source-head composition keeps the SOURCE body, so the
+ * new face must keep the SOURCE face size. A head box cannot show this: the
+ * canonical hair is legitimately longer and fuller than the replaced child's, so
+ * a passing head of the right size still grows in its box (2026-11-13: three
+ * good compositions grew 15-66% in box height). The FACE, hairline to chin and
+ * cheek to cheek, is the comparable measure. Only pins enrolled under this
+ * version ask for it; every earlier pin, question and decision is unchanged.
+ */
+export const JOURNEY_FACE_SCALE_VERSION = 'journey-face-scale/v1' as const;
+/** Largest admitted growth of the new face over the measured SOURCE face. */
+export const JOURNEY_FACE_SCALE_LIMITS = Object.freeze({ height: 1.15, width: 1.2 });
+/** The face measurement lengthens the same single MEDIUM question by a few
+ * hundred characters; its full prepared maximum measured 178,010-178,040 against
+ * the historical 178,000. Face-scale pins reserve and verify this allowance; every
+ * earlier pin keeps JOURNEY_HEAD_REVIEW_COVERAGE_MICRO_USD exactly. A ceiling, not a price. */
+export const JOURNEY_FACE_SCALE_REVIEW_COVERAGE_MICRO_USD = 184_000;
+
 const digest = z.string().regex(/^[a-f0-9]{64}$/), id = z.string().regex(/^[A-Za-z0-9_:.-]{1,240}$/);
 export const JOURNEY_WALL_REPLACEMENT_HIDE = 'greatwall-detectives-hide-1';
 export const JOURNEY_WALL_REPLACEMENT_KEY = 'greatwall-detectives-hide-1:standing:render:3';
@@ -156,7 +174,9 @@ export const journeyHeadMarkerSchema = z.object({ version: z.enum([JOURNEY_SOURC
   authoritySha256: digest, rowId: id, hideId: id, originalAttempts: z.union([z.literal(1), z.literal(2), z.literal(3)]), authorizedAttempt: z.union([z.literal(2), z.literal(3), z.literal(4)]),
   previousJudgeSha256: digest, requestKey: id,
   // Absent on every v2 purchase (unchanged bytes); present only on the one Sunburst head.
-  painterRelease: z.literal(JOURNEY_SUNBURST_HEAD_PAINTER).optional() }).strict()
+  painterRelease: z.literal(JOURNEY_SUNBURST_HEAD_PAINTER).optional(),
+  // Absent on every pin enrolled before journey-face-scale/v1 (unchanged bytes and hashes).
+  faceScale: z.literal(JOURNEY_FACE_SCALE_VERSION).optional() }).strict()
   .refine(p => p.version !== JOURNEY_SUNBURST_TAIL_VERSION || p.painterRelease === JOURNEY_SUNBURST_HEAD_PAINTER,
     { message: 'A finite Sunburst tail requires the exact HIGH/LOW painter' })
   .refine(p => p.authorizedAttempt === 2 ? p.originalAttempts === 1
@@ -184,6 +204,10 @@ export function journeyHeadPaintDirection(a: JourneyHeadAuthority, ageYears: num
       + 'Use the unmarked first image as the geometry reference: in crop-local 512x768 coordinates the SOURCE crown is near y=300, the chin near y=358 and the top collar join near y=365. Match those landmarks to the visible SOURCE pixels. '
       + 'Keep the original collar, jacket and shoulders pixel-stable, even where the mask overlaps them. Keep the canonical hair fully inside the mask by laying it behind the shoulder within the head silhouette. No loose strand may cross the left or lower edge. '
       + 'Do not enlarge the face, turn it toward the viewer, lower the chin or extend the neck toward the pinwheel. ' : '')
+    + (marker?.faceScale === JOURNEY_FACE_SCALE_VERSION ? 'FACE SCALE ' + JOURNEY_FACE_SCALE_VERSION + ': the SOURCE body is kept, so the new FACE must keep the SOURCE face size. '
+      + 'From hairline to chin and cheek to cheek it matches the face of the replaced SOURCE child (that whole head, hair included, spans about '
+      + a.targetRegisteredHead.width + 'x' + a.targetRegisteredHead.height + ' px in this crop). Longer canonical hair may extend beyond it; the face itself never grows. '
+      + 'A face larger than the nearby SOURCE children at the same depth is a defect. ' : '')
     + 'Other original people continuing beyond the crop must keep their exact SOURCE fragments. In Paris the feet of the upper green-skirt child are protected SOURCE, including where the padded target head registration overlaps them; never redraw or relocate those feet. '
     + 'PHOTO and CANONICAL define identity, facial geometry, hair pattern/length and stated age. SOURCE people define painted contour weight, local contrast, softness, lighting and native sharpness. Avoid photographic microdetail, blur, halos or a style mismatch. '
     + 'Return only the unmarked512x768 original frame. A fresh ordinary MEDIUM assessment still decides complete head/hair, likeness, age, people, body, pose, all joins and style; no old verdict transfers.';
@@ -207,6 +231,7 @@ export function journeyHeadReviewDirection(a:JourneyHeadAuthority, marker?: Jour
     +(a.version === JOURNEY_SUNBURST_TAIL_VERSION
       ? 'Independently judge perceived age from PHOTO versus both face and body; state the honest evidence-based age interval. Never narrow an interval, invent certainty or pass a child who looks older merely to finish. '
       : 'The unchanged age reader requires a narrow independently estimated range containing stated age7: no lower than5, no upper above8, span at most3. Report genuine7-9 or uncertainty honestly; do not narrow an estimate to pass. ')
+    +(marker?.faceScale === JOURNEY_FACE_SCALE_VERSION ? 'The SOURCE body is kept: the new face must keep the replaced SOURCE child\'s face size and not exceed the faces of nearby SOURCE children at the same depth. Report both faces in the head check as instructed; the comparison is made from those measurements. ' : '')
     +(retainedCoat ? 'The head footprint describes the original head join. The only subsequent exception is the bounded jacket refit described above; it gives no visual approval. ' : '')
     +(retainedChair ? 'The original green chair rail was restored at the left edge of the head footprint from the SOURCE board. Inspect its continuity where the rails meet in SHIPPING, and independently fail any clipped hair, residual original head, change to a continuing person, or new visible seam. The repair gives no visual approval. ' : '')
     +'PUBLIC SOURCE HEAD FOOTPRINT, crop-local512x768: '+JSON.stringify({editablePolygon:a.editableHead,protectedBelow:a.protectedBelow,protectedRects:a.protectedRects,protectedSourceFragments:a.protectedSourceFragments,otherHeads:a.protectedHeads});

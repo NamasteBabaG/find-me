@@ -2,6 +2,7 @@ import { describe,it,expect } from 'vitest';
 import { createHash } from 'node:crypto';
 import { targetHeadReturnDecision as decide, targetHeadRepairContext, targetHeadReturnPrompt, targetHeadVersionOfReceipt,
  TARGET_HEAD_VISIBLE_VERSION, type TargetHeadEvidence } from '../target-head-return';
+import { JOURNEY_FACE_SCALE_LIMITS, JOURNEY_FACE_SCALE_VERSION } from '../journey-source-head';
 import { integrationDiagnosisPrompt } from '../../../services/generation/local-patch-integration-diagnosis';
 import { measureHeadRetention, type HeadRetentionPixels } from '../head-retention';
 const evidence:TargetHeadEvidence={version:'target-head-return/v1',gameId:'synthetic-game',hideId:'synthetic-hide',sourceRequestKey:'synthetic-paid-image',
@@ -114,5 +115,52 @@ describe('measured retention can only refuse a located visible-head PASS',()=>{
   expect(decide(answer({rawHead:faded,shippingHead:faded}),{...evidence,retention:m.retention}).disposition).toBe('unresolved');
   expect(decide(fresh({rawHead:faded,shippingHead:faded}),{...m,returned:{...r,left:r.left+1}}).disposition).toBe('unresolved');
   expect(decide(fresh({rawHead:faded,shippingHead:faded}),{...m,retention:{...m.retention!,lost:m.retention!.lost.slice(8)}}).disposition).toBe('unresolved');
+ });
+});
+
+describe('journey-face-scale/v1: the kept SOURCE body keeps its face size',()=>{
+ // Synthetic geometry only. A composed head keeps the SOURCE body; its hair may grow, its face may not.
+ const sourceHead={left:270,top:300,width:84,height:95};
+ const composed:TargetHeadEvidence={...evidence,version:TARGET_HEAD_VISIBLE_VERSION,returned:{left:12,top:12,width:488,height:744},
+  sourceBindingVersion:'source-head-recovery/v2',sourceCompositionSha256:'9'.repeat(64)};
+ const asked:TargetHeadEvidence={...composed,faceScale:{version:JOURNEY_FACE_SCALE_VERSION,sourceHead}};
+ const grown={left:258,top:288,width:110,height:130};
+ const sourceFace={left:282,top:322,width:60,height:66};
+ const fresh=(face?:object,patch:object={})=>answer({version:TARGET_HEAD_VISIBLE_VERSION,rawHead:grown,shippingHead:grown,...patch,
+  ...(face?{face:{newFace:{left:285,top:330,width:62,height:70},sourceFace,observation:'Synthetic new face is about the replaced SOURCE face size.',...face}}:{})});
+ it('passes a composed head whose box grew with longer hair while the face kept the SOURCE size',()=>{
+  expect(decide(fresh({}),asked).disposition).toBe('pass');
+ });
+ it.each([
+  ['taller',{left:280,top:318,width:66,height:80}],
+  ['wider',{left:276,top:325,width:76,height:70}],
+ ])('repairs a %s new face even when every visual check passed',(_name,newFace)=>{
+  expect(decide(fresh({newFace}),asked)).toMatchObject({disposition:'repair',reason:expect.stringContaining('larger than the replaced SOURCE face')});
+ });
+ it('admits up to the stated limits and no further',()=>{
+  const at={left:280,top:320,width:Math.floor(60*JOURNEY_FACE_SCALE_LIMITS.width),height:Math.floor(66*JOURNEY_FACE_SCALE_LIMITS.height)};
+  expect(decide(fresh({newFace:at}),asked).disposition).toBe('pass');
+  expect(decide(fresh({newFace:{...at,height:at.height+2}}),asked).disposition).toBe('repair');
+ });
+ it('never treats a missing, misplaced or unasked face as a pass',()=>{
+  expect(decide(fresh(),asked).disposition).toBe('unresolved');
+  expect(decide(fresh({sourceFace:{left:40,top:40,width:60,height:66}}),asked).disposition).toBe('unresolved');
+  expect(decide(fresh({}),composed).disposition).toBe('unresolved');
+ });
+ it('keeps a visible crown failure and the return boundary ahead of the face comparison',()=>{
+  expect(decide(fresh({},{shippingCrown:'fail'}),asked).disposition).toBe('repair');
+  expect(decide(fresh({},{shippingCrown:'uncertain'}),asked).disposition).toBe('unresolved');
+ });
+ it('asks for both faces only when the pin enrolled under it, leaving every earlier question unchanged',()=>{
+  expect(targetHeadReturnPrompt(composed)).not.toContain('FACE SCALE');
+  expect(targetHeadReturnPrompt(composed)).not.toContain('"face":');
+  const prompt=targetHeadReturnPrompt(asked);
+  expect(prompt.startsWith(targetHeadReturnPrompt(composed).split('"observation":"specific visible completeness')[0]!)).toBe(true);
+  expect(prompt).toContain('"face":{"newFace"');expect(prompt).toContain('FACE SCALE '+JOURNEY_FACE_SCALE_VERSION);
+  expect(prompt).toContain(JSON.stringify(sourceHead));
+ });
+ it('admits the face question only on a visible-head SOURCE-head composition',()=>{
+  expect(decide(fresh({}),{...asked,sourceBindingVersion:undefined,sourceCompositionSha256:undefined}).disposition).toBe('unresolved');
+  expect(decide(fresh({}),{...asked,version:'target-head-return/v1'}).disposition).toBe('unresolved');
  });
 });

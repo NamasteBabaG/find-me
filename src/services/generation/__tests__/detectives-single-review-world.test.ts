@@ -270,7 +270,10 @@ function controlledSol(interrupted = false, guided = false, guidedHideId?: strin
     return { status: "completed", reading: { responseId, raw: JSON.stringify({ version: state.prompt.includes('"version":"'+SINGLE_MEDIUM_VISUAL_REVIEW_VERSION+'"') ? SINGLE_MEDIUM_VISUAL_REVIEW_VERSION : SINGLE_VISUAL_REVIEW_VERSION, assessment,
         ...(state.prompt.includes('HEAD_RETURN_EVIDENCE: ') ? (()=>{const line=state.prompt.split('\n').find(s=>s.startsWith('HEAD_RETURN_EVIDENCE: '))!;const p=JSON.parse(line.slice('HEAD_RETURN_EVIDENCE: '.length)),r=p.returned;
           const head={left:r.left+14,top:r.top+14,width:Math.min(40,r.width-28),height:Math.min(50,r.height-28)};
-          return{head:{version:p.version,rawHead:head,shippingHead:head,rawCrown:'pass',shippingCrown:'pass',observation:'Controlled native raw and shipping crown entirely inside the opaque returned frame.'}};})():{}),
+          // journey-face-scale/v1: a controlled face the SOURCE face size, measured inside the registered SOURCE head.
+          const scaleLine=state.prompt.split('\n').find(s=>s.startsWith('FACE SCALE journey-face-scale/v1: ')),registered=scaleLine?JSON.parse(scaleLine.slice(scaleLine.indexOf('registered head ')+'registered head '.length,scaleLine.indexOf('}. ')+1)):null;
+          const face=registered?{newFace:{left:registered.left+12,top:registered.top+16,width:registered.width-24,height:registered.height-30},sourceFace:{left:registered.left+12,top:registered.top+16,width:registered.width-24,height:registered.height-30},observation:'Controlled new face keeps the replaced SOURCE face size.'}:null;
+          return{head:{version:p.version,rawHead:head,shippingHead:head,rawCrown:'pass',shippingCrown:'pass',observation:'Controlled native raw and shipping crown entirely inside the opaque returned frame.',...(face?{face}:{})}};})():{}),
         continuity: JSON.parse(longAnswer(boundHide(state.prompt).hideId, 400, 400, 160)), doubt: false, doubtReason: null }),
       usage: representativeUsage ? { input_tokens: 21000, output_tokens: 2500 } : { input_tokens: 2000, output_tokens: 500 }, model: "gpt-6.1-sol", finishReason: "stop", serviceTier: String(state.tier) } };
   }, cancel: async () => {} };
