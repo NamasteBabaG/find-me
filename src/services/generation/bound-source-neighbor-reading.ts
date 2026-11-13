@@ -5,6 +5,8 @@ import { env } from '../../lib/env';
 import { BOUND_SOURCE_NEIGHBOR_READER, readQuestionBoundSourceNeighborEnvelope } from '../../domain/generation/bound-source-neighbor-envelope';
 import { BOUND_SOURCE_CONTRACT_READER, readQuestionBoundSourceContractEnvelope,
   type BoundSourceNeighborReadingMarker } from '../../domain/generation/bound-source-contract-envelope';
+import { BOUND_SOURCE_SUBJECT_ECHO_READER, readQuestionBoundSubjectEchoEnvelope } from '../../domain/generation/bound-source-subject-echo-envelope';
+import { BOUND_SUBJECT_QUALITY_ENVELOPE_READER_V2 } from '../../domain/generation/bound-subject-quality-envelope';
 import { BACKGROUND_REVIEW_TRANSPORT, type BackgroundReviewBinding } from '../../domain/generation/background-review-round';
 import { isSingleMediumReviewPolicy } from '../../domain/generation/visual-review-policy';
 import { readSingleVisualReview } from '../../domain/generation/single-visual-review';
@@ -29,7 +31,10 @@ export async function authenticateBoundSourceNeighborReading(db: Prisma.Transact
     if (!outer || outer.doubt) return null;
     const expected = { contract: stage.sourceNeighbors.contract, binding: stage.sourceNeighbors.binding };
     const reader = readQuestionBoundSourceNeighborEnvelope(outer.assessment, expected) ? BOUND_SOURCE_NEIGHBOR_READER
-      : readQuestionBoundSourceContractEnvelope(outer.assessment, expected) ? BOUND_SOURCE_CONTRACT_READER : null;
+      : readQuestionBoundSourceContractEnvelope(outer.assessment, expected) ? BOUND_SOURCE_CONTRACT_READER
+      // Only a question that itself asked for the nested echo (envelope v2) may name the echo reading.
+      : stage.envelopeReader === BOUND_SUBJECT_QUALITY_ENVELOPE_READER_V2
+        && readQuestionBoundSubjectEchoEnvelope(outer.assessment, expected, stage.subjectBundle) ? BOUND_SOURCE_SUBJECT_ECHO_READER : null;
     if (!reader) return null;
     const { verifiedDualStage } = await import('./local-patch-dual-evidence');
     const paid = await verifiedDualStage(db, input.worldId, stage, 'scene-quality',

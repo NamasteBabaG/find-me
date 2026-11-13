@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { boundSourceNeighborReadingSchema } from './bound-source-neighbor-envelope';
+import { boundSourceSubjectEchoReadingSchema } from './bound-source-subject-echo-envelope';
 import { readSourceNeighborQualityBundle, sourceNeighborQualityBundleBindingSchema,
   SOURCE_NEIGHBOR_QUALITY_BUNDLE_LIMITS, type SourceNeighborQualityBundleReading } from './source-neighbor-quality-bundle';
 
@@ -9,7 +10,7 @@ export const BOUND_SOURCE_CONTRACT_READER = 'source-neighbor-envelope/v3-questio
 export const boundSourceContractReadingSchema = boundSourceNeighborReadingSchema.omit({ version: true })
   .extend({ version: z.literal(BOUND_SOURCE_CONTRACT_READER) }).strict();
 export const boundSourceNeighborReadingMarkerSchema = z.union([
-  boundSourceNeighborReadingSchema, boundSourceContractReadingSchema,
+  boundSourceNeighborReadingSchema, boundSourceContractReadingSchema, boundSourceSubjectEchoReadingSchema,
 ]);
 export type BoundSourceNeighborReadingMarker = z.infer<typeof boundSourceNeighborReadingMarkerSchema>;
 

@@ -1,5 +1,5 @@
 import type { NativeDetailEvidence } from "../../domain/generation/native-detail";
-import { BOUND_SUBJECT_QUALITY_ENVELOPE_READER, readBoundSubjectQualityEnvelopeV2,
+import { BOUND_SUBJECT_QUALITY_ENVELOPE_READER, BOUND_SUBJECT_QUALITY_ENVELOPE_READER_V2, readBoundSubjectQualityEnvelopeV2,
   readSubjectQualityEnvelopeWith, type BoundSubjectQualityEnvelopeReader } from "../../domain/generation/bound-subject-quality-envelope";
 import { targetHeadReturnDecision, TARGET_HEAD_VISIBLE_VERSION, type TargetHeadEvidence } from "../../domain/generation/target-head-return";
 import { SINGLE_MEDIUM_VISUAL_REVIEW_VERSION, readSingleVisualReviewVersion, readSingleVisualReview, type SingleVisualReviewVersion } from "../../domain/generation/single-visual-review";
@@ -31,6 +31,7 @@ import { isDeepStrictEqual } from 'node:util';
 import { readQuestionBoundSourceNeighborEnvelope } from "../../domain/generation/bound-source-neighbor-envelope";
 import { BOUND_SOURCE_CONTRACT_READER, boundSourceNeighborReadingMarkerSchema, readQuestionBoundSourceContractEnvelope,
   type BoundSourceNeighborReadingMarker as BoundSourceNeighborReading } from "../../domain/generation/bound-source-contract-envelope";
+import { BOUND_SOURCE_SUBJECT_ECHO_READER, readQuestionBoundSubjectEchoEnvelope } from "../../domain/generation/bound-source-subject-echo-envelope";
 import { SOURCE_NEIGHBOR_BUNDLE_VERSION, SOURCE_NEIGHBOR_POLICY, SOURCE_NEIGHBOR_READER, type SourceNeighborContract } from "../../domain/scene/local-patch-source-neighbors";
 import { resolveLocalPatchBoardsForGame, sourcePlacementForHide, sourcePlacementManifestForHide, type TrustedSourcePlacementContext } from "./source-placement-release";
 import { authoredLocalPatchSourceNeighborContract, type AuthoredLocalPatchReceipt } from "./local-patch-authored-return";
@@ -51,8 +52,18 @@ export function sourceNeighborQualityEvidence(context: TrustedSourcePlacementCon
 }
 /** One immutable raw document is retained. Unwrap the new envelope explicitly,
  * then let the original quality and subject readers decide their own documents. */
-export function readSourceNeighborQualityStage(stage: { raw: string | null; sourceNeighbors?: SourceNeighborQualityEvidence; policy?: VisualReviewPolicy;
-  sourceNeighborReading?: BoundSourceNeighborReading; requestKey?: string; fingerprint?: string }) {
+/** The stage's own question binding for its quality-subject document: a quality
+ * stage names it directly, a subject stage through its combined labels. */
+type SubjectBoundStage = { subjectBundle?: SubjectQualityBundleBinding; combined?: string; photoSha256?: string; planSha256?: string; subjectPolicy?: string };
+function questionSubjectBinding(stage: SubjectBoundStage): SubjectQualityBundleBinding | undefined {
+  if (stage.subjectBundle) return stage.subjectBundle;
+  if (stage.combined !== SUBJECT_QUALITY_BUNDLE_VERSION || !stage.photoSha256 || !stage.planSha256) return undefined;
+  return { version: SUBJECT_QUALITY_BUNDLE_VERSION, photoSha256: stage.photoSha256, planSha256: stage.planSha256,
+    ...(stage.subjectPolicy === "local-patch-subject/v2" ? { subjectPolicy: "local-patch-subject/v2" as const } : {}) };
+}
+type SourceNeighborStage = { raw: string | null; sourceNeighbors?: SourceNeighborQualityEvidence; policy?: VisualReviewPolicy;
+  sourceNeighborReading?: BoundSourceNeighborReading; requestKey?: string; fingerprint?: string } & SubjectBoundStage;
+export function readSourceNeighborQualityStage(stage: SourceNeighborStage) {
   const raw = stage.policy && isSingleReviewPolicy(stage.policy) ? readSingleVisualReview(stage.raw)?.assessment ?? null : stage.raw;
   if (stage.sourceNeighborReading !== undefined) {
     const marker = boundSourceNeighborReadingMarkerSchema.safeParse(stage.sourceNeighborReading);
@@ -60,12 +71,12 @@ export function readSourceNeighborQualityStage(stage: { raw: string | null; sour
       || marker.data.sourceFingerprint !== stage.fingerprint || marker.data.rawSha256 !== sha256Bytes(Buffer.from(stage.raw ?? ""))) return null;
     const expected = { contract: stage.sourceNeighbors.contract, binding: stage.sourceNeighbors.binding };
     return marker.data.version === BOUND_SOURCE_CONTRACT_READER ? readQuestionBoundSourceContractEnvelope(raw, expected)
+      : marker.data.version === BOUND_SOURCE_SUBJECT_ECHO_READER ? readQuestionBoundSubjectEchoEnvelope(raw, expected, questionSubjectBinding(stage))
       : readQuestionBoundSourceNeighborEnvelope(raw, expected);
   }
   return stage.sourceNeighbors ? readSourceNeighborQualityBundle(raw, { contract: stage.sourceNeighbors.contract, binding: stage.sourceNeighbors.binding }) : null;
 }
-function sourceNeighborAssessmentRaw(stage: { raw: string | null; sourceNeighbors?: SourceNeighborQualityEvidence; policy?: VisualReviewPolicy;
-  sourceNeighborReading?: BoundSourceNeighborReading; requestKey?: string; fingerprint?: string }): string | null {
+function sourceNeighborAssessmentRaw(stage: SourceNeighborStage): string | null {
   if (!stage.sourceNeighbors) return stage.policy && isSingleReviewPolicy(stage.policy) ? readSingleVisualReview(stage.raw)?.assessment ?? null : stage.raw;
   const reading = readSourceNeighborQualityStage(stage);
   return reading?.ok && reading.sourceNeighbors.disposition !== "unresolved" ? reading.assessment.raw : null;
@@ -333,7 +344,9 @@ export function localPatchSourceNeighborEchoUndecided(row: { status: string; las
     if (!outer || outer.doubt) return false;
     const expected = { contract: p.quality.sourceNeighbors.contract, binding: p.quality.sourceNeighbors.binding };
     return !!readQuestionBoundSourceNeighborEnvelope(outer.assessment, expected)
-      || !!readQuestionBoundSourceContractEnvelope(outer.assessment, expected);
+      || !!readQuestionBoundSourceContractEnvelope(outer.assessment, expected)
+      || p.quality.envelopeReader === BOUND_SUBJECT_QUALITY_ENVELOPE_READER_V2
+        && !!readQuestionBoundSubjectEchoEnvelope(outer.assessment, expected, p.quality.subjectBundle);
   } catch { return false; }
 }
 
