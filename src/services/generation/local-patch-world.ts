@@ -252,6 +252,8 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
   readonly maxHides?: number;
   /** Ordinary reviews and free retained recovery only; no render or diagnosis. */
   readonly workMode?: GenerationWorkMode;
+  /** Explicit owner-authenticated publication. Never enters provider work. */
+  readonly publicationOwnerId?: string;
   /** Synthetic provider injection; production uses the same existing credential. */
   readonly boardJudge?: LocalPatchBoardReviewDeps["judge"];
   /** Synthetic correction review; production still uses the existing key. */
@@ -259,6 +261,7 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
   readonly diagnose?: SelfRepairDeps["diagnose"];
 } = {}): Promise<LocalPatchSliceResult> {
   const workMode = generationWorkMode(options.workMode);
+  const publicationOnly = options.publicationOwnerId !== undefined;
   const empty = { gameId, outcomes: [], blocked: [] as { boardId: string; reason: string }[], attention: null as string | null };
   const game = await c.db.game.findUnique({ where: { id: gameId }, include: { scenes: { orderBy: { orderIndex: "asc" } } } });
   if (!game || game.deletedAt || game.styleVersion !== LOCAL_PATCH_STYLE) return { ...empty, pending: false, claimed: false, paused: false };
@@ -283,7 +286,8 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
   // A fully reviewed finite tail needs only the strict publisher. The ordinary
   // slice also walks old purchases and repair plans, which can consume the
   // entire hosted request before publication on a remote database.
-  const candidateTail = workMode === REVIEW_EXISTING_WORK_MODE && game.scenes.length === 9
+  const candidateTail = workMode === REVIEW_EXISTING_WORK_MODE && (!publicationOnly || game.ownerId === options.publicationOwnerId)
+    && game.scenes.length === 9
     && game.scenes.every(scene => scene.sceneVersion === 13);
   const finalizingTail = candidateTail && await c.db.targetVariantAsset.findMany({
     where: { variant: LOCAL_PATCH_VARIANT, targetInstance: { gameScene: { gameId } } },
@@ -295,6 +299,8 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
       return receipt?.reviewState === "board-review-complete" && receipt.qualityDisposition?.state === "acceptable";
     } catch { return false; }
   })) && await qaSunburstTailCompletionActive(c, gameId);
+  if (publicationOnly && !finalizingTail) return { ...empty, pending: false, claimed: false, paused: false,
+    attention: "The owner's finite Sunburst world does not have a complete set of 27 reviewed appearances and an active grant." };
   // Resolve the draft's immutable source/placement companion once per content
   // version. No pin retains the original catalog objects and geometry exactly.
   const placementContexts = await Promise.all([...new Set(game.scenes.map(scene => scene.sceneVersion))]
@@ -411,16 +417,26 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
       data: { currentStep: "local-patch" },
     });
     const live = await tx.game.updateMany({
-      where: { id: gameId, status: "TARGETS_GENERATING", deletedAt: null, styleVersion: LOCAL_PATCH_STYLE },
+      where: { id: gameId, status: "TARGETS_GENERATING", deletedAt: null, styleVersion: LOCAL_PATCH_STYLE,
+        ...(publicationOnly ? { ownerId: options.publicationOwnerId } : {}) },
       data: { styleVersion: LOCAL_PATCH_STYLE },
     });
     if (held.count !== 1 || live.count !== 1) throw new Error("LOCAL_PATCH_WORLD: this claim is no longer ours; a stale worker may not write child imagery");
   };
   if (finalizingTail) {
+    // Renewal uses the same attempt token and fence as the terminal write.
+    // Host limits may exceed the lease, so renew between board reads without
+    // claiming again or leaving a background timer running on return.
+    let renewedAt = Date.now();
+    const renewLease = publicationOnly ? async () => {
+      if (Date.now() - renewedAt < 60_000) return;
+      await c.db.$transaction(fence);
+      renewedAt = Date.now();
+    } : undefined;
     try {
       await finishLocalPatchGame(c, gameId, fence, { transactionTimeoutMs: 120_000,
         sunburstTail: { capMicroUsd: QA_SUNBURST_TAIL_CAP, authorizationSha256: finalizingTail.authorizationSha256,
-          deadlineAt: options.hardDeadlineAt } });
+          deadlineAt: options.hardDeadlineAt, renewLease } });
     } catch (error) {
       // Keep the accepted pictures and ledger intact. The same claim can be
       // released on a database fault, or parked on a failed publication proof.

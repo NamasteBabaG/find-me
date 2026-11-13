@@ -17,8 +17,8 @@ import { JOURNEY_PARIS_CHAIR_SELECTOR } from '@/domain/generation/journey-paris-
 import { JOURNEY_SUNBURST_HEAD_HIDE_ID, JOURNEY_WALL_REPLACEMENT_HIDE } from '@/domain/generation/journey-source-head';
 
 export const runtime = "nodejs";
-/** Generating one hiding spot is ~55s, so the slice needs room for at least one. */
-export const maxDuration = 300;
+/** The owner-only QA publication turn may revalidate 27 stored appearances. */
+export const maxDuration = 600;
 
 /**
  * Stop starting new hiding spots after this long.
@@ -38,6 +38,7 @@ export const maxDuration = 300;
 const SLICE_MS = 30_000;
 /** The request's hard limit for generation work: the host's 300s less room for I/O and the answer. */
 const HARD_MS = 270_000;
+const SUNBURST_PUBLICATION_MS = 540_000;
 
 /**
  * Move generation forward.
@@ -56,7 +57,10 @@ export async function POST(req: Request) {
   const log = (event: string) => console.info("[jobs/tick]", { requestId, event, phase, elapsedMs: Date.now() - startedAt });
   const enter = (next: string) => { phase = next; log("phase"); };
   log("start");
-  const watchdog = setTimeout(() => console.error("[jobs/tick]", { requestId, event: "deadline-exceeded", phase, elapsedMs: Date.now() - startedAt }), HARD_MS);
+  const deadlineWatchdog = (deadline: number) => setTimeout(() => console.error("[jobs/tick]", {
+    requestId, event: "deadline-exceeded", phase, elapsedMs: Date.now() - startedAt,
+  }), Math.max(0, deadline - Date.now()));
+  let watchdog = deadlineWatchdog(hardDeadlineAt);
   // Observation only: never return success while uncancelled DB/provider writes
   // continue. Cancellation belongs to each operation, not Promise.race here.
   watchdog.unref?.();
@@ -66,10 +70,26 @@ export async function POST(req: Request) {
     const c = getContainer();
     const query = new URL(req.url).searchParams;
     const gameId = query.get("gameId"), requestedMode = query.get('mode'), restore = query.get('restore');
+    const publication = query.get('publication');
     enter("authorization");
     if (!(await isAllowed(req, gameId))) return NextResponse.json({ error: "forbidden" }, { status: 403 });
     if (requestedMode !== null && (requestedMode !== 'review-existing' || !gameId || env().APP_ENV !== 'qa' || c.storage.id !== 'db'))
       return NextResponse.json({ error: 'unsupported-work-mode' }, { status: 400 });
+    if (publication !== null) {
+      if (publication !== 'sunburst-tail-v1' || requestedMode !== 'review-existing' || !gameId || restore !== null
+        || query.getAll('publication').length !== 1)
+        return NextResponse.json({ error: 'unsupported-publication' }, { status: 400 });
+      const owner = await currentUser();
+      if (!owner) return NextResponse.json({ error: 'forbidden' }, { status: 403 });
+      const deadline = startedAt + SUNBURST_PUBLICATION_MS;
+      clearTimeout(watchdog);
+      watchdog = deadlineWatchdog(deadline);
+      watchdog.unref?.();
+      enter('sunburst-publication');
+      const result = await tickGeneration(c, gameId, SLICE_MS, Math.max(0, deadline - Date.now()),
+        { workMode: REVIEW_EXISTING_WORK_MODE, publicationOwnerId: owner.id });
+      return NextResponse.json({ ...result, retention: null }, { headers: { 'Cache-Control': 'no-store' } });
+    }
     if (restore !== null) {
       const hideId = query.get('hideId'), sourceKey = query.get('sourceKey');
       if (!['retained-window-v1','retained-window-alternate-v1','journey-source-head-v2','journey-source-head-sunburst-v1','journey-source-head-sunburst-tail-v1','journey-head-frame-v1',JOURNEY_WALL_COAT_SELECTOR,JOURNEY_PARIS_CHAIR_SELECTOR].includes(restore) || requestedMode !== 'review-existing' || !gameId || env().APP_ENV !== 'qa'

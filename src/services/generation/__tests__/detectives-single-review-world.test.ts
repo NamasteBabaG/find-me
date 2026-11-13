@@ -4463,14 +4463,17 @@ it.each(['pass','age-refusal','wall-replacement','wall-provider-retry'] as const
   if(providerRetry){
    await db.gameScene.updateMany({where:{gameId},data:{generationStatus:'GENERATED'}});
    await db.generationJob.update({where:{id:finalJobId},data:{status:'RUNNING',currentStep:'local-patch',updatedAt:new Date()}});
-   const busy=await runLocalPatchWorldSlice(container,deps,gameId,{hardDeadlineAt:Date.now()+270_000,workMode:REVIEW_EXISTING_WORK_MODE,diagnose:forbidden});
+   const explicit=()=>({hardDeadlineAt:Date.now()+540_000,workMode:REVIEW_EXISTING_WORK_MODE,publicationOwnerId:owner,diagnose:forbidden});
+   const busy=await runLocalPatchWorldSlice(container,deps,gameId,explicit());
    expect(busy).toMatchObject({claimed:false,pending:true,attention:null});
    await vi.advanceTimersByTimeAsync(LOCAL_PATCH_LEASE_MS+1);
+   const stranger=await runLocalPatchWorldSlice(container,deps,gameId,{...explicit(),publicationOwnerId:'wrong-owner'});
+   expect(stranger).toMatchObject({claimed:false,pending:false,attention:expect.stringContaining('owner')});
    // A stored acceptable flag alone cannot publish if its paid receipt changed.
    const changed=finalRows[0]!,original=JSON.parse(changed.judgeJson!);
    await db.targetVariantAsset.update({where:{id:changed.id},data:{judgeJson:JSON.stringify({...original,judgedSha256:'e'.repeat(64)})}});
    try{
-    const blocked=await runLocalPatchWorldSlice(container,deps,gameId,{hardDeadlineAt:Date.now()+270_000,workMode:REVIEW_EXISTING_WORK_MODE,diagnose:forbidden});
+    const blocked=await runLocalPatchWorldSlice(container,deps,gameId,explicit());
     expect(blocked).toMatchObject({claimed:true,pending:false,attention:expect.stringContaining('has no publication policy')});
     expect(await db.game.findUniqueOrThrow({where:{id:gameId}})).toMatchObject({status:'TARGETS_GENERATING',configJson:null});
    }finally{
@@ -4494,7 +4497,21 @@ it.each(['pass','age-refusal','wall-replacement','wall-provider-retry'] as const
   checkpoint('assembly-start',await assemblyProgress());
   for(let turn=0;turn<30&&result.pending;turn++){
    const turnStartedAt=performance.now();
-   result=await runLocalPatchWorldSlice(container,deps,gameId,{hardDeadlineAt:Date.now()+270_000,workMode:REVIEW_EXISTING_WORK_MODE,diagnose:forbidden});
+   const started=Date.now(), get=container.storage.get.bind(container.storage);
+   const advanced=new Set<string>();
+   const slowStorage=providerRetry?vi.spyOn(container.storage,'get').mockImplementation(async key=>{
+    const result=await get(key);
+    if(key.startsWith('game/')&&!advanced.has(key)){
+     advanced.add(key);
+     vi.setSystemTime(Date.now()+15_000);
+    }
+    return result;
+   }):null;
+   try{
+    result=await runLocalPatchWorldSlice(container,deps,gameId,{hardDeadlineAt:started+(providerRetry?540_000:270_000),
+     workMode:REVIEW_EXISTING_WORK_MODE,diagnose:forbidden,...(providerRetry?{publicationOwnerId:owner}:{})});
+    if(providerRetry)expect(Date.now()-started).toBeGreaterThan(LOCAL_PATCH_LEASE_MS);
+   }finally{slowStorage?.mockRestore();}
    const progress=await assemblyProgress();
    checkpoint('assembly-turn',{turn:turn+1,turnElapsedMs:Math.round(performance.now()-turnStartedAt),pending:result.pending,attention:result.attention,...progress});
    expect(result.attention).toBeNull();guardProgress(progress,result.pending);

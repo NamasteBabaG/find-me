@@ -1,10 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-const f = vi.hoisted(() => ({ tick: vi.fn(), restore: vi.fn(), tail:vi.fn(), notify: vi.fn(), health: vi.fn(), retention: vi.fn(), appEnv:'qa', storageId:'db' }));
+const f = vi.hoisted(() => ({ tick: vi.fn(), restore: vi.fn(), tail:vi.fn(), notify: vi.fn(), health: vi.fn(), retention: vi.fn(), user:vi.fn(), appEnv:'qa', storageId:'db' }));
 vi.mock('@/services/generation/retained-window-recovery', () => ({ restoreRetainedWindow: f.restore }));
 vi.mock('@/services/generation/journey-source-head-recovery',()=>({resumeJourneySunburstTailHead:f.tail}));
 vi.mock("@/services/container", () => ({ getContainer: () => ({storage:{id:f.storageId}}) }));
 vi.mock("@/lib/server/qa-access", () => ({ qaAccessDenied: async () => null }));
 vi.mock("@/lib/env", () => ({ env: () => ({ CRON_SECRET: "synthetic-cron", APP_ENV:f.appEnv }) }));
+vi.mock("@/lib/server/session", () => ({ currentUser: f.user }));
 vi.mock("@/services/generation/identity-source-revision-queue", () => ({ nextIdentitySourceRevision: async () => repairSelection.id }));
 vi.mock("@/services/generation/queue", () => ({ tickGeneration: f.tick }));
 vi.mock("@/services/admin-alert.service", () => ({ retryFailedAdminAlerts: f.notify }));
@@ -16,6 +17,7 @@ const request = () => new Request("https://qa.example/api/jobs/tick", { method: 
 beforeEach(() => { repairSelection.id = null;
   f.appEnv='qa';f.storageId='db';
   vi.useFakeTimers(); vi.clearAllMocks();
+  f.user.mockResolvedValue(null);
   vi.spyOn(console, "info").mockImplementation(() => {}); vi.spyOn(console, "error").mockImplementation(() => {});
   f.tick.mockResolvedValue({ gameId: null, status: null, pending: false });
   f.notify.mockResolvedValue(null); f.health.mockResolvedValue({ attempted: 0 }); f.retention.mockResolvedValue(null);
@@ -69,6 +71,25 @@ describe("tick diagnostics and remaining budget", () => {
     expect(f.notify).not.toHaveBeenCalled();expect(f.health).not.toHaveBeenCalled();expect(f.retention).not.toHaveBeenCalled();
     expect(vi.getTimerCount()).toBe(0);
   });
+  it.each(['owner', 'missing-owner', 'duplicate', 'production', 'with-restore', 'no-mode'])(
+    'reserves the extended deadline for owner-only QA publication: %s', async mode => {
+      if(mode !== 'missing-owner') f.user.mockResolvedValue({ id: 'synthetic-owner' });
+      if(mode === 'production') f.appEnv = 'production';
+      const query = 'gameId=synthetic&publication=sunburst-tail-v1' + (mode === 'no-mode' ? '' : '&mode=review-existing')
+        + (mode === 'duplicate' ? '&publication=sunburst-tail-v1' : '')
+        + (mode === 'with-restore' ? '&restore=retained-window-v1&hideId=synthetic-hide' : '');
+      const response = await POST(new Request('https://qa.example/api/jobs/tick?' + query,
+        { method: 'POST', headers: { authorization: 'Bearer synthetic-cron' } }));
+      if(mode === 'owner') {
+        expect(response.status).toBe(200);
+        expect(f.tick).toHaveBeenCalledWith(expect.anything(), 'synthetic', 30_000, 540_000,
+          { workMode: 'review-existing/v1', publicationOwnerId: 'synthetic-owner' });
+      } else {
+        expect(response.status).toBe(mode === 'missing-owner' ? 403 : 400);
+        expect(f.tick).not.toHaveBeenCalled();
+      }
+      expect(f.notify).not.toHaveBeenCalled(); expect(f.restore).not.toHaveBeenCalled(); expect(vi.getTimerCount()).toBe(0);
+    });
   it.each(['no-game','production','wrong-storage','unknown-mode'])('refuses unsupported review control before dispatch: %s',async which=>{
     if(which==='production')f.appEnv='production';
     if(which==='wrong-storage')f.storageId='local';

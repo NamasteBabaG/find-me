@@ -51,7 +51,9 @@ export async function composeLocalPatchGame(c: Container, gameId: string): Promi
   return assembleLocalPatchGame(c, gameId);
 }
 
-async function assembleLocalPatchGame(c: Container, gameId: string, deadlineAt?: number, completeSunburstTail = false): Promise<GameConfig> {
+type SunburstTailPublication = { capMicroUsd: number; authorizationSha256: string; deadlineAt?: number; renewLease?: () => Promise<void> };
+
+async function assembleLocalPatchGame(c: Container, gameId: string, sunburstTail?: SunburstTailPublication): Promise<GameConfig> {
   demand(!await identityRevisionPending(c.db, gameId), "reference revision must finish before assembly");
   const partialRelease = await readLocalPatchPartialRelease(c, gameId);
   const game = await c.db.game.findUniqueOrThrow({ where: { id: gameId },
@@ -71,7 +73,7 @@ async function assembleLocalPatchGame(c: Container, gameId: string, deadlineAt?:
   const locale = game.locale === "he" ? "he" : "en";
   const scenes = [];
   const worlds = new Map<string, PlayWorld>();
-  const assemblyStartedAt = Date.now();
+  const assemblyStartedAt = performance.now();
   let humanIdentitySha256: Promise<string> | undefined;
   const readIdentityHash = async (identityAssetId: string) => {
     const identity = await c.db.asset.findUniqueOrThrow({ where: { id: identityAssetId } });
@@ -79,7 +81,7 @@ async function assembleLocalPatchGame(c: Container, gameId: string, deadlineAt?:
     return sha(await c.storage.get(identity.storagePath));
   };
   for (const scene of game.scenes) {
-    if (deadlineAt !== undefined && deadlineAt - Date.now() < 50_000) throw new LocalPatchPublicationDeadline();
+    if (sunburstTail?.deadlineAt !== undefined && sunburstTail.deadlineAt - Date.now() < 50_000) throw new LocalPatchPublicationDeadline();
     const board = placements.boards.find(board => board.board === scene.sceneSlug);
     const def = sceneBySlug(scene.sceneSlug, scene.sceneVersion);
     demand(board && `public${def.art.base}` === board.art, `the ${scene.sceneSlug} board is not the authored artwork`);
@@ -125,7 +127,7 @@ async function assembleLocalPatchGame(c: Container, gameId: string, deadlineAt?:
       return { targetId: hide.targetId, sprite, spriteByVariant: { A: sprite, B: sprite } };
     };
     const sprites: Awaited<ReturnType<typeof verifySprite>>[] = [];
-    if (completeSunburstTail) {
+    if (sunburstTail) {
       // A complete Detectives board has three appearances. Read their proofs
       // together, keeping authored order and waiting for all reads on failure.
       demand(includedHides.length === 3, "Sunburst completion requires three appearances on every board");
@@ -153,9 +155,12 @@ async function assembleLocalPatchGame(c: Container, gameId: string, deadlineAt?:
       slot.flip = false; slot.rotation = 0; slot.layer = "front";
     }
     scenes.push({ ...composed, worldSlug: world.slug });
-    if (completeSunburstTail) console.info("[local-patch] Sunburst publication", {
-      stage: "verified-board", boards: scenes.length, elapsedMs: Date.now() - assemblyStartedAt,
-    });
+    if (sunburstTail) {
+      await sunburstTail.renewLease?.();
+      console.info("[local-patch] Sunburst publication", {
+        stage: "verified-board", boards: scenes.length, elapsedMs: Math.round(performance.now() - assemblyStartedAt),
+      });
+    }
   }
   demand(worlds.size === 1, "the nine boards must belong to one world");
   const config = GameConfigSchema.parse(composeGame({ gameId, child: who, locale, packageTier: "ONE_WORLD", styleVersion: STYLE,
@@ -168,8 +173,8 @@ async function assembleLocalPatchGame(c: Container, gameId: string, deadlineAt?:
 
 /** Publish only an entirely verified world, atomically with the worker fence. */
 export async function finishLocalPatchGame(c: Container, gameId: string, fence: (tx: Prisma.TransactionClient) => Promise<void>,
-  options: { transactionTimeoutMs?: 30_000 | 120_000; sunburstTail?: { capMicroUsd: number; authorizationSha256: string; deadlineAt?: number } } = {}): Promise<void> {
-  const config = await assembleLocalPatchGame(c, gameId, options.sunburstTail?.deadlineAt, !!options.sunburstTail);
+  options: { transactionTimeoutMs?: 30_000 | 120_000; sunburstTail?: SunburstTailPublication } = {}): Promise<void> {
+  const config = await assembleLocalPatchGame(c, gameId, options.sunburstTail);
   if (options.sunburstTail) {
     demand(config.scenes.length === 9 && config.scenes.every(scene => scene.targets.length === 3), "Sunburst completion requires all 27 appearances");
     if (options.sunburstTail.deadlineAt !== undefined && options.sunburstTail.deadlineAt - Date.now() < 25_000)

@@ -119,16 +119,20 @@ export async function nextPendingGame(c: Container): Promise<string | null> {
  * concurrently: every step is idempotent and a finished hiding spot is skipped.
  */
 export async function tickGeneration(c: Container, gameId: string | null, budgetMs: number, hardMs = 270_000,
-  control: { readonly workMode?: GenerationWorkMode } = {}): Promise<TickResult> {
+  control: { readonly workMode?: GenerationWorkMode; readonly publicationOwnerId?: string } = {}): Promise<TickResult> {
   const now = Date.now();
   const workMode = generationWorkMode(control.workMode);
+  if (control.publicationOwnerId !== undefined && workMode !== REVIEW_EXISTING_WORK_MODE)
+    throw Error('GENERATION_WORK_MODE: publication requires review-existing mode');
   if (workMode === REVIEW_EXISTING_WORK_MODE) {
     // Do not enter cron selection, identity/source revision or any other engine.
     // The narrower turn can only review one named, already generating local world.
     if (!gameId) return { gameId: null, status: null, pending: false };
     const before = await c.db.game.findUnique({ where: { id: gameId }, select: {
-      status: true, styleVersion: true, deletedAt: true, scenes: { select: { sceneVersion: true } },
+      status: true, styleVersion: true, deletedAt: true, ownerId: true, scenes: { select: { sceneVersion: true } },
     } });
+    if (control.publicationOwnerId !== undefined && before?.ownerId !== control.publicationOwnerId)
+      return { gameId, status: null, pending: false, attention: 'Only the owner can publish this reviewed QA game.' };
     if (!before || before.deletedAt || before.styleVersion !== LOCAL_PATCH_STYLE || before.status !== 'TARGETS_GENERATING')
       return { gameId, status: before ? statusOf(before) : null, pending: false };
     const painter = await localPatchPainterForGame(c, gameId, before.scenes[0]?.sceneVersion);
@@ -136,7 +140,8 @@ export async function tickGeneration(c: Container, gameId: string | null, budget
     const paused = await pauseLocalPatchForSpendGuard(c, gameId, LOCAL_PATCH_LEASE_MS,
       [LOCAL_PATCH_NEEDS_RELEASE, LOCAL_PATCH_RECOVERY_EXHAUSTED, LOCAL_PATCH_QUALITY_FAILED]);
     if (paused) return { gameId, status: statusOf(before), pending: false, attention: paused };
-    const result = await runLocalPatchWorldSlice(c, painter, gameId, { hardDeadlineAt: now + hardMs, workMode });
+    const result = await runLocalPatchWorldSlice(c, painter, gameId, { hardDeadlineAt: now + hardMs, workMode,
+      ...(control.publicationOwnerId === undefined ? {} : { publicationOwnerId: control.publicationOwnerId }) });
     const after = await c.db.game.findUnique({ where: { id: gameId }, select: { status: true } });
     return { gameId, status: after ? statusOf(after) : null, pending: result.pending, attention: result.attention };
   }
