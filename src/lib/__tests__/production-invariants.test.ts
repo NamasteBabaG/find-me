@@ -31,6 +31,31 @@ async function envWith(overrides: Record<string, string>) {
 
 afterEach(() => vi.unstubAllEnvs());
 
+describe("the zero-cost QA wizard", () => {
+  const mockWizard = {
+    APP_ENV: "qa", QA_WIZARD_MOCK: "on", STORAGE_PROVIDER: "db", ANALYTICS_PROVIDER: "none",
+    GENERATION_PROVIDER: "mock", PAYMENT_PROVIDER: "mock", EMAIL_PROVIDER: "console",
+    SEARCH_LEVEL_CHOICE: "on", LOCAL_PATCH_VISUAL_REVIEW: "legacy", QA_AUTO_APPROVE: "true",
+    QA_DELIVER_WITH_PROBLEMS: "false",
+    DATABASE_URL: "postgresql://qa@db.example.invalid/findme?schema=qa",
+  };
+
+  it("redirects only the mock deployment to its private database schema", async () => {
+    expect(new URL((await envWith(mockWizard))().DATABASE_URL).searchParams.get("schema")).toBe("qa_wizard_mock");
+    expect(new URL((await envWith({ ...mockWizard, QA_WIZARD_MOCK: "off" }))().DATABASE_URL).searchParams.get("schema")).toBe("qa");
+  });
+
+  it.each([
+    { APP_ENV: "production" }, { GENERATION_PROVIDER: "openai" }, { PAYMENT_PROVIDER: "payme" },
+    { EMAIL_PROVIDER: "resend" }, { STORAGE_PROVIDER: "local" }, { QA_DELIVER_WITH_PROBLEMS: "true" },
+    { DATABASE_URL: "postgresql://qa@db.example.invalid/findme?schema=public" },
+    { DATABASE_URL: "file:./qa.db" },
+  ])("refuses unsafe fixture settings %j", async override => {
+    const read = await envWith({ ...mockWizard, ...override } as Record<string, string>);
+    expect(read).toThrow(/mock Wizard requires isolated QA storage/);
+  });
+});
+
 describe("the live shop", () => {
   it("refuses to boot when it would pay for renders and collect nothing", async () => {
     const read = await envWith({ GENERATION_PROVIDER: "openai", PAYMENT_PROVIDER: "mock", EMAIL_PROVIDER: "resend", RESEND_API_KEY: "x" });

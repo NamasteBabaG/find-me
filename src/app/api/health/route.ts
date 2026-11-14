@@ -65,6 +65,7 @@ export async function GET(req: Request) {
     db,
     host: await hostCheck(),
     appEnv: e.APP_ENV,
+    ...(e.QA_WIZARD_MOCK === "on" ? { wizard: { mode: "mock", providerCharges: false } } : {}),
     providers: { storage: e.STORAGE_PROVIDER, generation: e.GENERATION_PROVIDER, payment: e.PAYMENT_PROVIDER, email: e.EMAIL_PROVIDER, generationEnabled: e.GENERATION_ENABLED === "on" },
     patchQuality: e.GENERATION_PATCH_QUALITY ?? e.GENERATION_QUALITY,
     patchRetryQuality: e.GENERATION_PATCH_RETRY_QUALITY ?? null,

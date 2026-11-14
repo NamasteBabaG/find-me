@@ -8,6 +8,7 @@ import { sceneBySlug } from "../scene-catalog.service";
 import { worldForBoard } from "../world-catalog.service";
 import { fixedStageAssert, isFixedWorldStyle } from "./fixed-world-stage-record";
 import { composeLocalPatchGame } from "./local-patch-player";
+import { QA_WIZARD_MOCK_STYLE } from "@/domain/generation/qa-wizard-mock";
 
 /**
  * Resolves DB rows into the player-facing GameConfig. This is the ONLY place
@@ -63,7 +64,13 @@ export async function composeGameConfig(c: Container, gameId: string): Promise<G
       });
     }
     const world = worldForBoard(gs.sceneSlug);
-    scenes.push({ ...composeScene(def, child, sprites, locale), worldSlug: world?.slug });
+    const scene = composeScene(def, child, sprites, locale);
+    if (game.styleVersion === QA_WIZARD_MOCK_STYLE && game.searchLevel === "detectives") {
+      scene.playMode = "find-any";
+      scene.appearancesPerBoard = 3;
+      scene.findsRequiredToAdvance = 3;
+    }
+    scenes.push({ ...scene, worldSlug: world?.slug });
   }
 
   const gift = game.giftJson ? (JSON.parse(game.giftJson) as { fromName?: string; message?: string }) : undefined;

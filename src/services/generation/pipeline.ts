@@ -3,6 +3,7 @@ import { DETECTIVES_SCENE_VERSION, isRefreshedCollectionVersion } from "../../do
 import { dailyGenerationSpend } from "./daily-generation-spend";
 import { newId } from "@/lib/ids";
 import { env, flag, spendGuard } from "@/lib/env";
+import { QA_WIZARD_MOCK_STYLE } from "@/domain/generation/qa-wizard-mock";
 import { isAgeBodyPromptRelease } from "./local-patch-prompt";
 import { spendAllowedFor, underDailyCeiling } from "@/domain/spend-policy";
 import { canTransition, type GameStatus } from "@/domain/order-state";
@@ -97,6 +98,8 @@ export async function runGenerationPipeline(c: Container, gameId: string, option
   }
   const game = await c.db.game.findUnique({ where: { id: gameId }, include: { childProfile: true, scenes: { include: { targets: true }, orderBy: { orderIndex: "asc" } } } });
   if (!game || !game.childProfile) return;
+  const mockWizard = game.styleVersion === QA_WIZARD_MOCK_STYLE;
+  if (mockWizard !== (env().QA_WIZARD_MOCK === "on") || (mockWizard && c.avatars.id !== "mock")) return;
   const localPatch = game.styleVersion === LOCAL_PATCH_STYLE;
   if (localPatch && env().APP_ENV !== "qa") return;
   if (localPatch && (await c.db.generationJob.findUnique({ where: { id: `job_${gameId}` }, select: { currentStep: true } }))?.currentStep === LOCAL_PATCH_QUALITY_FAILED) return;
@@ -242,7 +245,7 @@ export async function runGenerationPipeline(c: Container, gameId: string, option
       const crop = child.photoCropJson ? (JSON.parse(child.photoCropJson) as CropBox) : null;
       const qaStyleContract = identityStyle ? { version: identityStyle.version, catalogSha256: identityStyle.catalogSha256, atlasSha256: identityStyle.atlasSha256 } : undefined;
       const request = { originalPhoto: photo, mimeType: original.mimeType, crop, childName: child.displayName, ageYears: child.ageYears,
-        styleRef: identityStyle?.png ?? await boardStyle(c, game.scenes), qaStyleContract,
+        styleRef: identityStyle?.png ?? (mockWizard ? undefined : await boardStyle(c, game.scenes)), qaStyleContract,
         ...(localPatch && options.hardDeadlineAt !== undefined ? { deadlineAt: options.hardDeadlineAt - 25_000 } : {}) };
       if (qaIdentityClaim && !c.avatars.createCharacter) throw new Error("QA identity requires the board-matched character provider; avatar fallback is forbidden");
       if (c.avatars.createCharacter) {

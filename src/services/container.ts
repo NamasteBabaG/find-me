@@ -120,7 +120,11 @@ function build(): Container {
 
   const payment: PaymentProvider = e.PAYMENT_PROVIDER === "payme" ? new PayMeProvider(e.PAYME_SELLER_ID ?? "", e.PAYME_WEBHOOK_SECRET ?? "") : new MockPaymentProvider(e.APP_URL, e.SESSION_SECRET);
 
-  const email: EmailProvider = e.EMAIL_PROVIDER === "resend" ? new ResendEmailProvider(e.RESEND_API_KEY ?? "", e.EMAIL_FROM) : new ConsoleEmailProvider(path.join(storageRoot, "outbox"));
+  const email: EmailProvider = e.QA_WIZARD_MOCK === "on"
+    ? { id: "console", async send() { return { id: "qa-wizard-mock" }; } }
+    : e.EMAIL_PROVIDER === "resend"
+      ? new ResendEmailProvider(e.RESEND_API_KEY ?? "", e.EMAIL_FROM)
+      : new ConsoleEmailProvider(path.join(storageRoot, "outbox"));
 
   const analytics: AnalyticsSink = e.ANALYTICS_PROVIDER === "none" ? new NoopAnalytics() : new ConsoleAnalytics();
 

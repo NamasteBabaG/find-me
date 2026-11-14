@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { assertPaymentActivationQualified } from "@/domain/payment-readiness";
 import { envValue, normaliseEnvValue } from "./env-value";
+import { QA_WIZARD_MOCK_SCHEMA } from "@/domain/generation/qa-wizard-mock";
 
 /**
  * Server-side environment, validated once. Everything defaults to a mock
@@ -28,6 +29,7 @@ const EnvSchema = z.object({
   /** Production creation and checkout stay closed until explicitly launched. QA/dev retain their existing flow. */
   PURCHASING_ENABLED: z.enum(["on", "off"]).prefault("off"),
   GENERATION_PROVIDER: z.enum(["mock", "replicate", "openai"]).prefault("mock"),
+  QA_WIZARD_MOCK: z.enum(["on", "off"]).prefault("off"),
   /** Blocks new protected work in instances that loaded "off". Does not cancel
    * in-flight calls or govern every manual script; verify the deployed value. */
   GENERATION_ENABLED: z.enum(["on", "off"]).prefault("on"),
@@ -191,6 +193,26 @@ export function env(): Env {
   // the rule is keyed on what the deployment says it is, not on NODE_ENV, which
   // cannot tell a staging box from the real thing.
   const appEnv = parsed.data.APP_ENV ?? (parsed.data.NODE_ENV === "production" ? "production" : "development");
+  const settings = parsed.data;
+  if (settings.QA_WIZARD_MOCK === "on") {
+    const database = URL.canParse(settings.DATABASE_URL) ? new URL(settings.DATABASE_URL) : null;
+    const isolatedDatabase = database !== null && (database.protocol === "postgresql:" || database.protocol === "postgres:")
+      && ["qa", QA_WIZARD_MOCK_SCHEMA].includes(database.searchParams.getAll("schema").join(","));
+    const localTestDatabase = settings.NODE_ENV !== "production" && database?.protocol === "file:";
+    if (appEnv !== "qa" || settings.GENERATION_PROVIDER !== "mock" || settings.PAYMENT_PROVIDER !== "mock"
+      || settings.EMAIL_PROVIDER !== "console" || settings.ANALYTICS_PROVIDER !== "none" || settings.STORAGE_PROVIDER !== "db"
+      || settings.SEARCH_LEVEL_CHOICE !== "on" || settings.LOCAL_PATCH_VISUAL_REVIEW !== "legacy"
+      || settings.QA_AUTO_APPROVE !== "true" || settings.QA_DELIVER_WITH_PROBLEMS !== "false"
+      || settings.LOCAL_PATCH_LEAN !== "off" || settings.LOCAL_PATCH_PAINTER !== "by-version"
+      || settings.DETECTIVES_WINDOW_RELEASE !== "off" || settings.LOCAL_PATCH_QUALITY_CHANNEL !== "sync"
+      || process.env.QA_BOARD_CONDITIONED_WIZARD === "true" || (!isolatedDatabase && !localTestDatabase)) {
+      throw new Error("The mock Wizard requires isolated QA storage, mock generation and payment, simulated mail and clean-only approval.");
+    }
+    if (isolatedDatabase) {
+      database.searchParams.set("schema", QA_WIZARD_MOCK_SCHEMA);
+      settings.DATABASE_URL = database.toString();
+    }
+  }
   if (appEnv === "production" && parsed.data.PURCHASING_ENABLED === "on" && parsed.data.PAYMENT_PROVIDER !== "payme") {
     throw new Error("PURCHASING_ENABLED=on requires PAYMENT_PROVIDER=payme in production — simulated purchases must remain closed.");
   }

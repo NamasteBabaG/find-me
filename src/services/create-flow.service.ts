@@ -19,6 +19,8 @@ import { activeScenes, sceneBySlug } from "./scene-catalog.service";
 import { boardsOfWorlds, purchasableWorlds } from "./world-catalog.service";
 import { SYSTEM } from "./audit.service";
 import { env } from "@/lib/env";
+import { QA_WIZARD_MOCK_STYLE } from "@/domain/generation/qa-wizard-mock";
+import { DETECTIVES_SCENE_VERSION } from "@/domain/scene/local-patch-versions";
 import { purchasingClosed, purchasingEnabled } from "@/lib/purchasing";
 import { isFixedWorldStyle } from "./generation/fixed-world-stage-record";
 import { LOCAL_PATCH_STYLE } from "./generation/local-patch-world";
@@ -290,6 +292,7 @@ async function releaseValidatingDraft(c: Container, gameId: string, error: unkno
 
 /** Offer only complete worlds supported by the draft's pinned rendering engine. */
 export function newDraftStyleVersion() {
+  if (env().QA_WIZARD_MOCK === "on") return QA_WIZARD_MOCK_STYLE;
   return env().APP_ENV === "qa" ? LOCAL_PATCH_STYLE : "";
 }
 
@@ -301,6 +304,7 @@ export function sceneVersionForDraft(styleVersion: string) {
  * Explorers is the engine's existing collection; Detectives only a registered
  * release. null: that level has no boards on this engine. */
 export function sceneVersionForLevel(styleVersion: string, level: SearchLevel): number | undefined | null {
+  if (styleVersion === QA_WIZARD_MOCK_STYLE && level === "detectives") return DETECTIVES_SCENE_VERSION;
   return level === "explorers" ? sceneVersionForDraft(styleVersion) : detectiveRelease(DETECTIVE_RELEASES, draftEngine(styleVersion))?.sceneVersion ?? null;
 }
 
@@ -312,7 +316,11 @@ const draftEngine = (styleVersion: string) => styleVersion || "collage-v1";
  * AND the world's own registered release: switching the choice off stops new
  * Detectives sales, and a world without a release is never offered at that level. */
 export async function worldsForDraft(c: Container, styleVersion = newDraftStyleVersion(), level: SearchLevel = "explorers") {
+  if (styleVersion === QA_WIZARD_MOCK_STYLE && env().QA_WIZARD_MOCK !== "on") return [];
   if (level === "explorers") return purchasableWorlds(c, sceneVersionForDraft(styleVersion));
+  if (styleVersion === QA_WIZARD_MOCK_STYLE) {
+    return (await purchasableWorlds(c, DETECTIVES_SCENE_VERSION)).filter(world => world.slug === "journey");
+  }
   const release = detectiveRelease(DETECTIVE_RELEASES, draftEngine(styleVersion));
   if (env().SEARCH_LEVEL_CHOICE !== "on" || !release) return [];
   if (styleVersion === LOCAL_PATCH_STYLE && release.sceneVersion === 13) {
