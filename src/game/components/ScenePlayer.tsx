@@ -605,7 +605,7 @@ export function ScenePlayer({ scene, mission, store, onBack, onSceneComplete }: 
               apiRef.current?.focusOn(hintZone.x, hintZone.y, 1.8, 600);
             } else dispatch({ type: "REQUEST_HINT" });
           }}
-          avatarUrl={store.config.child.avatarUrl}
+          avatarUrl={currentTarget?.qaPortraitUrl ?? store.config.child.avatarUrl}
           childName={store.config.child.name}
           quiet={quiet}
           obscured={compact && chromeHidden}

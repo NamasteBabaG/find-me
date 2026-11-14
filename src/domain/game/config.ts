@@ -78,6 +78,8 @@ export const TargetConfigSchema = z.object({
   /** Already personalised ("Find Noa with the float ring"). */
   mission: z.string(),
   item: z.string(),
+  /** Public source portrait shown by the simulated Detective Wizard. */
+  qaPortraitUrl: z.string().regex(/^\/demo\/qa-detectives-v1\/[a-z]+-hide-[123]-head\.webp$/).optional(),
   success: z.array(z.string()).min(1),
   animation: TargetAnimation,
   slots: z.tuple([PlaySlotSchema, PlaySlotSchema]),

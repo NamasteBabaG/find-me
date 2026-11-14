@@ -7,6 +7,7 @@ import { gameWorlds, parseGameConfig } from "@/domain/game/config";
 import { withFreshAssetUrls } from "@/services/asset.service";
 import { albumSeed } from "@/services/adventure-album.service";
 import { GameShell } from "@/game/components/GameShell";
+import { applyQaDetectiveArt } from "@/services/generation/qa-detective-art";
 
 export const metadata = { robots: { index: false, follow: false } };
 export default async function FamilyPlay({ params, searchParams }: { params: Promise<{ childId: string; gameId: string }>; searchParams: Promise<{ board?: string; world?: string }> }) {
@@ -21,7 +22,7 @@ export default async function FamilyPlay({ params, searchParams }: { params: Pro
   const c = getContainer();
   const game = await c.db.game.findFirst({ where: { id: gameId, familyChildId: childId, ownerId: user.id, deletedAt: null, status: { in: ["READY", "DELIVERED"] }, familyChild: { ownerId: user.id, deletedAt: null }, orders: { some: { userId: user.id, paymentStatus: "PAID" } } }, include: { adventureAlbum: { select: { snapshotJson: true } } } });
   if (!game?.configJson) notFound();
-  const config = withFreshAssetUrls(c, parseGameConfig(game.configJson));
+  const config = withFreshAssetUrls(c, applyQaDetectiveArt(parseGameConfig(game.configJson)));
   // The account's album comes with the page, so the map opens with the child where they really are.
   return <GameShell key={game.id} config={config} albumOwner skipGift initialWorld={gameWorlds(config).some(world => world.slug === query.world) ? query.world : undefined} initialAlbum={albumSeed(config, game.adventureAlbum?.snapshotJson)} autoStartScene={config.scenes.some(s => s.slug === query.board) ? query.board : undefined} parentZoneHref={`/family/${childId}`} />;
 }

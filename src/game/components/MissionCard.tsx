@@ -84,6 +84,7 @@ export function MissionCard({ index, total, target, found, order, stars, trayRef
   const title = findAny && remainingToFinish === 0 ? g.scene.allHidesFound
     : findingAnother ? tf(g.scene.findChildAgain, { name: childName })
       : tf(g.scene.findChild, { name: childName });
+  const prompt = target?.qaPortraitUrl && remainingToFinish > 0 ? g.scene.qaDetectiveFind : title;
   const hasHintDetails = !minimal && hintLevel >= 1 && (!!hintText || !!target?.mission);
   const expandable = quiet && hasHintDetails && !!onExpand;
   void order;
@@ -114,7 +115,7 @@ export function MissionCard({ index, total, target, found, order, stars, trayRef
         </div>
         <div className="mission__progress">
           {/* Keep the name alongside the face even when requested hint details fold. */}
-          <h2 className="mission__text">{title}</h2>
+          <h2 className="mission__text">{prompt}</h2>
           {replay ? <span className="mission__replay-label" title={showReplayNote ? g.replay.note : undefined}>{g.replay.label}</span> : null}
           {total > 1 ? <>
             {/* One gold star per hiding spot. A star flies in from the found child, and only then does its slot light. */}

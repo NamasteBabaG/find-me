@@ -1,0 +1,461 @@
+[
+  {
+    "board": "newyork",
+    "targetId": "hide-1",
+    "art": "/scenes/journey-newyork-detectives-v1/base.webp",
+    "rect": {
+      "left": 1045,
+      "top": 425,
+      "width": 175,
+      "height": 365
+    },
+    "head": {
+      "left": 1104,
+      "top": 447,
+      "width": 78,
+      "height": 90
+    }
+  },
+  {
+    "board": "newyork",
+    "targetId": "hide-2",
+    "art": "/scenes/journey-newyork-detectives-v1/base.webp",
+    "rect": {
+      "left": 405,
+      "top": 1680,
+      "width": 255,
+      "height": 300
+    },
+    "head": {
+      "left": 414,
+      "top": 1701,
+      "width": 133,
+      "height": 150
+    }
+  },
+  {
+    "board": "newyork",
+    "targetId": "hide-3",
+    "art": "/scenes/journey-newyork-detectives-v1/base.webp",
+    "rect": {
+      "left": 3370,
+      "top": 175,
+      "width": 137,
+      "height": 310
+    },
+    "head": {
+      "left": 3397,
+      "top": 176,
+      "width": 83,
+      "height": 93
+    }
+  },
+  {
+    "board": "amazon",
+    "targetId": "hide-1",
+    "art": "/scenes/journey-amazon-detectives-v3/base.webp",
+    "rect": {
+      "left": 12,
+      "top": 312,
+      "width": 235,
+      "height": 250
+    },
+    "head": {
+      "left": 94,
+      "top": 312,
+      "width": 89,
+      "height": 112
+    }
+  },
+  {
+    "board": "amazon",
+    "targetId": "hide-2",
+    "art": "/scenes/journey-amazon-detectives-v3/base.webp",
+    "rect": {
+      "left": 50,
+      "top": 1330,
+      "width": 280,
+      "height": 240
+    },
+    "head": {
+      "left": 92,
+      "top": 1330,
+      "width": 171,
+      "height": 168
+    }
+  },
+  {
+    "board": "amazon",
+    "targetId": "hide-3",
+    "art": "/scenes/journey-amazon-detectives-v3/base.webp",
+    "rect": {
+      "left": 3535,
+      "top": 1225,
+      "width": 165,
+      "height": 350
+    },
+    "head": {
+      "left": 3553,
+      "top": 1253,
+      "width": 117,
+      "height": 139
+    }
+  },
+  {
+    "board": "paris",
+    "targetId": "hide-1",
+    "art": "/scenes/journey-paris-detectives-v4/base.webp",
+    "rect": {
+      "left": 635,
+      "top": 845,
+      "width": 175,
+      "height": 355
+    },
+    "head": {
+      "left": 661,
+      "top": 845,
+      "width": 104,
+      "height": 134
+    }
+  },
+  {
+    "board": "paris",
+    "targetId": "hide-2",
+    "art": "/scenes/journey-paris-detectives-v4/base.webp",
+    "rect": {
+      "left": 3005,
+      "top": 1365,
+      "width": 205,
+      "height": 570
+    },
+    "head": {
+      "left": 3047,
+      "top": 1374,
+      "width": 154,
+      "height": 141
+    }
+  },
+  {
+    "board": "paris",
+    "targetId": "hide-3",
+    "art": "/scenes/journey-paris-detectives-v4/base.webp",
+    "rect": {
+      "left": 3480,
+      "top": 535,
+      "width": 150,
+      "height": 220
+    },
+    "head": {
+      "left": 3534,
+      "top": 549,
+      "width": 89,
+      "height": 100
+    }
+  },
+  {
+    "board": "marrakech",
+    "targetId": "hide-1",
+    "art": "/scenes/journey-marrakech-detectives-v2/base.webp",
+    "rect": {
+      "left": 752,
+      "top": 450,
+      "width": 158,
+      "height": 400
+    },
+    "head": {
+      "left": 800,
+      "top": 465,
+      "width": 103,
+      "height": 110
+    }
+  },
+  {
+    "board": "marrakech",
+    "targetId": "hide-2",
+    "art": "/scenes/journey-marrakech-detectives-v2/base.webp",
+    "rect": {
+      "left": 1012,
+      "top": 1512,
+      "width": 260,
+      "height": 590
+    },
+    "head": {
+      "left": 1115,
+      "top": 1526,
+      "width": 116,
+      "height": 149
+    }
+  },
+  {
+    "board": "marrakech",
+    "targetId": "hide-3",
+    "art": "/scenes/journey-marrakech-detectives-v2/base.webp",
+    "rect": {
+      "left": 3135,
+      "top": 1355,
+      "width": 168,
+      "height": 290
+    },
+    "head": {
+      "left": 3187,
+      "top": 1362,
+      "width": 111,
+      "height": 149
+    }
+  },
+  {
+    "board": "giza",
+    "targetId": "hide-1",
+    "art": "/scenes/journey-giza-detectives-v4/base.webp",
+    "rect": {
+      "left": 850,
+      "top": 395,
+      "width": 165,
+      "height": 285
+    },
+    "head": {
+      "left": 850,
+      "top": 402,
+      "width": 112,
+      "height": 151
+    }
+  },
+  {
+    "board": "giza",
+    "targetId": "hide-2",
+    "art": "/scenes/journey-giza-detectives-v4/base.webp",
+    "rect": {
+      "left": 2340,
+      "top": 870,
+      "width": 180,
+      "height": 345
+    },
+    "head": {
+      "left": 2392,
+      "top": 875,
+      "width": 113,
+      "height": 111
+    }
+  },
+  {
+    "board": "giza",
+    "targetId": "hide-3",
+    "art": "/scenes/journey-giza-detectives-v4/base.webp",
+    "rect": {
+      "left": 3488,
+      "top": 1040,
+      "width": 192,
+      "height": 300
+    },
+    "head": {
+      "left": 3538,
+      "top": 1078,
+      "width": 93,
+      "height": 111
+    }
+  },
+  {
+    "board": "tokyo",
+    "targetId": "hide-1",
+    "art": "/scenes/journey-tokyo-detectives-v1/base.webp",
+    "rect": {
+      "left": 65,
+      "top": 685,
+      "width": 250,
+      "height": 515
+    },
+    "head": {
+      "left": 88,
+      "top": 707,
+      "width": 117,
+      "height": 123
+    }
+  },
+  {
+    "board": "tokyo",
+    "targetId": "hide-2",
+    "art": "/scenes/journey-tokyo-detectives-v1/base.webp",
+    "rect": {
+      "left": 460,
+      "top": 1340,
+      "width": 235,
+      "height": 335
+    },
+    "head": {
+      "left": 490,
+      "top": 1370,
+      "width": 125,
+      "height": 139
+    }
+  },
+  {
+    "board": "tokyo",
+    "targetId": "hide-3",
+    "art": "/scenes/journey-tokyo-detectives-v1/base.webp",
+    "rect": {
+      "left": 3168,
+      "top": 828,
+      "width": 228,
+      "height": 365
+    },
+    "head": {
+      "left": 3232,
+      "top": 832,
+      "width": 142,
+      "height": 160
+    }
+  },
+  {
+    "board": "greatwall",
+    "targetId": "hide-1",
+    "art": "/scenes/journey-greatwall-detectives-v3/base.webp",
+    "rect": {
+      "left": 520,
+      "top": 640,
+      "width": 104,
+      "height": 321
+    },
+    "head": {
+      "left": 540,
+      "top": 650,
+      "width": 84,
+      "height": 95
+    }
+  },
+  {
+    "board": "greatwall",
+    "targetId": "hide-2",
+    "art": "/scenes/journey-greatwall-detectives-v3/base.webp",
+    "rect": {
+      "left": 255,
+      "top": 1530,
+      "width": 220,
+      "height": 490
+    },
+    "head": {
+      "left": 309,
+      "top": 1535,
+      "width": 144,
+      "height": 141
+    }
+  },
+  {
+    "board": "greatwall",
+    "targetId": "hide-3",
+    "art": "/scenes/journey-greatwall-detectives-v3/base.webp",
+    "rect": {
+      "left": 3265,
+      "top": 1145,
+      "width": 220,
+      "height": 410
+    },
+    "head": {
+      "left": 3305,
+      "top": 1175,
+      "width": 118,
+      "height": 135
+    }
+  },
+  {
+    "board": "sydney",
+    "targetId": "hide-1",
+    "art": "/scenes/journey-sydney-detectives-v4/base.webp",
+    "rect": {
+      "left": 740,
+      "top": 800,
+      "width": 240,
+      "height": 330
+    },
+    "head": {
+      "left": 793,
+      "top": 839,
+      "width": 100,
+      "height": 117
+    }
+  },
+  {
+    "board": "sydney",
+    "targetId": "hide-2",
+    "art": "/scenes/journey-sydney-detectives-v4/base.webp",
+    "rect": {
+      "left": 1085,
+      "top": 1510,
+      "width": 300,
+      "height": 390
+    },
+    "head": {
+      "left": 1106,
+      "top": 1512,
+      "width": 158,
+      "height": 139
+    }
+  },
+  {
+    "board": "sydney",
+    "targetId": "hide-3",
+    "art": "/scenes/journey-sydney-detectives-v4/base.webp",
+    "rect": {
+      "left": 3123,
+      "top": 430,
+      "width": 193,
+      "height": 361
+    },
+    "head": {
+      "left": 3160,
+      "top": 431,
+      "width": 70,
+      "height": 75
+    }
+  },
+  {
+    "board": "antarctica",
+    "targetId": "hide-1",
+    "art": "/scenes/journey-antarctica-detectives-v9/base.webp",
+    "rect": {
+      "left": 185,
+      "top": 705,
+      "width": 215,
+      "height": 360
+    },
+    "head": {
+      "left": 275,
+      "top": 715,
+      "width": 90,
+      "height": 110
+    }
+  },
+  {
+    "board": "antarctica",
+    "targetId": "hide-2",
+    "art": "/scenes/journey-antarctica-detectives-v9/base.webp",
+    "rect": {
+      "left": 150,
+      "top": 1627,
+      "width": 250,
+      "height": 388
+    },
+    "head": {
+      "left": 246,
+      "top": 1627,
+      "width": 117,
+      "height": 155
+    }
+  },
+  {
+    "board": "antarctica",
+    "targetId": "hide-3",
+    "art": "/scenes/journey-antarctica-detectives-v9/base.webp",
+    "rect": {
+      "left": 3383,
+      "top": 925,
+      "width": 180,
+      "height": 365
+    },
+    "head": {
+      "left": 3432,
+      "top": 937,
+      "width": 104,
+      "height": 123
+    }
+  }
+]

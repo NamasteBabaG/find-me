@@ -7,6 +7,7 @@ import { albumSeed } from "@/services/adventure-album.service";
 import { getI18n } from "@/i18n/server";
 import { GameShell } from "@/game/components/GameShell";
 import { currentUser } from "@/lib/server/session";
+import { applyQaDetectiveArt } from "@/services/generation/qa-detective-art";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { robots: { index: false, follow: false } };
@@ -31,7 +32,7 @@ export default async function PlayPage({ params }: { params: Promise<{ token: st
   }
 
   // Signatures expire, so the config is re-signed on the way to the player.
-  const config = withFreshAssetUrls(getContainer(), parseGameConfig(resolved.game.configJson));
+  const config = withFreshAssetUrls(c, applyQaDetectiveArt(parseGameConfig(resolved.game.configJson)));
   // The play link identifies a game, never a person. Only a signed-in owner
   // gets the family album kept in the account; everyone else keeps it in the browser.
   let albumOwner = false, childId: string | null = null, initialAlbum: ReturnType<typeof albumSeed>;

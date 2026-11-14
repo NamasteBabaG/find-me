@@ -9,6 +9,7 @@ import { worldForBoard } from "../world-catalog.service";
 import { fixedStageAssert, isFixedWorldStyle } from "./fixed-world-stage-record";
 import { composeLocalPatchGame } from "./local-patch-player";
 import { QA_WIZARD_MOCK_STYLE } from "@/domain/generation/qa-wizard-mock";
+import { applyQaDetectiveArt } from "./qa-detective-art";
 
 /**
  * Resolves DB rows into the player-facing GameConfig. This is the ONLY place
@@ -87,7 +88,7 @@ export async function composeGameConfig(c: Container, gameId: string): Promise<G
     seen.add(world.slug);
     worlds.push(composeWorld(world, child, locale));
   }
-  return composeGame({
+  return applyQaDetectiveArt(composeGame({
     gameId: game.id,
     child,
     packageTier: game.packageTier,
@@ -96,7 +97,7 @@ export async function composeGameConfig(c: Container, gameId: string): Promise<G
     scenes,
     worlds,
     gift,
-  });
+  }));
 }
 
 export async function persistGameConfig(c: Container, gameId: string): Promise<GameConfig> {
