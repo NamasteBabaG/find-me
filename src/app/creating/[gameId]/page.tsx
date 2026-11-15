@@ -5,6 +5,9 @@ import { currentUser, draftTokenFromCookie, isAdminEmail } from "@/lib/server/se
 import { SiteHeader } from "@/ui/Shell";
 import { CreatingStatus } from "./CreatingStatus";
 import { GameConfigSchema } from "@/domain/game/config";
+import { QA_WIZARD_MOCK_STYLE } from "@/domain/generation/qa-wizard-mock";
+import { getI18n } from "@/i18n/server";
+import { QaWizardSimulationNotice } from "@/app/create/QaWizardSimulationNotice";
 
 export const metadata = { robots: { index: false } };
 
@@ -15,6 +18,7 @@ export default async function CreatingPage({ params }: { params: Promise<{ gameI
   if (!game) notFound();
   const allowed = canManageGameCreation(game, draftToken, user?.id ?? null, isAdminEmail(user?.email));
   if (!allowed) notFound();
+  const simulation = game.styleVersion === QA_WIZARD_MOCK_STYLE ? await getI18n() : null;
   let name = game.childProfile?.displayName ?? "";
   if (!name && game.configJson) {
     try {
@@ -27,6 +31,7 @@ export default async function CreatingPage({ params }: { params: Promise<{ gameI
     <>
       <SiteHeader user={user} isAdmin={isAdminEmail(user?.email)} />
       <main className="fm-container fm-container--narrow fm-section fm-stack fm-stack--4">
+        {simulation ? <QaWizardSimulationNotice t={simulation.t} /> : null}
         {/* The review link shows for an admin session, and for a game an admin owns: on a QA box the tester who paid is the person who approves, and was reading "a person checks" about themselves. */}
         <CreatingStatus gameId={gameId} childName={name} isAdmin={isAdminEmail(user?.email) || isAdminEmail(game.owner?.email)} />
       </main>

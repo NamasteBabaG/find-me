@@ -289,6 +289,10 @@ export const en = {
     defaultName: "Noa",
   },
   create: {
+    qaSimulation: {
+      title: "Free simulation.",
+      description: "Use a demo photo to test the upload. The game uses characters from existing illustrations, so the uploaded child is not drawn.",
+    },
     steps: ["Name & age", "Photo", "Package", "Choose worlds", "Summary & payment"],
     prelaunch: { title: "Personal adventures are coming soon", action: "Creation opens soon" },
     name: {
@@ -315,7 +319,6 @@ export const en = {
       pickButton: "Choose photo",
       cropKeys: "Use the arrow keys to move the photo and + or − to zoom.",
       tipsTitle: "Which photo should you choose?",
-      qaWizardNotice: "Use a demo photo to test the upload. This free test uses characters from the illustrated boards.",
       tips: ["😊 A clear face", "☀️ Good light", "🧍 One person in the frame", "🧢 No hat covering the face", "📸 Shoulders and up"],
       hasPhoto: "Your photo is saved. You can replace it or continue.",
       cropLead: "Move and zoom so the face and hair fit inside the circle.",

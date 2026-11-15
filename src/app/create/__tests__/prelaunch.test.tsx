@@ -4,8 +4,8 @@ import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { getDict } from "@/i18n";
 
-const f = vi.hoisted(() => ({ appEnv: "production", locale: "en" as "en" | "he", draft: vi.fn(), container: vi.fn(), user: vi.fn() }));
-vi.mock("@/lib/env", () => ({ env: () => ({ APP_ENV: f.appEnv, PURCHASING_ENABLED: "off" }) }));
+const f = vi.hoisted(() => ({ appEnv: "production", mockWizard: "off", locale: "en" as "en" | "he", draft: vi.fn(), container: vi.fn(), user: vi.fn() }));
+vi.mock("@/lib/env", () => ({ env: () => ({ APP_ENV: f.appEnv, QA_WIZARD_MOCK: f.mockWizard, PURCHASING_ENABLED: "off" }) }));
 vi.mock("@/i18n/server", () => ({ getI18n: async () => ({ t: getDict(f.locale), locale: f.locale }) }));
 vi.mock("@/ui/Shell", () => ({ SiteHeader: () => <header />, SiteFooter: () => <footer />, Stepper: () => <div data-testid="stepper" /> }));
 vi.mock("../ScrollToTop", () => ({ ScrollToTop: () => null }));
@@ -15,7 +15,7 @@ vi.mock("@/lib/server/current-draft", () => ({ currentDraft: f.draft }));
 import CreateNamePage from "../page";
 import { CreateFrame, CreationPrelaunch } from "../CreateLayout";
 
-beforeEach(() => { vi.clearAllMocks(); vi.stubGlobal("React", React); f.appEnv = "production"; f.locale = "en"; });
+beforeEach(() => { vi.clearAllMocks(); vi.stubGlobal("React", React); f.appEnv = "production"; f.mockWizard = "off"; f.locale = "en"; });
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
 describe("prelaunch creation display", () => {
@@ -48,5 +48,15 @@ describe("prelaunch creation display", () => {
     expect(screen.getByRole("textbox", { name: "Synthetic photo" })).toBeTruthy();
     expect(screen.getByTestId("stepper")).toBeTruthy();
     expect(screen.queryByText(getDict("en").create.prelaunch.title)).toBeNull();
+    expect(screen.queryByText(getDict("en").create.qaSimulation.title)).toBeNull();
+  });
+
+  it.each(["en", "he"] as const)("%s labels the free Wizard from the first step", async locale => {
+    f.appEnv = "qa";
+    f.mockWizard = "on";
+    f.locale = locale;
+    render(await CreateFrame({ step: 0, title: "Synthetic start", user: null, isAdmin: false, children: null }));
+    const notice = getDict(locale).create.qaSimulation;
+    expect(screen.getByText(notice.title).parentElement?.textContent).toContain(notice.description);
   });
 });

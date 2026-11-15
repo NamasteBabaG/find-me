@@ -10,6 +10,8 @@ import { requireQaAccess } from "@/lib/server/qa-access";
 import { familySignInHref } from "@/lib/safe-redirect";
 import { MockPay } from "./MockPay";
 import { isLiveShop } from "@/lib/env";
+import { QA_WIZARD_MOCK_STYLE } from "@/domain/generation/qa-wizard-mock";
+import { QaWizardSimulationNotice } from "@/app/create/QaWizardSimulationNotice";
 
 export const dynamic = "force-dynamic";
 
@@ -61,6 +63,7 @@ export default async function MockCheckoutPage({ searchParams }: { searchParams:
           <h1 className="fm-display" style={{ fontSize: "var(--fs-500)", lineHeight: "var(--lh-500)" }}>
             {m.title}
           </h1>
+          {order.game.styleVersion === QA_WIZARD_MOCK_STYLE ? <QaWizardSimulationNotice t={t} /> : null}
           <dl className="psp__summary">
             <div>
               <dt>{m.merchant}</dt>

@@ -3847,20 +3847,22 @@ it.each([{index:0,refuseAge:false,providerWidth:512,replaySizeFailure:false,labe
   expect(j.reviewState).toBe('pending-board-review');expect(j.boardReview).toBeUndefined();expect(j.journeyHeadComposition).toMatchObject({outsideMaskChangedPixels:0,paidHeadChangedPixels:0,shift:{dx:0,dy:0}});
   expect(await service.journeyHeadCompositionMatches(db,{gameId,hideId:hide.id,receipt:j},readArt)).toBe(true);
   const headPin=(await service.journeyHeadPinsOf(db,gameId))[0]!;
+  expect(headPin.faceScale).toBe(jh.JOURNEY_FACE_SCALE_VERSION);
+  const reviewCoverage=jh.JOURNEY_FACE_SCALE_REVIEW_COVERAGE_MICRO_USD;
   expect(await allowedDualPublication(db,{gameId,sceneVersion:13,hideId:hide.id,variantId:generated.id,attempts:2,
    identityAssetId:headPin.identityAssetId,identitySha256:headPin.identitySha256,assetId:generated.assetId!,imageSha256:j.judgedSha256,
    geometrySha256:j.geometrySha256,judgeJson:generated.judgeJson})).toBe(false);
   expect(await budget.readRequest(worldId,headPin.requestKey)).toMatchObject({state:'settled',reserveMicroUsd:120000});
   const prepared=await (await import('../local-patch-board-review')).prepareLocalPatchBoardReview(container,{gameId,sceneId:scene.id},{readBoardArt:readArt},{playerReview:true,onlyHideId:hide.id});
   if(!prepared.ready)throw Error('Native question preparation did not produce its own candidate');
-  const exact=await dualReviewModule.prospectiveSingleVisualReviewQuestion(container,prepared);expect(exact.outputTokens).toBe(6000);expect(exact.reserveMicroUsd).toBeLessThanOrEqual(jh.JOURNEY_HEAD_REVIEW_COVERAGE_MICRO_USD);
+  const exact=await dualReviewModule.prospectiveSingleVisualReviewQuestion(container,prepared);expect(exact.outputTokens).toBe(6000);expect(exact.reserveMicroUsd).toBeLessThanOrEqual(reviewCoverage);
   let defaultBound=0;
   try{
    await db.targetVariantAsset.update({where:{id:generated.id},data:{judgeJson:JSON.stringify({...j,evidenceAttempts:[{single:SINGLE_MEDIUM_VISUAL_REVIEW_VERSION,imageSha256:j.judgedSha256}]})}});
    const retryPrepared=await (await import('../local-patch-board-review')).prepareLocalPatchBoardReview(container,{gameId,sceneId:scene.id},{readBoardArt:readArt},{playerReview:true,onlyHideId:hide.id});
    if(!retryPrepared.ready)throw Error('Native DEFAULT planning has no prepared candidate');
    const retryQuestion=await dualReviewModule.prospectiveSingleVisualReviewQuestion(container,retryPrepared);defaultBound=retryQuestion.reserveMicroUsd;
-   expect(retryQuestion.outputTokens).toBe(6000);expect(defaultBound).toBeLessThanOrEqual(jh.JOURNEY_HEAD_REVIEW_COVERAGE_MICRO_USD);
+   expect(retryQuestion.outputTokens).toBe(6000);expect(defaultBound).toBeLessThanOrEqual(reviewCoverage);
   }finally{await db.targetVariantAsset.update({where:{id:generated.id},data:{judgeJson:generated.judgeJson}});}
   console.info('synthetic-native-full-review-bounds',{hideId:hide.id,flex:exact.reserveMicroUsd,default:defaultBound,outputTokens:exact.outputTokens});
   const headReviewReasons:string[]=[];
@@ -3882,7 +3884,7 @@ it.each([{index:0,refuseAge:false,providerWidth:512,replaySizeFailure:false,labe
   const bills=JSON.parse((await db.worldBudgetLedger.findUniqueOrThrow({where:{worldId}})).snapshotJson).requests;
   for(const old of JSON.parse(oldLedger.snapshotJson).requests)expect(bills.find((b:{requestKey:string})=>b.requestKey===old.requestKey)).toEqual(old);
   // Stop before a second admission when its full image+review allowance is short by one microUSD.
-  const remaining=(await budget.audit(worldId)).remainingMicroUsd,fill=remaining-(120000+jh.JOURNEY_HEAD_REVIEW_COVERAGE_MICRO_USD-1);
+  const remaining=(await budget.audit(worldId)).remainingMicroUsd,fill=remaining-(120000+reviewCoverage-1);
   if(fill>0){await budget.reserve(worldId,{requestKey:'synthetic-jnh-cap-boundary',scope:'image',operationFingerprint:'f'.repeat(64),reserveMicroUsd:fill});await budget.settle(worldId,'synthetic-jnh-cap-boundary',bill('synthetic-cap-boundary-'+gameId,fill));}
   const nextReasons:string[]=[];expect(await service.resumeJourneySourceHead(container,gameId,JOURNEY_SOURCE_HEAD_AUTHORITIES[index?0:1]!.hideId,r=>nextReasons.push(r))).toBe(false);
   expect(nextReasons).toEqual(['payment-identity-or-full-capacity']);

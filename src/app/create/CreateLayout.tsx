@@ -5,7 +5,9 @@ import { SiteHeader, SiteFooter, Stepper } from "@/ui/Shell";
 import { ScrollToTop } from "./ScrollToTop";
 import { Button, LinkButton } from "@/ui/Button";
 import { purchasingEnabled } from "@/lib/purchasing";
+import { env } from "@/lib/env";
 import type { Dictionary } from "@/i18n/dictionaries/en";
+import { QaWizardSimulationNotice } from "./QaWizardSimulationNotice";
 
 export function CreationPrelaunchNotice({ t, heading = "h1" }: { t: Dictionary; heading?: "h1" | "h2" }) {
   const Heading = heading;
@@ -40,6 +42,7 @@ export async function CreateFrame({ step, title, lead, user, isAdmin, width = "n
       <ScrollToTop />
       <SiteHeader user={user} isAdmin={isAdmin} />
       <main className={`fm-container fm-container--${width} fm-section create create--${width}`}>
+        {env().QA_WIZARD_MOCK === "on" ? <QaWizardSimulationNotice t={t} /> : null}
         <Stepper steps={t.create.steps} current={step} count={tf(t.common.stepOf, { n: step + 1, total: t.create.steps.length })} />
         <div className="create__head">
           <h1 className="create__title">{title}</h1>
