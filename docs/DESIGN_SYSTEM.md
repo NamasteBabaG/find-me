@@ -9,7 +9,7 @@ v1 ("cream paper + Fredoka + hard 4px shadows") was rejected as dated. v2 aims a
 1. **Two audiences, one system.** Parents buy (clean, confident, premium). Kids play (big, bright, immediate). The game scopes its own display font (`--font-kid`) and never shows marketing.
 2. **8px grid.** Every spacing, height, radius and line-height is a multiple of 8. `--space-0-5` (4px) only for icon/text nudges.
 3. **Tokens only.** No magic numbers in component CSS. A new colour is a new token.
-4. **Neutrals carry the page; colour has a job.** Paper, white and ink do the structural work; sun is the one accent and means "this is the action"; the paintings carry every other colour. Sections are rounded sheets (radius 48) in `fm-sheet--paper`, `--night` or, once per page, `--sun`; the pastel sheet variants stay in the kit for the child's screens only. See "Colour discipline" below.
+4. **Colour as structure.** Sections are full-width rounded "sheets" (`fm-sheet--night/sun/lavender/aqua/coral/lime`, radius 48) instead of borders and dividers.
 5. **Depth is soft.** Layered shadows (`--shadow-1..3`), glow on primary hover (`--shadow-glow-sun`), sticker outlines for anything that is "the child".
 6. **Motion with intent.** Scroll reveal (`.rv`), floating stickers, marquee, peeking demo child, 150/300/600/1200ms durations, `--ease-pop` for playful, `--ease-out` for UI. `prefers-reduced-motion` respected everywhere.
 7. **The kid never fails.** No red X, no hearts, no "try again". Wrong tap = ripple + pop.
@@ -22,7 +22,7 @@ v1 ("cream paper + Fredoka + hard 4px shadows") was rejected as dated. v2 aims a
 | Radii      | 8 · 16 · 24 · 32 · 48 · pill                                                                              |
 | Layout     | `--container` 1440 · `--container-narrow` 720 · `--container-text` 880 · `--gutter` 24/48                 |
 | Touch      | `--touch-min` 48 (adult) · `--touch-kid` 64 (child) · `--control-h` 56                                   |
-| Ground/ink | `--paper #FBFAF7` · `--ink #17162B` · `--ink-2/3/4` · `--night #14173A`                                   |
+| Ground/ink | `--paper #FBF8F2` · `--ink #17162B` · `--ink-2/3/4` · `--night #14173A`                                   |
 | Brand      | `--sun #FFC53D` (CTA) · `--coral #FF6B6B` · `--aqua #2ED3C3` · `--sea #2FA4D6` · `--lime #B8F26B` · `--lavender #C4B5FD` · `--berry` · `--grape` · `--leaf` |
 | Gradients  | `--grad-sun` · `--grad-coral` · `--grad-aqua` · `--grad-lavender` · `--grad-night` · `--grad-rainbow`     |
 | Type       | Rubik 400–900 for the site (`--font-display` = `--font-body`); Fredoka for kid UI (`--font-kid`). Scale 12/16 · 14/24 · 16/24 · 20/32 · 24/32 · 32/40 · 40/48 · 48/56 · 64/72 · 88/96 (`--fs-50 … --fs-900`), stepped down at 960px and 600px. |
@@ -152,29 +152,8 @@ Guy kept this world ("Playful Premium") and asked for it to look less AI-made an
 - **Structure only where it means something.** Landing content that is not pressed is not boxed and does not lift on hover: "What's inside", trust and the gift occasions are ruled lists with a disc for the icon; FAQ is a ruled list whose answer opens smoothly (`::details-content` + `interpolate-size`, instant elsewhere). "How it works" is one road with four numbered stops, because it is a real sequence; the road draws itself once.
 - **One rhythm.** Landing sections pad by `--section-y` (128 / 96 / 64px by width); section heads share one size (`--fs-700`, 800, -0.03em) and one lead (`--fs-300`, `--ink-2`), the passport demo included.
 - **Motion.** One authored entrance per page: the hero title rises, its words, buttons and facts follow 90ms apart, the devices settle beside them (`--ease-expo`, `--dur-reveal` 900ms, opacity and transform only, played once). Below the hero, `.rv` is a short rise that lands softly; groups stagger 90-140ms. No bouncing entrances on adult pages; `--ease-pop` stays for the child's game (stars, stickers).
-- **Browser surfaces.** Selection is sun on ink, the caret is ink, scrollbars are `--ink-4`, native accent controls are ink, placeholders `--ink-3`, prices and counts tabular (`.fm-num` or `font-variant-numeric`).
+- **Browser surfaces.** Selection is sun on ink, the caret is sea, scrollbars are `--ink-4`, accent controls are `--sun-deep`, placeholders `--ink-3`, prices and counts tabular (`.fm-num` or `font-variant-numeric`).
 - **Brand.** "איפה אני?" in Hebrew, "Find Me Worlds" in English (`common.brand`), never typed into a component: the passport cover, the friend lobby, the shared passport and the passport finale read it from the dictionary.
-
-## Colour discipline (2026-11-16)
-
-Guy: watch the colours, keep to the design system, no mess; everything consistent and not too colourful. The landing had grown a yellow band, a lavender sheet, an aqua sheet, four chip tints in one row, grape and aqua ticks, a coral-striped parcel, blue links, sea selections and a lavender invitation page. Each was reasonable alone; together they were noise, and they drowned the paintings, which are the product.
-
-Every colour on a parent screen now has one job:
-
-| Colour | Job | Where |
-| --- | --- | --- |
-| `--paper`, `--white`, `--paper-2/-3` | Ground, surfaces, a quiet band | Page, cards, `fm-sheet--paper` (gift, trust), the friend lobby |
-| `--ink` scale | Words, line icons, ticks, links, **selected** | Text; list ticks; links (ink with an `--ink-4` underline that darkens on hover); a chosen card, level, world or consent is an ink edge (`fm-card--selected`: ink border + `--paper-3` halo; ink disc with a drawn tick) |
-| `--sun` | **The action**, and the brand mark | Primary buttons, the logo mark, the hero's "?", the one closing sun sheet, an open FAQ disc, progress |
-| `--sun-soft` | The one chip tint | Every icon chip (steps, inside, gift occasions, trust, search levels, upload, "more adventures", friend avatar) |
-| `--night` | The one dark stage | The passport, the first-world price card |
-| `--leaf`, `--danger`, `--focus` | State only | Found/done/owned; an error; the keyboard focus ring |
-
-- **Navigation is not action.** The worlds carousel arrows, the "+" between prices and the turns between the photo-to-world cards are white discs with an ink icon; a yellow dot always means "press me".
-- **The board is the loudest thing on the page.** The live demo sits on the page's own paper; only the closing call keeps a sun sheet.
-- **No colour per card.** The library says a card's state with the label on its corner (a ready adventure is lit warm); search levels differ by drawing, not tint; friend progress is leaf (done), sun-soft (under way), paper (looked at).
-- **Kept on purpose.** The paintings, the place emblems on the world cards and the passport's foil and stamps carry their own colours. The pastel tokens (`coral`, `berry`, `aqua`, `sea`, `lime`, `lavender`, `grape`) and their sheets/badges stay in the kit for the child's game and the admin; a parent screen that reaches for one is a regression.
-- **Drawn, again.** The consent ticks, the level tick, the checkout disclosure (`--icon-chevron`) and the language button's caret were typed glyphs (✓ ▸ ◂ ▾); they are `Icon` or masks now.
 
 ## The passport (2026-09-17)
 

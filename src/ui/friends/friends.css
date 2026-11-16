@@ -1,23 +1,21 @@
-/* The invitation opens on the site's own paper (a lavender page was a different product's front door). */
-.friend-lobby { min-height: 100dvh; display: grid; place-content: center; gap: var(--space-3); padding: var(--space-3); background: var(--paper-2); text-align: center; }
+.friend-lobby { min-height: 100dvh; display: grid; place-content: center; gap: var(--space-3); padding: var(--space-3); background: var(--grad-lavender); text-align: center; }
 .friend-lobby__brand { color: var(--ink-2); font-weight: 800; letter-spacing: .04em; }
-.friend-lobby__card { width: min(100%, var(--container-narrow)); background: var(--white); border-radius: var(--radius-4); box-shadow: var(--shadow-2); padding: var(--space-4); display: grid; gap: var(--space-3); margin-inline: auto; font-family: var(--font-kid), sans-serif; }
+.friend-lobby__card { width: min(100%, var(--container-narrow)); background: var(--paper); border-radius: var(--radius-4); box-shadow: var(--shadow-2); padding: var(--space-4); display: grid; gap: var(--space-3); margin-inline: auto; font-family: var(--font-kid), sans-serif; }
 .friend-lobby__card h1 { font-size: var(--fs-600); line-height: var(--lh-600); margin: 0; }
 .friend-lobby__card h2 { font-size: var(--fs-300); margin: 0; }
-.friend-lobby__crest { font-size: var(--fs-800); color: var(--sun-deep); line-height: 1; }
+.friend-lobby__crest { font-size: var(--fs-800); color: var(--grape); line-height: 1; }
 .friend-lobby__actions { display: grid; gap: var(--space-2); }
 .friend-lobby__note { color: var(--ink-2); font-family: var(--font-body), sans-serif; font-size: var(--fs-100); margin: 0; }
 .friend-names { border: 0; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-2); }
 .friend-names legend { margin-bottom: var(--space-2); font-weight: 600; }
 .friend-names__choice { min-height: var(--touch-kid); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--space-1); border: 2px solid transparent; border-radius: var(--radius-2); background: var(--white); color: var(--ink); padding: var(--space-2); font: inherit; cursor: pointer; box-shadow: var(--shadow-1); transition: transform var(--dur-1) var(--ease-pop), background var(--dur-1); }
 .friend-names__choice span { font-size: var(--fs-400); }
-/* Chosen, at a child's size: the ink edge every choice on the site wears, filled with the sun tint. */
-.friend-names__choice.is-selected { border-color: var(--ink); background: var(--sun-soft); }
+.friend-names__choice.is-selected { border-color: var(--grape); background: var(--lavender); }
 /* The chosen nickname says so with a mark, not only a colour. */
 .friend-names__choice { position: relative; }
-.friend-names__choice.is-selected::after { content: ""; position: absolute; top: var(--space-1); inset-inline-end: var(--space-1); width: var(--space-2); height: var(--space-2); background: var(--ink); -webkit-mask: var(--icon-check) center / contain no-repeat; mask: var(--icon-check) center / contain no-repeat; }
+.friend-names__choice.is-selected::after { content: ""; position: absolute; top: var(--space-1); inset-inline-end: var(--space-1); width: var(--space-2); height: var(--space-2); background: var(--grape); -webkit-mask: var(--icon-check) center / contain no-repeat; mask: var(--icon-check) center / contain no-repeat; }
 .friend-names__choice:active, .friend-reaction__choices button:active { transform: scale(.96); }
-.friend-names__choice:focus-visible, .friend-play__identity button:focus-visible, .friend-person:focus-visible { outline: var(--space-0-5) solid var(--focus); outline-offset: var(--space-0-5); }
+.friend-names__choice:focus-visible, .friend-play__identity button:focus-visible, .friend-person:focus-visible { outline: var(--space-0-5) solid var(--grape); outline-offset: var(--space-0-5); }
 .friend-play { height: 100dvh; display: flex; flex-direction: column; background: var(--paper); }
 .friend-play > .game { flex: 1; min-height: 0; overflow: auto; overscroll-behavior: contain; container-type: size; }
 .friend-play > .game .wmap { flex-shrink: 0; }
@@ -26,8 +24,8 @@
 .friend-play .collect__sheet { max-height: min(520px, calc(100cqh - var(--touch-kid) - var(--space-2) - max(var(--space-2), env(safe-area-inset-bottom)))); }
 .friend-play .collect__seek { max-height: calc(100cqh - var(--touch-kid) - var(--space-4)); overflow: auto; overscroll-behavior: contain; }
 .friend-play .collect--seek-above .collect__seek { top: max(var(--space-2), env(safe-area-inset-top)); max-height: calc(100cqh - max(var(--space-2), env(safe-area-inset-top)) - max(var(--space-2), env(safe-area-inset-bottom))); }
-.friend-play__identity { flex-shrink: 0; min-height: var(--touch-kid); display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-1); padding: var(--space-1) var(--space-2); background: var(--paper-2); font-family: var(--font-kid), sans-serif; }
-.friend-play__identity button { min-height: var(--touch-kid); border: 0; border-radius: var(--radius-pill); background: var(--white); color: var(--ink); padding-inline: var(--space-2); font: inherit; cursor: pointer; }
+.friend-play__identity { flex-shrink: 0; min-height: var(--touch-kid); display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-1); padding: var(--space-1) var(--space-2); background: var(--lavender); font-family: var(--font-kid), sans-serif; }
+.friend-play__identity button { min-height: var(--touch-kid); border: 0; border-radius: var(--radius-pill); background: var(--paper); color: var(--ink); padding-inline: var(--space-2); font: inherit; cursor: pointer; }
 .friend-play__identity button:disabled { opacity: .5; cursor: not-allowed; }
 .friend-play__save { color: var(--ink-2); font-family: var(--font-body), sans-serif; font-size: var(--fs-100); }
 .friend-dialog { width: min(calc(100% - var(--space-4)), var(--container-text)); max-height: calc(100dvh - var(--space-4)); color: var(--ink); border: 0; border-radius: var(--radius-4); padding: 0; background: var(--paper); box-shadow: var(--shadow-3); overscroll-behavior: contain; }
@@ -44,24 +42,23 @@
 .friend-person header { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); margin-bottom: var(--space-3); }
 .friend-person header :is(h3, h4), .friend-person header p { margin: 0; }
 .friend-person__when { color: var(--ink-2); font-size: var(--fs-100); line-height: var(--lh-100); }
-.friend-person__avatar { display: grid; place-items: center; width: var(--touch-kid); height: var(--touch-kid); background: var(--sun-soft); border-radius: var(--radius-pill); font-size: var(--fs-400); }
+.friend-person__avatar { display: grid; place-items: center; width: var(--touch-kid); height: var(--touch-kid); background: var(--lavender); border-radius: var(--radius-pill); font-size: var(--fs-400); }
 /* The current invitation's players first; earlier, closed invitations under their own heading. */
 .friend-report__group { display: grid; gap: var(--space-2); }
 .friend-report__group > h3 { margin: 0; font-size: var(--fs-200); line-height: var(--lh-200); color: var(--ink-2); }
 /* One strip of places that wraps: a shape and a count tell each place, the colour only repeats it. */
 .friend-person__places { list-style: none; padding: 0; margin: 0; display: flex; flex-wrap: wrap; gap: var(--space-1); }
 .friend-person__places li { display: inline-flex; align-items: center; gap: var(--space-0-5); padding: var(--space-0-5) var(--space-1); border-radius: var(--radius-pill); background: var(--paper); font-size: var(--fs-100); line-height: var(--lh-100); }
-/* Done is the passport's "found" green; under way is the sun tint; only looked at stays paper. */
-.friend-person__places li.is-complete { background: var(--leaf-soft); }
-.friend-person__places li.is-partial { background: var(--sun-soft); }
-.friend-person__places li.is-visited { background: var(--paper-2); }
+.friend-person__places li.is-complete { background: var(--lime); }
+.friend-person__places li.is-partial { background: var(--lavender); }
+.friend-person__places li.is-visited { background: var(--aqua); }
 .friend-person__mark { font-weight: 800; white-space: nowrap; }
 .friend-new { display: inline-flex; margin-inline-start: var(--space-1); padding: var(--space-0-5) var(--space-1); border-radius: var(--radius-pill); background: var(--sun); color: var(--ink); font-size: var(--fs-100); font-weight: 700; }
-.friend-person__postcard { background: var(--sun-soft); padding: var(--space-3); border-radius: var(--radius-3); margin-top: var(--space-3); font-size: var(--fs-300); font-family: var(--font-kid), sans-serif; }
+.friend-person__postcard { background: var(--grad-sun); padding: var(--space-3); border-radius: var(--radius-3); margin-top: var(--space-3); font-size: var(--fs-300); font-family: var(--font-kid), sans-serif; }
 .friend-reaction { max-width: var(--container-narrow); margin-inline: auto; display: grid; gap: var(--space-2); text-align: center; }
 .friend-reaction__choices { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-2); }
 .friend-reaction__choices button { min-height: var(--touch-kid); border: 2px solid transparent; border-radius: var(--radius-2); background: var(--white); padding: var(--space-2); color: var(--ink); font: inherit; cursor: pointer; }
-.friend-reaction__choices button[aria-pressed="true"] { background: var(--sun-soft); border-color: var(--ink); }
+.friend-reaction__choices button[aria-pressed="true"] { background: var(--sun); border-color: var(--ink); }
 .family-friends { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); margin-top: var(--space-2); }
 .family-friends__world { display: grid; gap: var(--space-1); font-weight: 700; }
 .family-friends__world select { min-height: var(--touch-min); padding: var(--space-1) var(--space-2); font: inherit; border-radius: var(--radius-2); background: var(--white); color: var(--ink); }
@@ -74,11 +71,11 @@
 .family-friends__details[open] > summary::after { transform: rotate(45deg); }
 .family-friends__details > .family-friends__note { margin-block: var(--space-1) 0; }
 .family-friends__consent { display: flex; align-items: center; gap: var(--space-2); min-height: var(--touch-min); margin-block: var(--space-3); cursor: pointer; }
-.family-friends__consent input { width: var(--space-3); height: var(--space-3); accent-color: var(--ink); flex-shrink: 0; }
+.family-friends__consent input { width: var(--space-3); height: var(--space-3); accent-color: var(--grape); flex-shrink: 0; }
 .family-friends__actions, .family-friends__link { display: flex; flex-wrap: wrap; gap: var(--space-2); }
 .family-friends__actions { align-items: flex-end; }
 .family-friends__link input { min-width: 0; flex: 1 1 60%; border: 0; border-radius: var(--radius-2); min-height: var(--touch-min); padding-inline: var(--space-2); background: var(--white); color: var(--ink); }
-.family-friends__adult { background: var(--paper-2); border-radius: var(--radius-2); padding: var(--space-2); margin-block: var(--space-2); }
+.family-friends__adult { background: var(--lavender); border-radius: var(--radius-2); padding: var(--space-2); margin-block: var(--space-2); }
 @keyframes friend-arrive { from { opacity: 0; transform: translateY(var(--space-3)); } to { opacity: 1; transform: translateY(0); } }
 @media (max-height: 480px) and (min-width: 560px) {
   .friend-play .scene__bar { flex-direction: row; align-items: flex-start; }
