@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, type CSSProperties, type PointerEvent, type ReactNode } from "react";
 import { useI18n } from "@/i18n/client";
+import { Icon } from "@/ui/Icon";
 import type { PassportPageView, PassportView } from "@/domain/passport/passport";
 import { arrowPage, swipePage } from "./book-navigation";
 import { PassportStamp } from "./StampMark";
@@ -166,7 +167,7 @@ export function PassportBook({ book, mode = "owner", onPhotoSelect, onPlay, rend
     catch { setMessage(copy.saveFailed); }
     finally { setBusy(false); }
   }
-  const coverArt = <><span className="travel-passport__eyebrow">FIND ME WORLDS</span><div className="travel-passport__crest" aria-hidden="true">✦</div><h2>{copy.title}</h2>{book.avatarUrl ? <div className="travel-passport__avatar">{image(book.avatarUrl, "")}</div> : null}<p className="travel-passport__name">{book.name}</p><p className="travel-passport__motto">{copy.subtitle}</p></>;
+  const coverArt = <><span className="travel-passport__eyebrow">{t.common.brand}</span><div className="travel-passport__crest" aria-hidden="true"><Icon name="sparkle" /></div><h2>{copy.title}</h2>{book.avatarUrl ? <div className="travel-passport__avatar">{image(book.avatarUrl, "")}</div> : null}<p className="travel-passport__name">{book.name}</p><p className="travel-passport__motto">{copy.subtitle}</p></>;
 
   return <section ref={reader} className="travel-passport" aria-label={copy.title} data-mode={mode} data-open={open} dir={dir}>
     {mode === "demo" ? <p className="travel-passport__demo">{copy.demo}</p> : null}

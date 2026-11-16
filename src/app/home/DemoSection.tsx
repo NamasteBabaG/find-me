@@ -36,9 +36,7 @@ export function DemoSection({ config }: { config: GameConfig }) {
           <p>{d.foot}</p>
           <Link href="/create" className="fm-btn fm-btn--night fm-btn--lg">
             {d.cta}
-            <span className="fm-btn__arrow" aria-hidden>
-              ➜
-            </span>
+            <span className="fm-btn__arrow" aria-hidden />
           </Link>
         </div>
       </div>

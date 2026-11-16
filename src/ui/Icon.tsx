@@ -8,7 +8,7 @@
 export type IconName =
   | "camera" | "map" | "gift" | "search" | "bulb" | "heart" | "replay" | "bag" | "family" | "cake" | "plane"
   | "link" | "book" | "lock" | "key" | "pencil" | "sparkle" | "speaker" | "letter" | "globe" | "crown" | "hourglass"
-  | "brush" | "star" | "cloud" | "card" | "home" | "candle" | "chevron" | "check";
+  | "brush" | "star" | "cloud" | "card" | "home" | "candle" | "chevron" | "check" | "plus" | "arrow";
 
 const P: Record<IconName, string[]> = {
   camera: ["M4 8.5A1.5 1.5 0 0 1 5.5 7h2.2l1.5-2.2h5.6L16.3 7h2.2A1.5 1.5 0 0 1 20 8.5v9A1.5 1.5 0 0 1 18.5 19h-13A1.5 1.5 0 0 1 4 17.5z", "M12 16.2a3.4 3.4 0 1 0 0-6.8 3.4 3.4 0 0 0 0 6.8z"],
@@ -40,6 +40,8 @@ const P: Record<IconName, string[]> = {
   home: ["M3.8 11.2 12 4.2l8.2 7", "M6.2 9.4V19.2A.8.8 0 0 0 7 20h3.6v-5.2h2.8V20H17a.8.8 0 0 0 .8-.8V9.4"],
   check: ["m5 12.5 4.5 4.5L19 7.5"],
   chevron: ["m6.5 9.5 5.5 5.5 5.5-5.5"],
+  plus: ["M12 5v14", "M5 12h14"],
+  arrow: ["M5 12h14", "m13 6 6 6-6 6"],
   candle: ["M9.5 10.5h5v9.5h-5z", "M12 10.5V8.6", "M12 3.6c1.3 1.4 1.3 2.7 0 3.6-1.3-.9-1.3-2.2 0-3.6z", "M6.5 20.5h11"],
 };
 

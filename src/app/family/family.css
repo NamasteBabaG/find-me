@@ -78,7 +78,7 @@ img.family-sticker { border-radius: var(--radius-2); object-fit: contain; }
   background: var(--paper-2); color: var(--ink-2); font-size: var(--fs-100); line-height: var(--lh-100); font-weight: 700;
 }
 .adventure__worlds li.is-current { background: var(--sun-soft); color: var(--ink); }
-.adventure__worlds li.is-done::before { content: "✓"; margin-inline-end: var(--space-0-5); color: var(--leaf-deep); }
+.adventure__worlds li.is-done::before { content: ""; display: inline-block; width: 1em; height: 1em; vertical-align: -0.125em; margin-inline-end: var(--space-0-5); background: var(--leaf-deep); -webkit-mask: var(--icon-check) center / contain no-repeat; mask: var(--icon-check) center / contain no-repeat; }
 /* Being made: the child waits on blank paper, no map yet. */
 .adventure__wait {
   display: grid; place-items: center; height: var(--space-20);

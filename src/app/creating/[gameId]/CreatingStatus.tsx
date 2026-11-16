@@ -251,7 +251,7 @@ export function CreatingStatus({ gameId, childName, isAdmin }: { gameId: string;
           return (
             <li key={m} className={`cp__step cp__step--${state}`} aria-current={state === "active" ? "step" : undefined}>
               <span className="cp__dot" aria-hidden>
-                {state === "done" ? "✓" : state === "active" ? <span className="fm-spinner" /> : i + 1}
+                {state === "done" ? <Icon name="check" strokeWidth={3} /> : state === "active" ? <span className="fm-spinner" /> : i + 1}
               </span>
               <span className="cp__label">
                 {labels[m]}

@@ -5,6 +5,7 @@ import Image from "next/image";
 import { useEffect, useRef, type CSSProperties, type ReactNode } from "react";
 import { useI18n } from "@/i18n/client";
 import { GoldStar } from "@/game/components/GoldStar";
+import { Icon } from "@/ui/Icon";
 import found from "../../../content/home/hero-found.json";
 
 /**
@@ -226,7 +227,6 @@ export function Hero({ child, children }: { child: Child; children?: ReactNode }
     <section ref={rootRef} className="hero4" aria-labelledby="hero-title">
       <div className="fm-container hero4__grid">
         <div className="hero4__copy">
-          <span className="hero4__pill">{h.pill}</span>
           <h1 id="hero-title" className="hero4__title">
             {title}
           </h1>
@@ -234,14 +234,21 @@ export function Hero({ child, children }: { child: Child; children?: ReactNode }
           <div className="hero4__cta">
             <Link href="/create" className="fm-btn fm-btn--lg">
               {h.cta}
-              <span className="fm-btn__arrow" aria-hidden>
-                ➜
-              </span>
+              <span className="fm-btn__arrow" aria-hidden />
             </Link>
             <a href="#demo" className="fm-btn fm-btn--night fm-btn--lg">
               {h.demo}
             </a>
           </div>
+          {/* The facts a parent asks first, as ticked text under the buttons, not a label over the title. */}
+          <span className="hero4__pill">
+            {h.pill.split(" · ").map((fact) => (
+              <span key={fact} className="hero4__fact">
+                <Icon name="check" strokeWidth={2.6} />
+                {fact}
+              </span>
+            ))}
+          </span>
         </div>
         {/* The moment, on two devices in turn; decoration to a screen reader, the copy says it all. */}
         <div ref={stageRef} className="hero4__stage" aria-hidden>

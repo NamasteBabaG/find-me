@@ -105,12 +105,12 @@ export const en = {
     note: "For invited testers only. Payments are simulated, but image generation costs real money. Access lasts 24 hours in this browser.",
   },
   meta: {
-    title: "Where Am I? | A personal search game starring your child",
+    title: "Find Me Worlds | A personal search game starring your child",
     description: "Turn one photo into a personal browser game: children search for their illustrated selves in adventure scenes, with hints and a digital gift option.",
   },
   common: {
     loading: "Loading…",
-    brand: "Where Am I?",
+    brand: "Find Me Worlds",
     createGame: "Create a game",
     signIn: "Sign in",
     myGames: "Family area",
@@ -271,7 +271,6 @@ export const en = {
       ],
     },
     final: {
-      badge: "From one photo to a personal adventure",
       title: "Now it's their turn to find themselves.",
       lead: "One photo, a personal character, and an adventure that starts with a search.",
       cta: "Create a personal game",
@@ -534,7 +533,7 @@ export const en = {
       copyFailed: "We couldn't copy it. Select and copy the link shown here.",
       pending: "The link will appear here once the game is ready.",
       shareTitle: "Where's {name}?",
-      shareText: "Come and find {name} in a Where Am I? adventure!",
+      shareText: "Come and find {name} in a Find Me Worlds adventure!",
       /** The link as a thing to send; the address itself shows only if copying fails. */
       linkLabel: "{name}'s game link",
       ready: "Ready to send",
@@ -818,12 +817,12 @@ export const en = {
   } as Record<string, string>,
   email: {
     magic: {
-      subject: "Your Where Am I? sign-in link",
+      subject: "Your Find Me Worlds sign-in link",
       title: "Sign in to your family area",
       body: "We received a request to sign in with this email. The link is personal, valid for 15 minutes and can be used once. Don't forward it.",
       button: "Sign in to the family area",
       ignore: "If you didn't request a link, you can ignore this email.",
-      text: "Your Where Am I? sign-in link\n\nSign in to the family area: {link}\nThis personal link is valid for 15 minutes and can be used once. Don't forward it.\n\nDidn't request it? You can ignore this email.",
+      text: "Your Find Me Worlds sign-in link\n\nSign in to the family area: {link}\nThis personal link is valid for 15 minutes and can be used once. Don't forward it.\n\nDidn't request it? You can ignore this email.",
     },
     ready: {
       subject: "{name}'s adventure is ready!",
@@ -842,7 +841,7 @@ export const en = {
       body: "Some hiding spots didn't come out well enough, so we stopped instead of sending a game that isn't right. Your full payment has been refunded.",
       text: "We couldn't finish {name}'s adventure.\nSome hiding spots didn't come out well enough, so we stopped instead of sending a game that isn't right.\nYour full payment has been refunded.",
     },
-    footer: "Where Am I? — A personal search game",
+    footer: "Find Me Worlds: a personal search game",
   },
 };
 

@@ -33,7 +33,7 @@ h4 {
   font-weight: 800;
   margin: 0;
   color: var(--ink);
-  letter-spacing: -0.015em;
+  letter-spacing: -0.02em;
   text-wrap: balance;
 }
 
@@ -78,11 +78,32 @@ video {
 :focus-visible {
   outline: 3px solid var(--focus);
   outline-offset: 3px;
-  border-radius: var(--radius-1);
 }
 
+/* The parts of the browser nobody draws still wear the product: selection, caret, scrollbars, numerals. */
 ::selection {
-  background: var(--sun-soft);
+  background: var(--sun);
+  color: var(--ink);
+}
+
+html {
+  scrollbar-color: var(--ink-4) transparent;
+  accent-color: var(--sun-deep);
+}
+
+input,
+textarea {
+  caret-color: var(--sea-deep);
+}
+
+::placeholder {
+  color: var(--ink-3);
+  opacity: 1;
+}
+
+/* Prices, counts and steps line up. */
+.fm-num {
+  font-variant-numeric: tabular-nums;
 }
 
 .visually-hidden {
