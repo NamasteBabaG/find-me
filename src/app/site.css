@@ -22,7 +22,7 @@
    and not a dotted meta string. */
 .hero4__pill { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-1) var(--space-3); margin-top: var(--space-1); color: var(--ink-2); font-family: var(--font-display); font-size: var(--fs-100); font-weight: 600; line-height: var(--lh-100); cursor: default; }
 .hero4__fact { display: inline-flex; align-items: center; gap: var(--space-1); white-space: nowrap; }
-.hero4__fact .fm-icon { width: var(--space-2); height: var(--space-2); color: var(--leaf-deep); }
+.hero4__fact .fm-icon { width: var(--space-2); height: var(--space-2); color: var(--ink); }
 /* Two lines at most, balanced: "Wait…" / "that's me!" and "רגע… זה" / "אני שם!" - never a word alone on a third line. */
 .hero4__title { font-family: var(--font-display); font-size: clamp(56px, 7vw, 100px); line-height: 1; font-weight: 900; letter-spacing: -0.035em; color: var(--ink); text-wrap: balance; }
 /* The page's one authored entrance: the title rises first, the words and the buttons follow, the devices settle in
@@ -41,7 +41,7 @@
 .hero4__cta { display: flex; gap: var(--space-2); align-items: center; flex-wrap: wrap; margin-top: var(--space-1); }
 .hero4 .fm-btn { cursor: pointer; }
 /* Two soft washes behind the stage, so the devices sit on something: light, not decoration. */
-.hero4::before { content: ""; position: absolute; inset-inline-start: -120px; top: -100px; width: 900px; height: 900px; border-radius: var(--radius-pill); background: radial-gradient(circle, color-mix(in srgb, var(--sea-soft) 70%, transparent) 0%, transparent 62%); pointer-events: none; }
+.hero4::before { content: ""; position: absolute; inset-inline-start: -120px; top: -100px; width: 900px; height: 900px; border-radius: var(--radius-pill); background: radial-gradient(circle, color-mix(in srgb, var(--paper-3) 60%, transparent) 0%, transparent 62%); pointer-events: none; }
 .hero4::after { content: ""; position: absolute; inset-inline-end: -200px; bottom: -260px; width: 740px; height: 740px; border-radius: var(--radius-pill); background: radial-gradient(circle, rgba(255, 216, 107, 0.34) 0%, transparent 62%); pointer-events: none; }
 
 /* The stage: two devices drawn at design size (704 x 704) and scaled as ONE
@@ -73,7 +73,7 @@
    screen is a token times this factor, so the flight measurement stays exact. */
 /* `isolation` keeps the glass sheen's blend inside the screen: without it the
    screen layer blends down onto the case and the page behind it. */
-.hero4__screen { --ui: 1; position: absolute; inset: var(--space-1); overflow: hidden; isolation: isolate; background: var(--sea-soft); }
+.hero4__screen { --ui: 1; position: absolute; inset: var(--space-1); overflow: hidden; isolation: isolate; background: var(--paper-2); }
 .hero4__screen--phone { --ui: 0.8; border-radius: calc(var(--radius-5) - var(--space-1)); }
 .hero4__screen--tablet { --ui: 0.62; border-radius: calc(var(--radius-4) - var(--space-1)); }
 .hero4__screen picture { display: contents; }
@@ -152,7 +152,7 @@
 @keyframes hero4-arc { 0%, 29% { opacity: 0; transform: translateY(0) scale(0.4) rotate(0deg); } 31% { opacity: 1; transform: translateY(-10px) scale(1.5) rotate(15deg); animation-timing-function: ease-out; } 40.5% { transform: translateY(calc(-120px * var(--ui))) scale(1.25) rotate(190deg); animation-timing-function: ease-in; } 50% { opacity: 1; transform: translateY(0) scale(var(--fs, 0.5)) rotate(360deg); } 50.01%, 100% { opacity: 0; transform: translateY(0) scale(var(--fs, 0.5)) rotate(360deg); } }
 
 /* The phone-sized card: only under 721px, where the three devices are gone. */
-.hero4__card { display: none; position: relative; width: 100%; border-radius: var(--radius-3); overflow: hidden; background: var(--sea-soft); box-shadow: var(--shadow-3), var(--lit-bloom); }
+.hero4__card { display: none; position: relative; width: 100%; border-radius: var(--radius-3); overflow: hidden; background: var(--paper-2); box-shadow: var(--shadow-3), var(--lit-bloom); }
 .hero4__screen--card { --ui: 0.85; inset: 0; border-radius: 0; }
 
 /* Held still for anyone who reads motion as noise: the tablet, the child found. */
@@ -169,8 +169,9 @@
    climbs under it by exactly the header's height and pads itself back. */
 @media (min-width: 721px) {
   .fm-header--clear { background: transparent; backdrop-filter: none; box-shadow: none; }
-  /* Links, not buttons (Guy): no pill, no shadow, no movement; a mouse on one turns it the deep yellow. */
-  .fm-header--clear .fm-nav a:hover { background: transparent; box-shadow: none; color: var(--sun-deep); }
+  /* Links, not buttons (Guy): no pill, no shadow, no movement; a mouse on one darkens it and draws the same
+     underline as the solid header, so the nav behaves one way over the hero and below it. */
+  .fm-header--clear .fm-nav a:hover { background: transparent; box-shadow: none; color: var(--ink); }
   @supports (animation-timeline: scroll()) {
     .fm-header--clear { animation: fm-header-solidify linear both; animation-timeline: scroll(); animation-range: 0 200px; }
   }
@@ -215,24 +216,19 @@
    grow the absolutely positioned strip over the hero and its buttons. */
 @media (prefers-reduced-motion: reduce) { .marquee__track { animation: none; flex-wrap: nowrap; width: max-content; } }
 
-/* Demo — the brand's yellow, dressed like the final card (grad-sun plus the
-   soft corner moon), so the two yellow blocks at the top and bottom of the
-   page read as one family. */
-.demo { position: relative; background: var(--grad-sun); color: var(--ink); padding-block: var(--section-y); overflow: hidden; }
-/* Light from above, not a decorative moon: the band is brightest where the title sits. */
-.demo::before { content: ""; position: absolute; inset: 0 0 auto; height: 60%; background: radial-gradient(70% 100% at 50% 0%, rgba(255, 255, 255, 0.35), transparent 70%); pointer-events: none; }
+/* Demo: on the page's own ground. The board is the most colourful thing on the site, so the band around it stays
+   quiet; a yellow band under a full painting was two loud things fighting (Guy, 2026-11-16). The sun sheet is kept
+   for the closing call alone. */
+.demo { position: relative; background: var(--paper); color: var(--ink); padding-block: var(--section-y); overflow: hidden; }
 .demo__inner { position: relative; z-index: 1; }
 .demo__head { display: flex; flex-direction: column; align-items: center; text-align: center; gap: var(--space-2); margin-bottom: var(--space-5); }
 .demo__title { font-size: var(--fs-800); line-height: var(--lh-800); font-weight: 900; letter-spacing: -0.02em; color: var(--ink); }
 .demo__lead { color: var(--ink-2); font-size: var(--fs-300); line-height: var(--lh-300); max-width: 52ch; }
 /* The same lit panel as the hero's devices, minus the glass sheen: this one is
    played on, and a glare over a corner of a search game hides whatever is
-   under it. The board's own lift (`--lit-art`, on the viewport) and the light
-   the panel throws onto the yellow band around it carry it instead. The bloom
-   is white here and not `--lit-bloom`: a warm glow on a yellow band is
-   invisible, and what has to read is that the panel is brighter than the wall
-   it is hung on. */
-.demo__frame { position: relative; width: 100%; aspect-ratio: var(--demo-art-ratio, 3 / 2); border-radius: var(--radius-3); overflow: hidden; background: var(--night); box-shadow: 0 0 0 6px var(--white), var(--shadow-3), 0 0 72px rgba(255, 255, 255, 0.72); }
+   under it. The board's own lift (`--lit-art`, on the viewport), a white rim
+   and the far shadow hang it on the wall. */
+.demo__frame { position: relative; width: 100%; aspect-ratio: var(--demo-art-ratio, 3 / 2); border-radius: var(--radius-3); overflow: hidden; background: var(--night); box-shadow: 0 0 0 6px var(--white), var(--shadow-3); }
 @media (max-width: 720px) { .demo__frame { border-radius: var(--radius-2); } }
 /* Give children a real search window, not a postcard scaled to phone width. */
 @media (max-width: 720px) and (orientation: portrait) {
@@ -270,11 +266,7 @@
 .steps.rv { opacity: 1; transform: none; }
 .steps.rv .step { opacity: 0; transform: translate3d(0, var(--space-3), 0); transition: opacity var(--dur-reveal) var(--ease-expo), transform var(--dur-reveal) var(--ease-expo); transition-delay: calc(var(--i, 0) * 140ms); }
 .steps.is-in .step { opacity: 1; transform: none; }
-.step__icon { position: relative; z-index: 1; width: var(--stop); height: var(--stop); border-radius: var(--radius-3); display: grid; place-items: center; font-size: var(--fs-500); background: var(--white); color: var(--ink); box-shadow: var(--hairline), var(--shadow-1); }
-.step__icon--sun { background: var(--sun-soft); }
-.step__icon--aqua { background: var(--aqua-soft); }
-.step__icon--lavender { background: var(--lavender-soft); }
-.step__icon--coral { background: var(--coral-soft); }
+.step__icon { position: relative; z-index: 1; width: var(--stop); height: var(--stop); border-radius: var(--radius-3); display: grid; place-items: center; font-size: var(--fs-500); background: var(--sun-soft); color: var(--ink); box-shadow: var(--hairline), var(--shadow-1); }
 .step__num { position: absolute; z-index: 2; top: calc(var(--space-1) * -1); inset-inline-start: calc(50% + var(--stop) / 2 - var(--space-2)); display: grid; place-items: center; width: var(--space-3); height: var(--space-3); border-radius: var(--radius-pill); background: var(--ink); color: var(--white); box-shadow: 0 0 0 3px var(--paper); font-family: var(--font-display); font-weight: 800; font-size: var(--fs-50); line-height: 1; font-variant-numeric: tabular-nums; }
 .step h3 { font-size: var(--fs-300); line-height: var(--lh-300); margin-top: var(--space-1); }
 .step p { color: var(--ink-2); max-width: 30ch; }
@@ -298,30 +290,32 @@
 .feature p { grid-column: 2; color: var(--ink-2); }
 .feature__icon { grid-row: 1 / span 2; width: var(--space-6); height: var(--space-6); border-radius: var(--radius-pill); display: grid; place-items: center; font-size: var(--fs-300); line-height: 1; background: var(--sun-soft); color: var(--ink); }
 /* The chips hold the product's line icons (src/ui/Icon.tsx), in ink on the tint. */
-.step__icon, .feature__icon, .trust__icon { color: var(--ink); }
+.step__icon, .feature__icon, .trust__icon, .occasion__icon { color: var(--ink); }
 @media (max-width: 1023px) { .features { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 600px) { .features { grid-template-columns: 1fr; row-gap: var(--space-3); } }
 
 /* Gift */
 .gift-grid { display: grid; gap: var(--space-6); grid-template-columns: minmax(0, 1fr); align-items: center; }
 @media (min-width: 1024px) { .gift-grid { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: var(--space-8); } }
-/* Occasions are a list on the sheet, not four cards on it: a white disc for the icon, then the words. */
+/* Occasions are a list on the sheet, not four cards on it: the site's sun-soft chip for the icon, then the words. */
 .occasions { display: grid; column-gap: var(--space-4); row-gap: var(--space-4); grid-template-columns: repeat(2, minmax(0, 1fr)); list-style: none; margin: 0; padding: 0; }
 .occasion { display: grid; grid-template-columns: var(--space-6) minmax(0, 1fr); column-gap: var(--space-2); row-gap: var(--space-0-5); align-content: start; }
-.occasion__icon { grid-row: 1 / span 2; display: grid; place-items: center; width: var(--space-6); height: var(--space-6); border-radius: var(--radius-pill); background: var(--white); box-shadow: 0 1px 2px rgba(23, 22, 43, 0.06); font-size: var(--fs-300); line-height: 1; color: var(--lavender-deep); }
+.occasion__icon { grid-row: 1 / span 2; display: grid; place-items: center; width: var(--space-6); height: var(--space-6); border-radius: var(--radius-pill); background: var(--sun-soft); font-size: var(--fs-300); line-height: 1; }
 .occasion h3 { font-size: var(--fs-300); line-height: var(--lh-300); }
 .occasion p { grid-column: 2; color: var(--ink-2); font-size: var(--fs-100); line-height: var(--lh-100); }
 .gift-visual { display: flex; flex-direction: column; align-items: center; gap: var(--space-5); }
-.gift-box { position: relative; overflow: hidden; width: min(100%, 420px); aspect-ratio: 4 / 3; border-radius: var(--radius-4); background: repeating-linear-gradient(135deg, var(--coral) 0 var(--space-3), var(--sun) var(--space-3) var(--space-6)); box-shadow: var(--shadow-3); display: grid; place-items: center; transform: rotate(-3deg); animation: fm-float 5s var(--ease-in-out) infinite; }
+.gift-box { position: relative; overflow: hidden; width: min(100%, 420px); aspect-ratio: 4 / 3; border-radius: var(--radius-4); background: repeating-linear-gradient(135deg, var(--sun) 0 var(--space-3), var(--sun-soft) var(--space-3) var(--space-6)); box-shadow: var(--shadow-3); display: grid; place-items: center; transform: rotate(-3deg); animation: fm-float 5s var(--ease-in-out) infinite; }
 .gift-box__ribbon { position: absolute; inset-inline-start: 50%; top: 0; bottom: 0; width: var(--space-5); background: var(--white); transform: translateX(-50%); opacity: 0.9; }
 [dir="rtl"] .gift-box__ribbon { transform: translateX(50%); }
 /* The RTL rule above outranks the modifier: without its own RTL line the horizontal ribbon slid half a box to the right, out of the parcel. */
 .gift-box__ribbon--h, [dir="rtl"] .gift-box__ribbon--h { inset-inline-start: 0; inset-inline-end: 0; top: 50%; bottom: auto; height: var(--space-5); width: auto; transform: translateY(-50%); }
 .gift-tag { position: relative; background: var(--white); border-radius: var(--radius-3); padding: var(--space-3) var(--space-4); box-shadow: var(--shadow-2); display: flex; flex-direction: column; align-items: center; gap: var(--space-0-5); transform: rotate(4deg); }
+.gift-tag .fm-eyebrow { color: var(--ink-2); }
 .gift-tag strong { font-family: var(--font-display); font-size: var(--fs-500); line-height: var(--lh-500); font-weight: 900; }
 .gift-features { display: flex; flex-direction: column; gap: var(--space-1-5, 12px); list-style: none; margin: 0; padding: 0; width: 100%; max-width: 480px; }
 .gift-features li { display: grid; grid-template-columns: var(--space-3) minmax(0, 1fr); gap: var(--space-1-5, 12px); align-items: start; font-weight: 600; font-size: var(--fs-200); line-height: var(--lh-200); text-align: start; }
-.gift-features li::before { content: ""; width: var(--space-3); height: var(--space-3); margin-top: 0; border-radius: var(--radius-pill); background: var(--grape) var(--icon-check-on) center / 14px no-repeat; }
+/* A list's tick is an ink line, like the hero's facts: a coloured disc behind every tick was colour with nothing to say. */
+.gift-features li::before, .tf-points li::before { content: ""; width: var(--space-3); height: var(--lh-200); background: var(--ink); -webkit-mask: var(--icon-check) center / var(--space-2) no-repeat; mask: var(--icon-check) center / var(--space-2) no-repeat; }
 
 /* Worlds */
 .worlds { display: grid; gap: var(--space-3); grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); }
@@ -360,17 +354,17 @@
 .offer__more .offer__price { font-size: var(--fs-600); line-height: var(--lh-600); }
 .offer__feats { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--space-1); }
 .offer__feats li { display: flex; gap: var(--space-1); align-items: flex-start; color: rgba(255, 255, 255, 0.86); }
-.offer__feats li::before { content: ""; flex: none; width: var(--space-2); height: var(--lh-200); background: var(--aqua); -webkit-mask: var(--icon-check) center / contain no-repeat; mask: var(--icon-check) center / contain no-repeat; }
+.offer__feats li::before { content: ""; flex: none; width: var(--space-2); height: var(--lh-200); background: var(--sun); -webkit-mask: var(--icon-check) center / contain no-repeat; mask: var(--icon-check) center / contain no-repeat; }
 .offer__first .fm-btn { align-self: flex-start; margin-top: auto; }
 .offer__more p { margin: 0; color: var(--ink-2); }
-.offer__plus { grid-column: 2; align-self: center; justify-self: center; z-index: 1; display: grid; place-items: center; width: var(--space-8); height: var(--space-8); border-radius: 50%; background: var(--sun); color: var(--ink); box-shadow: 0 0 0 var(--space-0-5) var(--white), var(--shadow-2); font-size: var(--fs-400); line-height: 1; }
+.offer__plus { grid-column: 2; align-self: center; justify-self: center; z-index: 1; display: grid; place-items: center; width: var(--space-8); height: var(--space-8); border-radius: 50%; background: var(--white); color: var(--ink); box-shadow: var(--hairline), var(--shadow-2); font-size: var(--fs-400); line-height: 1; }
 .offer__bundles { display: flex; flex-wrap: wrap; gap: var(--space-1); }
 
-/* Trust: four plain facts on the aqua sheet. A white disc holds each icon; the facts are text, not tiles. */
+/* Trust: four plain facts on the paper sheet. The sun-soft chip holds each icon; the facts are text, not tiles. */
 .trust-sec { padding-block: var(--section-y) 0; }
 .trust { display: grid; column-gap: var(--space-5); row-gap: var(--space-4); grid-template-columns: repeat(4, minmax(0, 1fr)); }
 .trust__item { display: flex; flex-direction: column; gap: var(--space-1); }
-.trust__icon { width: var(--space-6); height: var(--space-6); border-radius: var(--radius-pill); background: var(--white); display: grid; place-items: center; font-size: var(--fs-300); box-shadow: 0 1px 2px rgba(23, 22, 43, 0.06); margin-bottom: var(--space-1); }
+.trust__icon { width: var(--space-6); height: var(--space-6); border-radius: var(--radius-pill); background: var(--sun-soft); display: grid; place-items: center; font-size: var(--fs-300); margin-bottom: var(--space-1); }
 .trust__item h3 { font-size: var(--fs-300); line-height: var(--lh-300); }
 .trust__item p { color: var(--ink-2); font-size: var(--fs-100); line-height: var(--lh-100); }
 @media (max-width: 1023px) { .trust { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
@@ -438,22 +432,21 @@
 .level-card:has(.level-card__input:focus-visible) { outline: 3px solid var(--focus); outline-offset: 4px; }
 .level-card__input { position: absolute; opacity: 0; width: 0; height: 0; pointer-events: none; }
 .level-card__art { grid-area: art; align-self: start; position: relative; display: grid; place-items: center; width: var(--space-6); height: var(--space-6); border-radius: var(--radius-2); transform: rotate(-4deg); transition: transform var(--dur-2) var(--ease-pop); }
-.level-card[data-level="explorers"] .level-card__art { background: var(--aqua-soft); }
-.level-card[data-level="detectives"] .level-card__art { background: var(--lavender-soft); }
+/* Both levels wear the site's one chip tint; the drawing, not a colour, tells them apart. */
+.level-card__art { background: var(--sun-soft); }
 .level-card:hover .level-card__art, .level-card.fm-card--selected .level-card__art { transform: rotate(4deg); }
 .level-art { width: var(--space-5); height: var(--space-5); color: var(--ink); }
 .level-art__glass { fill: var(--white); }
-.level-art__lens { fill: var(--sea-soft); }
+.level-art__lens { fill: var(--paper-2); }
 .level-art__spark { fill: var(--sun); }
 .level-art__step { fill: var(--ink); }
-/* The tick rides the card's corner: an empty ring until chosen, a sea tick that
+/* The tick rides the card's corner: an empty ring until chosen, an ink disc with the drawn tick that
    pops once chosen. Outside the text box, so a phone row never loses a word to it. */
 .level-card__check { position: absolute; top: calc(var(--space-1) * -1); inset-inline-end: calc(var(--space-1) * -1); display: grid; place-items: center; width: var(--space-3); height: var(--space-3); border-radius: var(--radius-pill); background: var(--white); box-shadow: inset 0 0 0 2px var(--ink-4), var(--shadow-1); transition: background var(--dur-1), box-shadow var(--dur-1); }
-.level-card.fm-card--selected .level-card__check { background: var(--sea); box-shadow: var(--shadow-1); animation: fm-pop-in var(--dur-3) var(--ease-pop); }
-.level-card.fm-card--selected .level-card__check::after { content: "✓"; font-family: var(--font-display); font-weight: 900; font-size: var(--fs-100); line-height: 1; color: var(--white); }
+.level-card.fm-card--selected .level-card__check { background: var(--ink) var(--icon-check-on) center / 14px no-repeat; box-shadow: var(--shadow-1); animation: fm-pop-in var(--dur-3) var(--ease-pop); }
 .level-card__name { grid-area: name; font-family: var(--font-display); font-weight: 800; font-size: var(--fs-300); line-height: var(--lh-300); overflow-wrap: anywhere; }
 .level-card__line { grid-area: line; font-size: var(--fs-100); line-height: var(--lh-100); color: var(--ink-3); }
-.level-choice--invalid .level-card { border-color: var(--danger); box-shadow: 0 0 0 4px var(--coral-soft), var(--shadow-1); }
+.level-choice--invalid .level-card { border-color: var(--danger); box-shadow: 0 0 0 4px var(--paper-3), var(--shadow-1); }
 @container level (min-width: 440px) {
   .level-choice__options { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .level-card { grid-template-columns: minmax(0, 1fr); grid-template-areas: "art" "name" "line"; justify-items: center; align-content: start; row-gap: var(--space-0-5); padding: var(--space-3) var(--space-2) var(--space-2); text-align: center; }
@@ -522,13 +515,13 @@
    the screen that belonged to somebody else. */
 .uploader__consent { position: relative; display: flex; gap: var(--space-2); align-items: center; width: 100%; min-height: var(--touch-min); padding: var(--space-2); border-radius: var(--radius-2); background: var(--white); box-shadow: inset 0 0 0 2px var(--line); font-size: var(--fs-100); line-height: var(--lh-100); color: var(--ink-2); text-align: start; cursor: pointer; transition: box-shadow var(--dur-2), color var(--dur-2); }
 .uploader__consent:hover { box-shadow: inset 0 0 0 2px var(--ink-4); }
-.uploader__consent:has(:checked) { box-shadow: inset 0 0 0 2px var(--sun); color: var(--ink); }
+.uploader__consent:has(:checked) { box-shadow: inset 0 0 0 2px var(--ink); color: var(--ink); }
 .uploader__consent:has(:focus-visible) { outline: 3px solid var(--focus); outline-offset: 3px; }
 .uploader__consent input { position: absolute; opacity: 0; width: 0; height: 0; }
 .uploader__tick { flex-shrink: 0; display: grid; place-items: center; width: var(--space-3); height: var(--space-3); border-radius: var(--radius-1); background: var(--white); box-shadow: inset 0 0 0 2px var(--ink-4); color: transparent; font-family: var(--font-display); font-weight: 900; font-size: var(--fs-100); line-height: 1; transition: background var(--dur-1), box-shadow var(--dur-1), color var(--dur-1), transform var(--dur-2) var(--ease-pop); }
-.uploader__consent:has(:checked) .uploader__tick { background: var(--sun); box-shadow: inset 0 0 0 2px var(--sun-deep); color: var(--ink); transform: scale(1.08); }
-.dropzone { width: 100%; border: 3px dashed var(--ink-4); border-radius: var(--radius-4); padding: var(--space-6) var(--space-3); text-align: center; display: flex; flex-direction: column; gap: var(--space-2); align-items: center; background: var(--white); cursor: pointer; transition: border-color var(--dur-1), background var(--dur-1); min-height: var(--space-16); }
-.dropzone:hover, .dropzone--over { border-color: var(--sea); background: var(--sea-soft); }
+.uploader__consent:has(:checked) .uploader__tick { background: var(--ink); box-shadow: none; color: var(--white); transform: scale(1.08); }
+.dropzone {width: 100%; border: 3px dashed var(--ink-4); border-radius: var(--radius-4); padding: var(--space-6) var(--space-3); text-align: center; display: flex; flex-direction: column; gap: var(--space-2); align-items: center; background: var(--white); cursor: pointer; transition: border-color var(--dur-1), background var(--dur-1); min-height: var(--space-16); }
+.dropzone:hover, .dropzone--over { border-color: var(--ink-3); background: var(--paper); }
 @media (max-width: 720px) { .dropzone { padding: var(--space-4) var(--space-2); min-height: 0; } .uploader { gap: var(--space-2); } }
 /* The camera sits in the same tilted chip the site's steps use, and straightens when the parent hovers the zone. */
 .dropzone__icon { display: grid; place-items: center; width: var(--space-10); height: var(--space-10); border-radius: var(--radius-3); background: var(--sun-soft); font-size: var(--fs-600); line-height: 1; box-shadow: var(--shadow-1); transform: rotate(-4deg); transition: transform var(--dur-2) var(--ease-pop); }
@@ -538,7 +531,7 @@
 .tips__list { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-0-5) var(--space-3); grid-template-columns: repeat(2, minmax(0, 1fr)); }
 /* Each tip opens with the product's tick, where an emoji used to stand. */
 .tips__list li { display: flex; align-items: center; gap: var(--space-1); }
-.tips__mark { color: var(--leaf-deep); }
+.tips__mark { color: var(--ink); }
 .tips__list li { display: flex; gap: var(--space-1); align-items: center; font-size: var(--fs-100); line-height: var(--lh-100); color: var(--ink-2); }
 @media (max-width: 480px) { .tips__list { grid-template-columns: 1fr; } }
 /* The crop is a sticker being made: the circle wears the product's white rim
@@ -589,9 +582,9 @@
 .pick__name { font-family: var(--font-display); font-weight: 800; font-size: var(--fs-300); line-height: var(--lh-300); padding-inline: var(--space-1); }
 .pick__tag { font-size: var(--fs-100); line-height: var(--lh-100); color: var(--ink-3); padding-inline: var(--space-1); padding-bottom: var(--space-1); }
 .pick__check { position: absolute; top: var(--space-2); inset-inline-end: var(--space-2); width: var(--space-4); height: var(--space-4); border-radius: var(--radius-pill); background: var(--white); box-shadow: var(--shadow-1); display: grid; place-items: center; font-family: var(--font-display); font-weight: 900; color: var(--ink-3); }
-.fm-card--selected .pick__check { background: var(--sea); color: var(--white); animation: fm-pop-in var(--dur-3) var(--ease-pop); }
+.fm-card--selected .pick__check { background: var(--ink); color: var(--white); animation: fm-pop-in var(--dur-3) var(--ease-pop); }
 .pick { cursor: pointer; color: inherit; font: inherit; min-width: 0; }
-.pick:focus-visible { outline: 3px solid var(--sea); outline-offset: 4px; }
+.pick:focus-visible { outline: 3px solid var(--focus); outline-offset: 4px; }
 .pick[aria-disabled="true"] { cursor: not-allowed; }
 .pick__state { align-self: flex-start; margin: var(--space-0-5) var(--space-1) var(--space-1); padding: 2px var(--space-2); border-radius: var(--radius-pill); font-family: var(--font-display); font-weight: 700; font-size: var(--fs-50); line-height: var(--lh-50); background: var(--paper-2); color: var(--ink-3); }
 .pick--in .pick__state { background: var(--leaf-soft); color: var(--leaf-deep); }
@@ -616,12 +609,12 @@
 .summary__row { display: flex; justify-content: space-between; gap: var(--space-2); padding-block: var(--space-1); border-bottom: 1px solid var(--line); }
 .summary__row:last-child { border-bottom: 0; }
 .summary__scenes { display: flex; gap: var(--space-1); flex-wrap: wrap; }
-.summary__more > summary { cursor: pointer; font-weight: 700; color: var(--sea-deep); font-size: var(--fs-100); line-height: var(--lh-100); list-style: none; display: inline-flex; align-items: center; min-height: var(--touch-min); }
+.summary__more > summary { cursor: pointer; font-weight: 700; color: var(--ink); text-decoration: underline; text-decoration-thickness: 2px; text-decoration-color: var(--ink-4); text-underline-offset: 3px; font-size: var(--fs-100); line-height: var(--lh-100); list-style: none; display: inline-flex; align-items: center; min-height: var(--touch-min); }
 .summary__more > summary::-webkit-details-marker { display: none; }
-.summary__more > summary::before { content: "▸ "; white-space: pre; }
-/* A closed disclosure points the way the line reads. */
-.summary__more:dir(rtl) > summary::before { content: "◂ "; }
-.summary__more[open] > summary::before { content: "▾ "; }
+/* The drawn chevron, never a typed triangle. A closed disclosure points the way the line reads; open, it points down. */
+.summary__more > summary::before { content: ""; flex: none; width: var(--space-2); height: var(--space-2); margin-inline-end: var(--space-0-5); background: currentColor; -webkit-mask: var(--icon-chevron) center / contain no-repeat; mask: var(--icon-chevron) center / contain no-repeat; transform: rotate(-90deg); transition: transform var(--dur-2) var(--ease-expo); }
+.summary__more:dir(rtl) > summary::before { transform: rotate(90deg); }
+.summary__more[open] > summary::before { transform: none; }
 .summary__more[open] > summary { margin-bottom: 0; }
 
 /* Mock payment (sandbox PSP page) */
@@ -733,11 +726,10 @@
 .lib { position: relative; display: flex; flex-direction: column; background: var(--white); border-radius: var(--radius-4); box-shadow: var(--shadow-1); overflow: hidden; transition: transform var(--dur-2) var(--ease-out), box-shadow var(--dur-2) var(--ease-out); animation: fm-fade-up var(--dur-3) var(--ease-out) both; }
 .lib:hover { transform: translateY(-4px); box-shadow: var(--shadow-2); }
 .library > .lib:nth-child(2) { animation-delay: 60ms; } .library > .lib:nth-child(3) { animation-delay: 120ms; } .library > .lib:nth-child(4) { animation-delay: 180ms; } .library > .lib:nth-child(5) { animation-delay: 240ms; } .library > .lib:nth-child(n+6) { animation-delay: 300ms; }
-/* The cover carries the child, lit from behind in the tone of its state. */
-.lib__cover { position: relative; aspect-ratio: 16 / 10; display: grid; place-items: center; background: radial-gradient(circle at 50% 38%, var(--lib-glow, var(--lavender-soft)) 0%, var(--paper-2) 72%); }
+/* The cover carries the child on paper; a ready adventure is lit warm behind it. The state is said by the label on
+   the corner, not by a different colour per card. */
+.lib__cover { position: relative; aspect-ratio: 16 / 10; display: grid; place-items: center; background: radial-gradient(circle at 50% 38%, var(--lib-glow, var(--paper)) 0%, var(--paper-2) 72%); }
 .lib--ready .lib__cover { --lib-glow: var(--sun-soft); }
-.lib--working .lib__cover { --lib-glow: var(--sea-soft); }
-.lib--draft .lib__cover { --lib-glow: var(--paper-3); }
 .lib__face { width: 112px; height: 112px; transition: transform var(--dur-3) var(--ease-pop); }
 .lib:hover .lib__face { transform: scale(1.06) rotate(-2deg); }
 .lib__wrap { font-size: var(--fs-800); line-height: 1; filter: drop-shadow(0 6px 10px rgba(23, 22, 43, 0.2)); }
@@ -746,8 +738,8 @@
 .lib__state::before { content: ""; width: var(--space-1); height: var(--space-1); border-radius: var(--radius-pill); background: var(--ink-4); }
 .lib__state--ready { color: var(--leaf-deep); }
 .lib__state--ready::before { background: var(--leaf); }
-.lib__state--working { color: var(--sea-deep); }
-.lib__state--working::before { background: var(--sea); animation: fm-pulse 1.6s var(--ease-in-out) infinite; }
+.lib__state--working { color: var(--ink); }
+.lib__state--working::before { background: var(--sun-deep); animation: fm-pulse 1.6s var(--ease-in-out) infinite; }
 .lib__body { display: flex; flex-direction: column; gap: var(--space-0-5); padding: var(--space-3) var(--space-3) var(--space-1); flex: 1; }
 .lib__title { font-size: var(--fs-400); line-height: var(--lh-400); }
 .lib__meta { color: var(--ink-3); font-size: var(--fs-100); line-height: var(--lh-100); }
@@ -796,8 +788,9 @@
 .tf { background: var(--white); }
 .tf-flow { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-6); }
 .tf-card { position: relative; display: flex; flex-direction: column; gap: var(--space-1); background: var(--paper); border-radius: var(--radius-4); padding: var(--space-3); box-shadow: var(--hairline); }
-/* The turn from one card to the next: a sun disc with the drawn arrow, never a text glyph. */
-.tf-card:not(:last-child)::after { content: ""; position: absolute; top: calc(40% - var(--space-2)); inset-inline-end: calc(-1 * (var(--space-3) + var(--space-2))); width: var(--space-5); height: var(--space-5); border-radius: var(--radius-pill); background: var(--sun) var(--icon-arrow-ink) center / 20px no-repeat; box-shadow: 0 0 0 4px var(--white), var(--shadow-1); z-index: 1; }
+/* The turn from one card to the next: a white disc with the drawn ink arrow, never a text glyph. Sun stays on the
+   buttons, so a yellow dot always means "press me". */
+.tf-card:not(:last-child)::after { content: ""; position: absolute; top: calc(40% - var(--space-2)); inset-inline-end: calc(-1 * (var(--space-3) + var(--space-2))); width: var(--space-5); height: var(--space-5); border-radius: var(--radius-pill); background: var(--white) var(--icon-arrow-ink) center / 20px no-repeat; box-shadow: var(--hairline), var(--shadow-1); z-index: 1; }
 [dir="rtl"] .tf-card:not(:last-child)::after { transform: scaleX(-1); }
 .tf-card__media { position: relative; aspect-ratio: 4 / 5; border-radius: var(--radius-3); overflow: hidden; display: grid; place-items: center; background: var(--paper-2); }
 .tf-card__media--photo img { width: 100%; height: 100%; object-fit: cover; }
@@ -812,7 +805,7 @@
 @keyframes tf-float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(calc(var(--space-1) * -1)); } }
 .tf-portrait img { position: absolute; left: 0; top: 0; width: 200%; height: 200%; max-width: none; }
 .tf-media__status { margin: 0; padding: var(--space-3); text-align: center; color: var(--ink-2); font-size: var(--fs-100); line-height: var(--lh-100); }
-.tf-card__media--world { background: var(--sea-soft); aspect-ratio: 4 / 5; }
+.tf-card__media--world { background: var(--paper-2); aspect-ratio: 4 / 5; }
 .tf-world__composition { position: absolute; inset: 0; }
 .tf-world__prepared { display: block; width: 100%; height: 100%; object-fit: fill; }
 /* Her words, in the one speech bubble the product has (the hero's and the
@@ -827,7 +820,6 @@
 .tf-card__text { color: var(--ink-2); }
 .tf-points { list-style: none; margin: var(--space-6) auto 0; padding: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-3); max-width: 1100px; }
 .tf-points li { display: grid; grid-template-columns: var(--space-3) minmax(0, 1fr); gap: var(--space-1-5, 12px); align-items: start; font-weight: 600; text-align: start; }
-.tf-points li::before { content: ""; width: var(--space-3); height: var(--space-3); border-radius: var(--radius-pill); background: var(--grape) var(--icon-check-on) center / 14px no-repeat; }
 .tf-cta { display: flex; justify-content: center; margin-top: var(--space-5); }
 /* Real example pair: the photo breathes, the character floats with a couple of sparkles, the found one glows and speaks */
 .tf-card__media--photo img { animation: tf-kenburns 14s var(--ease-in-out) infinite alternate; transform-origin: 50% 35%; }
@@ -888,16 +880,15 @@
 .wc__title strong { font-size: var(--fs-500); line-height: var(--lh-500); letter-spacing: -0.01em; }
 .wc__title .fm-small { font-size: var(--fs-200); }
 .wc__count { font-family: var(--font-display); font-size: var(--fs-100); line-height: var(--lh-100); font-weight: 700; color: var(--ink-3); margin-top: var(--space-0-5); font-variant-numeric: tabular-nums; }
-/* Solid, brand yellow and large: these are the only way to reach worlds 2 and 3.
+/* Large, white and lifted: these are the only way to reach worlds 2 and 3, so they stay big and obvious, but they
+   are navigation, not the page's action, and sun is kept for the action (Guy, 2026-11-16).
    The world's own palette stays inside its tiles — chrome belongs to the product,
-   or every world repaints the furniture and there is no design system left.
-   They are the product's own button: soft depth and a sun glow on hover, not
-   the ink border and hard drop shadow the system left behind with v1. */
+   or every world repaints the furniture and there is no design system left. */
 .wc__arrow {
   display: grid; place-items: center;
   inline-size: var(--space-8); block-size: var(--space-8); border-radius: var(--radius-pill);
-  border: 0; background: var(--sun); color: var(--ink);
-  font-size: var(--fs-500); line-height: 1; cursor: pointer; box-shadow: var(--btn-sun-depth);
+  border: 0; background: var(--white); color: var(--ink);
+  font-size: var(--fs-500); line-height: 1; cursor: pointer; box-shadow: var(--hairline), var(--shadow-1);
   transition: transform var(--dur-2) var(--ease-expo), box-shadow var(--dur-2) var(--ease-expo);
 }
 /* One chevron drawn pointing down, turned to point the way each button goes: back to the start, on to the end. */
@@ -905,20 +896,20 @@
 .wc__arrow--next .fm-icon { rotate: -90deg; }
 [dir="rtl"] .wc__arrow--prev .fm-icon { rotate: -90deg; }
 [dir="rtl"] .wc__arrow--next .fm-icon { rotate: 90deg; }
-.wc__arrow:hover { transform: translateY(-1px); box-shadow: var(--btn-sun-depth), var(--shadow-glow-sun); }
-.wc__arrow:active { transform: translateY(0); box-shadow: var(--btn-sun-depth); }
+.wc__arrow:hover { transform: translateY(-1px); box-shadow: var(--hairline), var(--shadow-2); }
+.wc__arrow:active { transform: translateY(0); box-shadow: var(--hairline), var(--shadow-1); }
 .wc__lock {
   display: flex; flex-wrap: wrap; align-items: center; justify-content: center;
   gap: var(--space-2); margin: 0; font-size: var(--fs-100); line-height: var(--lh-100); color: var(--ink-2);
 }
 .wc__owned { display: inline-flex; align-items: center; gap: var(--space-0-5); font-family: var(--font-display); font-weight: 700; color: var(--leaf-deep); }
-.wc__state { font-family: var(--font-display); font-weight: 600; color: var(--sea-deep); }
+.wc__state { font-family: var(--font-display); font-weight: 600; color: var(--ink-2); }
 .wc__dots { display: flex; justify-content: center; gap: 0; }
 .wc__dot {
   inline-size: var(--touch-min); block-size: var(--touch-min); padding: 0; border: 0; cursor: pointer;
   display: grid; place-items: center; background: transparent; border-radius: var(--radius-pill); }
 .wc__dot::before { content: ""; inline-size: var(--space-1); block-size: var(--space-1); border-radius: inherit; background: var(--line); transition: transform var(--dur-2) var(--ease-pop), background var(--dur-1); }
-.wc__dot.is-on::before { background: var(--sun-deep); transform: scale(1.3); }
+.wc__dot.is-on::before { background: var(--ink); transform: scale(1.3); }
 @media (max-width: 640px) {
   .wc__arrow { inline-size: var(--space-6); block-size: var(--space-6); font-size: var(--fs-500); }
   .wc__title strong { font-size: var(--fs-400); }

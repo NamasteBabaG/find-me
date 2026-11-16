@@ -176,11 +176,11 @@ img.family-sticker { border-radius: var(--radius-2); object-fit: contain; }
 .family-passport__open {
   display: inline-flex; align-items: center; min-height: var(--touch-min); margin-block-start: var(--space-2); padding-inline: var(--space-3);
   border-radius: var(--radius-pill); background: var(--sun); color: var(--ink); font-weight: 800;
-  box-shadow: 0 4px 0 var(--gold-edge);
+  box-shadow: var(--btn-sun-depth);
 }
 
 .family-more { display: grid; grid-template-columns: var(--control-h) minmax(0, 1fr); align-items: center; gap: var(--space-2); padding: var(--space-3); border-radius: var(--radius-4); background: var(--white); box-shadow: var(--shadow-1); }
-.family-more__icon { display: grid; place-items: center; width: var(--control-h); height: var(--control-h); border-radius: var(--radius-2); background: var(--lavender-soft); color: var(--ink); }
+.family-more__icon { display: grid; place-items: center; width: var(--control-h); height: var(--control-h); border-radius: var(--radius-2); background: var(--sun-soft); color: var(--ink); }
 .family-more__icon .scene__icon { display: block; width: var(--space-4); height: var(--space-4); }
 .family-more h2 { margin: 0; font-size: var(--fs-300); line-height: var(--lh-300); overflow-wrap: anywhere; }
 .family-more p { grid-column: 1 / -1; margin: 0; color: var(--ink-2); font-size: var(--fs-100); line-height: var(--lh-100); }

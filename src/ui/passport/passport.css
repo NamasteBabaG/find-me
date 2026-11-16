@@ -296,7 +296,7 @@
 .travel-passport__reader-status { font-size: var(--fs-50); text-align: center; color: var(--ink-3); margin: 0; line-height: var(--lh-100); }
 .travel-passport__swipe-hint { display: none; }
 .travel-passport__demo { text-align: center; font-size: var(--fs-100); color: var(--ink-3); }
-.travel-passport :focus-visible { outline: 3px solid var(--sea); outline-offset: 4px; }
+.travel-passport :focus-visible { outline: 3px solid var(--focus); outline-offset: 4px; }
 
 .travel-passport__turning-leaf, .travel-passport__opening-cover { position: absolute; inset-block: var(--space-1) var(--space-1); width: calc(50% - 10px); z-index: 3; pointer-events: none; transform-style: preserve-3d; }
 .travel-passport__turning-leaf { inset-inline-end: 10px; transform-origin: left center; --flip: -180deg; animation: passport-leaf-turn 640ms cubic-bezier(.38,.05,.25,1) both; }

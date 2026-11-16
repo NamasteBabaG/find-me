@@ -84,7 +84,7 @@ export default async function CheckoutPage({ searchParams }: { searchParams: Pro
             <summary>{tf(ck.places, { n: summary.scenes.length })}</summary>
             <div className="summary__scenes">
               {summary.scenes.map((s) => (
-                <span key={s.slug} className="fm-badge fm-badge--sea">
+                <span key={s.slug} className="fm-badge fm-badge--outline">
                   {pick(s.name, locale)}
                 </span>
               ))}

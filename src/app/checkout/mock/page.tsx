@@ -58,7 +58,7 @@ export default async function MockCheckoutPage({ searchParams }: { searchParams:
           <span className="psp__brand">
             <Icon name="lock" /> {m.brand}
           </span>
-          <span className="fm-badge fm-badge--grape">{m.badge}</span>
+          <span className="fm-badge fm-badge--outline">{m.badge}</span>
         </div>
         <div className="psp__body">
           <h1 className="fm-display" style={{ fontSize: "var(--fs-500)", lineHeight: "var(--lh-500)" }}>
