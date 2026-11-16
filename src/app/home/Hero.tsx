@@ -6,6 +6,7 @@ import { useEffect, useRef, type CSSProperties, type ReactNode } from "react";
 import { useI18n } from "@/i18n/client";
 import { GoldStar } from "@/game/components/GoldStar";
 import { Icon } from "@/ui/Icon";
+import { SkyClouds } from "@/ui/SkyClouds";
 import found from "../../../content/home/hero-found.json";
 
 /**
@@ -225,6 +226,7 @@ export function Hero({ child, children }: { child: Child; children?: ReactNode }
 
   return (
     <section ref={rootRef} className="hero4" aria-labelledby="hero-title">
+      <SkyClouds variant="hero" />
       <div className="fm-container hero4__grid">
         <div className="hero4__copy">
           <h1 id="hero-title" className="hero4__title">

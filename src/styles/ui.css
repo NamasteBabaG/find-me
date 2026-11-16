@@ -199,6 +199,43 @@ a.fm-btn[aria-disabled="true"] { pointer-events: none; }
 @media (max-width: 420px) { .fm-header .fm-logo__word { display: none; } }
 .fm-logo__eyes { width: 72%; height: 72%; color: var(--ink); }
 .fm-eyes__white { fill: var(--white); }
+/* The brand is looking for someone: every few seconds the eyes glance one way, then the other, and blink.
+   Two small SVG transforms on one beat; still for reduced motion. */
+.fm-logo__mark .fm-logo__eyes, .final__peek .fm-logo__eyes { transform-origin: 50% 55%; animation: fm-blink 6.4s var(--ease-in-out) infinite; }
+.fm-logo__mark .fm-logo__eyes circle { animation: fm-glance 6.4s var(--ease-in-out) infinite; }
+.fm-logo:hover .fm-logo__eyes circle { animation-duration: 1.6s; }
+@keyframes fm-blink { 0%, 90%, 100% { transform: scaleY(1); } 92.5% { transform: scaleY(0.08); } 95% { transform: scaleY(1); } }
+@keyframes fm-glance { 0%, 34% { transform: translateX(0); } 42%, 56% { transform: translateX(-1.4px); } 64%, 80% { transform: translateX(1.2px); } 88%, 100% { transform: translateX(0); } }
+
+/* Sky (src/ui/SkyClouds.tsx): the game's little clouds drifting behind a section's content. Each drifts
+   sideways very slowly and bobs on its own beat; widths, places and paces are set per sky below. */
+.sky { position: absolute; inset: 0; z-index: 0; overflow: hidden; pointer-events: none; }
+.sky__cloud { position: absolute; display: block; width: var(--sky-w, var(--space-12)); animation: sky-drift var(--sky-dur, 44s) var(--ease-in-out) var(--sky-delay, 0s) infinite alternate; }
+.sky__shape { display: block; width: 100%; height: auto; overflow: visible; filter: drop-shadow(0 6px 10px rgba(58, 84, 140, 0.12)); animation: sky-bob var(--sky-bob, 7s) var(--ease-in-out) infinite alternate; }
+.sky__body { fill: var(--white); }
+.sky__shade { fill: var(--sea-soft); }
+@keyframes sky-drift { from { transform: translateX(calc(var(--sky-travel, var(--space-8)) * -1)); } to { transform: translateX(var(--sky-travel, var(--space-8))); } }
+@keyframes sky-bob { from { transform: translateY(calc(var(--space-0-5) * -1)); } to { transform: translateY(var(--space-0-5)); } }
+/* The hero's sky: high above the copy and the devices, one cloud low between them. */
+.sky--hero .sky__cloud--1 { --sky-w: var(--space-16); top: 16%; left: 40%; --sky-dur: 52s; --sky-travel: var(--space-10); }
+.sky--hero .sky__cloud--2 { --sky-w: var(--space-10); top: 30%; left: 4%; --sky-dur: 38s; --sky-delay: -12s; --sky-bob: 5s; }
+.sky--hero .sky__cloud--3 { --sky-w: var(--space-12); bottom: 18%; left: 47%; --sky-dur: 46s; --sky-delay: -20s; --sky-bob: 6s; }
+/* A sun sheet's sky: white clouds on the yellow, like a summer afternoon. */
+.sky--sun .sky__cloud--1 { --sky-w: var(--space-16); top: 7%; left: 6%; --sky-dur: 48s; --sky-travel: var(--space-10); }
+.sky--sun .sky__cloud--2 { --sky-w: var(--space-12); top: 12%; right: 8%; --sky-dur: 40s; --sky-delay: -15s; --sky-bob: 5.5s; }
+.sky--sun .sky__cloud--3 { --sky-w: var(--space-10); bottom: 9%; left: 12%; --sky-dur: 36s; --sky-delay: -8s; --sky-bob: 6.5s; }
+/* On a phone the headings fill the width, so the clouds keep to the edges and peek in from the sides. */
+@media (max-width: 720px) {
+  .sky .sky__cloud { --sky-travel: var(--space-2); }
+  .sky--hero .sky__cloud--1 { --sky-w: var(--space-8); top: 1%; left: calc(var(--space-2) * -1); }
+  .sky--hero .sky__cloud--2, .sky--hero .sky__cloud--3 { display: none; }
+  .sky--sun .sky__cloud--1 { --sky-w: var(--space-10); top: auto; bottom: var(--space-4); left: calc(var(--space-2) * -1); }
+  .sky--sun .sky__cloud--2 { --sky-w: var(--space-8); top: auto; bottom: var(--space-10); right: calc(var(--space-1) * -1); }
+  .sky--sun .sky__cloud--3 { display: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .fm-logo__mark .fm-logo__eyes, .final__peek .fm-logo__eyes, .fm-logo__mark .fm-logo__eyes circle, .sky__cloud, .sky__shape { animation: none; }
+}
 /* The product's icons (src/ui/Icon.tsx): drawn in the text's colour at the size of their chip. */
 .fm-icon { width: 1em; height: 1em; flex: none; vertical-align: -0.125em; }
 .fm-nav { display: flex; align-items: center; gap: var(--space-0-5); flex-wrap: nowrap; }

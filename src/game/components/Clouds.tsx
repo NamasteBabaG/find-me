@@ -1,5 +1,7 @@
 "use client";
 
+import { cloudlet } from "@/ui/cloudlet";
+
 /**
  * A bank of picture-book clouds — drawn the way an illustrator draws one.
  *
@@ -50,21 +52,6 @@ function silhouette(): string {
   }
   parts.push(`L ${x} ${H + 80}`, `L 0 ${H + 80}`, "Z");
   return parts.join(" ");
-}
-
-/** The classic cloudlet: three arcs on a flat-bottomed base. */
-function cloudlet(w: number): string {
-  const h = w * 0.6;
-  return [
-    `M ${0.08 * w} ${0.78 * h}`,
-    `A ${0.2 * w} ${0.2 * w} 0 0 1 ${0.3 * w} ${0.34 * h}`,
-    `A ${0.26 * w} ${0.26 * w} 0 0 1 ${0.66 * w} ${0.3 * h}`,
-    `A ${0.2 * w} ${0.2 * w} 0 0 1 ${0.92 * w} ${0.78 * h}`,
-    `A ${0.08 * w} ${0.08 * w} 0 0 1 ${0.86 * w} ${0.92 * h}`,
-    `L ${0.14 * w} ${0.92 * h}`,
-    `A ${0.08 * w} ${0.08 * w} 0 0 1 ${0.08 * w} ${0.78 * h}`,
-    "Z",
-  ].join(" ");
 }
 
 const PATH = silhouette();

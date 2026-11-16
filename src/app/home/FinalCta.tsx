@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useI18n } from "@/i18n/client";
 import { LogoEyes } from "@/ui/Icon";
+import { SkyClouds } from "@/ui/SkyClouds";
 
 /** The close: the sun sheet, the two ways on, and the brand's eyes peeking over its bottom edge. */
 export function FinalCta() {
@@ -12,6 +13,7 @@ export function FinalCta() {
     <section className="final">
       <div className="fm-container">
         <div className="fm-sheet final__sheet">
+          <SkyClouds variant="sun" />
           <h2 className="final__title">{f.title}</h2>
           <p className="final__lead">{f.lead}</p>
           <div className="final__cta fm-row fm-row--center">
