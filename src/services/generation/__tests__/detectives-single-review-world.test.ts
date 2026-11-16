@@ -81,7 +81,7 @@ import * as repairComposer from "../local-patch-repair-compose";
 import { expectedAuthoredLocalPatchReturn, authoredLocalPatchRecoveryEvidenceMatches } from "../local-patch-authored-return";
 import { NATIVE_SIZE_REPLAY_FAILURE, nativeSizeSelfRepairWork, needsSelfRepair, type SelfRepairDecision } from "../../../domain/scene/local-patch-self-repair";
 import { reviewLocalPatchBoard } from "../local-patch-board-review";
-import { advanceContinuityInBackground } from "../continuity-background";
+import { advanceContinuityInBackground, backgroundReviewAnswered } from "../continuity-background";
 import { SINGLE_VISUAL_REVIEW_VERSION, SINGLE_MEDIUM_VISUAL_REVIEW_VERSION } from "../../../domain/generation/single-visual-review";
 import { targetHeadReturnDecision,TARGET_HEAD_VISIBLE_VERSION } from "../../../domain/generation/target-head-return";
 import { targetGeometry } from "../../../game/engine/target-geometry";
@@ -1099,7 +1099,16 @@ it.each([
     }
     const siblings=await db.targetVariantAsset.findMany({where:{id:{not:before.id},targetInstance:{gameScene:{gameId:f.gameId}}},orderBy:{id:'asc'}});
     const provider=controlledSol(false,false,undefined,true),retrieve=provider.fake.retrieve.bind(provider.fake);
+    const create=provider.fake.create.bind(provider.fake);
+    let firstResponse: string|undefined;
+    provider.fake.create=async input=>{
+      const response=await create(input);
+      firstResponse??=response.responseId;
+      return response;
+    };
     provider.fake.retrieve=async id=>{const response=await retrieve(id);if(response.status!=='completed')return response;
+      if(ageYears===8&&id===firstResponse)return {status:'failed',reading:{responseId:id,raw:null,usage:null,model:'gpt-6.1-sol',
+        finishReason:'failed',serviceTier:'flex',providerError:{code:'server_is_overloaded',message:'Synthetic retained-window overload'}}};
       const answer=JSON.parse(response.reading.raw!);answer.head.rawHead={left:154,top:184+shift,width:140,height:170};answer.head.shippingHead={left:154,top:184,width:140,height:170};
       if(refuseHead)answer.head.shippingCrown='fail';
       return{...response,reading:{...response.reading,raw:JSON.stringify(answer)}};};
@@ -1142,7 +1151,27 @@ it.each([
       const outcome=await reviewLocalPatchBoard(container,{gameId:f.gameId,sceneId:f.scene.id,deadlineAt:Date.now()+270000},{fence:async()=>{},readBoardArt:readArt},{onlyHideId:f.hide.id});
       reviewReasons.push(outcome.state+':'+outcome.reason);
       await advanceContinuityInBackground(container,f.gameId,{deadlineAt:Date.now()+270000});await vi.advanceTimersByTimeAsync(LEAN_RECOVERY_BACKOFF_MS+1);
-      if(JSON.parse((await exactRow()).judgeJson!).reviewState==='board-review-complete')break;
+      if (ageYears === 8) {
+        const continued = await (await import('../subject-upgrade')).continueAdmittedReviewInterruptions(
+          container, f.gameId, {readBoardArt:readArt}, Date.now()+270000, async()=>{});
+        expect(continued).not.toBe('blocked');
+        if ((await backgroundReviewAnswered(db,f.gameId)).has(candidate.id+':'+j.judgedSha256)) break;
+      } else if(JSON.parse((await exactRow()).judgeJson!).reviewState==='board-review-complete')break;
+    }
+    if (ageYears === 8) {
+      expect(provider.creates).toHaveLength(2);
+      expect((await exactRow()).status).toBe('FAILED');
+      const audit = await budget.audit(worldId);
+      expect(audit.unknownRequestKeys).toHaveLength(2);
+      const fill = audit.remainingMicroUsd - 10_000;
+      expect(fill).toBeGreaterThan(0);
+      await budget.reserve(worldId,{requestKey:'synthetic-spent-capacity',scope:'image',operationFingerprint:'d'.repeat(64),reserveMicroUsd:fill});
+      await budget.settle(worldId,'synthetic-spent-capacity',bill('synthetic-spent-capacity-'+f.gameId,fill));
+      const beforeReplay = await db.worldBudgetLedger.findUniqueOrThrow({where:{worldId}});
+      await runLocalPatchWorldSlice(container,f.deps,f.gameId,{hardDeadlineAt:Date.now()+270000,workMode:REVIEW_EXISTING_WORK_MODE});
+      const afterReplay = await db.worldBudgetLedger.findUniqueOrThrow({where:{worldId}});
+      expect(afterReplay.snapshotJson).toBe(beforeReplay.snapshotJson);
+      expect((await exactRow()).status).toBe('GENERATED');
     }
     const accepted=await exactRow(),final=JSON.parse(accepted.judgeJson!);
     if(refuseHead){
@@ -1151,7 +1180,7 @@ it.each([
       expect(await restoreRetainedWindow(container,f.gameId,f.hide.id,readArt)).toBe(false);
       expect(f.render).toHaveBeenCalledTimes(imageCalls);expect(fetch).not.toHaveBeenCalled();return;
     }
-    expect(accepted.status,accepted.lastError??'').toBe('GENERATED');expect(final.verdict?.verdict,JSON.stringify({reviewReasons,creates:provider.creates.length,reviewState:final.reviewState})).toBe('pass');expect(provider.creates).toHaveLength(1);
+    expect(accepted.status,accepted.lastError??'').toBe('GENERATED');expect(final.verdict?.verdict,JSON.stringify({reviewReasons,creates:provider.creates.length,reviewState:final.reviewState})).toBe('pass');expect(provider.creates).toHaveLength(ageYears===8?2:1);
     expect(provider.creates[0]!.prompt).toContain('Native integer mapping');expect(provider.creates[0]!.prompt).toContain('blur or a depth/style mismatch');
     expect(final.boardReview.dual.quality.policy.maxOutputTokens).toBe(6000);
     if(!shift)expect(await budget.readRequest(worldId,'synthetic-rsw-old-unknown')).toMatchObject({state:'unknown',reserveMicroUsd:202060});

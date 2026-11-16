@@ -505,13 +505,16 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
     const answered = await backgroundReviewAnswered(c.db, gameId);
     if (!answered.size) return [];
     const budget = boardWizardBudgetOf(c), worldId = boardWizardWorldId(gameId);
-    const current = await c.db.targetVariantAsset.findMany({ where: { variant: LOCAL_PATCH_VARIANT, status: "GENERATED", targetInstance: { gameScene: { gameId } } },
+    const current = await c.db.targetVariantAsset.findMany({ where: { variant: LOCAL_PATCH_VARIANT,
+      status: { in: ["GENERATED", "FAILED"] }, targetInstance: { gameScene: { gameId } } },
       include: { targetInstance: { select: { gameSceneId: true } } } });
     const waiting: { sceneId: string; hideId: string; key: string }[] = [];
     for (const row of current) {
       let receipt: { reviewState?: unknown; judgedSha256?: unknown; hide?: unknown } | null;
       try { receipt = JSON.parse(row.judgeJson ?? "null"); } catch { continue; }
-      if (receipt?.reviewState !== "pending-board-review" || typeof receipt.judgedSha256 !== "string" || typeof receipt.hide !== "string") continue;
+      if (!receipt || typeof receipt.judgedSha256 !== "string" || typeof receipt.hide !== "string") continue;
+      const waitingForFirstAnswer = row.status === "GENERATED" && receipt.reviewState === "pending-board-review";
+      if (!waitingForFirstAnswer && !localPatchEvidenceRecovery(row)?.retry) continue;
       const key = `${row.id}:${receipt.judgedSha256}`;
       if (unreplayable.has(key)) continue;
       for (const requestKey of answered.get(key) ?? []) {
