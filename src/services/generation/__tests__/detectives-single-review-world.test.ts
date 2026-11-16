@@ -49,7 +49,7 @@ import { PENDING_IMAGE_LEASE_MS } from "../../../domain/generation/pending-image
 import { ensureSingleMediumReviewPolicy } from "../single-medium-policy";
 import { planQaCompletionCapacity,authorizeQaCompletionCapacity,readQaCompletionCapacity,qaCompletionCapacityStatus,
   planQaCompletionRecovery,resumeQaCompletionRecovery,nextQaCompletionRecovery } from "../qa-completion-capacity";
-import { qaCompletionCapacityId,QA_COMPLETION_CAP } from "../../../domain/generation/qa-completion-capacity";
+import { qaCompletionCapacityId,QA_COMPLETION_CAP,QA_KINGDOM_COMPLETION_CAP,QA_KINGDOM_COMPLETION_CONFIRMATION } from "../../../domain/generation/qa-completion-capacity";
 import * as singlePolicyModule from "../single-low-policy";
 import * as dualReviewModule from "../local-patch-dual-review";
 import { planPublishedCrownRepair,stagePublishedCrownRepair,publishedCrownRepairOf,publishedCrownReviewOrder } from "../published-crown-repair";
@@ -1192,6 +1192,17 @@ it.each([
     const noMarker={...final};delete noMarker.retainedWindow;
     expect(await allowedDualPublication(db,{...publicationBinding(f.gameId,accepted),sceneVersion:13,judgeJson:JSON.stringify(noMarker)})).toBe(false);
     const game=await db.game.findUniqueOrThrow({where:{id:f.gameId}}),closedLedger=await db.worldBudgetLedger.findUniqueOrThrow({where:{worldId}});
+    if (ageYears === 8) {
+      const plan = await planQaCompletionCapacity(container, f.gameId);
+      expect(plan.binding.capMicroUsd).toBe(QA_KINGDOM_COMPLETION_CAP);
+      const approval = { gameId:f.gameId, operatorId:game.ownerId!, expectedPlanSha256:plan.planSha256,
+        ownerAuthorizationSha256:"a".repeat(64) };
+      await expect(authorizeQaCompletionCapacity(container, approval)).rejects.toThrow("Confirmation must bind the planned budget");
+      await authorizeQaCompletionCapacity(container, {...approval, confirmation:QA_KINGDOM_COMPLETION_CONFIRMATION});
+      expect(await budget.audit(worldId)).toMatchObject({capMicroUsd:6_000_000,remainingMicroUsd:2_010_000});
+      expect((await db.worldBudgetLedger.findUniqueOrThrow({where:{worldId}})).snapshotJson).toBe(closedLedger.snapshotJson);
+      expect(await allowedDualPublication(db,{...publicationBinding(f.gameId,accepted),sceneVersion:13})).toBe(true);
+    }
     expect(await deleteLocalPatchGame(container,f.gameId,{type:'USER',id:game.ownerId!},game.ownerId!)).toBe(true);
     expect((await db.auditLog.findUniqueOrThrow({where:{id:audit.id}})).metaJson).toBeNull();
     expect((await db.worldBudgetLedger.findUniqueOrThrow({where:{worldId}})).snapshotJson).toBe(closedLedger.snapshotJson);

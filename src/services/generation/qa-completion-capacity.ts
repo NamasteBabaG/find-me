@@ -3,7 +3,9 @@ import { DbStorage } from "../../infra/storage/db";
 import type { Container } from "../container";
 import { env } from "../../lib/env";
 import { QA_COMPLETION_CAPACITY, QA_COMPLETION_CAP, qaCompletionCapacityId, qaCompletionStateSchema,
-  qaCompletionPlanSchema, qaCompletionReceiptSchema, type QaCompletionReceipt } from "../../domain/generation/qa-completion-capacity";
+  qaCompletionPlanSchema, qaCompletionReceiptSchema, qaCompletionConfirmation, QA_KINGDOM_COMPLETION_CAPACITY,
+  QA_KINGDOM_COMPLETION_CAP, type QaCompletionReceipt } from "../../domain/generation/qa-completion-capacity";
+import { SUNBURST_MIN_CAPACITY_MICRO_USD } from "../../domain/generation/sunburst-painter";
 import { boardConditioningHash as hash } from "./board-conditioned-source";
 import { sha256Bytes } from "./fixed-sprite";
 import { singleMediumReviewPolicyOf } from "./single-medium-policy";
@@ -71,7 +73,9 @@ async function stateOf(c: Container, gameId: string) {
     reviewAuthoritySha256:pin.authorizationSha256,enrollmentSha256:hash(enrollment),identityReviewSha256:hash(review),
     identityAssetId:identity.id,identitySha256:enrollment.identitySha256,avatarAssetId:avatar.id,photoAssetId:enrollment.photoAssetId,
     photoSha256:enrollment.photoSha256,ageYears:child.ageYears,cropSha256:hash(child.photoCropJson?JSON.parse(child.photoCropJson):null)});
-  return {game,child,identity,avatar,state};
+  const kingdomAgeEight = context.release.baseSceneVersion === 13
+    && context.release.worldSlug === "kingdom" && child.ageYears === 8;
+  return {game,child,identity,avatar,state,kingdomAgeEight};
 }
 
 /** Shared read-only identity/payment/source binding; grants keep separate versions. */
@@ -94,7 +98,8 @@ export async function readQaCompletionCapacity(c: Container, worldId: string): P
   const gameId=worldId.slice(0,-":board-wizard".length),receipt=await receiptOf(c,gameId);if(!receipt)return null;
   let live;try{live=await stateOf(c,gameId);}catch{return null;}
   return JSON.stringify(live.state)===JSON.stringify(receipt.state)
-    ?{worldId,capMicroUsd:QA_COMPLETION_CAP,authorizationSha256:receipt.authorizationSha256}:null;
+    && (receipt.version !== QA_KINGDOM_COMPLETION_CAPACITY || live.kingdomAgeEight)
+    ?{worldId,capMicroUsd:receipt.capMicroUsd,authorizationSha256:receipt.authorizationSha256}:null;
 }
 
 /** Owner-admin visibility only: a recorded grant must not silently disappear
@@ -102,7 +107,7 @@ export async function readQaCompletionCapacity(c: Container, worldId: string): P
 export async function qaCompletionCapacityStatus(c: Container, gameId: string) {
   if(!qualified(c)||!/^[A-Za-z0-9_-]{1,160}$/.test(gameId))return null;
   const receipt=await receiptOf(c,gameId);if(!receipt)return null;
-  return {ownerId:receipt.state.ownerId,capMicroUsd:QA_COMPLETION_CAP,
+  return {ownerId:receipt.state.ownerId,capMicroUsd:receipt.capMicroUsd,
     status:await readQaCompletionCapacity(c,receipt.state.worldId)?"active" as const:"withdrawn" as const};
 }
 
@@ -110,22 +115,26 @@ export async function qaCompletionCapacityStatus(c: Container, gameId: string) {
  * financial history the owner administrator will authorize. */
 export async function planQaCompletionCapacity(c: Container, gameId: string) {
   demand(!await receiptOf(c,gameId), "Completion authority already exists");
-  const live=await stateOf(c,gameId),{game,child,state}=live;
+  const live=await stateOf(c,gameId),{game,child,state,kingdomAgeEight}=live;
   demand(game.status==="TARGETS_GENERATING"&&!game.configJson&&!game.readyAt&&child.originalPhotoAssetId===state.photoAssetId, "Unfinished original source required");
   const photo=await c.db.asset.findUniqueOrThrow({where:{id:state.photoAssetId}});
   demand(photo.ownerId===state.ownerId&&photo.visibility==="PRIVATE"&&photo.status==="READY"&&!photo.deletedAt
     &&sha256Bytes(await c.storage.get(photo.storagePath))===state.photoSha256
     &&sha256Bytes(await c.storage.get(live.identity.storagePath))===state.identitySha256, "Exact live source pixels required");
   const job=await c.db.generationJob.findUniqueOrThrow({where:{id:"job_"+gameId}});
-  demand(job.status==="FAILED"&&[EXHAUSTED,"local-patch:needs-release"].includes(job.currentStep??""), "Explicit original recovery hold required");
+  const onHold = job.status==="FAILED"&&[EXHAUSTED,"local-patch:needs-release"].includes(job.currentStep??"");
+  const queued = kingdomAgeEight && job.status === "QUEUED" && job.currentStep === "local-patch";
+  demand(onHold || queued, "Explicit original recovery hold or idle Kingdom queue required");
   demand(!(await backgroundReviewWaiting(c.db,gameId,{inFlightOnly:true})).size,"Existing provider work must settle first");
   const stored=await PrismaWorldBudgetStore.forReadOnlyTransaction(c.db).read(state.worldId);
   demand(stored&&stored.revision<WORLD_BUDGET_LEDGER_MAX_REVISION,"Safe existing ledger required");
   const audit=applyBoardWizardBudgetCap(auditWorldBudget(stored.snapshot));
   demand(audit.committedMicroUsd>0&&!audit.overCapMicroUsd&&!audit.pendingRequestKeys.length&&!audit.conflictRequestKeys.length&&!audit.overrunRequestKeys.length, "Reconcile pending or conflicting purchases first");
+  demand(!kingdomAgeEight || audit.remainingMicroUsd < SUNBURST_MIN_CAPACITY_MICRO_USD, "The next painting still fits the original Kingdom budget");
   const rows=await c.db.targetVariantAsset.findMany({where:{variant:"A",targetInstance:{gameScene:{gameId}}},orderBy:{id:"asc"}});
-  demand(rows.length>0,"Retained work required");
-  const binding=qaCompletionPlanSchema.parse({version:QA_COMPLETION_CAPACITY,state,baseCapMicroUsd:4_000_000,capMicroUsd:QA_COMPLETION_CAP,
+  demand(kingdomAgeEight ? rows.length === 27 : rows.length > 0,"Retained work required");
+  const binding=qaCompletionPlanSchema.parse({version:kingdomAgeEight ? QA_KINGDOM_COMPLETION_CAPACITY : QA_COMPLETION_CAPACITY,
+    state,baseCapMicroUsd:4_000_000,capMicroUsd:kingdomAgeEight ? QA_KINGDOM_COMPLETION_CAP : QA_COMPLETION_CAP,
     jobId:job.id,jobSha256:hash(job),ledgerRevision:stored.revision,ledgerSha256:hash(stored.snapshot),rowsSha256:hash(rows),
     committedMicroUsd:audit.committedMicroUsd,reservedMicroUsd:audit.reservedMicroUsd,
     unknowns:stored.snapshot.requests.filter(r=>r.state==="unknown").map(r=>({requestKey:r.requestKey,operationFingerprint:r.operationFingerprint,reserveMicroUsd:r.reserveMicroUsd})).sort((a,b)=>a.requestKey.localeCompare(b.requestKey))});
@@ -134,15 +143,20 @@ export async function planQaCompletionCapacity(c: Container, gameId: string) {
 
 /** Capacity and one requeue only. No request, image, verdict, attempt or
  * UNKNOWN reserve changes; the ordinary job still diagnoses and qualifies art. */
-export async function authorizeQaCompletionCapacity(c: Container,input:{gameId:string;operatorId:string;expectedPlanSha256:string;ownerAuthorizationSha256:string}) {
+export async function authorizeQaCompletionCapacity(c: Container,input:{gameId:string;operatorId:string;expectedPlanSha256:string;
+  ownerAuthorizationSha256:string;confirmation?:string}) {
   demand(qualified(c)&&/^[a-f0-9]{64}$/.test(input.expectedPlanSha256)&&/^[a-f0-9]{64}$/.test(input.ownerAuthorizationSha256),"Bound owner authorization required");
   const user=await c.db.user.findUnique({where:{id:input.operatorId}});
   demand(user&&c.adminEmails?.some(email=>email.trim().toLowerCase()===user.email.trim().toLowerCase()),"Owner administrator required");
   const previous=await receiptOf(c,input.gameId);
   if(previous){demand(previous.operatorId===input.operatorId&&previous.planSha256===input.expectedPlanSha256
-    &&previous.ownerAuthorizationSha256===input.ownerAuthorizationSha256&&await readQaCompletionCapacity(c,previous.state.worldId),"Existing authorization differs");return previous;}
+    &&previous.ownerAuthorizationSha256===input.ownerAuthorizationSha256
+    &&(input.confirmation ?? qaCompletionConfirmation(QA_COMPLETION_CAP)) === qaCompletionConfirmation(previous.capMicroUsd)
+    &&await readQaCompletionCapacity(c,previous.state.worldId),"Existing authorization differs");return previous;}
   const plan=await planQaCompletionCapacity(c,input.gameId);
   demand(plan.planSha256===input.expectedPlanSha256&&plan.binding.state.ownerId===input.operatorId,"Owner or completion plan changed");
+  demand((input.confirmation ?? qaCompletionConfirmation(QA_COMPLETION_CAP)) === qaCompletionConfirmation(plan.binding.capMicroUsd),
+    "Confirmation must bind the planned budget");
   return c.db.$transaction(async tx=>{
     await fenceLocalPatchImages(tx,input.gameId);
     const scoped={...c,db:tx as Container["db"],storage:new DbStorage(tx)},fresh=await planQaCompletionCapacity(scoped,input.gameId);
@@ -151,7 +165,7 @@ export async function authorizeQaCompletionCapacity(c: Container,input:{gameId:s
       authorizedAt:new Date().toISOString(),automaticExtension:false as const,requestsPreserved:true as const,attemptsPreserved:true as const,qualityPolicyPreserved:true as const};
     const receipt=qaCompletionReceiptSchema.parse({...body,authorizationSha256:hash(body)});
     const ledger=await tx.worldBudgetLedger.updateMany({where:{worldId:receipt.state.worldId,revision:receipt.ledgerRevision},data:{revision:{increment:1}}});
-    const job=await tx.generationJob.updateMany({where:{id:receipt.jobId,status:"FAILED",currentStep:fresh.job.currentStep,attempts:fresh.job.attempts,
+    const job=await tx.generationJob.updateMany({where:{id:receipt.jobId,status:fresh.job.status,currentStep:fresh.job.currentStep,attempts:fresh.job.attempts,
       updatedAt:fresh.job.updatedAt,lastError:fresh.job.lastError},data:{status:"QUEUED",currentStep:"local-patch",lastError:null}});
     demand(ledger.count===1&&job.count===1,"Completion hold changed before authorization");
     await tx.auditLog.create({data:{id:qaCompletionCapacityId(input.gameId),actorType:"ADMIN",actorId:input.operatorId,action:ACTION,entityType:"Game",entityId:input.gameId,metaJson:JSON.stringify(receipt)}});
@@ -172,7 +186,7 @@ export async function planQaCompletionRecovery(c: Container, gameId: string) {
     || JSON.stringify(live.state) !== JSON.stringify(receipt.state)) return null;
   const ledger = await PrismaWorldBudgetStore.forReadOnlyTransaction(c.db).read(receipt.state.worldId);
   if (!ledger || ledger.revision >= WORLD_BUDGET_LEDGER_MAX_REVISION) return null;
-  const audit = applyBoardWizardBudgetCap(auditWorldBudget(ledger.snapshot, QA_COMPLETION_CAP), QA_COMPLETION_CAP);
+  const audit = applyBoardWizardBudgetCap(auditWorldBudget(ledger.snapshot, receipt.capMicroUsd), receipt.capMicroUsd);
   if (audit.held || audit.pendingRequestKeys.length || audit.conflictRequestKeys.length || audit.overrunRequestKeys.length) return null;
   if (!qaCompletionUnknownsPreserved(ledger.snapshot.requests, receipt.unknowns)) return null;
   const rows = await c.db.targetVariantAsset.findMany({ where: { variant: "A", targetInstance: { gameScene: { gameId } } }, orderBy: { id: "asc" } });

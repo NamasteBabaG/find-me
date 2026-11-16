@@ -75,9 +75,9 @@ async function context(c: Container, gameId: string, rowId: string, publication:
   })())) return null;
   const grant = await readQaCompletionCapacity(c, gameId + ':board-wizard');
   const budget = await boardWizardBudgetOf(c).audit(gameId + ':board-wizard');
-  const validCap = child.ageYears === 8
-    ? !grant && budget.capMicroUsd === policy.worldCapMicroUsd
-    : grant ? budget.capMicroUsd === 12000000 : await originalOrFiveDollarCap(c, gameId, budget.capMicroUsd);
+  const validCap = grant ? budget.capMicroUsd === grant.capMicroUsd
+    : child.ageYears === 8 ? budget.capMicroUsd === policy.worldCapMicroUsd
+    : await originalOrFiveDollarCap(c, gameId, budget.capMicroUsd);
   if (!validCap || budget.overCapMicroUsd
     || budget.conflictRequestKeys.length || budget.overrunRequestKeys.length) return null;
   return { game, row, board, hide, parent, authority, identitySha256, scene };

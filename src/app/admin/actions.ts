@@ -1,6 +1,7 @@
 "use server";
 
-import { QA_COMPLETION_CONFIRMATION } from "@/domain/generation/qa-completion-capacity";
+import { createHash } from "node:crypto";
+import { QA_COMPLETION_CONFIRMATION, QA_KINGDOM_COMPLETION_CONFIRMATION } from "@/domain/generation/qa-completion-capacity";
 import { authorizeQaCompletionCapacity } from "@/services/generation/qa-completion-capacity";
 
 import { LEAN_CAPACITY_RECOVERY_CONFIRMATION } from "@/domain/generation/lean-capacity-recovery";
@@ -40,16 +41,25 @@ function str(fd: FormData, key: string): string {
 
 /** One explicit source-bound QA capacity grant, preserving every art gate. */
 export async function authorizeQaCompletionCapacityAction(fd:FormData):Promise<void>{
-  const actor=await admin(),gameId=str(fd,"gameId"),planSha256=str(fd,"planSha256"),ownerAuthorizationSha256=str(fd,"ownerAuthorizationSha256");
+  const actor=await admin(),gameId=str(fd,"gameId"),planSha256=str(fd,"planSha256");
+  const confirmation=str(fd,"confirm");
+  const kingdom = confirmation === QA_KINGDOM_COMPLETION_CONFIRMATION;
+  const submittedEvidence = str(fd,"ownerAuthorizationSha256");
+  const validEvidence = kingdom ? fd.getAll("ownerAuthorizationSha256").length === 0
+    : fd.getAll("ownerAuthorizationSha256").length === 1 && /^[a-f0-9]{64}$/.test(submittedEvidence);
   if(!/^[A-Za-z0-9_-]{1,160}$/.test(gameId))redirect("/admin/orders");
   const destination=`/admin/orders/${encodeURIComponent(gameId)}`,h=await headers();let sameOrigin=false;
   try{const origin=h.get("origin"),host=h.get("x-forwarded-host")??h.get("host");sameOrigin=!!origin&&!!host&&new URL(origin).host===host&&h.get("sec-fetch-site")!=="cross-site";}catch{/* refuse invalid origin */}
   if(env().APP_ENV!=="qa"||!sameOrigin||fd.getAll("gameId").length!==1||fd.getAll("planSha256").length!==1||!/^[a-f0-9]{64}$/.test(planSha256)
-    ||fd.getAll("ownerAuthorizationSha256").length!==1||!/^[a-f0-9]{64}$/.test(ownerAuthorizationSha256)
-    ||fd.getAll("confirm").length!==1||str(fd,"confirm")!==QA_COMPLETION_CONFIRMATION){
+    ||!validEvidence
+    ||fd.getAll("confirm").length!==1||![QA_COMPLETION_CONFIRMATION, QA_KINGDOM_COMPLETION_CONFIRMATION].includes(confirmation)){
     console.warn("[qa-completion] blocked",{reason:"request-validation"});redirect(`${destination}?qaCompletion=blocked`);
   }
-  let granted=false;try{await authorizeQaCompletionCapacity(getContainer(),{gameId,operatorId:actor.id,expectedPlanSha256:planSha256,ownerAuthorizationSha256});granted=true;}catch(error){
+  const ownerAuthorizationSha256 = kingdom
+    ? createHash("sha256").update(JSON.stringify([confirmation, actor.id, gameId, planSha256])).digest("hex")
+    : submittedEvidence;
+  let granted=false;try{await authorizeQaCompletionCapacity(getContainer(),{gameId,operatorId:actor.id,expectedPlanSha256:planSha256,ownerAuthorizationSha256,
+    ...(kingdom ? {confirmation} : {})});granted=true;}catch(error){
     // Diagnose the hold without logging SQL, credentials, private paths, source
     // pixels, authorization digests or arbitrary exception messages.
     const code=typeof error==="object"&&error&&"code" in error&&typeof error.code==="string"&&/^P\d{4}$/.test(error.code)?error.code:null;

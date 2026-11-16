@@ -11,7 +11,7 @@ vi.mock("@/services/generation/qa-completion-capacity",()=>({planQaCompletionCap
 vi.mock("../../actions",()=>({authorizeQaCompletionCapacityAction:f.grant}));
 import { QaCompletionCapacityForm } from "./QaCompletionCapacityForm";
 beforeAll(()=>vi.stubGlobal("React",React));afterAll(()=>vi.unstubAllGlobals());
-beforeEach(()=>{f.admin=true;f.locale="he";f.status.mockReset().mockResolvedValue(null);f.grant.mockReset();f.plan.mockReset().mockResolvedValue({binding:{state:{ownerId:"synthetic-admin"},committedMicroUsd:3900000,reservedMicroUsd:1000000},planSha256:"a".repeat(64)});});
+beforeEach(()=>{f.admin=true;f.locale="he";f.status.mockReset().mockResolvedValue(null);f.grant.mockReset();f.plan.mockReset().mockResolvedValue({binding:{state:{ownerId:"synthetic-admin"},capMicroUsd:12000000,committedMicroUsd:3900000,reservedMicroUsd:1000000},planSha256:"a".repeat(64)});});
 it.each(["he","en"])("shows the exact %s cumulative grant and makes no write on page load",async locale=>{
   f.locale=locale;const html=renderToStaticMarkup(await QaCompletionCapacityForm({gameId:"synthetic-world"})),p=locale==="he"?he.adminQaCompletion:en.adminQaCompletion;
   expect(html).toContain(p.title);expect(html).toContain(p.confirm.replace("{cap}","$12.00"));expect(html).toContain("3.90");expect(html).toContain("1.00");expect(html).toContain("12.00");
@@ -32,4 +32,13 @@ it("hides the grant from another owner, a nonadministrator or an ineligible worl
   f.admin=false;expect(await QaCompletionCapacityForm({gameId:"synthetic-world"})).toBeNull();expect(f.plan).not.toHaveBeenCalled();
   f.admin=true;f.plan.mockResolvedValue({binding:{state:{ownerId:"another-owner"}}});expect(await QaCompletionCapacityForm({gameId:"synthetic-world"})).toBeNull();
   f.plan.mockRejectedValue(Error("synthetic hold"));expect(await QaCompletionCapacityForm({gameId:"synthetic-world"})).toBeNull();expect(f.grant).not.toHaveBeenCalled();
+});
+it("shows and confirms the smaller Kingdom ceiling from the reviewed plan", async () => {
+  f.plan.mockResolvedValue({ binding: { state: { ownerId: "synthetic-admin" }, capMicroUsd: 6_000_000,
+    committedMicroUsd: 3_898_264, reservedMicroUsd: 1_010_531 }, planSha256: "a".repeat(64) });
+  const html = renderToStaticMarkup(await QaCompletionCapacityForm({ gameId: "synthetic-kingdom" }));
+  expect(html).toContain(he.adminQaCompletion.confirm.replace("{cap}", "$6.00"));
+  expect(html).toContain('value="owner-authorized-kingdom-age-eight-qa-completion-six-total-v1"');
+  expect(html).not.toContain('name="ownerAuthorizationSha256"');
+  expect(f.grant).not.toHaveBeenCalled();
 });
