@@ -5,6 +5,7 @@ import { useEffect, useId, useRef, useState, useTransition } from "react";
 import { LOCALES, type Locale } from "./config";
 import { useI18n } from "./client";
 import { setLocaleAction } from "./actions";
+import { Icon } from "@/ui/Icon";
 
 const CODES: Record<Locale, string> = { en: "EN", he: "HE" };
 
@@ -123,7 +124,7 @@ export function LanguageSwitcher() {
         <Flag locale={locale} />
         <span className="fm-lang__code">{CODES[locale]}</span>
         <span className="fm-lang__chev" aria-hidden>
-          ▾
+          <Icon name="chevron" strokeWidth={2.6} />
         </span>
       </button>
       {open ? (

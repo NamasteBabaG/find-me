@@ -7,8 +7,9 @@ import { Reveal } from "./Reveal";
 import { WorldsCarousel, type CarouselWorld } from "./WorldsCarousel";
 import { Icon, type IconName } from "@/ui/Icon";
 
+/* Every icon chip on the site is the same sun-soft tint with an ink line icon: four tints in a row read as a sweet
+   shop (Guy, 2026-11-16). */
 const STEP_ICONS: readonly IconName[] = ["camera", "map", "brush", "search"];
-const STEP_TONES = ["sun", "aqua", "lavender", "coral"] as const;
 /** Birthday, a trip, grandparents, a holiday: drawn in the site's own icon family, never emoji (Guy, 2026-11-16). */
 const OCCASION_ICONS: readonly IconName[] = ["cake", "plane", "heart", "candle"];
 const TRUST_ICONS: readonly IconName[] = ["camera", "link", "search", "book"];
@@ -49,7 +50,7 @@ export function HowItWorks({ t }: SectionProps) {
         <Reveal as="ol" className="steps">
           {h.steps.map((s, i) => (
             <li key={s.title} className="step" style={{ ["--i" as string]: i } as CSSProperties}>
-              <span className={`step__icon step__icon--${STEP_TONES[i] ?? "sun"}`} aria-hidden>
+              <span className="step__icon" aria-hidden>
                 <Icon name={STEP_ICONS[i] ?? "sparkle"} />
               </span>
               <span className="step__num" aria-hidden>
@@ -104,7 +105,7 @@ export function GiftSection({ t }: SectionProps) {
   return (
     <section id="gift" className="gift-sec">
       <div className="fm-container">
-        <div className="fm-sheet fm-sheet--lavender">
+        <div className="fm-sheet fm-sheet--paper">
           <Reveal className="sec-head">
             <h2>{g.title}</h2>
             <p className="fm-lead">{g.lead}</p>
@@ -224,7 +225,7 @@ export function Trust({ t }: SectionProps) {
   return (
     <section id="trust" className="trust-sec">
       <div className="fm-container">
-        <div className="fm-sheet fm-sheet--aqua">
+        <div className="fm-sheet fm-sheet--paper">
           <Reveal className="sec-head">
             <h2>{tr.title}</h2>
           </Reveal>
