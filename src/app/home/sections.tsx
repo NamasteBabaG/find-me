@@ -8,7 +8,9 @@ import { WorldsCarousel, type CarouselWorld } from "./WorldsCarousel";
 import { Icon, type IconName } from "@/ui/Icon";
 
 const STEP_ICONS: readonly IconName[] = ["camera", "map", "brush", "search"];
-const STEP_TONES = ["sun", "aqua", "lavender", "coral"] as const;
+/** The colour grammar's chip run: one fixed order of the four gouache tints, for every row of icon chips on paper. */
+const TINTS = ["sun", "aqua", "lavender", "coral"] as const;
+const tint = (i: number) => `tint--${TINTS[i % TINTS.length]}`;
 /** Birthday, a trip, grandparents, a holiday: drawn in the site's own icon family, never emoji (Guy, 2026-11-16). */
 const OCCASION_ICONS: readonly IconName[] = ["cake", "plane", "heart", "candle"];
 const TRUST_ICONS: readonly IconName[] = ["camera", "link", "search", "book"];
@@ -49,7 +51,7 @@ export function HowItWorks({ t }: SectionProps) {
         <Reveal as="ol" className="steps">
           {h.steps.map((s, i) => (
             <li key={s.title} className="step" style={{ ["--i" as string]: i } as CSSProperties}>
-              <span className={`step__icon step__icon--${STEP_TONES[i] ?? "sun"}`} aria-hidden>
+              <span className={`step__icon ${tint(i)}`} aria-hidden>
                 <Icon name={STEP_ICONS[i] ?? "sparkle"} />
               </span>
               <span className="step__num" aria-hidden>
@@ -65,7 +67,7 @@ export function HowItWorks({ t }: SectionProps) {
   );
 }
 
-/* ─── What's inside: six promises as one ruled table, one sun chip each ─── */
+/* ─── What's inside: six promises as one ruled table, each chip in the next tint of the run ─── */
 const INSIDE_ORDER = ["three", "hints", "noFail", "replay", "bag", "link"] as const;
 /** One picture per promise (a check on every card said nothing). */
 const INSIDE_ICONS: readonly IconName[] = ["search", "bulb", "heart", "replay", "bag", "family"];
@@ -84,7 +86,7 @@ export function Inside({ t }: SectionProps) {
             const tile = s.tiles[key];
             return (
               <Reveal key={key} className="feature" delay={(i % 3) * 90}>
-                <span className="feature__icon" aria-hidden>
+                <span className={`feature__icon ${tint(i)}`} aria-hidden>
                   <Icon name={INSIDE_ICONS[i] ?? "sparkle"} />
                 </span>
                 <h3>{tile.title}</h3>

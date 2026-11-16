@@ -9,7 +9,7 @@ v1 ("cream paper + Fredoka + hard 4px shadows") was rejected as dated. v2 aims a
 1. **Two audiences, one system.** Parents buy (clean, confident, premium). Kids play (big, bright, immediate). The game scopes its own display font (`--font-kid`) and never shows marketing.
 2. **8px grid.** Every spacing, height, radius and line-height is a multiple of 8. `--space-0-5` (4px) only for icon/text nudges.
 3. **Tokens only.** No magic numbers in component CSS. A new colour is a new token.
-4. **Colour as structure.** Sections are full-width rounded "sheets" (`fm-sheet--night/sun/lavender/aqua/coral/lime`, radius 48) instead of borders and dividers.
+4. **Colour as structure.** Sections are full-width rounded "sheets" (`fm-sheet--night/sun/lavender/aqua/coral/lime`, radius 48) instead of borders and dividers. The site stays colourful on purpose (Guy, 2026-11-16: a neutral pass was "sad" and was reverted); what keeps it from being noise is the colour grammar below: every colour has a job and repeats it the same way everywhere.
 5. **Depth is soft.** Layered shadows (`--shadow-1..3`), glow on primary hover (`--shadow-glow-sun`), sticker outlines for anything that is "the child".
 6. **Motion with intent.** Scroll reveal (`.rv`), floating stickers, marquee, peeking demo child, 150/300/600/1200ms durations, `--ease-pop` for playful, `--ease-out` for UI. `prefers-reduced-motion` respected everywhere.
 7. **The kid never fails.** No red X, no hearts, no "try again". Wrong tap = ripple + pop.
@@ -154,6 +154,33 @@ Guy kept this world ("Playful Premium") and asked for it to look less AI-made an
 - **Motion.** One authored entrance per page: the hero title rises, its words, buttons and facts follow 90ms apart, the devices settle beside them (`--ease-expo`, `--dur-reveal` 900ms, opacity and transform only, played once). Below the hero, `.rv` is a short rise that lands softly; groups stagger 90-140ms. No bouncing entrances on adult pages; `--ease-pop` stays for the child's game (stars, stickers).
 - **Browser surfaces.** Selection is sun on ink, the caret is sea, scrollbars are `--ink-4`, accent controls are `--sun-deep`, placeholders `--ink-3`, prices and counts tabular (`.fm-num` or `font-variant-numeric`).
 - **Brand.** "איפה אני?" in Hebrew, "Find Me Worlds" in English (`common.brand`), never typed into a component: the passport cover, the friend lobby, the shared passport and the passport finale read it from the dictionary.
+
+## Colour grammar (2026-11-16)
+
+Guy: keep the fun colours, but there must be rules. A neutral version (sun for actions only, everything else paper and ink) was tried the same day and reverted as sad. The colours stay; each one has a job and does it the same way everywhere:
+
+| Colour | Its one job | Where |
+| --- | --- | --- |
+| `--sun` | The action, and the brand | Primary buttons, the logo tile, the two sun sheets that open and close the landing (the live demo, the final call), an open FAQ disc, progress |
+| The tint run: `sun → aqua → lavender → coral` (the `-soft` tints) | A row of icon chips on paper | "How it works" and "What's inside" take the run in this order and start again (`.tint--*` in `site.css`); neighbours never share a tint |
+| A sheet's own tint (`lavender`, `aqua`) | One section, one tint | The gift sheet is lavender and its occasion icons are lavender-deep in white discs; the trust sheet is aqua and its icons are aqua-deep in white discs |
+| `--leaf` | Included, found, done | Every "included" tick (a leaf disc in a list, the bare leaf tick in running facts and on the dark price card), "found" in the game and the passport, "done" in the family area |
+| `--sea` | Interaction state | Selected cards, focus rings, input focus, links |
+| `--night` / `--ink` | The stage | The passport, the first-world price card, the dark secondary button |
+| `--gold` | Stars only | What a child collects; never a button |
+
+- **Down the page the sheets take turns**, never two of the same tint in a row: sun (demo) → paper → lavender (gift) → paper (price) → aqua (trust) → paper (FAQ) → sun (final).
+- **The paintings are the loudest thing on a screen.** Chrome around a board (frames, HUD, the carousel's buttons) keeps to the product's colours; a world's palette stays inside its picture.
+- A new colour on a parent screen needs a job from this table, or it is noise.
+
+## Life on the page and in the game (2026-11-16)
+
+Guy: more life (animation, sound, clouds, the page's vibe), never less colour. All of it is transform/opacity only, rastered once, still for reduced motion, and cheap enough for the old iPad (see `docs/CLAUDE_WEAK_DEVICE_PERFORMANCE_20261006.md`).
+
+- **One sky.** The game's little flat-bottomed cloud (`src/ui/cloudlet.ts`) is the site's too: `SkyClouds` drifts three of them behind the hero and across both sun sheets, each on its own slow drift and bob; on a phone they keep to the edges so no heading has a cloud behind it.
+- **The brand looks around.** The logo's eyes glance one way, then the other, and blink, on a 6.4s beat (faster under the pointer); the eyes peeking over the final sheet blink too.
+- **The cloud curtain has depth.** Far bank, bank and little travellers are three layers of one drawing: opening, the bank swells as it leaves, the far bank lags, the travellers trail and float up, and a warm glow blooms in the gap; closing, the travellers arrive last with a small bounce (`Clouds.tsx`, `game.css`).
+- **Sound has a room.** Chimes (finds, stars, fanfares, the harp) ring in one shared, darkened short echo; taps, pops and paper stay dry. The curtain is heard: rising air and a harp run up the world's own notes when it parts, falling air when it shuts (`sounds.ts`). Nothing plays before a tap has unlocked sound.
 
 ## The passport (2026-09-17)
 

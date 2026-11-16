@@ -40,6 +40,7 @@ A seek-and-find book where the hidden figure is your own child. The child is pai
 ## Brand Commitments
 
 - **The incumbent world stays (Guy, 2026-11-16):** "Playful Premium" (warm light ground, ink navy, sun yellow, gouache accents, Rubik/Fredoka, the paintings in front). Guy rejected replacement worlds (trail blazes, sticker album, tiles). Visual work upgrades this world toward professional precision: unified component language, better motion, less "AI-made". It never swaps the world for another.
+- **Colourful, with rules (Guy, 2026-11-16):** the fun gouache colours stay; a neutral "less colour" pass was rejected as sad and reverted. Consistency comes from giving every colour one job (`docs/DESIGN_SYSTEM.md`, "Colour grammar"), and liveliness from motion and sound (clouds, the brand's eyes, the game's chimes), never from removing colour.
 - **Name:** "איפה אני?" everywhere in Hebrew. "Find Me Worlds" only in English and in the domain (Guy, 2026-11-16).
 - **No emoji anywhere.** Use one stroke icon family (`src/ui/Icon.tsx`). No eyebrow labels above headings, and no copy that reads as AI-written (Guy, 2026-11-16).
 - **The hero shows the find:** a child is found in a painting, with the search HUD, a tap, a ring, a bubble in the child's voice and a gold star into the tray. It is shown on the device a family holds, as the full board, with no labels under the stage. These are Guy's decisions, recorded in `src/app/home/Hero.tsx`.
