@@ -176,26 +176,49 @@
 /* The whole bank is the cloud: the SVG spans the full half, solid white from
    the outer edge to the lobed line — a 60% strip left the rest showing sky
    and read as cut off (Guy). Drift is vertical only, so full width is safe. */
-.scene__cloud-edge { position: absolute; top: 0; bottom: 0; width: 100%; animation: cloud-drift 9s ease-in-out infinite alternate; }
+.scene__cloud-edge, .scene__cloud-back, .scene__cloud-puffs, .scene__cloud-float { position: absolute; top: 0; bottom: 0; left: 0; width: 100%; }
+.scene__cloud-edge { animation: cloud-drift 9s ease-in-out infinite alternate; }
 .scene__cloud--r .scene__cloud-edge { animation-delay: -4.5s; }
 .scene__cloud-svg { position: absolute; top: 0; bottom: 0; right: 0; height: 100%; width: 100%; overflow: visible; filter: drop-shadow(0 8px 14px rgba(58, 84, 140, 0.18)); }
-.scene__cloud--l { left: 0; }
-.scene__cloud--l .scene__cloud-edge { right: 0; }
-.scene__cloud--r { right: 0; }
-.scene__cloud--r .scene__cloud-edge { left: 0; }
+.scene__cloud-svg--far { filter: none; }
+.scene__cloud--l { left: 0; transform-origin: 0% 50%; }
+.scene__cloud--r { right: 0; transform-origin: 100% 50%; }
 .scene__cloud--r .scene__cloud-svg { transform: scaleX(-1); }
+/* Depth while the banks move. The far bank drifts slower and in its own time; the little travellers bob a
+   little, sideways as well as up. Shutting (the base state): the far bank comes in with the bank, the
+   travellers arrive a beat later and settle with a small bounce. Opening: the bank swells a little as it
+   leaves, the far bank lags behind it, and the travellers trail and float up as everything fades. */
+.scene__cloud-float--far { animation: cloud-drift 13s ease-in-out infinite alternate-reverse; }
+.scene__cloud-float--near { animation: cloud-bob 7s ease-in-out infinite alternate; }
+.scene__cloud--r .scene__cloud-float--near { animation-delay: -3.5s; }
+.scene__cloud-back { transition: transform 520ms cubic-bezier(0.5, 0, 0.2, 1); }
+.scene__cloud-puffs { transition: transform 640ms var(--ease-pop) 80ms; }
 .scene__curtain.is-open .scene__cloud { transition: transform 900ms cubic-bezier(0.65, 0, 0.35, 1), opacity 300ms ease 700ms; }
-.scene__curtain.is-open .scene__cloud--l { transform: translateX(-118%); opacity: 0; }
-.scene__curtain.is-open .scene__cloud--r { transform: translateX(118%); opacity: 0; }
+.scene__curtain.is-open .scene__cloud--l { transform: translateX(-118%) scale(1.06); opacity: 0; }
+.scene__curtain.is-open .scene__cloud--r { transform: translateX(118%) scale(1.06); opacity: 0; }
+.scene__curtain.is-open .scene__cloud-back { transition: transform 900ms cubic-bezier(0.33, 0, 0.25, 1); }
+.scene__curtain.is-open .scene__cloud--l .scene__cloud-back { transform: translateX(26%); }
+.scene__curtain.is-open .scene__cloud--r .scene__cloud-back { transform: translateX(-26%); }
+.scene__curtain.is-open .scene__cloud-puffs { transition: transform 1000ms cubic-bezier(0.25, 0, 0.2, 1); }
+.scene__curtain.is-open .scene__cloud--l .scene__cloud-puffs { transform: translate(34%, -12%) scale(0.86) rotate(-3deg); }
+.scene__curtain.is-open .scene__cloud--r .scene__cloud-puffs { transform: translate(-34%, -12%) scale(0.86) rotate(3deg); }
+/* The light behind the clouds: as they part, a warm glow blooms in the gap and is gone, so the board is
+   revealed, not just uncovered. One layer, opacity and scale only, once per opening. */
+.scene__curtain::after { content: ""; position: absolute; inset: 0; opacity: 0; pointer-events: none; background: radial-gradient(closest-side, color-mix(in srgb, var(--gold-light) 75%, transparent), color-mix(in srgb, var(--white) 30%, transparent) 55%, transparent); }
+.scene__curtain.is-open::after { animation: curtain-glow 1000ms var(--ease-out); }
+@keyframes curtain-glow { 0% { opacity: 0; transform: scale(0.55); } 30% { opacity: 0.7; } 100% { opacity: 0; transform: scale(1.3); } }
 /* Once the opening finishes these banks are fully transparent. Release their
    promoted layers and stop the invisible drift until the next covered turn. */
 .scene__curtain.is-open.is-settled .scene__cloud { will-change: auto; }
-.scene__curtain.is-open.is-settled .scene__cloud-edge { animation-play-state: paused; }
+.scene__curtain.is-open.is-settled :is(.scene__cloud-edge, .scene__cloud-float) { animation-play-state: paused; }
 @keyframes cloud-drift { from { transform: translateY(-1.5%); } to { transform: translateY(1.5%); } }
+@keyframes cloud-bob { from { transform: translate(-1%, -2%); } to { transform: translate(1.5%, 2%); } }
 @media (prefers-reduced-motion: reduce) {
   .scene__cloud, .scene__curtain.is-open .scene__cloud { transition: opacity 250ms ease; }
-  .scene__cloud-edge { animation: none; }
+  .scene__cloud-back, .scene__cloud-puffs, .scene__curtain.is-open :is(.scene__cloud-back, .scene__cloud-puffs) { transition: none; transform: none; }
+  .scene__cloud-edge, .scene__cloud-float { animation: none; }
   .scene__curtain.is-open .scene__cloud--l, .scene__curtain.is-open .scene__cloud--r { transform: none; }
+  .scene__curtain.is-open::after { animation: none; }
 }
 .scene__bar { position: absolute; left: 0; right: 0; top: 0; z-index: var(--z-ui); display: flex; align-items: center; justify-content: space-between; gap: var(--space-1); padding: var(--space-2); pointer-events: none; }
 .scene__bar > * { pointer-events: auto; }

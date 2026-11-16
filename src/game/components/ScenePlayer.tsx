@@ -194,6 +194,16 @@ export function ScenePlayer({ scene, mission, store, onBack, onSceneComplete }: 
     const timer = setTimeout(() => setCurtainSettled(true), CURTAIN_SETTLE_MS);
     return () => clearTimeout(timer);
   }, [curtainOpen]);
+  // The clouds are heard as well as seen: air and a harp run as they part, air alone as they close for the
+  // next child. Never for a picture that failed to load, and silent until a tap has unlocked sound (the
+  // landing demo opens on scroll, so it stays quiet there).
+  const curtainWasOpen = useRef(false);
+  useEffect(() => {
+    if (curtainOpen === curtainWasOpen.current) return;
+    curtainWasOpen.current = curtainOpen;
+    if (loadFailed) return;
+    try { sounds().play(curtainOpen ? "cloudsOpen" : "cloudsClose"); } catch { /* Optional audio never holds the curtain. */ }
+  }, [curtainOpen, loadFailed]);
   // A visit means the board is decoded, visible and playable; prefetch/navigation are not visits.
   const visitReported = useRef(false);
   useEffect(() => {

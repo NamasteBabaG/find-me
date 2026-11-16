@@ -403,3 +403,46 @@ describe("mobile audio unlock, interruption and lifecycle", () => {
     ctx.state = "closed"; expect(() => manager.suspend()).not.toThrow();
   });
 });
+
+describe("the clouds and the air around the music", () => {
+  const withDelay = (ctx: FakeAudioContext) => {
+    const delays: (FakeNode & { delayTime: FakeParam })[] = [];
+    Object.assign(ctx, { createDelay: vi.fn(() => { const node = Object.assign(new FakeNode(), { delayTime: new FakeParam() }); delays.push(node); return node; }) });
+    return delays;
+  };
+
+  it("parts the clouds with moving air and a harp run in the world's notes, and closes them with air alone", async () => {
+    manager.unlock(); await settled(); const ctx = contexts[0]!;
+    vi.spyOn(Math, "random").mockReturnValue(.5);
+    manager.setScene("antarctica"); manager.play("cloudsOpen");
+    expect(ctx.sources).toHaveLength(1);
+    expect(ctx.filters.at(-1)!.type).toBe("bandpass");
+    expect(ctx.oscillators.map(n => Math.round(n.frequency.value))).toEqual([880, 1175, 1568, 1760, 1760]);
+    manager.play("cloudsClose");
+    expect(ctx.sources).toHaveLength(2); expect(ctx.oscillators).toHaveLength(5);
+    expect(ctx.createBuffer).toHaveBeenCalledOnce(); // One second of air, reused by every turn.
+    manager.setMuted(true); manager.play("cloudsOpen"); manager.play("cloudsClose");
+    expect(ctx.sources).toHaveLength(2); expect(ctx.oscillators).toHaveLength(5);
+  });
+
+  it("builds one shared echo on the first chime, rings music in it, and keeps taps dry", async () => {
+    manager.unlock(); await settled(); const ctx = contexts[0]!; const delays = withDelay(ctx);
+    manager.play("tap");
+    expect(delays).toHaveLength(0);
+    manager.play("success"); manager.play("star");
+    expect(delays).toHaveLength(1); expect(delays[0]!.delayTime.value).toBeCloseTo(.13);
+    const send = ctx.gains.find(g => g.gain.value === .22)!;
+    const chimes = ctx.gains.filter(g => g.connect.mock.calls.some(([node]) => node === send));
+    expect(chimes.length).toBeGreaterThan(3);
+    expect(ctx.gains[1]!.connect.mock.calls.some(([node]) => node === send)).toBe(false); // the tap
+  });
+
+  it("plays every chime dry on a device without an echo, and never retries the echo for that context", async () => {
+    manager.unlock(); await settled(); const ctx = contexts[0]!;
+    manager.play("success"); manager.play("fanfare");
+    expect(ctx.oscillators.length).toBeGreaterThan(3);
+    for (const node of ctx.oscillators) expect(node.start).toHaveBeenCalledOnce();
+    const delays = withDelay(ctx); manager.play("star");
+    expect(delays).toHaveLength(0);
+  });
+});

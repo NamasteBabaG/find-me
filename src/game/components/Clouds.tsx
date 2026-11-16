@@ -17,6 +17,14 @@
  * free-standing circle.
  *
  * The right bank mirrors this SVG in CSS, so one drawing serves both sides.
+ *
+ * Depth (Guy, 2026-11-16: more life in the clouds). The far bank, the bank
+ * itself and the little travellers are three layers of the same drawing, so
+ * each can move at its own pace when the curtain moves: the far bank lags (it
+ * is further away), the travellers trail behind and drift up as the bank parts,
+ * and when it closes they arrive last and settle with a small bounce. Every
+ * layer shares one viewBox and crop, so at rest the picture is exactly the
+ * single drawing it was; only transforms move, each layer rastered once.
  */
 
 const W = 1280;
@@ -66,12 +74,28 @@ const PUFFS: ReadonlyArray<{ x: number; y: number; w: number; o: number }> = [
   { x: 1130, y: 1870, w: 140, o: 0.93 },
 ];
 
+const VIEW = `0 0 ${W} ${H}`;
+const CROP = "xMaxYMid slice";
+
 export function CloudBank({ side }: { side: "l" | "r" }) {
   const id = `fm-cloud-${side}`;
   return (
     <div className={`scene__cloud scene__cloud--${side}`}>
+      {/* a soft farther bank behind everything */}
+      <div className="scene__cloud-back">
+        <div className="scene__cloud-float scene__cloud-float--far">
+          <svg className="scene__cloud-svg scene__cloud-svg--far" viewBox={VIEW} preserveAspectRatio={CROP} aria-hidden focusable="false">
+            <defs>
+              <filter id={`${id}-soft`} x="-15%" y="-5%" width="130%" height="110%">
+                <feGaussianBlur stdDeviation="14" />
+              </filter>
+            </defs>
+            <path d={PATH} transform="translate(-34 0)" fill="#e7effb" opacity="0.75" filter={`url(#${id}-soft)`} />
+          </svg>
+        </div>
+      </div>
       <div className="scene__cloud-edge">
-        <svg className="scene__cloud-svg" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="xMaxYMid slice" aria-hidden focusable="false">
+        <svg className="scene__cloud-svg" viewBox={VIEW} preserveAspectRatio={CROP} aria-hidden focusable="false">
           <defs>
             {/* One light across the whole bank: deep side faintly sky-tinted, the edge bright. */}
             <linearGradient id={`${id}-body`} x1="0" y1="0" x2="1" y2="0">
@@ -79,24 +103,25 @@ export function CloudBank({ side }: { side: "l" | "r" }) {
               <stop offset="0.4" stopColor="#ffffff" />
               <stop offset="1" stopColor="#ffffff" />
             </linearGradient>
-            <filter id={`${id}-soft`} x="-15%" y="-5%" width="130%" height="110%">
-              <feGaussianBlur stdDeviation="14" />
-            </filter>
           </defs>
-          {/* a soft farther bank behind everything */}
-          <path d={PATH} transform="translate(-34 0)" fill="#e7effb" opacity="0.75" filter={`url(#${id}-soft)`} />
           {/* the shade: the same silhouette peeking out under each lobe */}
           <path d={PATH} transform="translate(-22 20)" fill="#d8e4f6" opacity="0.85" />
           {/* the cloud itself */}
           <path d={PATH} fill={`url(#${id}-body)`} />
-          {/* little travellers off the edge, flat-bottomed like every drawn cloud */}
-          {PUFFS.map((p, i) => (
-            <g key={i} transform={`translate(${p.x} ${p.y})`} opacity={p.o}>
-              <path d={cloudlet(p.w)} transform="translate(-4 5)" fill="#d8e4f6" opacity="0.8" />
-              <path d={cloudlet(p.w)} fill="#ffffff" />
-            </g>
-          ))}
         </svg>
+      </div>
+      {/* little travellers off the edge, flat-bottomed like every drawn cloud */}
+      <div className="scene__cloud-puffs">
+        <div className="scene__cloud-float scene__cloud-float--near">
+          <svg className="scene__cloud-svg" viewBox={VIEW} preserveAspectRatio={CROP} aria-hidden focusable="false">
+            {PUFFS.map((p, i) => (
+              <g key={i} transform={`translate(${p.x} ${p.y})`} opacity={p.o}>
+                <path d={cloudlet(p.w)} transform="translate(-4 5)" fill="#d8e4f6" opacity="0.8" />
+                <path d={cloudlet(p.w)} fill="#ffffff" />
+              </g>
+            ))}
+          </svg>
+        </div>
       </div>
     </div>
   );
