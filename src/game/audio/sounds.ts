@@ -22,7 +22,7 @@ type KeepNode = <T extends AudioNode>(node: T) => T;
  * the renderer's own chrome plays. "star" belongs to the star tray, not to a
  * board, so it stays out of the scene schema.
  */
-export type PlayCue = SoundCue | "star" | "stamp" | "discovery" | "drawer" | "page";
+export type PlayCue = SoundCue | "star" | "stamp" | "discovery" | "drawer" | "page" | "cloudsOpen" | "cloudsClose";
 type SoundTheme = "default" | "forest" | "water" | "bells" | "wood" | "crystal" | "city";
 const SCENE_THEMES: Record<string, SoundTheme> = {
   amazon: "forest", fairyforest: "forest", sydney: "water", underwater: "water",
@@ -120,6 +120,14 @@ const STAR: readonly (readonly Note[])[] = [
   ],
 ];
 
+/**
+ * The clouds parting: a harp run up the world's own four notes and on to the
+ * octave, under a rush of air. Each note a little quieter than the last, so the
+ * run breathes out instead of ending on a bump. Closing is only the air,
+ * shorter and falling: a page turning, not a second fanfare.
+ */
+const HARP_RUN = [0, 1, 2, 3] as const;
+
 /** A hint or a bonus — three sparkles. */
 const TWINKLE: readonly (readonly Note[])[] = [
   [N.E6, N.G6, N.C7].map((f, i): Note => [f, 0.1, i * 0.07, "sine", 0.25]),
@@ -136,6 +144,16 @@ export class SoundManager {
   private ambientFailed = false;
   private ambientBuffer: AudioBuffer | null = null;
   private noiseBuffers = new Map<number, AudioBuffer>();
+  /**
+   * A little air around the music: one short, darkened echo shared by every
+   * chime (finds, stars, fanfares, the harp under the clouds). Dry blips sounded
+   * like a toy's buttons; the same notes with a room around them sound like a
+   * music box. Taps, pops and paper stay dry and close. Built once per context,
+   * on the first musical cue; a device that refuses it plays everything dry.
+   */
+  private air: GainNode | null = null;
+  private airFailed = false;
+  private flatNoise: AudioBuffer | null = null;
   private paused = false;
   private pendingCue: { cue: PlayCue; pitch: number | undefined; requestedAt: number } | null = null;
   private oneShots = new Map<AudioScheduledSourceNode, () => void>();
@@ -160,6 +178,9 @@ export class SoundManager {
       this.ambientFailed = false;
       this.ambientBuffer = null;
       this.noiseBuffers.clear();
+      this.flatNoise = null;
+      this.air = null;
+      this.airFailed = false;
       if (this.master) this.releaseNodes([this.master], false);
       this.ctx = null;
       this.master = null;
@@ -288,6 +309,17 @@ export class SoundManager {
         break;
       case "page":
         this.noise(.13, t, 850, .1);
+        break;
+      case "cloudsOpen": {
+        // The air opens upward while a harp runs up the world's notes and on to the octave.
+        this.whoosh(360, 2400, 0.8, t, 0.13);
+        const notes = THEME_NOTES[this.theme], pitch = semitones(between(-0.5, 0.5));
+        const run = [...HARP_RUN.map((i) => notes[i]!), notes[0]! * 2];
+        run.forEach((freq, i) => this.blip(freq * pitch, 0.32, t + 0.16 + i * 0.065, "sine", 0.11 - i * 0.012, true));
+        break;
+      }
+      case "cloudsClose":
+        this.whoosh(1700, 300, 0.5, t, 0.1);
         break;
       case "fanfare":
         this.phrase(FANFARE[this.pick(cue, FANFARE.length)]!, t, semitones(between(-1, 1)));
@@ -419,15 +451,44 @@ export class SoundManager {
     return next;
   }
 
+  /** Music: every phrase rings in the shared air. */
   private phrase(notes: readonly Note[], at: number, pitch: number): void {
-    for (const [freq, dur, offset, type, vol] of notes) this.blip(freq * pitch, dur, at + offset, type, vol);
+    for (const [freq, dur, offset, type, vol] of notes) this.blip(freq * pitch, dur, at + offset, type, vol, true);
+  }
+
+  /**
+   * The shared echo, built on first use: send → delay → a darkening low-pass →
+   * the master, with the low-pass fed back into the delay so each repeat is
+   * softer and duller than the last, the way a real room swallows the highs.
+   * The delay is created first, so a device without one allocates nothing.
+   */
+  private airSend(): GainNode | null {
+    if (this.air) return this.air;
+    const ctx = this.ctx, master = this.master;
+    if (!ctx || !master || this.airFailed) return null;
+    const built = this.createNodes(keep => {
+      const delay = keep(ctx.createDelay(0.5));
+      delay.delayTime.value = 0.13;
+      const send = keep(ctx.createGain());
+      send.gain.value = 0.22;
+      const tone = keep(ctx.createBiquadFilter());
+      tone.type = "lowpass";
+      tone.frequency.value = 3000;
+      const feedback = keep(ctx.createGain());
+      feedback.gain.value = 0.32;
+      send.connect(delay).connect(tone).connect(master);
+      tone.connect(feedback).connect(delay);
+      this.air = send;
+    });
+    if (!built) this.airFailed = true;
+    return this.air;
   }
   private themedFind(cue: "success" | "discovery", at: number): void {
     const notes = THEME_NOTES[this.theme], variant = this.pick(cue, 3);
     const order = variant === 0 ? [0, 1, 3] : variant === 1 ? [1, 2, 3] : [2, 1, 3];
     const voice = this.theme === "wood" || this.theme === "city" ? "triangle" : "sine";
     const pitch = semitones(between(-.5, .5));
-    order.forEach((index, i) => this.blip(notes[index]! * pitch, i === 2 ? .22 : .09, at + i * .085, voice, cue === "discovery" ? .22 : .3));
+    order.forEach((index, i) => this.blip(notes[index]! * pitch, i === 2 ? .22 : .09, at + i * .085, voice, cue === "discovery" ? .22 : .3, true));
     if (this.theme === "forest") this.sweep(1100, 1700, .07, at + .22, "sine", .08);
     if (this.theme === "water") this.blip(notes[0]! / 2, .13, at, "sine", .13);
   }
@@ -470,9 +531,11 @@ export class SoundManager {
     }
   }
 
-  private blip(freq: number, dur: number, at: number, type: OscillatorType, vol: number): void {
+  /** `wet` rings the note in the shared air as well; taps and pops stay dry. */
+  private blip(freq: number, dur: number, at: number, type: OscillatorType, vol: number, wet = false): void {
     const ctx = this.ctx, master = this.master;
     if (!ctx || !master) return;
+    const air = wet ? this.airSend() : null;
     this.createNodes(keep => {
       const osc = keep(ctx.createOscillator());
       const gain = keep(ctx.createGain());
@@ -482,6 +545,7 @@ export class SoundManager {
       gain.gain.exponentialRampToValueAtTime(vol, at + 0.01);
       gain.gain.exponentialRampToValueAtTime(0.0001, at + dur);
       osc.connect(gain).connect(master);
+      if (air) gain.connect(air);
       this.trackOneShot(osc, [gain]);
       osc.start(at);
       osc.stop(at + dur + 0.02);
@@ -503,6 +567,39 @@ export class SoundManager {
       this.trackOneShot(osc, [gain]);
       osc.start(at);
       osc.stop(at + dur + 0.02);
+    });
+  }
+
+  /**
+   * Moving air: one second of flat noise through a band-pass that slides from
+   * `from` to `to` Hz, swelling in over the first third and dying away. A cloud
+   * passing, not a hiss: the moving band is what the ear reads as motion.
+   */
+  private whoosh(from: number, to: number, dur: number, at: number, vol: number): void {
+    const ctx = this.ctx, master = this.master;
+    if (!ctx || !master) return;
+    this.createNodes(keep => {
+      if (!this.flatNoise) {
+        const buffer = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate);
+        const data = buffer.getChannelData(0);
+        for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
+        this.flatNoise = buffer;
+      }
+      const src = keep(ctx.createBufferSource());
+      src.buffer = this.flatNoise;
+      const band = keep(ctx.createBiquadFilter());
+      band.type = "bandpass";
+      band.Q.value = 0.9;
+      band.frequency.setValueAtTime(from, at);
+      band.frequency.exponentialRampToValueAtTime(to, at + dur);
+      const gain = keep(ctx.createGain());
+      gain.gain.setValueAtTime(0.0001, at);
+      gain.gain.exponentialRampToValueAtTime(vol, at + dur * 0.35);
+      gain.gain.exponentialRampToValueAtTime(0.0001, at + dur);
+      src.connect(band).connect(gain).connect(master);
+      this.trackOneShot(src, [band, gain]);
+      src.start(at);
+      src.stop(at + dur + 0.02);
     });
   }
 
