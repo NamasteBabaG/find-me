@@ -246,7 +246,7 @@ export function PhotoUploader({ childName, hasPhoto, rejectedCode, endpoint = "/
     <label className="uploader__consent">
       <input type="checkbox" name="consent" checked={consent} onChange={(e) => setConsent(e.target.checked)} required />
       <span className="uploader__tick" aria-hidden>
-        <Icon name="check" strokeWidth={3} />
+        ✓
       </span>
       <span>{p.consent}</span>
     </label>

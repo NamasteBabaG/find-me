@@ -47,16 +47,11 @@ p {
   text-wrap: pretty;
 }
 
-/* Links are ink with a quiet underline that darkens under the pointer: a blue link was the one colour on a page
-   that the design system did not choose (Guy, 2026-11-16: consistent, not colourful). */
 a {
-  color: var(--ink);
+  color: var(--sea-deep);
   text-decoration-thickness: 2px;
-  text-decoration-color: var(--ink-4);
   text-underline-offset: 3px;
-  transition: text-decoration-color var(--dur-1);
 }
-a:hover { text-decoration-color: currentColor; }
 
 button,
 input,
@@ -93,12 +88,12 @@ video {
 
 html {
   scrollbar-color: var(--ink-4) transparent;
-  accent-color: var(--ink);
+  accent-color: var(--sun-deep);
 }
 
 input,
 textarea {
-  caret-color: var(--ink);
+  caret-color: var(--sea-deep);
 }
 
 ::placeholder {
