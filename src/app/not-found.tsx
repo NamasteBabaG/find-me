@@ -2,6 +2,7 @@ import Link from "next/link";
 import { getI18n } from "@/i18n/server";
 import { currentUser, isAdminEmail } from "@/lib/server/session";
 import { SiteFooter, SiteHeader } from "@/ui/Shell";
+import { LogoEyes } from "@/ui/Icon";
 
 /** A page that hid too well: the site's own chrome around it, one way home. */
 export default async function NotFound() {
@@ -11,7 +12,7 @@ export default async function NotFound() {
       <SiteHeader user={user} isAdmin={isAdminEmail(user?.email)} />
       <main className="nf fm-container fm-container--narrow fm-section fm-stack fm-stack--3 fm-center">
         <span className="nf__mark" aria-hidden>
-          🙈
+          <span className="fm-logo__mark fm-logo__mark--big"><LogoEyes /></span>
         </span>
         <h1>{t.notFound.title}</h1>
         <p className="fm-lead">{t.notFound.lead}</p>

@@ -5,6 +5,18 @@ import type { GameConfig } from "@/domain/game/config";
 import { sounds } from "../audio/sounds";
 import { CelebrationOverlay } from "./CelebrationOverlay";
 import { useGameText } from "../i18n";
+import { Icon } from "@/ui/Icon";
+
+/** The bow on the wrapped gift, in the ribbon's gold: two loops, two tails and a knot (it was the 🎀 emoji). */
+function GiftBow() {
+  return (
+    <svg className="gift__bow-art" viewBox="0 0 64 48" aria-hidden="true" focusable="false">
+      <path className="gift__bow-loop" d="M32 22C24 6 6 4 6 16s16 12 26 6zM32 22C40 6 58 4 58 16s-16 12-26 6z" />
+      <path className="gift__bow-tail" d="M28 26 18 44l8-2 4 6 4-20zM36 26l10 18-8-2-4 6-4-20z" />
+      <circle className="gift__bow-knot" cx="32" cy="23" r="6" />
+    </svg>
+  );
+}
 
 /**
  * Digital gift wrap -> cover with the child's sticker. The tap here is also
@@ -45,7 +57,7 @@ export function GiftReveal({ config, onOpen }: { config: GameConfig; onOpen: () 
           <div className="gift__paper gift__paper--r" aria-hidden />
           <div className="gift__ribbon gift__ribbon--v" aria-hidden />
           <div className="gift__ribbon gift__ribbon--h" aria-hidden />
-          <span className="gift__bow" aria-hidden>🎀</span>
+          <span className="gift__bow" aria-hidden><GiftBow /></span>
           <span className="gift__spark gift__spark--1" aria-hidden>✦</span>
           <span className="gift__spark gift__spark--2" aria-hidden>✦</span>
           <span className="gift__spark gift__spark--3" aria-hidden>✦</span>
@@ -54,7 +66,7 @@ export function GiftReveal({ config, onOpen }: { config: GameConfig; onOpen: () 
             <h1 className="gift__title">{tf(g.gift.forName, { name })}</h1>
             {from ? <p className="gift__from">{tf(g.gift.from, { from })}</p> : null}
             <button type="button" className="fm-btn fm-btn--lg gift__btn" onClick={tear} disabled={phase === "tearing"}>
-              {g.gift.open}
+              <Icon name="gift" /> {g.gift.open}
             </button>
           </div>
         </div>
@@ -73,7 +85,7 @@ export function GiftReveal({ config, onOpen }: { config: GameConfig; onOpen: () 
             <p className="gift__lead">{tf(giftLead, { name, count: config.scenes.length, spots: perPlace, required, stars: config.scenes.reduce((sum, scene) => sum + scene.targets.length, 0) })}</p>
             {message ? <p className="gift__message">“{message}”</p> : null}
             <button type="button" className="fm-btn fm-btn--lg gift__btn" onClick={onOpen} autoFocus>
-              {g.gift.start}
+              <Icon name="map" /> {g.gift.start}
             </button>
           </div>
         </>

@@ -29,7 +29,8 @@ export function CheckoutForm({ defaultEmail, priceLabel, outcome, backHref, auto
       </div>
       <p className="fm-hint">{legal.checkoutNotice} <Link href="/cancellation">{legal.cancellation}</Link></p>
       <input type="hidden" name="legalVersion" value={LEGAL_VERSION} />
-      <label className="service-acceptance"><input type="checkbox" name="legalAccepted" value="1" required /><span>{legal.acceptance}</span></label>
+      {/* The same tick as the photo consent: the product's sun box, not the browser's blue square. */}
+      <label className="uploader__consent service-acceptance"><input type="checkbox" name="legalAccepted" value="1" required /><span className="uploader__tick" aria-hidden>✓</span><span>{legal.acceptance}</span></label>
       <p className="fm-hint"><Link href="/terms">{legal.terms}</Link> · <Link href="/privacy">{legal.privacy}</Link> · <Link href="/support">{legal.support}</Link></p>
       <div className="create__actions create__actions--single">
         <Button type="submit" size="lg" block loading={pending} className="summary__pay">

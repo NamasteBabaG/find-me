@@ -63,7 +63,9 @@ describe("the illustrated adventure bag", () => {
       fireEvent.click(button);
       expect(onOpen).toHaveBeenLastCalledWith(scene.slug);
     });
-    fireEvent.click(view.getByRole("button", { name: g.map }));
+    // The bag's way back is at its top and again at its foot (2026-11-16).
+    expect(view.getAllByRole("button", { name: g.map })).toHaveLength(2);
+    fireEvent.click(view.getAllByRole("button", { name: g.map })[0]!);
     expect(onMap).toHaveBeenCalledOnce();
     expect(JSON.stringify(progress)).toBe(before);
   });

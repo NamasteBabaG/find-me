@@ -11,6 +11,8 @@ import { StarCounter } from "./StarCounter";
 import { StarTray } from "./StarTray";
 import { PlaceEmblem } from "@/app/home/PlaceEmblem";
 import { useMapLabels } from "../engine/useMapLabels";
+import { GameExit, type GameExitTarget } from "./GameExit";
+import { Icon } from "@/ui/Icon";
 
 interface Props {
   config: GameConfig;
@@ -31,6 +33,8 @@ interface Props {
   roundRoute?: string[];
   /** Start a new round from the beginning. Given only while there is no round; it is then a quiet button under Go. */
   onStartOver?: () => void;
+  /** The way out of the game, first in the bar. Absent only in the landing demo. */
+  exit?: GameExitTarget | null;
 }
 
 /** Roughly the brief's 1.2–1.8s, and skippable. */
@@ -47,15 +51,15 @@ const CHOOSE_MS = 700;
  * an ordered list of nine buttons for anyone using a keyboard or a screen
  * reader. A game composed before worlds existed falls back to the island grid.
  */
-export function WorldMap({ config, world: shown, progress, onOpen, onPassport, onWorlds, worldSelector, demo, travelFrom, onTravelDone, onReplay, roundRoute, onStartOver }: Props) {
+export function WorldMap({ config, world: shown, progress, onOpen, onPassport, onWorlds, worldSelector, demo, travelFrom, onTravelDone, onReplay, roundRoute, onStartOver, exit }: Props) {
   const { g } = useGameText();
   const world = shown ?? gameWorlds(config)[0];
   if (!world) return <>{worldSelector ? <div className="owner-worlds__fallback">{worldSelector}</div> : null}<IslandGrid config={config} progress={progress} onOpen={onOpen} onPassport={onPassport} demo={demo} />
     {onStartOver ? <button type="button" className="fm-btn fm-btn--ghost wmap__again" onClick={onStartOver}>{g.replay.startOver}</button> : null}</>;
-  return <WorldMapView config={config} world={world} progress={progress} onOpen={onOpen} onPassport={onPassport} onWorlds={onWorlds} worldSelector={worldSelector} demo={demo} travelFrom={travelFrom} onTravelDone={onTravelDone} onReplay={onReplay} roundRoute={roundRoute} onStartOver={onStartOver} />;
+  return <WorldMapView config={config} world={world} progress={progress} onOpen={onOpen} onPassport={onPassport} onWorlds={onWorlds} worldSelector={worldSelector} demo={demo} travelFrom={travelFrom} onTravelDone={onTravelDone} onReplay={onReplay} roundRoute={roundRoute} onStartOver={onStartOver} exit={exit} />;
 }
 
-function WorldMapView({ config, world, progress, onOpen, onPassport, onWorlds, worldSelector, demo, travelFrom, onTravelDone, onReplay, roundRoute, onStartOver }: Props & { world: PlayWorld }) {
+function WorldMapView({ config, world, progress, onOpen, onPassport, onWorlds, worldSelector, demo, travelFrom, onTravelDone, onReplay, roundRoute, onStartOver, exit }: Props & { world: PlayWorld }) {
   const { g, tf } = useGameText();
   // Only this world's boards. Counting the whole game against nine nodes is
   // how a two-world game reported 10/9 — and how world two's map lit up
@@ -154,6 +158,7 @@ function WorldMapView({ config, world, progress, onOpen, onPassport, onWorlds, w
       <header className="wmap__bar">
         {/* No portrait here: the marker on the painting is the child on this screen, and two faces read as two children. */}
         <div className="wmap__who">
+          {exit ? <GameExit exit={exit} /> : null}
           <div>
             <h1 className="wmap__title">{world.name}</h1>
             <p className="wmap__sub">{done === 0 ? world.tagline : tf(g.map.stamps, { done, total, piece: world.collectible.piece })}</p>
@@ -163,7 +168,7 @@ function WorldMapView({ config, world, progress, onOpen, onPassport, onWorlds, w
           {worldSelector}
           {!worldSelector && onWorlds ? (
             <button type="button" className="fm-btn fm-btn--secondary fm-btn--sm" onClick={onWorlds}>
-              🗺️ {g.hub.back}
+              <Icon name="map" /> {g.hub.back}
             </button>
           ) : null}
           {/* The world's gold stars, always shown, even at zero: it is what there is to collect. Opens the bag. */}

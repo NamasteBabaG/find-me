@@ -9,6 +9,7 @@ import { AlbumCrop } from "./Album";
 import { ToolIcon } from "./ToolIcon";
 import { flightLift } from "./StarFlight";
 import "./collection.css";
+import { Icon } from "@/ui/Icon";
 
 type Board = AdventureBook["boards"][number];
 type Discovery = Board["discoveries"][number];
@@ -318,7 +319,7 @@ export function Collection({ board, scene, collectedIds, selectedId, hintLevel, 
           <button type="button" className="collect__close collect__seek-close" aria-label={c.stopSeeking} onClick={() => onSelect(null)}><span aria-hidden>×</span></button>
           <div className="collect__seek-actions">
             {!selectedCollected ? <button type="button" className="collect__hint" disabled={disabled || hintLevel >= 3} onClick={onHint}>{hintLevel === 0 ? c.hint : hintLevel === 1 ? c.hintArea : c.hintShow}</button> : null}
-            {canSpeak ? <button type="button" className="collect__speak" disabled={disabled || muted} aria-label={c.listen} onClick={() => speak(hintLevel === 1 ? selected.hint : selected.name)}><span aria-hidden>🔊</span></button> : null}
+            {canSpeak ? <button type="button" className="collect__speak" disabled={disabled || muted} aria-label={c.listen} onClick={() => speak(hintLevel === 1 ? selected.hint : selected.name)}><Icon name="speaker" /></button> : null}
           </div>
         </div>
       ) : null}
@@ -341,7 +342,7 @@ export function Collection({ board, scene, collectedIds, selectedId, hintLevel, 
                 who is standing on the board already knows which board it is. */}
             <h2 className="collect__sheet-title">{c.title}</h2>
             <span className="collect__tally" aria-label={countAria}>{tally}</span>
-            {canSpeak ? <button type="button" className="collect__speak" disabled={muted} aria-label={c.listen} onClick={() => speak(`${tf(c.sheetTitle, { place: scene.name })}. ${complete ? c.complete : c.note}`)}><span aria-hidden>🔊</span></button> : null}
+            {canSpeak ? <button type="button" className="collect__speak" disabled={muted} aria-label={c.listen} onClick={() => speak(`${tf(c.sheetTitle, { place: scene.name })}. ${complete ? c.complete : c.note}`)}><Icon name="speaker" /></button> : null}
             <button type="button" className="collect__close" aria-label={c.close} onClick={() => shut(true)}><span aria-hidden>×</span></button>
           </header>
           <ul className="collect__grid">{board.discoveries.map(sticker)}</ul>
@@ -357,7 +358,7 @@ export function Collection({ board, scene, collectedIds, selectedId, hintLevel, 
         </header>
         <AlbumCrop art={scene.art} crop={inspected.cardCrop} className="collect__preview-picture" label={inspected.name} />
         {!selectedCollected && hintLevel > 0 ? <p className="collect__preview-hint">{hintLevel === 1 ? inspected.hint : hintLevel === 2 ? c.hintBroad : c.hintPrecise}</p> : null}
-        {canSpeak ? <button type="button" className="collect__speak" disabled={muted} aria-label={c.listen} onClick={() => speak(hintLevel === 1 ? inspected.hint : inspected.name)}><span aria-hidden="true">🔊</span></button> : null}
+        {canSpeak ? <button type="button" className="collect__speak" disabled={muted} aria-label={c.listen} onClick={() => speak(hintLevel === 1 ? inspected.hint : inspected.name)}><Icon name="speaker" /></button> : null}
       </dialog> : null}
 
       {flight ? (

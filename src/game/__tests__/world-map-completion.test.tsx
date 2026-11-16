@@ -260,7 +260,7 @@ describe("a finished world's map", () => {
     expect(view.container.querySelector(".game")?.getAttribute("dir")).toBe("rtl");
     fireEvent.click(view.getByRole("button", { name: getDict("he").game.map.viewCollection }));
     expect(await view.findByRole("heading", { name: "הדרכון של Test" })).toBeTruthy();
-    fireEvent.click(view.getByRole("button", { name: getDict("he").game.passport.map }));
+    fireEvent.click(view.getAllByRole("button", { name: getDict("he").game.passport.map })[0]!);
     expect(view.getByRole("region", { name: world.completion.title })).toBeTruthy();
     expect(JSON.parse(window.localStorage.getItem(`findme:progress:v1:${config.gameId}`)!)).toEqual(progress);
   });

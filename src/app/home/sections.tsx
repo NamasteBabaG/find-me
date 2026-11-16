@@ -4,12 +4,13 @@ import { PACKAGES, PACKAGE_ORDER, WORLD_PRICES, boardsFor, priceFor, type Packag
 import { formatMoney, pick, tf, type Currency, type Dictionary, type Locale } from "@/i18n";
 import { Reveal } from "./Reveal";
 import { WorldsCarousel, type CarouselWorld } from "./WorldsCarousel";
+import { Icon, type IconName } from "@/ui/Icon";
 
-const STEP_ICONS = ["📷", "🗺️", "💌", "🎉"] as const;
+const STEP_ICONS: readonly IconName[] = ["camera", "map", "brush", "search"];
 const STEP_TONES = ["sun", "aqua", "lavender", "coral"] as const;
-/** The holiday icon follows the locale: Hebrew site → menorah, everywhere else → a generic tree. */
-const occasionIcons = (locale: Locale) => ["🎂", "✈️", "👵", locale === "he" ? "🕎" : "🎄"] as const;
-const TRUST_ICONS = ["📷", "🔗", "🔍", "📚"] as const;
+/** Birthday, a trip, grandparents, a holiday: drawn in the site's own icon family, never emoji (Guy, 2026-11-16). */
+const OCCASION_ICONS: readonly IconName[] = ["cake", "plane", "heart", "candle"];
+const TRUST_ICONS: readonly IconName[] = ["camera", "link", "search", "book"];
 
 interface SectionProps {
   t: Dictionary;
@@ -40,7 +41,6 @@ export function HowItWorks({ t }: SectionProps) {
     <section id="how" className="how">
       <div className="fm-container">
         <Reveal className="sec-head">
-          <span className="fm-pill">{h.pill}</span>
           <h2>{h.title}</h2>
           <p className="fm-lead">{h.lead}</p>
         </Reveal>
@@ -51,9 +51,8 @@ export function HowItWorks({ t }: SectionProps) {
                 {i + 1}
               </span>
               <span className={`step__icon step__icon--${STEP_TONES[i] ?? "sun"}`} aria-hidden>
-                {STEP_ICONS[i] ?? "✨"}
+                <Icon name={STEP_ICONS[i] ?? "sparkle"} />
               </span>
-              <span className="fm-badge fm-badge--outline step__time">{s.time}</span>
               <h3>{s.title}</h3>
               <p>{s.text}</p>
             </Reveal>
@@ -68,7 +67,7 @@ export function HowItWorks({ t }: SectionProps) {
 const INSIDE_ORDER = ["three", "hints", "noFail", "replay", "bag", "link"] as const;
 const INSIDE_TONES = ["sun", "aqua", "coral", "lavender", "lime", "sea"] as const;
 /** One picture per promise, in the same chip the steps wear (a check on every card said nothing). */
-const INSIDE_ICONS = ["🔍", "💡", "🐢", "🔁", "🎒", "👪"] as const;
+const INSIDE_ICONS: readonly IconName[] = ["search", "bulb", "heart", "replay", "bag", "family"];
 
 export function Inside({ t }: SectionProps) {
   const s = t.home.inside;
@@ -76,7 +75,6 @@ export function Inside({ t }: SectionProps) {
     <section id="inside" className="fm-section">
       <div className="fm-container">
         <Reveal className="sec-head">
-          <span className="fm-pill">{s.pill}</span>
           <h2>{s.title}</h2>
           <p className="fm-lead">{s.lead}</p>
         </Reveal>
@@ -86,7 +84,7 @@ export function Inside({ t }: SectionProps) {
             return (
               <Reveal key={key} className={`feature feature--${INSIDE_TONES[i] ?? "sun"}`} delay={(i % 3) * 80}>
                 <span className="feature__icon" aria-hidden>
-                  {INSIDE_ICONS[i] ?? "✨"}
+                  <Icon name={INSIDE_ICONS[i] ?? "sparkle"} />
                 </span>
                 <h3>{tile.title}</h3>
                 <p>{tile.text}</p>
@@ -100,14 +98,13 @@ export function Inside({ t }: SectionProps) {
 }
 
 /* ─── Gift ─── */
-export function GiftSection({ t, locale }: SectionProps) {
+export function GiftSection({ t }: SectionProps) {
   const g = t.home.gift;
   return (
     <section id="gift" className="gift-sec">
       <div className="fm-container">
         <div className="fm-sheet fm-sheet--lavender">
           <Reveal className="sec-head">
-            <span className="fm-pill">{g.pill}</span>
             <h2>{g.title}</h2>
             <p className="fm-lead">{g.lead}</p>
           </Reveal>
@@ -132,7 +129,7 @@ export function GiftSection({ t, locale }: SectionProps) {
               {g.occasions.map((o, i) => (
                 <Reveal as="li" key={o.title} className="occasion" delay={i * 70}>
                   <span className="occasion__icon" aria-hidden>
-                    {occasionIcons(locale)[i] ?? "🎁"}
+                    <Icon name={OCCASION_ICONS[i] ?? "gift"} />
                   </span>
                   <h3>{o.title}</h3>
                   <p>{o.text}</p>
@@ -155,7 +152,6 @@ export function Worlds({ t, carousel }: { t: Dictionary; carousel: CarouselWorld
     <section id="worlds" className="worlds-sec">
       <div className="fm-container">
         <Reveal className="sec-head">
-          <span className="fm-pill">{w.pill}</span>
           <h2>{w.title}</h2>
           <p className="fm-lead">{w.lead}</p>
         </Reveal>
@@ -189,7 +185,6 @@ export function Pricing({ t, locale, allowedTiers, currency }: SectionProps & { 
     <section id="pricing" className="pricing-sec">
       <div className="fm-container">
         <Reveal className="sec-head">
-          <span className="fm-pill">{p.pill}</span>
           <h2>{p.title}</h2>
           <p className="fm-lead">{p.lead}</p>
         </Reveal>
@@ -230,14 +225,13 @@ export function Trust({ t }: SectionProps) {
       <div className="fm-container">
         <div className="fm-sheet fm-sheet--aqua">
           <Reveal className="sec-head">
-            <span className="fm-pill">{tr.pill}</span>
             <h2>{tr.title}</h2>
           </Reveal>
           <div className="trust">
             {tr.items.map((item, i) => (
               <Reveal key={item.title} className="trust__item" delay={i * 70}>
                 <span className="trust__icon" aria-hidden>
-                  {TRUST_ICONS[i] ?? "✅"}
+                  <Icon name={TRUST_ICONS[i] ?? "sparkle"} />
                 </span>
                 <h3>{item.title}</h3>
                 <p>{item.text}</p>
@@ -257,7 +251,6 @@ export function Faq({ t }: SectionProps) {
     <section id="faq" className="faq-sec">
       <div className="fm-container">
         <Reveal className="sec-head">
-          <span className="fm-pill">{f.pill}</span>
           <h2>{f.title}</h2>
         </Reveal>
         <div className="faq">

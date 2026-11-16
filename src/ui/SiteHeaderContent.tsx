@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { Dictionary } from "@/i18n/dictionaries/en";
 import { LanguageSwitcher } from "@/i18n/LanguageSwitcher";
+import { LogoEyes } from "./Icon";
 
 /** The account mark: a head and shoulders, in the toolbar's stroke language. */
 function AccountMark() {
@@ -20,7 +21,7 @@ export function SiteHeaderContent({ t, user, isAdmin, clear = false }: { t: Dict
       <div className="fm-container fm-header__inner">
         <Link href="/" className="fm-logo" aria-label={t.common.brand} title={t.common.brand}>
           <span className="fm-logo__mark" aria-hidden>
-            👀
+            <LogoEyes />
           </span>
         </Link>
         <nav className="fm-nav fm-nav--main" aria-label={t.nav.main}>

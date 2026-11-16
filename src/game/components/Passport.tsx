@@ -11,6 +11,7 @@ import { AlbumSection } from "./Album";
 import type { AdventureProgress } from "@/domain/adventure/progress";
 import type { AlbumStatus } from "../engine/album-storage";
 import { boardThumbnail } from "../engine/board-thumbnail";
+import { Icon } from "@/ui/Icon";
 
 function BoardThumbnail({ thumbnail, base }: { thumbnail: string; base: string }) {
   const [failed, setFailed] = useState<string[]>([]);
@@ -29,6 +30,12 @@ export function Passport({ config, progress, onMap, onOpen, onReplay, album = nu
   const complete = total > 0 && done >= total;
   return (
     <div className="passport">
+      {/* The way back is at the top, where the bag opens: it used to wait under nine places and the album. */}
+      <div className="passport__top">
+        <button type="button" className="fm-btn fm-btn--secondary passport__back" onClick={onMap}>
+          <Icon name="map" /> {g.passport.map}
+        </button>
+      </div>
       <header className="passport__head">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src={config.child.avatarUrl} alt="" className="fm-sticker" width={80} height={80} />
@@ -56,6 +63,7 @@ export function Passport({ config, progress, onMap, onOpen, onReplay, album = nu
                 <span className="loot__image">
                   <BoardThumbnail key={scene.art.base} thumbnail={boardThumbnail(scene, config.adventure)} base={scene.art.base} />
                   {isComplete ? <span className="loot__completed">{g.passport.collected}</span> : null}
+                  {!playable ? <span className="loot__lock" aria-hidden><Icon name="lock" /></span> : null}
                 </span>
                 <span className="loot__foot">
                   <span className="loot__name">{scene.name}</span>

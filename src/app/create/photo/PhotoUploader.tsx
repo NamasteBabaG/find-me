@@ -8,6 +8,7 @@ import { useI18n } from "@/i18n/client";
 import { errorText } from "@/i18n/errors";
 import Link from "next/link";
 import { serviceCopy } from "@/domain/legal";
+import { Icon } from "@/ui/Icon";
 
 interface Props {
   childName: string;
@@ -276,7 +277,7 @@ export function PhotoUploader({ childName, hasPhoto, rejectedCode, endpoint = "/
             }}
           >
             <span className="dropzone__icon" aria-hidden>
-              📷
+              <Icon name="camera" />
             </span>
             <span className="fm-label">{tf(p.pick, { name: childName })}</span>
             <span className="fm-hint">{p.pickHint}</span>
@@ -287,7 +288,7 @@ export function PhotoUploader({ childName, hasPhoto, rejectedCode, endpoint = "/
             <p className="tips__title">{p.tipsTitle}</p>
             <ul className="tips__list">
               {p.tips.map((tip) => (
-                <li key={tip}>{tip}</li>
+                <li key={tip}><Icon name="check" className="fm-icon tips__mark" strokeWidth={2.6} />{tip}</li>
               ))}
             </ul>
           </div>
@@ -359,9 +360,9 @@ export function PhotoUploader({ childName, hasPhoto, rejectedCode, endpoint = "/
             </span>
             {/* A small and a large glyph at the ends say which way is "more" without a word. */}
             <span className="cropper__zoom-row">
-              <span className="cropper__zoom-glyph" aria-hidden>🙂</span>
+              <span className="cropper__zoom-glyph" aria-hidden><Icon name="search" /></span>
               <input type="range" className="cropper__zoom" min={1} max={3} step={0.01} value={zoom} onChange={(e) => setZoom(Number(e.target.value))} />
-              <span className="cropper__zoom-glyph cropper__zoom-glyph--big" aria-hidden>🙂</span>
+              <span className="cropper__zoom-glyph cropper__zoom-glyph--big" aria-hidden><Icon name="search" /></span>
             </span>
           </label>
           {/* The consent sits with the button it unlocks, in one panel that is NOT

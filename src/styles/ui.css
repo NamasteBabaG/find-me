@@ -190,6 +190,10 @@ a.fm-btn[aria-disabled="true"] { pointer-events: none; }
 .fm-logo { font-family: var(--font-display); font-weight: 900; font-size: var(--fs-400); letter-spacing: -0.02em; text-decoration: none; color: var(--ink); display: inline-flex; align-items: center; gap: var(--space-1); white-space: nowrap; }
 .fm-logo__mark { width: var(--space-6); height: var(--space-6); border-radius: var(--radius-2); background: var(--grad-sun); display: grid; place-items: center; font-size: var(--fs-400); transform: rotate(-6deg); box-shadow: var(--shadow-1); transition: transform var(--dur-2) var(--ease-pop); }
 .fm-logo:hover .fm-logo__mark { transform: rotate(6deg) scale(1.08); }
+.fm-logo__eyes { width: 72%; height: 72%; color: var(--ink); }
+.fm-eyes__white { fill: var(--white); }
+/* The product's icons (src/ui/Icon.tsx): drawn in the text's colour at the size of their chip. */
+.fm-icon { width: 1em; height: 1em; flex: none; vertical-align: -0.125em; }
 .fm-nav { display: flex; align-items: center; gap: var(--space-0-5); flex-wrap: nowrap; }
 .fm-nav--main { display: none; }
 @media (min-width: 1100px) { .fm-nav--main { display: flex; } }
@@ -202,7 +206,7 @@ a.fm-btn[aria-disabled="true"] { pointer-events: none; }
 .fm-lang__btn:hover, .fm-lang__btn[aria-expanded="true"] { box-shadow: inset 0 0 0 2px var(--ink-4); }
 .fm-lang__btn:disabled, .fm-lang__btn[aria-disabled="true"] { opacity: 0.6; cursor: progress; }
 .fm-flag { width: 20px; height: 15px; border-radius: 3px; flex: none; box-shadow: 0 0 0 1px rgba(23, 22, 43, 0.12); }
-.fm-lang__chev { font-size: 10px; line-height: 1; color: var(--ink-2); }
+.fm-lang__chev { font-size: var(--fs-50); line-height: 1; color: var(--ink-2); }
 .fm-lang__menu { position: absolute; top: calc(100% + var(--space-1)); inset-inline-end: 0; min-width: 184px; padding: var(--space-1); display: grid; gap: 2px; background: var(--white); border: 2px solid var(--line); border-radius: var(--radius-3, 16px); box-shadow: var(--shadow-3, 0 16px 40px rgba(23, 22, 43, 0.18)); z-index: var(--z-popover, 60); transform-origin: top; animation: fm-lang-in var(--dur-2) var(--ease-pop, ease-out); }
 @keyframes fm-lang-in { from { opacity: 0; transform: translateY(-4px) scale(0.98); } to { opacity: 1; transform: none; } }
 .fm-lang__item { display: flex; align-items: center; gap: var(--space-1); width: 100%; min-height: var(--touch-min); padding-inline: var(--space-2); border-radius: var(--radius-2, 12px); font-family: var(--font-display); font-weight: 700; font-size: var(--fs-100); color: var(--ink-2); text-align: start; transition: background var(--dur-1), color var(--dur-1); }
@@ -212,11 +216,17 @@ a.fm-btn[aria-disabled="true"] { pointer-events: none; }
 .fm-footer { padding-block: var(--space-10) var(--space-6); color: var(--ink-2); font-size: var(--fs-100); line-height: var(--lh-100); }
 .fm-footer__grid { display: grid; gap: var(--space-6); grid-template-columns: 1.6fr 1fr 1fr 1.4fr; padding-bottom: var(--space-6); border-bottom: 1px solid var(--line); }
 @media (min-width: 721px) and (max-width: 1000px) { .fm-footer__grid { grid-template-columns: 1fr 1fr; } }
-@media (max-width: 720px) { .fm-footer__grid { grid-template-columns: 1fr; } }
-.fm-footer__col { display: flex; flex-direction: column; gap: var(--space-1); }
-.fm-footer__col a { color: var(--ink-2); text-decoration: none; min-height: var(--touch-min); display: inline-flex; align-items: center; }
+/* A phone reads the footer two columns across, the brand above them: one column of fifteen
+   48px rows was longer than most pages it closed. Links are 48px tall with no gap between them. */
+@media (max-width: 720px) {
+  .fm-footer__grid { grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: var(--space-3); row-gap: var(--space-4); }
+  .fm-footer__col:first-child { grid-column: 1 / -1; }
+}
+.fm-footer__col { display: flex; flex-direction: column; align-items: flex-start; }
+.fm-footer__col a { color: var(--ink-2); text-decoration: none; min-height: var(--touch-min); min-width: var(--touch-min); display: inline-flex; align-items: center; }
 .fm-footer__col a:hover { color: var(--ink); text-decoration: underline; }
-.fm-footer__title { font-family: var(--font-display); font-weight: 800; color: var(--ink); font-size: var(--fs-200); }
+.fm-footer__col .fm-logo { margin-bottom: var(--space-1); }
+.fm-footer__title { font-family: var(--font-display); font-weight: 800; color: var(--ink); font-size: var(--fs-200); line-height: var(--lh-200); margin-bottom: var(--space-1); }
 .fm-footer__bottom { display: flex; justify-content: space-between; gap: var(--space-2); flex-wrap: wrap; padding-top: var(--space-3); }
 
 /* Notice / alert */

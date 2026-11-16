@@ -8,6 +8,7 @@ import { getI18n } from "@/i18n/server";
 import { GameShell } from "@/game/components/GameShell";
 import { currentUser } from "@/lib/server/session";
 import { applyQaDetectiveArt } from "@/services/generation/qa-detective-art";
+import { LogoEyes } from "@/ui/Icon";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { robots: { index: false, follow: false } };
@@ -22,9 +23,7 @@ export default async function PlayPage({ params }: { params: Promise<{ token: st
     const text = !resolved.ok ? (resolved.reason === "not-ready" ? t.play.notReady : resolved.reason === "revoked" ? t.play.revoked : t.play.invalid) : t.play.notReady;
     return (
       <main className="fm-container fm-container--narrow fm-section fm-stack fm-stack--3 fm-center">
-        <span style={{ fontSize: "var(--fs-800)", lineHeight: 1 }} aria-hidden>
-          🙈
-        </span>
+        <span className="fm-logo__mark fm-logo__mark--big" aria-hidden><LogoEyes /></span>
         <h1>{t.play.heading}</h1>
         <p className="fm-lead">{text}</p>
       </main>

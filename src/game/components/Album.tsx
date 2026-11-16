@@ -10,6 +10,7 @@ import type { AlbumStatus } from "../engine/album-storage";
 import { useGameText } from "../i18n";
 import { StarTray } from "./StarTray";
 import "./collection.css";
+import { Icon } from "@/ui/Icon";
 
 type BookBoard = AdventureBook["boards"][number];
 type AlbumView = ReturnType<typeof adventureAlbum>;
@@ -128,7 +129,7 @@ export function AlbumSection({ config, album, mode, state, onOpen }: { config: G
           {view ? (
             <p className="album__tally">
               <span><span aria-hidden>✦</span> {tf(c.tally, { found: view.discoveries.collected, total: view.discoveries.total })} {c.title}</span>
-              <span><span aria-hidden>✉️</span> {tf(c.tally, { found: view.postcards.collected, total: view.postcards.total })} {g.album.postcards}</span>
+              <span><Icon name="letter" /> {tf(c.tally, { found: view.postcards.collected, total: view.postcards.total })} {g.album.postcards}</span>
             </p>
           ) : null}
         </div>
@@ -151,7 +152,7 @@ export function AlbumSection({ config, album, mode, state, onOpen }: { config: G
               <h3 className="album__board-name">{scene.name}</h3>
               <StarTray lit={found} total={board.targetIds.length} size="sm" label={tf(g.stars.tray, { earned: found, total: board.targetIds.length })} />
               <span className={`album__page-tally${allGot ? " album__page-tally--done" : ""}`}>
-                {allGot ? <><span aria-hidden>✨</span> {c.complete}</> : `${tf(c.tally, { found: collectedCount, total: board.discoveries.length })} ${c.title}`}
+                {allGot ? <><Icon name="sparkle" /> {c.complete}</> : `${tf(c.tally, { found: collectedCount, total: board.discoveries.length })} ${c.title}`}
               </span>
             </header>
             <div className="album__row">
@@ -161,7 +162,7 @@ export function AlbumSection({ config, album, mode, state, onOpen }: { config: G
                   <Postcard scene={scene} postcard={boardView.postcard} className="album__postcard" lazy />
                 ) : (
                   <div className="album__postcard-wait" data-postcard-remaining={remaining}>
-                    <span className="album__postcard-stamp" aria-hidden>✉️</span>
+                    <span className="album__postcard-stamp" aria-hidden><Icon name="letter" /></span>
                     <span>{tf(remaining === 1 ? g.album.postcardRemainingOne : g.album.postcardRemaining, { remaining })}</span>
                   </div>
                 )}

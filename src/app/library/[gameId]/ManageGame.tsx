@@ -7,6 +7,7 @@ import { Notice } from "@/ui/primitives";
 import { useI18n } from "@/i18n/client";
 import { errorText, type FlowResult } from "@/i18n/errors";
 import { deleteGameAction, rotateLinkAction, updateGiftAction } from "../actions";
+import { Icon } from "@/ui/Icon";
 
 interface Props {
   gameId: string;
@@ -119,7 +120,7 @@ export function ManageGame({ gameId, playUrl, gift, childName }: Props) {
             {/* The link as a thing to send, not a long address to read (Guy, 2026-10-05). The address itself appears
                 only if copying fails, ready to select by hand. */}
             <div className="share-ticket">
-              <span className="share-ticket__icon" aria-hidden>🔗</span>
+              <span className="share-ticket__icon" aria-hidden><Icon name="link" /></span>
               <span className="share-ticket__text">
                 <strong>{childName ? tf(l.share.linkLabel, { name: childName }) : l.share.linkAria}</strong>
                 {/* The ticket's own line says what just happened: ready, copied, or replaced. */}

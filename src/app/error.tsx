@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect } from "react";
 import { useI18n } from "@/i18n/client";
+import { LogoEyes } from "@/ui/Icon";
 
 /**
  * Last-resort boundary. Anything unexpected shows a calm page with a way back
@@ -16,7 +17,7 @@ export default function AppError({ error, reset }: { error: Error & { digest?: s
 
   return (
     <main className="fm-container fm-container--narrow fm-section fm-stack fm-stack--4 fm-center">
-      <span className="fm-pill">🙈</span>
+      <span className="fm-logo__mark fm-logo__mark--big" aria-hidden><LogoEyes /></span>
       <h1>{t.appError.title}</h1>
       <p className="fm-lead">{t.appError.lead}</p>
       <div className="fm-row fm-row--center">

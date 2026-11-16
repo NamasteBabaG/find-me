@@ -7,7 +7,7 @@
  * frame that means "show me all of it", a speaker with two arcs, and a folded
  * map instead of the emoji that was the odd one out.
  */
-export function ToolIcon({ name }: { name: "map" | "zoom-in" | "zoom-out" | "fit" | "sound-on" | "sound-off" | "replay" }) {
+export function ToolIcon({ name }: { name: "map" | "zoom-in" | "zoom-out" | "fit" | "sound-on" | "sound-off" | "replay" | "home" }) {
   const common = { fill: "none", stroke: "currentColor", strokeWidth: 2.8, strokeLinecap: "round" as const, strokeLinejoin: "round" as const };
   return (
     <svg className="scene__icon" viewBox="0 0 24 24" aria-hidden focusable="false">
@@ -31,6 +31,12 @@ export function ToolIcon({ name }: { name: "map" | "zoom-in" | "zoom-out" | "fit
           <path d="M20 9.5V5.6A1.6 1.6 0 0 0 18.4 4H14.5" />
           <path d="M4 14.5v3.9A1.6 1.6 0 0 0 5.6 20H9.5" />
           <path d="M20 14.5v3.9A1.6 1.6 0 0 1 18.4 20H14.5" />
+        </g>
+      ) : null}
+      {name === "home" ? (
+        <g {...common}>
+          <path d="M3.8 11.2 12 4.2l8.2 7" />
+          <path d="M6.2 9.4V19.2A.8.8 0 0 0 7 20h3.6v-5.2h2.8V20H17a.8.8 0 0 0 .8-.8V9.4" />
         </g>
       ) : null}
       {name === "replay" ? (

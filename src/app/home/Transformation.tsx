@@ -22,7 +22,6 @@ export async function Transformation() {
     <section id="transform" className="tf" aria-labelledby="tf-title">
       <div className="fm-container">
         <Reveal className="sec-head">
-          <span className="fm-pill">{tr.pill}</span>
           <h2 id="tf-title">{tr.title}</h2>
           <p className="fm-lead">{tr.lead}</p>
         </Reveal>

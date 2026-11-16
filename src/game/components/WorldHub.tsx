@@ -5,6 +5,8 @@ import { gameWorlds, scenesOfWorld, type GameConfig } from "@/domain/game/config
 import { gameStars, sceneIsComplete, type GameProgress } from "@/domain/game/progress";
 import { useGameText } from "../i18n";
 import { StarCounter } from "./StarCounter";
+import { GameExit, type GameExitTarget } from "./GameExit";
+import { Icon, worldIconName } from "@/ui/Icon";
 
 interface Props {
   config: GameConfig;
@@ -13,6 +15,8 @@ interface Props {
   onEnter: (worldSlug: string) => void;
   onPassport: () => void;
   roundRoute?: readonly string[];
+  /** The way out of the game, beside the title. */
+  exit?: GameExitTarget | null;
 }
 
 /**
@@ -26,7 +30,7 @@ interface Props {
  *
  * A one-world game never sees this: GameShell goes straight to the map.
  */
-export function WorldHub({ config, progress, currentWorld, onEnter, onPassport, roundRoute }: Props) {
+export function WorldHub({ config, progress, currentWorld, onEnter, onPassport, roundRoute, exit }: Props) {
   const { g, tf } = useGameText();
   const worlds = useMemo(() => gameWorlds(config), [config]);
 
@@ -40,6 +44,7 @@ export function WorldHub({ config, progress, currentWorld, onEnter, onPassport, 
   return (
     <section className="hub" aria-labelledby="hub-title">
       <header className="hub__head">
+        {exit ? <div className="hub__exit"><GameExit exit={exit} /></div> : null}
         <h1 id="hub-title" className="hub__title">
           {tf(g.hub.title, { name: config.child.name })}
         </h1>
@@ -57,7 +62,7 @@ export function WorldHub({ config, progress, currentWorld, onEnter, onPassport, 
               aria-current={world.slug === currentWorld ? true : undefined}
             >
               <span className="hub__icon" aria-hidden>
-                {world.collectible.icon}
+                <Icon name={worldIconName(world.slug)} />
               </span>
               <span className="hub__body">
                 <span className="hub__name-row">

@@ -10,7 +10,8 @@ import { FriendProgressSync, friendAlbumSeed, announceFriendParticipant, type Fr
 import { Button } from "../Button";
 import "./friends.css";
 import { FriendDialog } from "./FriendDialog";
-import { NICKNAME_ICONS, REACTION_ICONS } from "./icons";
+import { REACTION_ICONS } from "./icons";
+import { Icon } from "../Icon";
 import { friendRequest as post } from "./request";
 type Play = { config: GameConfig; participant: GuestParticipantView; shareId: string; expiresAt: string };
 
@@ -96,7 +97,7 @@ export function FriendPlay() {
         </div> : <>
           <fieldset className="friend-names" disabled={busy || joiningNickname !== null}><legend>{text.chooseName}</legend>
             {GUEST_NICKNAME_IDS.map(id => <button type="button" key={id} className={`friend-names__choice${nickname === id ? " is-selected" : ""}`} disabled={busy || joiningNickname !== null} aria-pressed={nickname === id} onClick={() => setNickname(id)}>
-              <span aria-hidden="true">{NICKNAME_ICONS[id]}</span>{text.nicknames[id]}
+              {text.nicknames[id]}
             </button>)}
           </fieldset>
           <Button size="kid" loading={busy} block onClick={() => void enter(false)}>{joiningNickname ? tf(text.continue, { name: text.nicknames[joiningNickname] }) : text.start}</Button>
@@ -144,7 +145,7 @@ function FriendActive({ play, token, switchError, onAnother, onExit }: { play: P
     } finally { switchPending.current = false; if (mounted.current) setSwitching(false); }
   }
   return <div className="friend-play">
-    <div className="friend-play__identity"><span>{NICKNAME_ICONS[play.participant.nicknameId]} {tf(text.player, { name })}</span>
+    <div className="friend-play__identity"><span>{tf(text.player, { name })}</span>
       <button type="button" disabled={terminal || switching} aria-busy={switching || undefined} aria-describedby={!terminal ? saveStatusId : undefined} onClick={() => void switchPlayer()}>{switching ? <span className="fm-spinner" aria-hidden="true" /> : null}{text.another}</button>
       {complete && !terminal ? <button type="button" onClick={() => setReactionOpen(true)}>{savedReaction ? text.reactionSent : text.reactionSend}</button> : null}
       <span id={saveStatusId} className="friend-play__save" role="status">{terminal ? "" : switching ? tf(text.switchSaving, { name }) : status === "saving" ? text.saving : status === "saved" ? text.saved : text.offline}</span>
@@ -155,10 +156,10 @@ function FriendActive({ play, token, switchError, onAnother, onExit }: { play: P
     {complete && !terminal ? <FriendDialog open={reactionOpen} title={text.reactionTitle} onClose={() => setReactionOpen(false)}><section className="friend-reaction" aria-label={text.reactionTitle}>
       <h2>{savedReaction ? text.reactionSent : text.reactionTitle}</h2>
       {!savedReaction ? <><p>{text.reactionHelp}</p><div className="friend-reaction__choices">{GUEST_REACTION_IDS.map(id => <button type="button" key={id}
-        aria-pressed={(snapshot.reactionId ?? reaction) === id} disabled={Boolean(snapshot.reactionId)} onClick={() => setReaction(id)}>{REACTION_ICONS[id]} {text.reactions[id]}</button>)}</div>
+        aria-pressed={(snapshot.reactionId ?? reaction) === id} disabled={Boolean(snapshot.reactionId)} onClick={() => setReaction(id)}><Icon name={REACTION_ICONS[id]} /> {text.reactions[id]}</button>)}</div>
         <Button size="kid" disabled={!reaction || Boolean(snapshot.reactionId)} loading={Boolean(snapshot.reactionId) && status === "saving"} onClick={() => { sync.react(reaction); setSnapshot(sync.current()); }}>{text.reactionSend}</Button>
         {snapshot.reactionId && status === "offline" ? <p role="status">{text.offline}</p> : null}
-      </> : <p>{REACTION_ICONS[snapshot.reactionId!]} {text.reactions[snapshot.reactionId!]}</p>}
+      </> : <p><Icon name={REACTION_ICONS[snapshot.reactionId!]} /> {text.reactions[snapshot.reactionId!]}</p>}
     </section></FriendDialog> : null}
     <FriendDialog open={unsaved && !terminal} title={tf(text.unsavedTitle, { name })} onClose={() => setUnsaved(false)}>
       <section className="friend-unsaved">

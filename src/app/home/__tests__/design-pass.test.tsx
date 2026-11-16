@@ -44,7 +44,9 @@ describe("design pass: what's inside", () => {
     expect(view.container.querySelectorAll(".feature")).toHaveLength(6);
     expect(view.container.querySelectorAll(".feature__icon")).toHaveLength(6);
     expect(view.container.querySelector(".feature__check")).toBeNull();
-    const icons = Array.from(view.container.querySelectorAll(".feature__icon"), (n) => n.textContent?.trim());
+    // Drawn icons, never emoji (2026-11-16): each chip holds one svg and no text.
+    const icons = Array.from(view.container.querySelectorAll(".feature__icon"), (n) => n.querySelector("svg")?.getAttribute("data-icon"));
     expect(new Set(icons).size).toBe(6);
+    for (const chip of view.container.querySelectorAll(".feature__icon")) expect(chip.textContent?.trim()).toBe("");
   });
 });

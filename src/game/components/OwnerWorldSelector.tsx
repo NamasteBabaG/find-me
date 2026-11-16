@@ -7,6 +7,7 @@ import { getDict } from "@/i18n";
 import type { FamilyWorldCard, FamilyWorlds } from "@/domain/family-worlds";
 import { useGameText } from "../i18n";
 import "./OwnerWorldSelector.css";
+import { Icon, worldIconName } from "@/ui/Icon";
 
 const HISTORY_KEY = "findMeWorldSelector";
 
@@ -21,8 +22,8 @@ function ParentContinueLabel({ label, opening }: { label: string; opening: strin
 
 /** Shown only by the session-authorized owner shell. The endpoint repeats that
  * authorization; none of these sibling games enters the shareable config. */
-export function OwnerWorldSelector({ gameId, worldSlug, icon = "🌍", onCurrentWorld }: {
-  gameId: string; worldSlug?: string; icon?: string; onCurrentWorld(worldSlug: string): void;
+export function OwnerWorldSelector({ gameId, worldSlug, onCurrentWorld }: {
+  gameId: string; worldSlug?: string; onCurrentWorld(worldSlug: string): void;
 }) {
   const { locale, dir, tf } = useGameText();
   const copy = getDict(locale).worldSelector;
@@ -93,7 +94,7 @@ export function OwnerWorldSelector({ gameId, worldSlug, icon = "🌍", onCurrent
 
   return <>
     <button ref={trigger} type="button" className="owner-worlds__trigger" onClick={() => { setNavigating(null); setOpen(true); }} aria-haspopup="dialog" aria-expanded={open}>
-      <span className="owner-worlds__trigger-icon" aria-hidden>{icon}</span><span>{copy.trigger}</span><span aria-hidden>⌄</span>
+      <span className="owner-worlds__trigger-icon" aria-hidden><Icon name={worldIconName(worldSlug)} /></span><span>{copy.trigger}</span><Icon name="chevron" />
     </button>
     {open ? <dialog ref={dialog} className="owner-worlds" aria-labelledby={titleId} dir={dir} lang={locale}
       onCancel={event => { event.preventDefault(); close(); }} onClose={close}
@@ -103,7 +104,7 @@ export function OwnerWorldSelector({ gameId, worldSlug, icon = "🌍", onCurrent
           <button type="button" className="owner-worlds__close" onClick={close} aria-label={copy.close}><span aria-hidden>×</span></button>
         </header>
         {selected ? <div className="owner-worlds__preview">
-          <div className="owner-worlds__emblem owner-worlds__emblem--large" aria-hidden>{selected.icon}</div>
+          <div className="owner-worlds__emblem owner-worlds__emblem--large" aria-hidden><Icon name={worldIconName(selected.worldSlug)} /></div>
           <p className="owner-worlds__tagline">{selected.tagline || tf(copy.previewText, { places: selected.totalPlaces })}</p>
           <p className="owner-worlds__state">{selected.status === "available" ? tf(copy.previewStats, { places: selected.totalPlaces }) : status(selected)}</p>
           {selected.purchaseHref ? <>
@@ -117,7 +118,7 @@ export function OwnerWorldSelector({ gameId, worldSlug, icon = "🌍", onCurrent
           {[{ title: copy.mine, cards: owned }, { title: copy.catalog, cards: catalog }].map(group => group.cards.length ? <section key={group.title} className="owner-worlds__section" aria-label={group.title}>
             <h3>{group.title}</h3><ul className="owner-worlds__grid">{group.cards.map(card => <li key={card.worldSlug}>
               <button type="button" className={`owner-worlds__card${card.current ? " is-current" : ""}`} onClick={() => choose(card)} aria-current={card.current ? "true" : undefined} aria-disabled={navigating ? true : undefined} aria-busy={navigating === card.worldSlug || undefined}>
-                <span className="owner-worlds__emblem" aria-hidden>{card.icon}</span>
+                <span className="owner-worlds__emblem" aria-hidden><Icon name={worldIconName(card.worldSlug)} /></span>
                 <span className="owner-worlds__card-copy"><strong>{card.name}</strong><span className="owner-worlds__state" aria-live="polite">{navigating === card.worldSlug ? tf(copy.openingWorld, { world: card.name }) : status(card)}</span>
                   {card.completedPlaces !== null ? <span className="owner-worlds__progress">{tf(copy.progress, { done: card.completedPlaces, total: card.totalPlaces })}</span> : null}
                 </span><span className="owner-worlds__card-arrow" aria-hidden>{navigating === card.worldSlug ? <span className="fm-spinner" /> : dir === "rtl" ? "‹" : "›"}</span>

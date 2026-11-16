@@ -268,6 +268,8 @@
 .feature__icon { width: var(--space-8); height: var(--space-8); border-radius: var(--radius-2); display: grid; place-items: center; font-size: var(--fs-500); line-height: 1; box-shadow: var(--shadow-1); transform: rotate(-4deg); margin-bottom: var(--space-1); transition: transform var(--dur-2) var(--ease-pop); }
 .feature:hover .feature__icon, .step:hover .step__icon { transform: rotate(4deg) scale(1.08); }
 .step__icon { transition: transform var(--dur-2) var(--ease-pop); }
+/* The chips hold the product's line icons (src/ui/Icon.tsx), in ink on the tint. */
+.step__icon, .feature__icon, .trust__icon { color: var(--ink); }
 .feature--sun .feature__icon { background: var(--sun-soft); }
 .feature--aqua .feature__icon { background: var(--aqua-soft); }
 .feature--coral .feature__icon { background: var(--coral-soft); }
@@ -284,7 +286,7 @@
 .occasions { display: grid; gap: var(--space-2); grid-template-columns: repeat(2, minmax(0, 1fr)); list-style: none; margin: 0; padding: 0; }
 .occasion { background: var(--white); border-radius: var(--radius-3); padding: var(--space-3); box-shadow: var(--shadow-1); display: flex; flex-direction: column; gap: var(--space-0-5); transition: transform var(--dur-2) var(--ease-out); min-height: 180px; }
 .occasion:hover { transform: translateY(-4px) rotate(-1deg); }
-.occasion__icon { font-size: var(--fs-600); line-height: 1; }
+.occasion__icon { display: inline-flex; font-size: var(--fs-600); line-height: 1; color: var(--lavender-deep); }
 .occasion h3 { font-size: var(--fs-300); line-height: var(--lh-300); }
 .occasion p { color: var(--ink-2); font-size: var(--fs-100); line-height: var(--lh-100); }
 .gift-visual { display: flex; flex-direction: column; align-items: center; gap: var(--space-5); }
@@ -471,7 +473,7 @@
   .create__head .fm-lead { font-size: var(--fs-200); line-height: var(--lh-200); }
   .dropzone { padding: var(--space-3) var(--space-2); gap: var(--space-1); }
   .dropzone__icon { font-size: var(--fs-500); }
-  .tips { padding: var(--space-1-5, 12px) var(--space-2); gap: var(--space-0-5); }
+  .tips { padding: var(--space-1) var(--space-2); gap: var(--space-0-5); }
   .tips__list { display: flex; flex-wrap: wrap; gap: var(--space-0-5) var(--space-2); }
   .package { gap: var(--space-1); }
   .package__price { font-size: var(--fs-500); line-height: var(--lh-500); }
@@ -503,6 +505,9 @@
 .tips { width: 100%; padding: var(--space-2) var(--space-3); border-radius: var(--radius-2); background: var(--paper-2); display: flex; flex-direction: column; gap: var(--space-1); }
 .tips__title { font-family: var(--font-display); font-weight: 700; font-size: var(--fs-100); line-height: var(--lh-100); color: var(--ink-3); }
 .tips__list { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-0-5) var(--space-3); grid-template-columns: repeat(2, minmax(0, 1fr)); }
+/* Each tip opens with the product's tick, where an emoji used to stand. */
+.tips__list li { display: flex; align-items: center; gap: var(--space-1); }
+.tips__mark { color: var(--leaf-deep); }
 .tips__list li { display: flex; gap: var(--space-1); align-items: center; font-size: var(--fs-100); line-height: var(--lh-100); color: var(--ink-2); }
 @media (max-width: 480px) { .tips__list { grid-template-columns: 1fr; } }
 /* The crop is a sticker being made: the circle wears the product's white rim
@@ -518,7 +523,8 @@
 .cropper__zoom-row { display: flex; align-items: center; gap: var(--space-1); width: min(80vw, 320px); }
 .cropper__zoom-glyph { font-size: var(--fs-100); line-height: 1; flex-shrink: 0; }
 .cropper__zoom-glyph--big { font-size: var(--fs-400); }
-.cropper__zoom { flex: 1; min-width: 0; height: var(--space-1); margin: 0; border-radius: var(--radius-pill); background: var(--paper-3); appearance: none; -webkit-appearance: none; cursor: pointer; accent-color: var(--sun-deep); }
+/* The input is a full 48px row to grab; only its track is drawn 8px tall. */
+.cropper__zoom { flex: 1; min-width: 0; height: var(--touch-min); margin: 0; border-radius: var(--radius-pill); background: transparent; appearance: none; -webkit-appearance: none; cursor: pointer; accent-color: var(--sun-deep); }
 .cropper__zoom::-webkit-slider-runnable-track { height: var(--space-1); border-radius: var(--radius-pill); background: var(--paper-3); }
 .cropper__zoom::-moz-range-track { height: var(--space-1); border-radius: var(--radius-pill); background: var(--paper-3); }
 .cropper__zoom::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: var(--space-3); height: var(--space-3); margin-top: calc((var(--space-3) - var(--space-1)) / -2); border-radius: var(--radius-pill); background: var(--sun); box-shadow: inset 0 0 0 2px var(--white), 0 0 0 2px var(--sun-deep), var(--shadow-1); cursor: grab; transition: transform var(--dur-1) var(--ease-out); }
@@ -579,10 +585,13 @@
 .summary__row { display: flex; justify-content: space-between; gap: var(--space-2); padding-block: var(--space-1); border-bottom: 1px solid var(--line); }
 .summary__row:last-child { border-bottom: 0; }
 .summary__scenes { display: flex; gap: var(--space-1); flex-wrap: wrap; }
-.summary__more > summary { cursor: pointer; font-weight: 700; color: var(--sea-deep); font-size: var(--fs-100); line-height: var(--lh-100); list-style: none; }
-.summary__more > summary::before { content: "▸ "; }
+.summary__more > summary { cursor: pointer; font-weight: 700; color: var(--sea-deep); font-size: var(--fs-100); line-height: var(--lh-100); list-style: none; display: inline-flex; align-items: center; min-height: var(--touch-min); }
+.summary__more > summary::-webkit-details-marker { display: none; }
+.summary__more > summary::before { content: "▸ "; white-space: pre; }
+/* A closed disclosure points the way the line reads. */
+.summary__more:dir(rtl) > summary::before { content: "◂ "; }
 .summary__more[open] > summary::before { content: "▾ "; }
-.summary__more[open] > summary { margin-bottom: var(--space-1); }
+.summary__more[open] > summary { margin-bottom: 0; }
 
 /* Mock payment (sandbox PSP page) */
 .psp { max-width: 560px; }
@@ -617,6 +626,7 @@
 .cp__avatar { width: 100%; height: 100%; border-radius: var(--radius-pill); object-fit: cover; background: var(--white); animation: cp-pop var(--dur-3) var(--ease-out) both; }
 .cp--done { gap: var(--space-3); }
 .cp__delivery { display: flex; flex-direction: column; align-items: center; gap: var(--space-1); padding-top: var(--space-2); border-top: 1px solid var(--line); width: 100%; }
+.cp__manage { display: inline-flex; align-items: center; justify-content: center; min-height: var(--touch-min); padding-inline: var(--space-2); }
 .cp__pencil { font-size: var(--fs-800); line-height: 1; animation: cp-scribble 1.6s ease-in-out infinite; transform-origin: 80% 80%; }
 .cp__party { font-size: var(--fs-800); line-height: 1; }
 .cp__title { font-family: var(--font-display); font-size: var(--fs-500); line-height: var(--lh-500); font-weight: 800; letter-spacing: -0.01em; }
@@ -907,8 +917,11 @@
 .service-reference { overflow-wrap: anywhere; }
 .service-message { white-space: pre-wrap; overflow-wrap: anywhere; }
 .service-receipt__actions { display: flex; flex-wrap: wrap; gap: var(--space-2); }
-.service-acceptance { display: flex; align-items: flex-start; gap: var(--space-2); line-height: 1.6; min-height: var(--touch-min); cursor: pointer; }
-.service-acceptance input { flex: 0 0 auto; width: 22px; height: 22px; margin: 2px 0 0; accent-color: var(--sea-deep); }
+/* Dressed as the photo step's consent (.uploader__consent). The real checkbox stays under the tick,
+   the size of the tick, so the browser's "required" bubble points at it. */
+.service-acceptance .uploader__tick { align-self: flex-start; margin-top: var(--space-0-5); }
+.service-acceptance { align-items: flex-start; }
+.service-acceptance input { inset-inline-start: var(--space-2); top: calc(var(--space-2) + var(--space-0-5)); width: var(--space-3); height: var(--space-3); margin: 0; }
 @media (max-width: 540px) {
   .service-page { gap: var(--space-4); }
   .service-form, .service-receipt { padding: var(--space-3); }
@@ -922,3 +935,13 @@
 
 .create__loading-line { height: var(--space-3); margin-block: var(--space-3); border-radius: var(--radius-pill); background: var(--paper-2); }
 .create__loading-line:nth-child(2) { width: 70%; }
+
+/* Icons that replaced emoji (2026-11-16): the colour of each mark, the size stays the box's em. */
+.cp__pencil { color: var(--sun-deep); }
+.cp__party { color: var(--gold-deep); display: inline-flex; }
+.dropzone__icon { color: var(--ink); }
+.lib__wrap { color: var(--ink-2); display: inline-flex; }
+.magic-confirm-mark { color: var(--ink); }
+.psp__brand .fm-icon { margin-inline-end: var(--space-0-5); }
+/* The brand mark at the size of a page that hid: error, not-found, a link that no longer opens. */
+.fm-logo__mark--big { width: var(--space-12); height: var(--space-12); border-radius: var(--radius-4); margin-inline: auto; }

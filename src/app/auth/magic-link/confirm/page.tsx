@@ -8,6 +8,7 @@ import { inspectMagicLink } from "@/services/auth.service";
 import { SiteFooter, SiteHeader } from "@/ui/Shell";
 import { MAGIC_CONFIRM_COOKIE, magicConfirmationNonce } from "../challenge";
 import "./confirmation.css";
+import { Icon } from "@/ui/Icon";
 
 export const dynamic = "force-dynamic";
 // Native form POST under no-referrer sends Origin:null and fails the CSRF gate.
@@ -26,7 +27,7 @@ export default async function MagicLinkConfirmation({ searchParams }: { searchPa
     <SiteHeader user={null} isAdmin={false} />
     <main className="magic-confirm-shell">
       <section className="magic-confirm-card fm-card" aria-labelledby="magic-confirm-title">
-        <span className="magic-confirm-mark" aria-hidden>🔑</span>
+        <span className="magic-confirm-mark" aria-hidden><Icon name="key" /></span>
         <h1 id="magic-confirm-title">{account ? copy.title : copy.invalidTitle}</h1>
         <p>{account ? copy.lead : copy.invalidBody}</p>
         {account && nonce && <>

@@ -1,6 +1,7 @@
 import { SiteFooter, SiteHeader, Stepper, Notice } from "@/ui/Shell";
 import { currentUser, isAdminEmail } from "@/lib/server/session";
 import { ComposedSprite } from "@/game/components/ComposedSprite";
+import { Icon } from "@/ui/Icon";
 
 export const metadata = { title: "Design system", robots: { index: false } };
 
@@ -106,7 +107,7 @@ export default async function DesignSystemPage() {
             <button className="fm-btn fm-btn--lg">Large 64</button>
             <button className="fm-btn fm-btn--xl">XL 80</button>
             <button className="fm-btn fm-btn--secondary fm-btn--kid" aria-label="kid">
-              💡
+              <Icon name="bulb" />
             </button>
           </div>
           <p className="fm-small">Minimum 48px for adults, 64px for anything a child taps. Primary glows on hover; nothing has hard offset shadows anymore.</p>
@@ -115,7 +116,7 @@ export default async function DesignSystemPage() {
         <section className="fm-stack fm-stack--2">
           <h2>Pills, badges, notices</h2>
           <div className="fm-row">
-            <span className="fm-pill">✨ Pill</span>
+            <span className="fm-pill">Pill</span>
             <span className="fm-pill fm-pill--sun">Sun pill</span>
             <span className="fm-pill fm-pill--coral">Coral pill</span>
             <span className="fm-sticker-badge">Sticker badge</span>
