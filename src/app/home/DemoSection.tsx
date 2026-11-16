@@ -5,6 +5,7 @@ import dynamic from "next/dynamic";
 import type { GameConfig } from "@/domain/game/config";
 import { useI18n } from "@/i18n/client";
 import { Reveal } from "./Reveal";
+import { SkyClouds } from "@/ui/SkyClouds";
 
 const GameShell = dynamic(() => import("@/game/components/GameShell").then((m) => m.GameShell), {
   ssr: false,
@@ -23,6 +24,7 @@ export function DemoSection({ config }: { config: GameConfig }) {
   const art = config.scenes[0]?.art;
   return (
     <section id="demo" className="demo">
+      <SkyClouds variant="sun" />
       <div className="fm-container demo__inner">
         <Reveal className="demo__head">
           <h2 className="demo__title">{tf(d.title, { name })}</h2>
