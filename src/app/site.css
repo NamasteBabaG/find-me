@@ -271,10 +271,6 @@
 .steps.rv .step { opacity: 0; transform: translate3d(0, var(--space-3), 0); transition: opacity var(--dur-reveal) var(--ease-expo), transform var(--dur-reveal) var(--ease-expo); transition-delay: calc(var(--i, 0) * 140ms); }
 .steps.is-in .step { opacity: 1; transform: none; }
 .step__icon { position: relative; z-index: 1; width: var(--stop); height: var(--stop); border-radius: var(--radius-3); display: grid; place-items: center; font-size: var(--fs-500); background: var(--white); color: var(--ink); box-shadow: var(--hairline), var(--shadow-1); }
-.step__icon--sun { background: var(--sun-soft); }
-.step__icon--aqua { background: var(--aqua-soft); }
-.step__icon--lavender { background: var(--lavender-soft); }
-.step__icon--coral { background: var(--coral-soft); }
 .step__num { position: absolute; z-index: 2; top: calc(var(--space-1) * -1); inset-inline-start: calc(50% + var(--stop) / 2 - var(--space-2)); display: grid; place-items: center; width: var(--space-3); height: var(--space-3); border-radius: var(--radius-pill); background: var(--ink); color: var(--white); box-shadow: 0 0 0 3px var(--paper); font-family: var(--font-display); font-weight: 800; font-size: var(--fs-50); line-height: 1; font-variant-numeric: tabular-nums; }
 .step h3 { font-size: var(--fs-300); line-height: var(--lh-300); margin-top: var(--space-1); }
 .step p { color: var(--ink-2); max-width: 30ch; }
@@ -290,7 +286,7 @@
   .step p { max-width: none; }
 }
 
-/* What's inside: six promises read as one calm table: a hairline over each, a sun chip, the words. No boxes and no
+/* What's inside: six promises read as one calm table: a hairline over each, a chip in the tint run, the words. No boxes and no
    hover: they are not things to press. */
 .features { display: grid; column-gap: var(--space-6); row-gap: var(--space-5); grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .feature { position: relative; display: grid; grid-template-columns: var(--space-6) minmax(0, 1fr); column-gap: var(--space-2); row-gap: var(--space-0-5); align-content: start; padding-top: var(--space-3); border-top: 1px solid var(--line); }
@@ -298,7 +294,17 @@
 .feature p { grid-column: 2; color: var(--ink-2); }
 .feature__icon { grid-row: 1 / span 2; width: var(--space-6); height: var(--space-6); border-radius: var(--radius-pill); display: grid; place-items: center; font-size: var(--fs-300); line-height: 1; background: var(--sun-soft); color: var(--ink); }
 /* The chips hold the product's line icons (src/ui/Icon.tsx), in ink on the tint. */
-.step__icon, .feature__icon, .trust__icon { color: var(--ink); }
+.step__icon, .feature__icon { color: var(--ink); }
+/* The colour grammar's chip run (DESIGN_SYSTEM.md, "Colour grammar"): a row of icon chips on paper takes the
+   four gouache tints in one fixed order, sun, aqua, lavender, coral, and starts again. Steps and "what's
+   inside" read as one family, and no two neighbours share a tint. */
+.tint--sun { background: var(--sun-soft); }
+.tint--aqua { background: var(--aqua-soft); }
+.tint--lavender { background: var(--lavender-soft); }
+.tint--coral { background: var(--coral-soft); }
+/* On a tinted sheet the icons sit in white discs and wear that sheet's deep tone: lavender for the gift
+   occasions, aqua for the trust facts. */
+.trust__icon { color: var(--aqua-deep); }
 @media (max-width: 1023px) { .features { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 600px) { .features { grid-template-columns: 1fr; row-gap: var(--space-3); } }
 
@@ -321,7 +327,10 @@
 .gift-tag strong { font-family: var(--font-display); font-size: var(--fs-500); line-height: var(--lh-500); font-weight: 900; }
 .gift-features { display: flex; flex-direction: column; gap: var(--space-1-5, 12px); list-style: none; margin: 0; padding: 0; width: 100%; max-width: 480px; }
 .gift-features li { display: grid; grid-template-columns: var(--space-3) minmax(0, 1fr); gap: var(--space-1-5, 12px); align-items: start; font-weight: 600; font-size: var(--fs-200); line-height: var(--lh-200); text-align: start; }
-.gift-features li::before { content: ""; width: var(--space-3); height: var(--space-3); margin-top: 0; border-radius: var(--radius-pill); background: var(--grape) var(--icon-check-on) center / 14px no-repeat; }
+/* "Included" is one mark everywhere: a leaf tick, the same green that means found in the game and done in the
+   family area. A disc where the list is a list (gift, photo-to-world), the bare tick in running facts (hero,
+   price card). */
+.gift-features li::before { content: ""; width: var(--space-3); height: var(--space-3); margin-top: 0; border-radius: var(--radius-pill); background: var(--leaf) var(--icon-check-on) center / 14px no-repeat; }
 
 /* Worlds */
 .worlds { display: grid; gap: var(--space-3); grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); }
@@ -360,7 +369,7 @@
 .offer__more .offer__price { font-size: var(--fs-600); line-height: var(--lh-600); }
 .offer__feats { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--space-1); }
 .offer__feats li { display: flex; gap: var(--space-1); align-items: flex-start; color: rgba(255, 255, 255, 0.86); }
-.offer__feats li::before { content: ""; flex: none; width: var(--space-2); height: var(--lh-200); background: var(--aqua); -webkit-mask: var(--icon-check) center / contain no-repeat; mask: var(--icon-check) center / contain no-repeat; }
+.offer__feats li::before { content: ""; flex: none; width: var(--space-2); height: var(--lh-200); background: var(--leaf); -webkit-mask: var(--icon-check) center / contain no-repeat; mask: var(--icon-check) center / contain no-repeat; }
 .offer__first .fm-btn { align-self: flex-start; margin-top: auto; }
 .offer__more p { margin: 0; color: var(--ink-2); }
 .offer__plus { grid-column: 2; align-self: center; justify-self: center; z-index: 1; display: grid; place-items: center; width: var(--space-8); height: var(--space-8); border-radius: 50%; background: var(--sun); color: var(--ink); box-shadow: 0 0 0 var(--space-0-5) var(--white), var(--shadow-2); font-size: var(--fs-400); line-height: 1; }
@@ -827,7 +836,7 @@
 .tf-card__text { color: var(--ink-2); }
 .tf-points { list-style: none; margin: var(--space-6) auto 0; padding: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-3); max-width: 1100px; }
 .tf-points li { display: grid; grid-template-columns: var(--space-3) minmax(0, 1fr); gap: var(--space-1-5, 12px); align-items: start; font-weight: 600; text-align: start; }
-.tf-points li::before { content: ""; width: var(--space-3); height: var(--space-3); border-radius: var(--radius-pill); background: var(--grape) var(--icon-check-on) center / 14px no-repeat; }
+.tf-points li::before { content: ""; width: var(--space-3); height: var(--space-3); border-radius: var(--radius-pill); background: var(--leaf) var(--icon-check-on) center / 14px no-repeat; }
 .tf-cta { display: flex; justify-content: center; margin-top: var(--space-5); }
 /* Real example pair: the photo breathes, the character floats with a couple of sparkles, the found one glows and speaks */
 .tf-card__media--photo img { animation: tf-kenburns 14s var(--ease-in-out) infinite alternate; transform-origin: 50% 35%; }
