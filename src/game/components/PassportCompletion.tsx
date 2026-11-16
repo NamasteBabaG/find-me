@@ -118,7 +118,7 @@ export function PassportCompletion({ store, scene, onStay }: { store: PlayStore;
       <div className="passport-finale__binding">
       <div className="passport-finale__page">
         <div className="passport-finale__memory">
-          <p className="passport-finale__imprint" aria-hidden="true">FIND ME WORLDS · {scene.name}</p>
+          <p className="passport-finale__imprint" aria-hidden="true">{getDict(store.config.locale).common.brand} · {scene.name}</p>
           <div className="passport-finale__photo" data-new={Boolean(delta?.stamp)}>{photo && store.album ? <PassportMemory config={store.config} progress={store.album} boardSlug={scene.slug} targetId={photo.targetId} label={scene.name} /> : null}</div>
           <PassportStamp className="passport-finale__stamp" isNew={Boolean(delta?.stamp)} label={copy.stamped} />
           <span className="passport-finale__folio" aria-hidden="true">{folio}</span>

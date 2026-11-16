@@ -6,6 +6,7 @@ import { useActionState, useState } from "react";
 import { Button, LinkButton } from "@/ui/Button";
 import { useI18n } from "@/i18n/client";
 import { errorText } from "@/i18n/errors";
+import { Icon } from "@/ui/Icon";
 import { chooseScenesAction, type ActionResult } from "../actions";
 
 interface SceneOption {
@@ -49,7 +50,7 @@ export function ScenePicker({ draftGameId, scenes, want, preselected, note }: { 
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src={sc.thumbnail} alt="" />
               <span className="pick__check" aria-hidden>
-                {on ? "✓" : "＋"}
+                <Icon name={on ? "check" : "plus"} strokeWidth={3} />
               </span>
               <span className="pick__name">{sc.name}</span>
               <span className="pick__tag">{sc.tagline}</span>
@@ -68,9 +69,7 @@ export function ScenePicker({ draftGameId, scenes, want, preselected, note }: { 
         </LinkButton>
         <Button type="submit" size="lg" loading={pending} disabled={!full}>
           {pending ? t.common.savingStep : s.next}
-          <span className="fm-btn__arrow" aria-hidden>
-            ➜
-          </span>
+          <span className="fm-btn__arrow" aria-hidden />
         </Button>
       </div>
     </form>

@@ -19,7 +19,8 @@ describe("the wizard's steps", () => {
     const items = view.container.querySelectorAll(".fm-steps__item");
     expect(items).toHaveLength(5);
     expect(Array.from(items, (i) => i.querySelector(".fm-steps__label")?.textContent)).toEqual([...STEPS]);
-    expect(Array.from(items, (i) => i.querySelector(".fm-steps__dot")?.textContent)).toEqual(["✓", "✓", "3", "4", "5"]);
+    // Steps behind wear the drawn tick (2026-11-16: an icon, never the text glyph); the ones ahead keep their number.
+    expect(Array.from(items, (i) => i.querySelector(".fm-steps__dot svg")?.getAttribute("data-icon") ?? i.querySelector(".fm-steps__dot")?.textContent)).toEqual(["check", "check", "3", "4", "5"]);
     expect(items[2]!.getAttribute("aria-current")).toBe("step");
     expect(items[2]!.classList.contains("is-current")).toBe(true);
     expect(items[0]!.classList.contains("is-done")).toBe(true);

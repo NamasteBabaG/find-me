@@ -23,6 +23,9 @@ export function SiteHeaderContent({ t, user, isAdmin, clear = false }: { t: Dict
           <span className="fm-logo__mark" aria-hidden>
             <LogoEyes />
           </span>
+          <span className="fm-logo__word" aria-hidden>
+            {t.common.brand}
+          </span>
         </Link>
         <nav className="fm-nav fm-nav--main" aria-label={t.nav.main}>
           <Link href="/#demo">{t.nav.demo}</Link>

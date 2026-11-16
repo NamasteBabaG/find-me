@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { Icon } from "./Icon";
 
 /**
  * Presentational primitives safe to import from client components
@@ -20,7 +21,7 @@ export function Stepper({ steps, current, count }: { steps: readonly string[]; c
           return (
             <li key={label} className={`fm-steps__item${state ? ` ${state}` : ""}`} aria-current={i === current ? "step" : undefined}>
               <span className="fm-steps__dot" aria-hidden>
-                {i < current ? "✓" : i + 1}
+                {i < current ? <Icon name="check" strokeWidth={3} /> : i + 1}
               </span>
               <span className="fm-steps__label">{label}</span>
             </li>

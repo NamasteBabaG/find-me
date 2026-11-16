@@ -63,9 +63,7 @@ export async function Transformation() {
           <div className="tf-cta">
             <Link href="/create" className="fm-btn fm-btn--lg">
               {t.common.createGame}
-              <span className="fm-btn__arrow" aria-hidden>
-                ➜
-              </span>
+              <span className="fm-btn__arrow" aria-hidden />
             </Link>
           </div>
         </Reveal>

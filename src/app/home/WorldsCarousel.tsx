@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Reveal } from "./Reveal";
 import { PlaceEmblem } from "./PlaceEmblem";
+import { Icon } from "@/ui/Icon";
 
 /** Independent worlds: destination symbols keep the actual paintings a surprise. */
 
@@ -47,22 +48,22 @@ export function WorldsCarousel({ worlds, copy }: { worlds: CarouselWorld[]; copy
     // repaints them per world has no design system left.
     <div className="wc" style={{ ["--wc-sky" as string]: world.palette.sky }}>
       <div className="wc__bar">
-        <button type="button" className="wc__arrow" onClick={() => go(-1)} aria-label={copy.prev}>
-          ‹
+        <button type="button" className="wc__arrow wc__arrow--prev" onClick={() => go(-1)} aria-label={copy.prev}>
+          <Icon name="chevron" strokeWidth={2.6} />
         </button>
         <div className="wc__title">
           <strong>{world.name}</strong>
           <span className="fm-small">{world.tagline}</span>
           <span className="wc__count">{fill(copy.worldOf, { n: at + 1, total: worlds.length })}</span>
         </div>
-        <button type="button" className="wc__arrow" onClick={() => go(1)} aria-label={copy.next}>
-          ›
+        <button type="button" className="wc__arrow wc__arrow--next" onClick={() => go(1)} aria-label={copy.next}>
+          <Icon name="chevron" strokeWidth={2.6} />
         </button>
       </div>
 
       <p className="wc__lock">
-        {world.owned ? <span className="fm-sticker-badge fm-sticker-badge--sun">✓ {copy.owned}</span> : null}
-        <span className="fm-badge fm-badge--sea">{world.available ? copy.available : copy.inTheMaking}</span>
+        {world.owned ? <span className="wc__owned"><Icon name="check" strokeWidth={2.6} />{copy.owned}</span> : null}
+        <span className="wc__state">{world.available ? copy.available : copy.inTheMaking}</span>
       </p>
 
       <div className="worlds">

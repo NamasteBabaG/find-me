@@ -97,9 +97,11 @@
 .travel-passport__crest {
   border: 1px solid color-mix(in srgb, var(--pp-foil) 60%, transparent);
   width: var(--space-5); height: var(--space-5); flex-shrink: 0; display: grid; place-items: center;
-  border-radius: 50%; font-size: var(--fs-400); color: var(--pp-foil);
+  border-radius: 50%; font-size: var(--fs-300); color: var(--pp-foil);
 }
 .travel-passport__eyebrow { font-size: var(--fs-100); letter-spacing: 0.08em; font-weight: 800; line-height: var(--lh-100); text-transform: uppercase; }
+/* Hebrew has no capitals: tracking a Hebrew name apart only gaps it. */
+[dir="rtl"] .travel-passport__eyebrow { letter-spacing: 0; }
 .travel-passport__name { font-family: var(--font-kid); font-size: var(--fs-400); font-weight: 700; margin: 0; }
 .travel-passport__motto { font-size: var(--fs-100); line-height: var(--lh-200); margin: 0; opacity: 0.86; }
 
@@ -534,8 +536,9 @@
 .shared-passport__brand { display: block; text-align: center; padding: var(--space-2); min-height: var(--touch-min); color: var(--ink); font-weight: 700; }
 .passport-demo { background: var(--paper-2); }
 .passport-demo > .fm-container > header { text-align: center; max-width: 680px; margin: auto; }
-.passport-demo > .fm-container > header h2 { font-family: var(--font-display); font-weight: 900; letter-spacing: -0.02em; font-size: clamp(28px, 4vw, 40px); }
-.passport-demo > .fm-container > header p { line-height: var(--lh-400); color: var(--ink-2); }
+/* The same section head as every other landing section: one size, one weight, one lead. */
+.passport-demo > .fm-container > header h2 { font-family: var(--font-display); font-weight: 800; letter-spacing: -0.03em; font-size: var(--fs-700); line-height: var(--lh-700); }
+.passport-demo > .fm-container > header p { font-size: var(--fs-300); line-height: var(--lh-300); color: var(--ink-2); margin-top: var(--space-2); }
 
 /* ─── The completion ceremony ─────────────────────────────────────────────── */
 .passport-finale { border: 0; padding: 0; width: min(880px, calc(100% - 24px)); max-height: calc(100dvh - 24px); border-radius: 0; background: transparent; color: var(--ink); box-shadow: none; font-family: var(--font-display); }

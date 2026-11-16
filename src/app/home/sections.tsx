@@ -1,4 +1,5 @@
 import Link from "next/link";
+import type { CSSProperties } from "react";
 import type { SceneDefinition } from "@/domain/scene/schema";
 import { PACKAGES, PACKAGE_ORDER, WORLD_PRICES, boardsFor, priceFor, type PackageTier } from "@/domain/package";
 import { formatMoney, pick, tf, type Currency, type Dictionary, type Locale } from "@/i18n";
@@ -44,29 +45,29 @@ export function HowItWorks({ t }: SectionProps) {
           <h2>{h.title}</h2>
           <p className="fm-lead">{h.lead}</p>
         </Reveal>
-        <ol className="steps">
+        {/* One road, four stops: the list arrives as a group, its stops in order, and the road draws itself. */}
+        <Reveal as="ol" className="steps">
           {h.steps.map((s, i) => (
-            <Reveal as="li" key={s.title} className="step" delay={i * 90}>
-              <span className="step__num" aria-hidden>
-                {i + 1}
-              </span>
+            <li key={s.title} className="step" style={{ ["--i" as string]: i } as CSSProperties}>
               <span className={`step__icon step__icon--${STEP_TONES[i] ?? "sun"}`} aria-hidden>
                 <Icon name={STEP_ICONS[i] ?? "sparkle"} />
               </span>
+              <span className="step__num" aria-hidden>
+                {i + 1}
+              </span>
               <h3>{s.title}</h3>
               <p>{s.text}</p>
-            </Reveal>
+            </li>
           ))}
-        </ol>
+        </Reveal>
       </div>
     </section>
   );
 }
 
-/* ─── What's inside: six equal white cards, one tinted icon chip each ─── */
+/* ─── What's inside: six promises as one ruled table, one sun chip each ─── */
 const INSIDE_ORDER = ["three", "hints", "noFail", "replay", "bag", "link"] as const;
-const INSIDE_TONES = ["sun", "aqua", "coral", "lavender", "lime", "sea"] as const;
-/** One picture per promise, in the same chip the steps wear (a check on every card said nothing). */
+/** One picture per promise (a check on every card said nothing). */
 const INSIDE_ICONS: readonly IconName[] = ["search", "bulb", "heart", "replay", "bag", "family"];
 
 export function Inside({ t }: SectionProps) {
@@ -82,7 +83,7 @@ export function Inside({ t }: SectionProps) {
           {INSIDE_ORDER.map((key, i) => {
             const tile = s.tiles[key];
             return (
-              <Reveal key={key} className={`feature feature--${INSIDE_TONES[i] ?? "sun"}`} delay={(i % 3) * 80}>
+              <Reveal key={key} className="feature" delay={(i % 3) * 90}>
                 <span className="feature__icon" aria-hidden>
                   <Icon name={INSIDE_ICONS[i] ?? "sparkle"} />
                 </span>
@@ -127,7 +128,7 @@ export function GiftSection({ t }: SectionProps) {
             </Reveal>
             <ul className="occasions">
               {g.occasions.map((o, i) => (
-                <Reveal as="li" key={o.title} className="occasion" delay={i * 70}>
+                <Reveal as="li" key={o.title} className="occasion" delay={i * 90}>
                   <span className="occasion__icon" aria-hidden>
                     <Icon name={OCCASION_ICONS[i] ?? "gift"} />
                   </span>
@@ -200,7 +201,7 @@ export function Pricing({ t, locale, allowedTiers, currency }: SectionProps & { 
             </ul>
             {allowedTiers.includes("ONE_WORLD") ? <Link href="/create" className="fm-btn fm-btn--lg">{p.start}</Link> : null}
           </div>
-          <span className="offer__plus" aria-hidden="true">+</span>
+          <span className="offer__plus" aria-hidden="true"><Icon name="plus" strokeWidth={2.6} /></span>
           <div className="offer__more">
             <div className="offer__head"><h3>{p.eachMore}</h3><span className="offer__price">{money(WORLD_PRICES[currency].additional)}</span></div>
             <p>{p.eachMoreHow}</p>
@@ -229,7 +230,7 @@ export function Trust({ t }: SectionProps) {
           </Reveal>
           <div className="trust">
             {tr.items.map((item, i) => (
-              <Reveal key={item.title} className="trust__item" delay={i * 70}>
+              <Reveal key={item.title} className="trust__item" delay={i * 90}>
                 <span className="trust__icon" aria-hidden>
                   <Icon name={TRUST_ICONS[i] ?? "sparkle"} />
                 </span>
@@ -253,16 +254,14 @@ export function Faq({ t }: SectionProps) {
         <Reveal className="sec-head">
           <h2>{f.title}</h2>
         </Reveal>
-        <div className="faq">
-          {f.items.map(([q, a], i) => (
-            <Reveal key={q} delay={i * 40}>
-              <details>
-                <summary>{q}</summary>
-                <p>{a}</p>
-              </details>
-            </Reveal>
+        <Reveal className="faq">
+          {f.items.map(([q, a]) => (
+            <details key={q}>
+              <summary>{q}</summary>
+              <p>{a}</p>
+            </details>
           ))}
-        </div>
+        </Reveal>
       </div>
     </section>
   );

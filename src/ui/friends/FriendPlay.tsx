@@ -84,7 +84,7 @@ export function FriendPlay() {
     onAnother={async canLeave => { if (await inspect(token, true) && live.current && canLeave()) setPlay(null); }}
     onExit={() => { setPlay(null); void inspect(token); }} />;
   return <main className="friend-lobby">
-    <span className="friend-lobby__brand">Find Me Worlds</span>
+    <span className="friend-lobby__brand">{t.common.brand}</span>
     <section className="friend-lobby__card" aria-busy={busy}>
       <span className="friend-lobby__crest" aria-hidden="true">✦</span><h1>{text.title}</h1>
       {view ? <><h2>{view.worldName}</h2><p>{text.intro}</p></> : null}
