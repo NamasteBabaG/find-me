@@ -494,13 +494,13 @@ describe("find-any rendering and mobile feedback", () => {
     const view = render(<GameI18nProvider locale={locale}><GiftReveal config={config} onOpen={vi.fn()} /></GameI18nProvider>);
     fireEvent.click(view.getByRole("button")); act(() => vi.advanceTimersByTime(701));
     // The numbers are the game's own, never a fixed "five" and "three".
-    expect(view.container.querySelector(".gift__lead")?.textContent).toContain(locale === "en" ? "5 hiding spots in each — find any 3" : "בכל אחד 5 מחבואים — מוצאים 3");
+    expect(view.container.querySelector(".gift__lead")?.textContent).toContain(locale === "en" ? "5 hiding spots in each — find any 3" : "בכל אחד 5 מחבואים. מוצאים 3");
     view.unmount();
     const legacyBase = buildDemoConfig(locale);
     const legacyConfig = { ...legacyBase, adventure: undefined, scenes: legacyBase.scenes.map(scene => ({ ...scene, playMode: undefined, appearancesPerBoard: undefined, findsRequiredToAdvance: undefined })) };
     const legacy = render(<GameI18nProvider locale={locale}><GiftReveal config={legacyConfig} onOpen={vi.fn()} /></GameI18nProvider>);
     fireEvent.click(legacy.getByRole("button")); act(() => vi.advanceTimersByTime(701));
-    expect(legacy.container.querySelector(".gift__lead")?.textContent).toContain(locale === "en" ? "3 hiding spots in each" : "בכל אחד — 3 מחבואים");
+    expect(legacy.container.querySelector(".gift__lead")?.textContent).toContain(locale === "en" ? "3 hiding spots in each" : "בכל אחד 3 מחבואים");
   });
 
   it("provides opaque fallback, fixed bubble anchors, full-face HUD and room to pan edge hides out from under it", () => {

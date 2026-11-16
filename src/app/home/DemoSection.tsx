@@ -25,7 +25,6 @@ export function DemoSection({ config }: { config: GameConfig }) {
     <section id="demo" className="demo">
       <div className="fm-container demo__inner">
         <Reveal className="demo__head">
-          <span className="fm-pill">{d.pill}</span>
           <h2 className="demo__title">{tf(d.title, { name })}</h2>
           <p className="demo__lead">{tf(d.lead, { name })}</p>
         </Reveal>

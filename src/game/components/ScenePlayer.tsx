@@ -29,6 +29,7 @@ import type { PlayStore } from "../store/play-store";
 import { useGameText } from "../i18n";
 import { QA_HOME_SIGN_IN, useHomeQaRecovery } from "@/ui/qa/HomeQaRecovery";
 import { getDict } from "@/i18n";
+import { Icon } from "@/ui/Icon";
 
 /** How long the clouds take to part. Matches the CSS transition. */
 const CURTAIN_MS = 900;
@@ -579,7 +580,7 @@ export function ScenePlayer({ scene, mission, store, onBack, onSceneComplete }: 
       {guided && board ? <Collection board={board} scene={scene} collectedIds={collectedIds} selectedId={selectedDiscovery} hintLevel={discoveryHint} obscured={compact && chromeHidden} searchComplete={mission.phase === "complete"} disabled={turn || !revealed || loadFailed || showComplete || (mission.phase !== "searching" && mission.phase !== "complete")} muted={store.muted} arrival={arrival} repeat={repeatTap} onSelect={selectDiscovery} onHint={requestDiscoveryHint} /> : null}
       {albumToast ? (
         <div key={albumToast.key} className="scene__album-toast" role="status">
-          <span aria-hidden>🃏</span> {albumToast.text}
+          <Icon name="card" /> {albumToast.text}
         </div>
       ) : null}
 
@@ -647,7 +648,7 @@ export function SceneLoadError({ qaRequired = false, demo = false, onRetry, onBa
   const qaCopy = getDict(locale).travelPassport;
   return <SceneDialog className="scene__retry" labelledBy="scene-retry-title" modal={!demo} onEscape={onBack}>
     <div className="scene__retry-card">
-      <span className="scene__retry-cloud" aria-hidden>☁️</span>
+      <span className="scene__retry-cloud" aria-hidden><Icon name="cloud" /></span>
       <h2 id="scene-retry-title" className="scene__retry-title">{qaRequired ? qaCopy.qaHomeExpired : g.scene.loadTitle}</h2>
       {qaRequired
         ? <a className="fm-btn fm-btn--lg" href={QA_HOME_SIGN_IN} target="_blank" rel="noopener noreferrer">{qaCopy.qaSignIn} ↗</a>
@@ -711,7 +712,7 @@ export function SceneCompleteCard({ scene, bonusFound, hintsUsed, store, remaini
         {store.demo || store.replay ? null : (
         <div className="complete__loot">
           <span className="complete__icon" aria-hidden>
-            {scene.collectible.icon}
+            <Icon name="star" />
           </span>
           <span>{tf(g.complete.loot, { item: scene.collectible.name })}</span>
           {hintsUsed === 0 ? <span className="fm-badge fm-badge--leaf">{g.complete.eagle}</span> : null}

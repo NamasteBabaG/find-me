@@ -72,6 +72,11 @@ function Shell({ config, demo = false, skipGift = false, readOnlyPreview = false
   const scene = state.scene();
   // One world needs no hub: the map is the whole journey.
   const multiWorld = gameWorlds(config).length > 1;
+  // The owner's way out of the map and the hub, first in their bar (Guy, 2026-11-16). A recipient of a shared link
+  // stays inside the game by design (docs/passport/CODEX_GUEST_ISOLATION_20260917.md): the board's map button is
+  // their way back, and the game is where their link leads.
+  const exit = useMemo(() => demo || singleMission || !parentZoneHref ? null : { href: parentZoneHref, label: g.parents }, [demo, singleMission, parentZoneHref, g.parents]);
+  const mapless = gameWorlds(config).length === 0;
   const turnTip = useTurnTip();
   const gameRef = useRef<HTMLDivElement>(null);
   const historyMounted = useRef(false);
@@ -164,7 +169,7 @@ function Shell({ config, demo = false, skipGift = false, readOnlyPreview = false
       case "passport":
         return <PassportReaderLoader kind={isPassportBook(config.adventure) ? "adventure" : "legacy"} store={state} />;
       case "worlds":
-        return <><RoundControls store={state} /><WorldHub config={config} progress={searchProgress(state.round, state.progress)} roundRoute={state.round?.active ? state.round.route : undefined} currentWorld={state.worldSlug} onEnter={(slug) => state.goToMap(null, slug)} onPassport={state.openPassport} /></>;
+        return <><RoundControls store={state} /><WorldHub config={config} progress={searchProgress(state.round, state.progress)} roundRoute={state.round?.active ? state.round.route : undefined} currentWorld={state.worldSlug} onEnter={(slug) => state.goToMap(null, slug)} onPassport={state.openPassport} exit={exit} /></>;
       case "map":
       default:
         return (
@@ -181,23 +186,25 @@ function Shell({ config, demo = false, skipGift = false, readOnlyPreview = false
               onOpen={state.openScene}
               onPassport={state.openPassport}
               onWorlds={multiWorld ? state.goToWorlds : null}
-              worldSelector={albumOwner && !friend && !demo && !readOnlyPreview ? <OwnerWorldSelector gameId={config.gameId} worldSlug={state.worldSlug ?? undefined} icon={state.world()?.completion.icon} onCurrentWorld={slug => {
+              worldSelector={albumOwner && !friend && !demo && !readOnlyPreview ? <OwnerWorldSelector gameId={config.gameId} worldSlug={state.worldSlug ?? undefined} onCurrentWorld={slug => {
                 if (state.round?.active && state.worldSlug !== slug) state.pauseRound();
                 state.goToMap(null, slug);
               }} /> : undefined}
               demo={demo}
               travelFrom={state.travelFrom}
               onTravelDone={state.endTravel}
+              exit={exit}
             />
-            {parentZoneHref ? (
+            {/* A game composed before worlds has the island grid and no bar: its way out stays under it. */}
+            {exit && mapless ? (
               <p className="game__parents">
-                <Link href={parentZoneHref}>{g.parents}</Link>
+                <Link href={exit.href}>{exit.label}</Link>
               </p>
             ) : null}
           </>
         );
     }
-  }, [state, scene, config, demo, parentZoneHref, g.parents, albumOwner, readOnlyPreview, multiWorld]);
+  }, [state, scene, config, demo, albumOwner, readOnlyPreview, multiWorld, exit, mapless]);
 
   return (
     <div ref={gameRef} className={`game${demo ? " game--demo" : ""}`} dir={dirOf(config.locale)} lang={config.locale}>

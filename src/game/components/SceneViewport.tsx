@@ -13,6 +13,7 @@ import { spriteAspect, targetGeometry } from "../engine/target-geometry";
 import { useViewport, type ViewportApi } from "../engine/useViewport";
 import { Sprite } from "./Sprite";
 import { FoundParticles } from "./FoundParticles";
+import { Icon } from "@/ui/Icon";
 
 export type Hit = { kind: "target"; id: string } | { kind: "discovery"; id: string } | { kind: "bonus" } | { kind: "ambient"; id: string } | { kind: "miss"; x: number; y: number };
 
@@ -441,7 +442,7 @@ export function SceneViewport({ scene, baseUrl = scene.art.base, mission, hintLe
             <div key={a.id} className="stage__ambient" style={{ left: a.x * stage.width, top: a.y * stage.height, width: a.w * stage.width, height: a.h * stage.height }} aria-hidden>
               {stamp ? (
                 <span key={stamp} className={`stage__ambient-glyph amb-${a.animation}`} style={{ fontSize: Math.min(a.w * stage.width, a.h * stage.height) * 0.9 }}>
-                  {a.glyph ?? "✨"}
+                  <Icon name="sparkle" className="fm-icon stage__ambient-icon" />
                 </span>
               ) : null}
             </div>
@@ -499,7 +500,7 @@ export function SceneViewport({ scene, baseUrl = scene.art.base, mission, hintLe
               const p = stageToScreen(transform, currentPlaced.head.x * stage.width, currentPlaced.head.y * stage.height);
               return (
                 <span key={`mag-${current}`} className="magnifier" style={{ left: p.x, top: p.y }}>
-                  🔍
+                  <Icon name="search" strokeWidth={2.6} />
                 </span>
               );
             })()

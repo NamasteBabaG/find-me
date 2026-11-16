@@ -22,7 +22,6 @@ const FONT = "Rubik,'Segoe UI',Helvetica,Arial,sans-serif";
 
 interface LayoutOptions {
   /** A friendly mark in the sunny band at the top of the card. */
-  emoji?: string;
   /** Inbox preview line, shown in the list and hidden in the message. */
   preheader?: string;
   /** Short messages read best centred; lists (the admin mail) keep the reading edge. */
@@ -37,21 +36,15 @@ function layout(locale: Locale, title: string, bodyHtml: string, options: Layout
   const preheader = options.preheader
     ? `<div style="display:none;max-height:0;max-width:0;overflow:hidden;opacity:0;mso-hide:all;">${escapeHtml(options.preheader)}</div>`
     : "";
-  const band = options.emoji
-    ? `<tr><td align="center" bgcolor="${P.sunSoft}" style="background:${P.sunSoft};padding:30px 24px 26px;border-radius:28px 28px 0 0;">
-        <div style="display:inline-block;width:78px;height:78px;line-height:78px;border-radius:999px;background:${P.card};font-size:38px;text-align:center;box-shadow:0 8px 18px ${P.sunGlow};">${options.emoji}</div>
-      </td></tr>`
-    : "";
   return `<!doctype html><html dir="${dir}" lang="${locale}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light only"><meta name="supported-color-schemes" content="light"><title>${escapeHtml(title)}</title></head>
 <body style="margin:0;padding:0;background:${P.page};">${preheader}
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="${P.page}" style="background:${P.page};"><tr><td align="center" style="padding:32px 14px 40px;">
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" dir="${dir}" style="max-width:520px;font-family:${FONT};color:${P.ink};">
     <tr><td style="padding:0 6px 18px;text-align:${start};">
-      <span style="display:inline-block;width:34px;height:34px;line-height:34px;border-radius:10px;background:${P.sun};font-size:18px;text-align:center;vertical-align:middle;">👀</span><span style="display:inline-block;vertical-align:middle;margin-${start}:10px;font-size:17px;font-weight:700;color:${P.ink};">${t.common.brand}</span>
+      <span style="display:inline-block;vertical-align:middle;font-size:17px;font-weight:700;color:${P.ink};">${t.common.brand}</span>
     </td></tr>
     <tr><td bgcolor="${P.card}" style="background:${P.card};border-radius:28px;box-shadow:0 14px 34px rgba(23,22,43,0.07);">
       <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
-        ${band}
         <tr><td style="padding:28px 30px 32px;text-align:${align};">
           <h1 style="margin:0 0 12px;font-family:${FONT};font-size:28px;line-height:36px;font-weight:800;color:${P.ink};">${escapeHtml(title)}</h1>
           ${bodyHtml}
@@ -84,7 +77,7 @@ export function magicLinkEmail(input: { to: string; link: string; locale: Locale
       input.locale,
       m.title,
       `${paragraph(m.body, 16)}${button(input.link, m.button)}<p style="margin:14px auto 0;max-width:430px;font-family:${FONT};font-size:13px;line-height:20px;color:${P.muted};">${m.ignore}</p>`,
-      { emoji: "🔑", preheader: m.title, align: "center" },
+      { preheader: m.title, align: "center" },
     ),
     text: tf(m.text, { link: input.link }),
   };
@@ -109,7 +102,6 @@ export function gameReadyEmail(input: { to: string; childName: string; playLink:
     tag: "game-ready",
     subject: tf(r.subject, vars),
     html: layout(input.locale, tf(r.title, vars), `${paragraph(body)}${button(input.playLink, r.button)}${manage}`, {
-      emoji: "🔍",
       preheader: body,
       align: "center",
     }),

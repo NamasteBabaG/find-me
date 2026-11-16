@@ -146,7 +146,7 @@ export const en = {
     privacy: "Your photo, link & privacy",
     designSystem: "Design system",
     outbox: "Outbox (dev)",
-    madeWith: "Made with love 💛",
+    madeWith: "Made with love",
     terms: "Manage your games in your family area.",
   },
   home: {
@@ -159,14 +159,12 @@ export const en = {
       found: "Found me!",
     },
     demo: {
-      pill: "🎮 Live demo · play right here",
       title: "Can you find {name}?",
       lead: "One scene, three hiding spots and six discoveries to collect. Drag, zoom and tap {name} when you spot them. In your personal game, you look for your own character.",
       foot: "Want to find a character made from your child’s photo?",
       cta: "Create your own game",
     },
     transform: {
-      pill: "From photo to character",
       title: "Your photo. Their adventure.",
       lead: "See how a character from your photo becomes part of the game.",
       photo: { label: "Choose a photo", text: "One photo with a clear view of the face." },
@@ -181,7 +179,6 @@ export const en = {
       points: ["A personal character made from your photo", "Placed inside the game’s illustrations", "A clear photo. A character to recognise."],
     },
     how: {
-      pill: "⏱️ A few short steps for the parent",
       title: "From one photo to a personal adventure",
       lead: "A few steps for you. Then the search begins.",
       steps: [
@@ -192,7 +189,6 @@ export const en = {
       ],
     },
     inside: {
-      pill: "🎒 What's inside",
       title: "More to discover",
       lead: "A personal character, pictures full of detail, and a search at your own pace.",
       tiles: {
@@ -205,7 +201,6 @@ export const en = {
       },
     },
     gift: {
-      pill: "A game you can give as a gift",
       title: "A gift they can find themselves in",
       lead: "Create a personal game for a birthday, a holiday, or time together. After payment, add a sender and greeting in the family area, then share the link when the game is ready.",
       features: ["A digital gift that opens in a browser — no physical delivery.", "Anyone with the game link can open it. Keep account sign-in links to yourself.", "Manage your games in your family area."],
@@ -217,10 +212,9 @@ export const en = {
       ],
       tagEyebrow: "Something small is waiting",
       tagName: "for Noa",
-      tagFrom: "from Grandma & Grandpa 💛",
+      tagFrom: "from Grandma & Grandpa",
     },
     worlds: {
-      pill: "🗺️ The worlds",
       title: "Where will we go this time?",
       taglines: {
         journey: "From busy cities to distant landscapes — nine places to find yourselves.",
@@ -236,7 +230,6 @@ export const en = {
       available: "Available now — every world stands on its own",
     },
     pricing: {
-      pill: "💛 Simple pricing",
       title: "How far will your adventure go?",
       lead: "Start with one world and add more whenever you like. Nine places in every world.",
       feats: { boards: "{boards} illustrated places", time: "Play at your own pace", link: "Game link and family area", wrap: "Digital gift wrap" },
@@ -257,7 +250,6 @@ export const en = {
       worlds: "worlds",
     },
     trust: {
-      pill: "🛡️ Parents ask about privacy. Rightly so.",
       title: "A few things worth knowing",
       items: [
         { title: "A photo with permission", text: "Upload a photo you have permission to use to create the game." },
@@ -267,7 +259,6 @@ export const en = {
       ],
     },
     faq: {
-      pill: "❓ Parents ask",
       title: "Everything you wanted to ask",
       items: [
         ["Who is the game for?", "The game is mainly for ages 4–10. Younger children may enjoy an adult's help with reading, controls and searching."],
@@ -319,7 +310,7 @@ export const en = {
       pickButton: "Choose photo",
       cropKeys: "Use the arrow keys to move the photo and + or − to zoom.",
       tipsTitle: "Which photo should you choose?",
-      tips: ["😊 A clear face", "☀️ Good light", "🧍 One person in the frame", "🧢 No hat covering the face", "📸 Shoulders and up"],
+      tips: ["A clear face", "Good light", "One person in the frame", "No hat covering the face", "Shoulders and up"],
       hasPhoto: "Your photo is saved. You can replace it or continue.",
       cropLead: "Move and zoom so the face and hair fit inside the circle.",
       cropAria: "Position the face",
@@ -399,7 +390,7 @@ export const en = {
       lead: "You can close this window and return to the family area to check progress.",
       drawing: "Drawing {name}…",
       drawingLead: "One photo is becoming a character in the style of the worlds.",
-      meet: "Meet {name} ✨",
+      meet: "Meet {name}",
       meetLead: "This is the character that hides in every place.",
       nowIn: "Drawing hiding spots for {name} · {place}",
       percent: "{percent}%",
@@ -587,20 +578,20 @@ export const en = {
   },
   game: {
     /** Said once over a board when a phone is held sideways (on its side a phone cuts things off). Tablets hear nothing. */
-    turnTip: "Hold the phone upright to see everything 📱",
+    turnTip: "Hold the phone upright to see everything",
     parents: "Parents' area",
     gift: {
       eyebrow: "Something small is waiting",
       forName: "for {name}",
       from: "from {from}",
-      open: "🎁 Open the gift",
+      open: "Open the gift",
       made: "We made a game just for {name}",
       title: "Where's {name}?",
       lead: "{name} is hiding in {count} places. {spots} hiding spots in each.",
       findAnyLead: "{name} is hiding in {count} places. {spots} hiding spots in each — find any {required} to continue!",
       findAnyVariableLead: "{name} is hiding in {count} places, with {stars} hiding spots to discover. Find any {required} in each place to continue!",
       instructionsMixed: "{name} is hiding in {count} places, with {stars} hiding spots to discover. Each place shows how to continue.",
-      start: "Start the adventure ✨",
+      start: "Start the adventure",
       /** The child's first words, from the sticker on the cover. */
       hello: "Here I am!",
     },
@@ -613,7 +604,7 @@ export const en = {
       title: "Where's {name}?",
       subStart: "{name} is hiding in {count} places. Pick where to go!",
       subProgress: "{done} of {total} places done",
-      subDone: "Every place done! 🎉",
+      subDone: "Every place done!",
       bag: "My passport",
       worldsAria: "Places",
       stopsAria: "Places in this world",
@@ -665,7 +656,7 @@ export const en = {
       loadingWorld: "Loading your world…",
       loadingNext: "Loading the next hiding spot…",
       loadTitle: "The picture is still on its way…",
-      loadRetry: "Once more ✨",
+      loadRetry: "Once more",
       loadBack: "Back to the map",
       /** Read out when the picture takes focus: searching without a finger. */
       keyboardHint: "Use the arrow keys to move the marker over the picture, hold Shift to move faster, and press Enter to look there. + and − zoom; 0 shows the whole picture. Escape puts the marker away.",
@@ -688,14 +679,14 @@ export const en = {
       /** The board's own total, whatever it is: a fixed "three" was wrong on every other board. */
       goldStars: "{n} gold stars!",
       loot: "You got: {item}",
-      eagle: "🦅 Eagle eyes — no hints!",
-      zik: "✨ You also found Zik",
+      eagle: "Eagle eyes — no hints!",
+      zik: "You also found Zik",
       bag: "To my passport",
       next: "Next place",
       again: "Play again",
       map: "To the map",
       demoCta: "Create your own game",
-      demoFound: "You found {name}! 🎉",
+      demoFound: "You found {name}!",
     },
     replay: {
       label: "Playing again",

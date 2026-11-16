@@ -113,6 +113,7 @@ Sits immediately after the hero, before the live demo. Three cards: the prepared
 
 ## Reachable without a finger (audit A06/A07, 2026-09-15)
 
+- **The footer is two columns on a phone.** The brand spans both; links are 48px rows with no gap. One column of fifteen 56px rows was longer than most pages it closed.
 - **The account is always in the header.** The library link is never hidden: the words on a wide header, the mark alone (`.fm-header__account-icon`, a stroke glyph in the toolbar's language) below 860px, with its name on the link so it is never lost. Every header control is `--touch-min` (48px) on a phone — the adult floor, which the 40px `--sm` row was under.
 - **The board can be searched with a keyboard.** The picture is focusable (`tabIndex=0`, `role="application"`, instructions on `aria-describedby`), and the arrows walk a gold crosshair (`.scene__cursor`) over it: 24px on screen per press, 96px with Shift, so the pace is the same at any zoom. Enter looks where it stands, through the same hit-testing a tap uses; Escape and blur put it away; the camera follows the crosshair to the edge of the view. Hiding spots are never tab stops — a list of them would hand over the answer.
 
@@ -132,6 +133,12 @@ Sits immediately after the hero, before the live demo. Three cards: the prepared
 - **Found is an addition, never a colour taken away.** Every sticker carries its board pixels in full colour whether or not it has been found, so a child can recognise what they are hunting. What "found" adds is a green ring and a green tick on the rim — `--leaf` and `--leaf-deep`, the only place green is used for "done"; gold stays with the stars. Five grey discs told a child nothing about what to look for.
 - **The tray introduces itself once.** It holds itself open for two seconds when the board opens, then folds into its button. That peek is decoration: `inert` and `aria-hidden`, it takes no focus, it is not a dialog, it never runs behind the curtain or on a finished board or for a reader who asked for less motion. A tap during it takes the tray over rather than dismissing it.
 - **Picking is not dismissing.** Choosing a sticker hands straight over to the hint card that takes the same place; the fold-away animation is for "I am done here" — the button, the ×, Escape, the peek.
+
+## Icons, not emoji; always a way out (2026-11-16)
+
+- **No emoji anywhere a visitor or a child looks** (Guy: emoji read childish and cheap, and every phone draws them differently). Pictures are `Icon` (`src/ui/Icon.tsx`): one rounded stroke family on a 24px grid, drawn in the text's colour at `1em`, so a chip that held an emoji at `--fs-600` now holds the icon at the same size. The board's own tools keep the chunkier `ToolIcon`. The logo is `LogoEyes` (two drawn eyes) on the sun tile. A place that held an emoji gets an icon; an emoji that only decorated a sentence is simply gone. Text glyphs the UI uses on purpose stay: ★ ↗ ✓ ➜ ✦ ×. World JSON still carries emoji for older saved games; `worldIconName(slug)` draws the world instead.
+- **No eyebrow pills above section headings.** The heading says it; the hero keeps its one fact line. Visible copy does not lean on dashes: a colon, a comma or a full stop.
+- **The owner always has a way out that is not hidden.** The map and the hub carry `GameExit` first in their bar for the signed-in owner (and private review pages): a white 64px house, its word beside it from 721px, to the child's parents' area. A recipient of a shared link stays inside the game by design (`docs/passport/CODEX_GUEST_ISOLATION_20260917.md`); the board's map button is their way back. The landing demo has none. The bag has its "back to the map" at the top as well as the bottom.
 
 ## The passport (2026-09-17)
 

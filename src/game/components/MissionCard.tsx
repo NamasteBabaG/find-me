@@ -6,6 +6,7 @@ import type { TargetConfig } from "@/domain/game/config";
 import type { HintLevel } from "@/domain/game/hints";
 import { useGameText } from "../i18n";
 import { StarTray } from "./StarTray";
+import { Icon } from "@/ui/Icon";
 
 interface Props {
   index: number;
@@ -136,7 +137,7 @@ export function MissionCard({ index, total, target, found, order, stars, trayRef
             log" — which is the answer, printed above the picture. It is the
             first hint now; until then the game only says who to look for. */}
         {!minimal && hintLevel >= 1 && target?.mission ? <p className="mission__hint">{target.mission}</p> : null}
-        {!minimal && hintLevel >= 1 && hintText ? <p className="mission__hint">💡 {hintText}</p> : null}
+        {!minimal && hintLevel >= 1 && hintText ? <p className="mission__hint"><Icon name="bulb" /> {hintText}</p> : null}
       </div> : null}
       {/* The way forward stays the gold one; playing this place again is the quieter choice beside it. */}
       {onAdvance ? (

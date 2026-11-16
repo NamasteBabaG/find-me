@@ -14,6 +14,7 @@ import { LoginForm } from "./LoginForm";
 import { logoutAction } from "./actions";
 import { redirect } from "next/navigation";
 import { env } from "@/lib/env";
+import { Icon } from "@/ui/Icon";
 
 export const metadata = { robots: { index: false } };
 
@@ -86,7 +87,7 @@ export default async function LibraryPage({ searchParams }: { searchParams: Prom
                       <img src={`/api/assets/${g.avatarAssetId}`} alt="" className="fm-sticker lib__face" width={112} height={112} />
                     ) : (
                       <span className="lib__wrap" aria-hidden>
-                        🎁
+                        <Icon name="gift" />
                       </span>
                     )}
                     <span className={`lib__state lib__state--${tone}`}>{l.statuses[g.status] ?? g.status}</span>

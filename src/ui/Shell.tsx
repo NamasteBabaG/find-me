@@ -4,6 +4,7 @@ import { isDev } from "@/lib/env";
 import { getI18n } from "@/i18n/server";
 import { SiteHeaderContent } from "./SiteHeaderContent";
 import { serviceCopy } from "@/domain/legal";
+import { LogoEyes } from "./Icon";
 
 /** Adult-facing page chrome. The game itself never shows this header. */
 export async function SiteHeader({ user, isAdmin, clear = false }: { user: { email: string } | null; isAdmin: boolean; clear?: boolean }) {
@@ -21,7 +22,7 @@ export async function SiteFooter() {
           <div className="fm-footer__col">
             <Link href="/" className="fm-logo" aria-label={t.common.brand}>
               <span className="fm-logo__mark" aria-hidden>
-                👀
+                <LogoEyes />
               </span>
               <span>{t.common.brand}</span>
             </Link>

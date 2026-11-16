@@ -7,6 +7,7 @@ import { Notice } from "@/ui/primitives";
 import { useI18n } from "@/i18n/client";
 import { CREATION_MILESTONES, type CreationMilestone, type CreationState, type MilestoneState } from "@/domain/creation-progress";
 import { startSerialPoll } from "@/lib/serial-poll";
+import { Icon } from "@/ui/Icon";
 
 interface Status {
   status: string;
@@ -165,7 +166,7 @@ export function CreatingStatus({ gameId, childName, isAdmin }: { gameId: string;
             <img src={s.avatarUrl} alt="" className="cp__avatar" width={160} height={160} />
           ) : (
             <span className="cp__party" aria-hidden>
-              🎉
+              <Icon name="sparkle" />
             </span>
           )}
         </div>
@@ -191,7 +192,7 @@ export function CreatingStatus({ gameId, childName, isAdmin }: { gameId: string;
             </>
           )}
         </div>
-        <Link href="/library" className="fm-small">
+        <Link href="/library" className="fm-small cp__manage">
           {cr.manage}
         </Link>
       </div>
@@ -231,7 +232,7 @@ export function CreatingStatus({ gameId, childName, isAdmin }: { gameId: string;
             <img src={s.avatarUrl} alt="" className="cp__avatar" width={160} height={160} />
           ) : (
             <span className="cp__pencil" aria-hidden>
-              ✏️
+              <Icon name="pencil" />
             </span>
           )}
         </div>

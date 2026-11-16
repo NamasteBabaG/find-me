@@ -5,7 +5,8 @@ import { useI18n } from "@/i18n/client";
 import { Button } from "../Button";
 import { ConfirmDialog } from "../ConfirmDialog";
 import { FriendDialog } from "./FriendDialog";
-import { NICKNAME_ICONS, REACTION_ICONS } from "./icons";
+import { REACTION_ICONS } from "./icons";
+import { Icon } from "../Icon";
 import "./friends.css";
 import { friendRequest } from "./request";
 
@@ -119,14 +120,14 @@ function ParticipantCard({ person, isNew, grouped, visible, onViewed, onRemove }
     observer.observe(element); return () => { clearTimeout(timer); observer.disconnect(); };
   }, [visible, key, onViewed]);
   return <article ref={ref} className={`friend-person${isNew ? " has-new" : ""}`} tabIndex={0} onFocus={() => { if (visible) onViewed(key); }}>
-    <header><span className="friend-person__avatar" aria-hidden="true">{NICKNAME_ICONS[person.nicknameId]}</span><div><Name>{t.friends.nicknames[person.nicknameId]}</Name>
+    <header><span className="friend-person__avatar" aria-hidden="true">{t.friends.nicknames[person.nicknameId].slice(0, 1)}</span><div><Name>{t.friends.nicknames[person.nicknameId]}</Name>
       <p>{tf(text.found, { n: person.finds, total: person.totalFinds })}</p><p className="friend-person__when">{tf(text.lastPlayed, { date: played })}</p></div>{isNew ? <span className="friend-new">{text.new}</span> : null}</header>
     {/* Every place on one strip that wraps, so a phone shows a whole player at a glance. */}
     <ol className="friend-person__places">{person.boards.map(board => <li key={board.sceneSlug} className={`is-${board.state}`}>
       <span className="friend-person__mark" aria-hidden="true">{placeMark(board)}</span><span>{board.title}</span>
       <span className="visually-hidden">{board.state === "unvisited" ? text.notVisited : board.state === "visited" ? text.visited : tf(text.found, { n: board.finds, total: board.total })}</span>
     </li>)}</ol>
-    {person.reactionId ? <p className="friend-person__postcard">{REACTION_ICONS[person.reactionId]} {t.friends.reactions[person.reactionId]}</p> : null}
+    {person.reactionId ? <p className="friend-person__postcard"><Icon name={REACTION_ICONS[person.reactionId]} /> {t.friends.reactions[person.reactionId]}</p> : null}
     {onRemove ? <Button type="button" variant="ghost" onClick={onRemove}>{text.remove}</Button> : null}
   </article>;
 }

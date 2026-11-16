@@ -12,6 +12,7 @@ import { MockPay } from "./MockPay";
 import { isLiveShop } from "@/lib/env";
 import { QA_WIZARD_MOCK_STYLE } from "@/domain/generation/qa-wizard-mock";
 import { QaWizardSimulationNotice } from "@/app/create/QaWizardSimulationNotice";
+import { Icon } from "@/ui/Icon";
 
 export const dynamic = "force-dynamic";
 
@@ -55,7 +56,7 @@ export default async function MockCheckoutPage({ searchParams }: { searchParams:
       <div className="psp__card">
         <div className="psp__head">
           <span className="psp__brand">
-            <span aria-hidden>🔒</span> {m.brand}
+            <Icon name="lock" /> {m.brand}
           </span>
           <span className="fm-badge fm-badge--grape">{m.badge}</span>
         </div>

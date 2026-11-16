@@ -47,3 +47,6 @@
   .wmap__bar:has(.owner-worlds__trigger) .wmap__actions { width: 100%; justify-content: space-between; }
 }
 @media (prefers-reduced-motion: reduce) { .owner-worlds[open] { animation: none; } .owner-worlds__trigger, .owner-worlds__card, .owner-worlds__close { transition: none; } }
+
+.owner-worlds__emblem { color: var(--white); }
+.owner-worlds__trigger-icon { display: inline-flex; }

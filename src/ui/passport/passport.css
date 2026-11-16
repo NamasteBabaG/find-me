@@ -529,6 +529,8 @@
 .passport-sharing__links input { width: 100%; min-width: 0; height: var(--touch-min); direction: ltr; padding: var(--space-1); font-size: var(--fs-100); }
 .shared-passport { padding: var(--space-1) var(--space-3); min-height: 100svh; background: var(--paper); }
 .shared-passport > p { text-align: center; font-size: var(--fs-50); color: var(--ink-3); margin: 0 0 var(--space-1); }
+/* A link that no longer opens says so in the middle of the page, with its retry under it. */
+.shared-passport__status { display: grid; justify-items: center; gap: var(--space-3); max-width: var(--container-narrow); margin: var(--space-8) auto 0; text-align: center; font-size: var(--fs-300); line-height: var(--lh-300); }
 .shared-passport__brand { display: block; text-align: center; padding: var(--space-2); min-height: var(--touch-min); color: var(--ink); font-weight: 700; }
 .passport-demo { background: var(--paper-2); }
 .passport-demo > .fm-container > header { text-align: center; max-width: 680px; margin: auto; }
