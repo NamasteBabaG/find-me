@@ -48,7 +48,8 @@ async function context(c: Container, gameId: string, rowId: string, publication:
   const game = await c.db.game.findUnique({ where: { id: gameId }, include: { childProfile: true, orders: true, scenes: true } });
   const row = await c.db.targetVariantAsset.findUnique({ where: { id: rowId }, include: { targetInstance: { include: { gameScene: true } } } });
   const child = game?.childProfile;
-  if (!game || game.deletedAt || !game.paidAt || !child || child.deletedAt || child.ownerId !== game.ownerId || child.ageYears !== 7
+  if (!game || game.deletedAt || !game.paidAt || !child || child.deletedAt || child.ownerId !== game.ownerId
+    || (child.ageYears !== 7 && child.ageYears !== 8)
     || !row || row.variant !== 'A' || row.provider !== 'local-patch'
     || row.targetInstance.gameScene.gameId !== gameId || game.styleVersion !== 'local-patch-world-v1'
     || !(game.status === 'TARGETS_GENERATING' || publication && ['READY', 'DELIVERED'].includes(game.status))
@@ -67,13 +68,17 @@ async function context(c: Container, gameId: string, rowId: string, publication:
   const parent = board && hide ? expectedAuthoredLocalPatchReturn(board, hide, 13, placement) : null;
   const authority = parent && retainedWindowAuthorityFor(parent);
   if (!board || !hide || !parent || !authority || !freeWindowHide(hide.id)) return null;
+  if (child.ageYears === 8 && authority.family !== 'kingdom-detectives/v1') return null;
   if (board.hides.some(other => other.id !== hide.id && (() => {
     const r = cropOf(other), q = authority.crop;
     return q.left < r.left + r.width && q.left + q.width > r.left && q.top < r.top + r.height && q.top + q.height > r.top;
   })())) return null;
   const grant = await readQaCompletionCapacity(c, gameId + ':board-wizard');
   const budget = await boardWizardBudgetOf(c).audit(gameId + ':board-wizard');
-  if (!(grant ? budget.capMicroUsd === 12000000 : await originalOrFiveDollarCap(c, gameId, budget.capMicroUsd)) || budget.overCapMicroUsd
+  const validCap = child.ageYears === 8
+    ? !grant && budget.capMicroUsd === policy.worldCapMicroUsd
+    : grant ? budget.capMicroUsd === 12000000 : await originalOrFiveDollarCap(c, gameId, budget.capMicroUsd);
+  if (!validCap || budget.overCapMicroUsd
     || budget.conflictRequestKeys.length || budget.overrunRequestKeys.length) return null;
   return { game, row, board, hide, parent, authority, identitySha256, scene };
 }

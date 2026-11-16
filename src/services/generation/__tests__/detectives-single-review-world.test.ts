@@ -987,8 +987,8 @@ it.each(["recompose-retained", "redraw-with-new-placement", "restyle-retained"] 
   } finally { vi.useRealTimers(); }
 }, 300000);
 
-async function legacyKingdomHeadFixture(gameId: string, action: "redraw-with-new-placement" | "recompose-retained", explorer = true, normalOnly = false, wholeFigure = false, windowShift = 0, windowHideIndex = 0) {
-  await newDetectiveWorld(gameId, 7, true, explorer, true);
+async function legacyKingdomHeadFixture(gameId: string, action: "redraw-with-new-placement" | "recompose-retained", explorer = true, normalOnly = false, wholeFigure = false, windowShift = 0, windowHideIndex = 0, ageYears = 7) {
+  await newDetectiveWorld(gameId, ageYears, true, explorer, true);
   await ensureSingleMediumReviewPolicy(c, gameId, async () => {});
   const version = explorer ? 12 : 13, context = await resolveLocalPatchBoardsForGame(db, gameId, version), board = context.boards.find(b => b.board === (wholeFigure ? 'cloudcity' : "dragoncave"))!, hide = board.hides[wholeFigure ? windowHideIndex : 2]!;
   const parent = expectedAuthoredLocalPatchReturn(board, hide, version, context);
@@ -1051,10 +1051,15 @@ async function legacyKingdomHeadFixture(gameId: string, action: "redraw-with-new
   return { gameId, version, board, hide, scene, deps, render, diagnose, row, candidate, receipt, shipping, identitySha256, decision };
 }
 
-it.each([{shift:0,label:'unshifted',refuseHead:false},{shift:2,label:'registered',refuseHead:false},{shift:0,label:'reported-head-loss',refuseHead:true}])('retained-source-window/v1: $label preserves all27 rows and every full bill, requires a new ordinary MEDIUM and reproduces publication',async({shift,label,refuseHead})=>{
+it.each([
+  {shift:0,label:'unshifted',refuseHead:false,ageYears:7},
+  {shift:2,label:'registered',refuseHead:false,ageYears:7},
+  {shift:0,label:'reported-head-loss',refuseHead:true,ageYears:7},
+  {shift:0,label:'age-eight-four-dollar-kingdom',refuseHead:false,ageYears:8},
+])('retained-source-window/v1: $label preserves all27 rows and every full bill, requires a new ordinary MEDIUM and reproduces publication',async({shift,label,refuseHead,ageYears})=>{
   vi.useFakeTimers({toFake:['Date']});
   try{
-    const f=await legacyKingdomHeadFixture('retained-window-native-'+label,'redraw-with-new-placement',false,false,true,shift),imageCalls=f.render.mock.calls.length;
+    const f=await legacyKingdomHeadFixture('retained-window-native-'+label,'redraw-with-new-placement',false,false,true,shift,0,ageYears),imageCalls=f.render.mock.calls.length;
     const exactRow=()=>db.targetVariantAsset.findUniqueOrThrow({where:{id:f.candidate.id}});
     const payment=await db.order.findUniqueOrThrow({where:{id:'order-'+f.gameId}});
     await db.game.update({where:{id:f.gameId},data:{paidAt:payment.paidAt}});
@@ -1073,9 +1078,12 @@ it.each([{shift:0,label:'unshifted',refuseHead:false},{shift:2,label:'registered
       await budget.reserve(worldId,{requestKey:'synthetic-rsw-old-unknown',scope:'judge',operationFingerprint:'e'.repeat(64),reserveMicroUsd:202060});
       await budget.markUnknown(worldId,'synthetic-rsw-old-unknown','Synthetic full unresolved original bill');
       await db.generationJob.update({where:{id:'job_'+f.gameId},data:{status:'FAILED',currentStep:'local-patch:recovery-exhausted'}});
-      const game=await db.game.findUniqueOrThrow({where:{id:f.gameId}}),plan=await planQaCompletionCapacity(c,f.gameId);
-      await authorizeQaCompletionCapacity(c,{gameId:f.gameId,operatorId:game.ownerId!,expectedPlanSha256:plan.planSha256,ownerAuthorizationSha256:'b'.repeat(64)});
+      if(ageYears===7){
+        const game=await db.game.findUniqueOrThrow({where:{id:f.gameId}}),plan=await planQaCompletionCapacity(c,f.gameId);
+        await authorizeQaCompletionCapacity(c,{gameId:f.gameId,operatorId:game.ownerId!,expectedPlanSha256:plan.planSha256,ownerAuthorizationSha256:'b'.repeat(64)});
+      }
     }
+    if(ageYears===8) expect((await budget.audit(worldId)).capMicroUsd).toBe(4_000_000);
     const before=await exactRow(),oldLedger=await db.worldBudgetLedger.findUniqueOrThrow({where:{worldId}});
     if(label==='unshifted'){
       await db.order.update({where:{id:payment.id},data:{paymentStatus:'REFUNDED'}});
