@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   game: vi.fn(), asset: vi.fn(), job: vi.fn(), user: vi.fn(), denied: vi.fn(), link: vi.fn(), proof: vi.fn(), hash: vi.fn(), wizard: vi.fn(), ledger: vi.fn(),
-  revisionPending: vi.fn(), revisionHeld: vi.fn(), approved: vi.fn(), emergencyBudget: vi.fn(), newQaBudget: vi.fn(), leanBudget: vi.fn(), completionBudget: vi.fn(), capacityBudget: vi.fn(), detectivesBudget: vi.fn(), admittedInterruptions: vi.fn(), extraPlan: vi.fn(),
+  revisionPending: vi.fn(), revisionHeld: vi.fn(), approved: vi.fn(), emergencyBudget: vi.fn(), newQaBudget: vi.fn(), leanBudget: vi.fn(), kingdomBudget: vi.fn(), completionBudget: vi.fn(), capacityBudget: vi.fn(), detectivesBudget: vi.fn(), admittedInterruptions: vi.fn(), extraPlan: vi.fn(),
   token: null as string | null, admin: false,
 }));
 vi.mock("@/services/generation/identity-source-revision-state", () => ({ identityRevisionPending: mocks.revisionPending, identityRevisionHeldOf: mocks.revisionHeld }));
@@ -18,6 +18,7 @@ vi.mock("@/services/generation/subject-upgrade", async importOriginal => ({
   openAdmittedInterruptions: mocks.admittedInterruptions,
 }));
 vi.mock("@/services/generation/lean-release", () => ({ readLeanWorldBudget: mocks.leanBudget }));
+vi.mock("@/services/generation/kingdom-generation-release", () => ({ readKingdomGenerationBudget: mocks.kingdomBudget }));
 vi.mock("@/lib/server/qa-access", () => ({ qaAccessDenied: mocks.denied }));
 vi.mock("@/lib/server/session", () => ({ currentUser: mocks.user, draftTokenFromCookie: async () => mocks.token, isAdminEmail: () => mocks.admin }));
 vi.mock("@/services/container", () => ({ getContainer: () => ({ db: { game: { findUnique: mocks.game }, asset: { findUnique: mocks.asset }, generationJob: { findUnique: mocks.job }, worldBudgetLedger: { findUnique: mocks.ledger } }, email: { id: "console" } }) }));
@@ -63,7 +64,7 @@ beforeEach(() => {
   mocks.job.mockResolvedValue({ gameId: game.id, status: "DONE", stepsJson: "{}" });
   mocks.proof.mockReturnValue(null); mocks.hash.mockReturnValue("synthetic-hash"); mocks.link.mockResolvedValue({ url: "/synthetic-play" });
   mocks.ledger.mockResolvedValue(null); mocks.approved.mockResolvedValue(true); mocks.emergencyBudget.mockResolvedValue(null);
-  mocks.newQaBudget.mockResolvedValue(null); mocks.leanBudget.mockResolvedValue(null);
+  mocks.newQaBudget.mockResolvedValue(null); mocks.leanBudget.mockResolvedValue(null); mocks.kingdomBudget.mockResolvedValue(null);
   mocks.detectivesBudget.mockResolvedValue(null); mocks.completionBudget.mockResolvedValue(null); mocks.capacityBudget.mockResolvedValue(null); mocks.admittedInterruptions.mockResolvedValue("blocked"); mocks.extraPlan.mockResolvedValue(null);
 });
 async function response() { return GET(new Request("https://example.invalid/api/games/synthetic/status"), { params: Promise.resolve({ gameId: "synthetic" }) }); }
@@ -150,6 +151,18 @@ describe("fixed-world creation status boundary", () => {
   it("reports an empty new local-patch budget without requiring a ledger row", async () => {
     mocks.game.mockResolvedValue({ ...game, status: "PAID", styleVersion: "local-patch-world-v1" });
     expect(await (await response()).json()).toMatchObject({ pending: true, qaCost: { spentCents: 0, reservedCents: 0, capCents: 400, held: false } });
+  });
+  it("shows the prospective Kingdom ceiling before any older grant and counts the full unknown hold", async () => {
+    mocks.game.mockResolvedValue({ ...game, status: "TARGETS_GENERATING", styleVersion: "local-patch-world-v1" });
+    const ledger = spentTo(3_700_000);
+    const hold = localBudget("unknown").requests.at(-1)!;
+    mocks.ledger.mockResolvedValue({ snapshotJson: JSON.stringify({ ...ledger, requests: [...ledger.requests, hold] }) });
+    const worldId = "synthetic:board-wizard";
+    mocks.kingdomBudget.mockResolvedValue({ worldId, capMicroUsd: 4_000_000, authorizationSha256: "a".repeat(64) });
+    mocks.capacityBudget.mockResolvedValue({ worldId, capMicroUsd: 6_000_000, authorizationSha256: "b".repeat(64) });
+    expect(await (await response()).json()).toMatchObject({ state: "held", pending: false, awaitingQa: true,
+      qaCost: { spentCents: 370, reservedCents: 40, capCents: 400, held: true } });
+    expect(mocks.capacityBudget).not.toHaveBeenCalled();
   });
   it("shows the enforced4USD ceiling and holds a4.10USD local world even below the generic5USD maximum", async () => {
     mocks.game.mockResolvedValue({ ...game, status: "TARGETS_GENERATING", styleVersion: "local-patch-world-v1" });
