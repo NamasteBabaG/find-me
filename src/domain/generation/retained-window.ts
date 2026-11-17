@@ -28,6 +28,8 @@ export const retainedWindowAuthoritySchema = z.object({
   frame: z.literal(12), feather: z.literal(12), maxRegistration: z.literal(3), maximumMeanDifference: z.literal(24),
   /** The original foreground owns every pixel at or below this public contour. */
   foregroundTop: z.array(z.object({ x: z.number().int().min(0).max(511), y: z.number().int().min(1).max(767) }).strict()).min(2).max(24).optional(),
+  /** Some Kingdom windows cross two nearby faces even inside the returned frame. */
+  preserveSourceNeighbors: z.literal(true).optional(),
 }).strict();
 export type RetainedWindowAuthority = z.infer<typeof retainedWindowAuthoritySchema>;
 export type RetainedWindowPixels = { data: Uint8Array; width: number; height: number; channels: number };
@@ -75,7 +77,9 @@ export function retainedWindowReviewPrompt(a: RetainedWindowAuthority, sampleX: 
   assertRetainedWindowAuthority(a);
   return '\nRETAINED SOURCE WINDOW ' + RETAINED_WINDOW_VERSION + ': newly composed, UNAPPROVED shipping from the same already-paid RAW. '
     + 'The historical authored rectangle, registered source-neighbor contract.returnRect and repair plan are lineage/role registration, not the new outer boundary. The actual new join comparisons and compound permission below are authoritative for this composition. The new compound permission has a12px unchanged SOURCE frame,12px feather, and exact SOURCE holes protecting every registered head that crosses the new boundary. '
-    + 'The registered original target is replaced WHOLE, not a person to preserve. Require its old head, hair, body and limbs to disappear completely, with no ghost or fragments. Other people may be preserved or cleanly replaced/removed whole as the ordinary source-neighbor policy allows. People continuing beyond the crop or permission must stay anatomically coherent. '
+    + 'The registered original target is replaced WHOLE, not a person to preserve. Require its old head, hair, body and limbs to disappear completely, with no ghost or fragments. '
+    + (a.preserveSourceNeighbors ? 'Keep the registered non-target people in place. Inspect their preserved heads and the adjoining body, arms and legs for discontinuities. ' : 'Other people may be preserved or cleanly replaced/removed whole as the ordinary source-neighbor policy allows. ')
+    + 'People continuing beyond the crop or permission must stay anatomically coherent. '
     + 'Native integer mapping: SHIPPING[x,y] takes RAW[x+' + sampleX + ',y+' + sampleY + '] in opaque paid regions; no scaling, interpolation, sharpening or facial restyling. The RAW evidence remains the authentic unshifted paid file. '
     + 'Compare the whole crown, face, full body, feet, pose, size and support against RAW and SOURCE. Inspect all four outer joins and the protected SOURCE-head holes. Reject cut or faded hair, residual source limbs, duplicate heads, seams, age/identity uncertainty, excessive sharpness, photographic texture, blur or a depth/style mismatch. '
     + 'No prior quality, identity, subject or head verdict transfers. Every ordinary MEDIUM field and doubt check remains blocking. '
@@ -112,13 +116,15 @@ export function assertRetainedWindowAuthority(value: RetainedWindowAuthority): v
     || a.foregroundTop.some((p,i) => (i>0 && p.x<=a.foregroundTop![i-1]!.x)
       || p.y < target.head.top-a.crop.top+target.head.height+4)))
     throw Error('RETAINED_WINDOW: invalid original foreground contour');
+  if (a.preserveSourceNeighbors && a.family !== 'kingdom-detectives/v1')
+    throw Error('RETAINED_WINDOW: unsupported neighbor protection');
 }
 /** Only people crossing the new boundary must stay at the exact SOURCE pixels.
  * The original target is explicitly replaced, never mistakenly preserved. */
 export function retainedWindowProtectedHeads(a: RetainedWindowAuthority) {
   assertRetainedWindowAuthority(a);
   const r = retainedWindowRegion(a);
-  return a.sourceHeads.filter(h => h.sourceId !== a.targetSourceId && !contained(r, localHead(a, h.head)))
+  return a.sourceHeads.filter(h => h.sourceId !== a.targetSourceId && (a.preserveSourceNeighbors || !contained(r, localHead(a, h.head))))
     .map(h => ({ sourceId: h.sourceId, head: localHead(a, h.head) }));
 }
 export function retainedWindowHeadMask(a: RetainedWindowAuthority, sampleX: number, sampleY: number) {
@@ -136,6 +142,21 @@ function foregroundTopAt(a: RetainedWindowAuthority, x: number): number {
   if (right<=0) return a.foregroundTop[0]!.y;
   const p=a.foregroundTop[right-1]!, q=a.foregroundTop[right]!;
   return p.y + (x-p.x)*(q.y-p.y)/(q.x-p.x);
+}
+
+/** Close the original foreground and neighbor pixels in a native provider mask. */
+export function protectRetainedWindowPaintAlpha(a: RetainedWindowAuthority, mask: RetainedWindowPixels) {
+  if (mask.width !== 512 || mask.height !== 768 || mask.channels !== 4 || mask.data.length !== 512 * 768 * 4)
+    throw Error('RETAINED_WINDOW: the paint mask must share the native RGBA crop');
+  const heads = retainedWindowProtectedHeads(a);
+  for (let x = 0; x < 512; x++) {
+    for (let y = Math.ceil(foregroundTopAt(a, x)); y < 768; y++) mask.data[(y * 512 + x) * 4 + 3] = 255;
+  }
+  for (const { head } of heads) {
+    for (let y = Math.max(0, head.top); y < Math.min(768, head.top + head.height); y++) {
+      for (let x = Math.max(0, head.left); x < Math.min(512, head.left + head.width); x++) mask.data[(y * 512 + x) * 4 + 3] = 255;
+    }
+  }
 }
 
 export function retainedWindowWeight(a: RetainedWindowAuthority, x: number, y: number): number {

@@ -12,6 +12,10 @@ import { pinJourneyWindowRelease } from '../journey-window-release';
 import { windowStoppedRows } from '../repeat-window-stop';
 import * as nativeDetailPainterModule from "../native-detail-painter";
 import { KINGDOM_DETECTIVE_PATCH_BOARDS } from "../../../../content/detectives/kingdom/runtime-release";
+import { KINGDOM_GENERATION_WINDOWS } from '../../../../content/detectives/retained-window-v1';
+import { retainedWindowRegion } from '../../../domain/generation/retained-window';
+import { KINGDOM_FLEX_OVERLOAD_COOLDOWN_MS } from '../../../domain/generation/kingdom-generation';
+import { kingdomGenerationReleaseOf } from '../kingdom-generation-release';
 import { pinDetectiveSourceScope, sealDetectiveSourceFamily } from "../source-family-scope";
 import { planWholeSourceContextRepair, stageWholeSourceContextRepair, nextWholeSourceContextWake, resumeWholeSourceContextRepair } from "../whole-source-context-repair";
 import { readWholeSourceContextPin, wholeSourceContextPinId, wholeSourceContextWakeId, wholeSourceContextRowHash, wholeSourceContextMarkerFor, fenceWholeSourceContextPurchase } from "../whole-source-context-pin";
@@ -239,7 +243,7 @@ function cleanQuality(prompt: string, version = 13): string {
     neighbors: contract.neighbors.map((neighbor, i) => ({ sourceId: neighbor.sourceId, outcome: "preserved", status: "pass", after: [{ ref: "controlled-neighbor-" + i, rect: neighbor.head }],
       remnants: "none", occluder: null, observation: "One coherent synthetic source correspondence without shifted or remaining representation." })) } });
 }
-function controlledSol(interrupted = false, guided = false, guidedHideId?: string | string[], bodyMode=false, representativeUsage=false, version=13, guidedFailures=2) {
+function controlledSol(interrupted = false, guided = false, guidedHideId?: string | string[], bodyMode=false, representativeUsage=false, version=13, guidedFailures=2, failureCode='server_error') {
   let failedResponse: string | null = null;
   const creates: { hideId: string; quality: boolean; prompt: string; tier: unknown; reasoning: unknown; labels: string[] }[] = [], responses = new Map<string, { prompt: string; quality: boolean; tier: unknown; reads: number }>();
   const fake: BackgroundReviewTransport = { namespace: "openai:find-me-existing", create: async body => {
@@ -256,7 +260,7 @@ function controlledSol(interrupted = false, guided = false, guidedHideId?: strin
   }, retrieve: async (responseId): Promise<BackgroundReviewState> => {
     const state = responses.get(responseId); if (!state) return { status: "missing" };
     if (++state.reads === 1) return { status: "in_progress" };
-    if (responseId === failedResponse) return { status: "failed", reading: { responseId, raw: null, usage: null, model: "gpt-6.1-sol", finishReason: "failed", serviceTier: "flex", providerError: { code: "server_error", message: "Synthetic failed response without text or usage" } } };
+    if (responseId === failedResponse) return { status: "failed", reading: { responseId, raw: null, usage: null, model: "gpt-6.1-sol", finishReason: "failed", serviceTier: "flex", providerError: { code: failureCode, message: "Synthetic failed response without text or usage" } } };
     const assessment = JSON.parse(cleanQuality(state.prompt, version));
     const qualityAssessment = assessment.version === SOURCE_NEIGHBOR_BUNDLE_VERSION ? assessment.assessment : assessment;
     if(bodyMode){qualityAssessment.subject.checks.perceivedAge.estimatedMinYears=6;qualityAssessment.subject.checks.perceivedAge.estimatedMaxYears=8;}
@@ -558,10 +562,16 @@ it.each(["newyork-detectives-hide-1", "giza-detectives-hide-2"])("Sunburst refus
   expect(rows).toHaveLength(1); expect(rows[0]).toMatchObject({ attempts: 0, status: "PENDING" });
 });
 
-it.each([{mode:"clean",interrupted:false,guided:false},{mode:"transport",interrupted:true,guided:false},{mode:"guided",interrupted:false,guided:true},{mode:"tail",interrupted:false,guided:true},{mode:"body",interrupted:false,guided:true}].map(v=>({...v,born:false})).concat([{mode:"born-clean",interrupted:false,guided:false,born:true},{mode:"born-guided",interrupted:false,guided:true,born:true},{mode:"born-transport",interrupted:true,guided:false,born:true},{mode:"born-crown",interrupted:false,guided:false,born:true},{mode:"kingdom-clean",interrupted:false,guided:false,born:true},{mode:"kingdom-transport",interrupted:true,guided:false,born:true},{mode:"kingdom-guided",interrupted:false,guided:true,born:true},{mode:"window-clean",interrupted:false,guided:false,born:true},{mode:"sunburst-clean",interrupted:false,guided:false,born:true}]).map(testCase => ({ ...testCase, reviewEffort: testCase.born && testCase.mode !== "born-crown" ? "MEDIUM" : "LOW" })))("completes 27 hides with bounded $reviewEffort review and no extra planner; mode=$mode", async ({mode,interrupted,guided,born}) => {
+it.each([{mode:"clean",interrupted:false,guided:false},{mode:"transport",interrupted:true,guided:false},{mode:"guided",interrupted:false,guided:true},{mode:"tail",interrupted:false,guided:true},{mode:"body",interrupted:false,guided:true}].map(v=>({...v,born:false})).concat([{mode:"born-clean",interrupted:false,guided:false,born:true},{mode:"born-guided",interrupted:false,guided:true,born:true},{mode:"born-transport",interrupted:true,guided:false,born:true},{mode:"born-crown",interrupted:false,guided:false,born:true},{mode:"kingdom-clean",interrupted:false,guided:false,born:true},{mode:"kingdom-transport",interrupted:true,guided:false,born:true},{mode:"kingdom-guided",interrupted:false,guided:true,born:true},{mode:"window-clean",interrupted:false,guided:false,born:true},{mode:"sunburst-clean",interrupted:false,guided:false,born:true},{mode:"kingdom-sunburst-paced",interrupted:true,guided:false,born:true}]).map(testCase => ({ ...testCase, reviewEffort: testCase.born && testCase.mode !== "born-crown" ? "MEDIUM" : "LOW" })))("completes 27 hides with bounded $reviewEffort review and no extra planner; mode=$mode", async ({mode,interrupted,guided,born}) => {
   vi.useFakeTimers({ toFake: ["Date"] });
-  const kingdom=mode.startsWith("kingdom-"),crown=mode==="born-crown",body=mode==="body";const gameId = "detective-single-world-synthetic-" + mode; await newDetectiveWorld(gameId,body||born?7:8,born,false,kingdom,mode==='window-clean',mode==='sunburst-clean');
-  if(mode==="sunburst-clean")expect(await localPatchPainterRelease(db,gameId)).toBe(LOCAL_PATCH_SUNBURST_PAINTER);
+  const kingdom = mode.startsWith("kingdom-"), crown = mode === "born-crown", body = mode === "body";
+  const paced = mode === 'kingdom-sunburst-paced', sunburst = mode === 'sunburst-clean' || paced;
+  const age = paced || !body && !born ? 8 : 7;
+  const gameId = "detective-single-world-synthetic-" + mode;
+  await newDetectiveWorld(gameId, age, born, false, kingdom, mode === 'window-clean', sunburst);
+  if (paced) await db.game.update({ where: { id: gameId }, data: { paidAt: new Date() } });
+  if (sunburst) expect(await localPatchPainterRelease(db, gameId)).toBe(LOCAL_PATCH_SUNBURST_PAINTER);
+  expect(!!await kingdomGenerationReleaseOf(db, gameId)).toBe(paced);
   const context = await resolveLocalPatchBoardsForGame(db, gameId, 13), hides = context.boards.flatMap(board => board.hides);
   expect(context.boards).toHaveLength(9); expect(hides).toHaveLength(27);
   // Simulate the actual older deployment: genuine LOW purchases under the
@@ -572,7 +582,8 @@ it.each([{mode:"clean",interrupted:false,guided:false},{mode:"transport",interru
 
   expect(hides.every(hide => sourcePlacementForHide(context, hide.id)!.sourceNeighbors)).toBe(true);
   const tail = mode === "tail"||body, guidedHideId = tail ? context.boards.find(b=>b.board==="paris")!.hides[0]!.id : hides[0]!.id;
-  const prompts = new Map<string, string>(), provider = controlledSol(interrupted, guided, body?[guidedHideId,"giza-detectives-hide-2"]:guidedHideId,body||born,born);
+  const prompts = new Map<string, string>(), provider = controlledSol(interrupted, guided, body?[guidedHideId,"giza-detectives-hide-2"]:guidedHideId,
+    body || born, born, 13, 2, paced ? 'server_is_overloaded' : 'server_error');
   // Record the pixels actually drawn by this synthetic painter, independently
   // of the production tap-geometry measurement and its normalization.
   const paintedFigures = new Map<string, { left: number; top: number; width: number; height: number }>();
@@ -587,11 +598,22 @@ it.each([{mode:"clean",interrupted:false,guided:false},{mode:"transport",interru
       nativeDeferred = true; await vi.advanceTimersByTimeAsync(120_001);
     }
     return bytes;
-  }, renderPolicySha256: localPatchRenderPolicySha256(mode==="sunburst-clean" ? LOCAL_PATCH_SUNBURST_IMAGE_POLICY : LOCAL_PATCH_IMAGE_POLICY),
+  }, renderPolicySha256: localPatchRenderPolicySha256(sunburst ? LOCAL_PATCH_SUNBURST_IMAGE_POLICY : LOCAL_PATCH_IMAGE_POLICY),
     judge: async () => { throw Error("Historical per-hide judge forbidden"); },
     render: async ({ requestKey, stylePng, prompt, subjectQuality, placementGuidePng, maskPng }) => {
-      expect(subjectQuality).toBe(mode==="sunburst-clean" ? "high" : "medium");
+      expect(subjectQuality).toBe(sunburst ? "high" : "medium");
       const hide = hides.find(hide => requestKey.startsWith(hide.id + ":")); if (!hide) throw Error("Unregistered Detective painter request");
+      if (paced) {
+        const profile = KINGDOM_GENERATION_WINDOWS.find(entry => entry.authority.hideId === hide.id);
+        if (profile) expect(prompt).toContain(profile.direction);
+        if (profile?.authority.preserveSourceNeighbors) {
+          expect(prompt).toContain('Keep every registered non-target person');
+          expect(prompt).not.toContain('may be coherently removed');
+        }
+        const stored = await db.targetVariantAsset.findMany({ where: { variant: "A", status: "GENERATED", targetInstance: { gameScene: { gameId } } }, select: { judgeJson: true } });
+        expect(stored.every(row => JSON.parse(row.judgeJson!).reviewState === "board-review-complete")).toBe(true);
+        expect((await boardWizardBudgetOf(container).audit(boardWizardWorldId(gameId))).pendingRequestKeys).toEqual([requestKey]);
+      }
       if (guided && (hide.id === guidedHideId || body&&hide.id==="giza-detectives-hide-2")) {
         expect(body?[1,2,3,4,5]:tail ? [1,2,3,4] : [1,2,3]).toContain(Number(requestKey.split(":").at(-1)));
         if (requestKey.endsWith(":render:3")) expect(placementGuidePng).toBeDefined();
@@ -599,10 +621,30 @@ it.each([{mode:"clean",interrupted:false,guided:false},{mode:"transport",interru
       expect(prompt).toContain("local-patch-authored-paint/v1"); prompts.set(requestKey, prompt);
       const mask = placementGuidePng ? guidedFrameGeometry(maskForHide(hide), localPatchReturnRegion(cropOf(hide), maskForHide(hide), hide.returnRect).local).target : maskForHide(hide);
       const figureRect = { left: mask.left + Math.round(mask.width * 0.2), top: mask.top + Math.round(mask.height * 0.2), width: Math.round(mask.width * 0.6), height: Math.round(mask.height * 0.8) };
+      if (paced && hide.id === 'icepalace-detectives-hide-1') {
+        // Provide a RAW with actual support pixels past the old editable floor.
+        // A test picture entirely inside both windows cannot detect a skipped recovery.
+        const y = 567, x = figureRect.left + 10;
+        expect(prompt).toContain('"returnWindow":{"left":32,"top":138,"width":478,"height":454}');
+        const alpha = await sharp(maskPng).ensureAlpha().raw().toBuffer();
+        expect(alpha[(y * 512 + x) * 4 + 3]).toBe(0);
+        figureRect.height = y + 1 - figureRect.top;
+      }
+      const libraryRail = paced && hide.id === 'giantlibrary-detectives-hide-1';
+      if (libraryRail) figureRect.height = 510 - figureRect.top;
       const crop = cropOf(hide);
       paintedFigures.set(hide.id, { ...figureRect, left: crop.left + figureRect.left, top: crop.top + figureRect.top });
       const figure = await sharp({ create: { width: figureRect.width, height: figureRect.height, channels: 4, background: requestKey.endsWith(":render:2") ? "#304f91" : "#1e3ca0" } }).png().toBuffer();
       let png = await sharp(stylePng).composite([{ input: figure, left: figureRect.left, top: figureRect.top }]).png().toBuffer();
+      if (libraryRail) {
+        // The provider may disregard its mask; these blue pixels are behind
+        // the locked source railing and cannot enlarge the visible tap target.
+        const left = figureRect.left + 60, top = 620;
+        const alpha = await sharp(maskPng).ensureAlpha().raw().toBuffer();
+        expect(alpha[(top * 512 + left) * 4 + 3]).toBe(255);
+        const occluded = await sharp({ create: { width: 24, height: 28, channels: 4, background: '#1e3ca0' } }).png().toBuffer();
+        png = await sharp(png).composite([{ input: occluded, left, top }]).png().toBuffer();
+      }
       if(crown){const contract=SOURCE_CROWN_RETURN_CONTRACTS.find(c=>c.hideId===hide.id);if(contract){const cap=await sharp({create:{width:42,height:64,channels:4,background:"#663322"}}).png().toBuffer();png=await sharp(png).composite([{input:cap,left:contract.child.left+30,top:contract.parentReturned.top-22}]).png().toBuffer();}}
       if (tail && (hide.id === guidedHideId || body&&hide.id==="giza-detectives-hide-2") && requestKey.endsWith(":render:3")) {
         // A genuinely different prospective mask is required after this stationary background rewrite.
@@ -617,12 +659,29 @@ it.each([{mode:"clean",interrupted:false,guided:false},{mode:"transport",interru
         let mismatches=0;for(let y=0;y<768;y++)for(let x=0;x<512;x++){const editable=alpha[(y*512+x)*4+3]===0;if(editable)clear++;if(editable!==(x>=edit.left&&x<edit.left+edit.width&&y>=edit.top&&y<edit.top+edit.height))mismatches++;}
         expect(mismatches).toBe(0);expect(clear).toBe(edit.width*edit.height);
       }
-      return paintedOk(png, { ...bill("paint-" + gameId + "-" + requestKey, born ? 66500 : undefined), ...(mode==="sunburst-clean" ? {model:"gpt-image-2.6-sunburst"} : {}) });
+      return paintedOk(png, { ...bill("paint-" + gameId + "-" + requestKey, born ? 66500 : undefined), ...(sunburst ? {model:"gpt-image-2.6-sunburst"} : {}) });
     } };
   const diagnose = vi.fn(async () => { throw Error("Clean controlled answers cannot authorize a diagnosis"); });
-  let result = { pending: true, attention: null as string | null }, ticks = 0;
+  let result = { pending: true, attention: null as string | null }, ticks = 0, observedPeak = 0, cooldownChecked = false;
   for (; ticks < 900 && result.pending; ticks++) {
     result = await runLocalPatchWorldSlice(container, deps, gameId, { hardDeadlineAt: Date.now() + 270_000, diagnose, ...(body||mode==="born-clean"?{maxHides:1}:{}) });
+    if (paced) {
+      const audit = await boardWizardBudgetOf(container).audit(boardWizardWorldId(gameId));
+      observedPeak = Math.max(observedPeak, audit.committedMicroUsd);
+      expect(audit.capMicroUsd).toBe(4_000_000);
+      expect(audit.committedMicroUsd).toBeLessThanOrEqual(audit.capMicroUsd);
+      expect(audit.pendingRequestKeys.length).toBeLessThanOrEqual(1);
+      if (!cooldownChecked && provider.creates.length === 2 && !audit.pendingRequestKeys.length && prompts.size === 2) {
+        expect(provider.creates.map(x => x.tier)).toEqual(['flex', 'default']);
+        const count = prompts.size;
+        const during = await runLocalPatchWorldSlice(container, deps, gameId, { hardDeadlineAt: Date.now() + 270_000, diagnose });
+        expect(during.pending).toBe(true);
+        expect(provider.creates).toHaveLength(2);
+        expect(prompts.size).toBe(count);
+        cooldownChecked = true;
+        await vi.advanceTimersByTimeAsync(KINGDOM_FLEX_OVERLOAD_COOLDOWN_MS);
+      }
+    }
     if(body&&!tailExtended&&!bodyBudgetFilled){const current=await db.targetVariantAsset.findMany({where:{variant:'A',targetInstance:{gameScene:{gameId}}}});if(current.some(r=>r.attempts===3&&r.status==='FAILED'&&JSON.parse(r.judgeJson!).hide===guidedHideId)&&current.some(r=>r.attempts===2&&r.status==='FAILED'&&JSON.parse(r.judgeJson!).hide==='giza-detectives-hide-2')){const budget=boardWizardBudgetOf(container),worldId=boardWizardWorldId(gameId),fill=7650000-(await budget.audit(worldId)).committedMicroUsd;await budget.reserve(worldId,{requestKey:'synthetic-finishing-eight-cap',scope:'image',operationFingerprint:'c'.repeat(64),reserveMicroUsd:fill});await budget.settle(worldId,'synthetic-finishing-eight-cap',bill('req-eight-filled-'+gameId,fill));bodyBudgetFilled=true;}}
     if(body&&tailExtended&&result.attention&&!bodyAdopted){const protectedBefore=await db.targetVariantAsset.findMany({where:{variant:'A',status:'GENERATED',targetInstance:{gameScene:{gameId}}},orderBy:{id:'asc'}});expect(protectedBefore).toHaveLength(25);const exhaustedPair=await db.targetVariantAsset.findMany({where:{variant:'A',status:'FAILED',targetInstance:{gameScene:{gameId}}}});expect(exhaustedPair.map(r=>r.attempts).sort(),'An authorized unbought native painting must queue, not falsely stop').toEqual([3,4]);protectedRows=protectedBefore;const before=await boardWizardBudgetOf(container).audit(boardWizardWorldId(gameId));console.info('source-body-parent-contracts', (await db.targetVariantAsset.findMany({where:{variant:'A',status:'FAILED',targetInstance:{gameScene:{gameId}}}})).map(r=>{const j=JSON.parse(r.judgeJson!);return {attempts:r.attempts,hide:j.hide,source:j.authoredReturn?.source,local:j.authoredReturn?.local,reviewState:j.reviewState,wireFault:j.wireFault,renderFault:j.renderFault,permission:j.compositionPermission,seam:j.seam,verdict:j.verdict};}));expect(await resumeSourceBodyGeometryRepair(container,gameId)).toBe(true);expect(await resumeSourceBodyGeometryRepair(container,gameId)).toBe(false);const pin=(await readSourceBodyRepairPin(db,gameId))!;expect(pin.selected.map(s=>s.authorizedAttempt).sort()).toEqual([4,5]);const savedBody=await db.auditLog.findUniqueOrThrow({where:{id:sourceBodyRepairId(gameId)}});for(const fault of ['key','counter','protected','family','manifest','cap']){const changed=JSON.parse(savedBody.metaJson!);if(fault==='key')changed.selected[0].requestKey+='foreign';if(fault==='counter')changed.selected[0].authorizedAttempt++;if(fault==='protected')changed.protectedRows[1]=changed.protectedRows[0];if(fault==='family')changed.familySha256='f'.repeat(64);if(fault==='manifest')changed.manifestSha256='f'.repeat(64);if(fault==='cap')changed.capMicroUsd=11000000;const {authorizationSha256:_sha,...unsigned}=changed;changed.authorizationSha256=boardConditioningHash(unsigned);await db.auditLog.update({where:{id:savedBody.id},data:{metaJson:JSON.stringify(changed)}});await expect(readSourceBodyRepairPin(db,gameId)).rejects.toThrow();await db.auditLog.update({where:{id:savedBody.id},data:{metaJson:savedBody.metaJson}});}expect(await boardWizardBudgetOf(container).audit(boardWizardWorldId(gameId))).toEqual(before);bodyAdopted=true;result={pending:true,attention:null};continue;}
     if (tail && result.attention && !tailExtended) {
@@ -665,7 +724,7 @@ it.each([{mode:"clean",interrupted:false,guided:false},{mode:"transport",interru
   expect(config.scenes.flatMap(scene => scene.targets)).toHaveLength(27);
   expect(config.adventure!.boards).toHaveLength(9); expect(config.adventure!.boards.flatMap(board => board.discoveries)).toHaveLength(54);
   expect(config.scenes.every(scene => scene.art.base.includes("-detectives-"))).toBe(true);
-  expect(await subjectUpgradeOf(db, gameId)).toMatchObject({ actorType: "SYSTEM", operatorId: SYSTEM_ENROLLMENT_OPERATOR, ageYears: body||born?7:8 });
+  expect(await subjectUpgradeOf(db, gameId)).toMatchObject({ actorType: "SYSTEM", operatorId: SYSTEM_ENROLLMENT_OPERATOR, ageYears: age });
   const rows = await db.targetVariantAsset.findMany({ where: { variant: "A", targetInstance: { gameScene: { gameId } } } });
   expect(rows).toHaveLength(27); expect(rows.every(row => row.status === "GENERATED" && row.attempts === (body ? JSON.parse(row.judgeJson!).hide===guidedHideId?5:JSON.parse(row.judgeJson!).hide==="giza-detectives-hide-2"?4:1 : guided && JSON.parse(row.judgeJson!).hide === guidedHideId ? tail ? 4 : 3 : 1))).toBe(true);
   expect(prompts.size).toBe(body?34:tail ? 30 : guided ? 29 : 27); expect(provider.creates).toHaveLength(body?32:guided ? 29 : interrupted ? 28 : 27); expect(provider.creates.filter(create => create.quality)).toHaveLength(body?32:guided ? 29 : interrupted ? 28 : 27);
@@ -697,8 +756,10 @@ it.each([{mode:"clean",interrupted:false,guided:false},{mode:"transport",interru
       expect(proof.quality.headEvidence).toMatchObject({
         version: TARGET_HEAD_VISIBLE_VERSION, gameId, hideId: receipt.hide,
         sourceRequestKey: `${receipt.hide}:${receipt.pose}:render:${row.attempts}`,
-        shippingSha256: proof.imageSha256, geometrySha256: proof.geometrySha256,
-        identitySha256: proof.identitySha256, returned: receipt.authoredReturn.local, feather: 12,
+shippingSha256: proof.imageSha256, geometrySha256: proof.geometrySha256,
+        identitySha256: proof.identitySha256,
+        returned: receipt.retainedWindow ? retainedWindowRegion(KINGDOM_GENERATION_WINDOWS.find(x => x.authority.hideId === receipt.hide)!.authority) : receipt.authoredReturn.local,
+        feather: 12,
       });
       expect(targetHeadReturnDecision(proof.quality.raw, proof.quality.headEvidence).disposition).toBe("pass");
     }
@@ -708,7 +769,7 @@ it.each([{mode:"clean",interrupted:false,guided:false},{mode:"transport",interru
     expect(readQualityStage(proof.quality, receipt.hide, 13)?.verdict).toBe("pass");
     expect(readContinuityStage(proof.continuity!, receipt.hide, DUAL_VISUAL_REVIEW_V3)).toMatchObject({ ok: true });
     expect(proof.subject).toMatchObject({ subjectPolicy: SUBJECT_POLICY_V2, reader: SUBJECT_READER_V2, combined: SUBJECT_QUALITY_BUNDLE_VERSION, requestKey: proof.quality.requestKey });
-    expect(readSubjectAnswerV2(subjectStageRaw(proof.subject!), { hideId: receipt.hide, ageYears: body||born?7:8, plan: subjectPlanOfHide(receipt.hide, 13)! })).toMatchObject({ ok: true, disposition: "pass" });
+    expect(readSubjectAnswerV2(subjectStageRaw(proof.subject!), { hideId: receipt.hide, ageYears: age, plan: subjectPlanOfHide(receipt.hide, 13)! })).toMatchObject({ ok: true, disposition: "pass" });
     for (const stage of [proof.quality, proof.continuity!]) {
       const retained = await store.get(worldId, stage.requestKey); expect(retained).not.toBeNull();
       expect(retained!.operationFingerprint).toBe(stage.fingerprint); expect(JSON.parse(retained!.bytes.toString()).raw).toBe(stage.raw);
@@ -799,8 +860,18 @@ it.each([{mode:"clean",interrupted:false,guided:false},{mode:"transport",interru
     }else expect(oversized.hitRect!.h * 2160).toBeGreaterThan(540 * 0.8);
   }
   if(mode==="born-clean")expect(bornPendingChecked).toBe(true);
+  if (paced) {
+    expect(cooldownChecked).toBe(true);
+    expect(rows.some(row => JSON.parse(row.judgeJson!).retainedWindow)).toBe(true);
+    expect(observedPeak).toBeGreaterThan(3_000_000);
+  }
   const audit = await boardWizardBudgetOf(c).audit(worldId);
   expect(audit).toMatchObject({ capMicroUsd: born?4_000_000:tail ? 10_000_000 : 8_000_000, held: false, pendingRequestKeys: [] });
+  if (paced) {
+    await expect(boardWizardBudgetOf(c).reserve(worldId, { scope: 'judge', requestKey: 'over-inclusive-cap',
+      operationFingerprint: 'f'.repeat(64), reserveMicroUsd: audit.remainingMicroUsd + 1 })).rejects.toMatchObject({ code: 'cap_exceeded' });
+    expect(await boardWizardBudgetOf(c).audit(worldId)).toEqual(audit);
+  }
   expect(audit.unknownRequestKeys).toHaveLength(interrupted ? 1 : 0);
   if (interrupted) {
     const unknown = await boardWizardBudgetOf(c).readRequest(worldId, audit.unknownRequestKeys[0]!);

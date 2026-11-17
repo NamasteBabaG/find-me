@@ -18,6 +18,8 @@ import { RETAINED_PURCHASE_VERSION, retainedPayloadDigest, type RetainedPurchase
 import { canonicalChargeEvidence, WorldBudgetError, type BudgetJson } from "./world-budget";
 import { sanitizeProviderError } from "../../domain/generation/background-provider-error";
 import { permanentFailureReason, permanentProviderFailure } from "../../domain/generation/lean-review-recovery";
+import { kingdomFlexCreateAllowed } from '../../domain/generation/kingdom-generation';
+import { kingdomGenerationReleaseOf } from './kingdom-generation-release';
 
 /**
  * A new Sol continuity question of an enrolled world, asked once as an OpenAI
@@ -455,6 +457,11 @@ export async function askContinuityInBackground(c: Container, ask: BackgroundAsk
   const ctx: Ctx = { ...ask, c, roundId: backgroundRoundIdOf(ask.worldId, ask.requestKey) };
   const body = solBackgroundReviewBody(question);
   let events = await readEvents(c.db, ask.gameId, ctx.roundId);
+  const flexAdmission = question.policy.serviceTier === 'flex'
+    && await kingdomGenerationReleaseOf(c.db, ask.gameId);
+  const mayCreate = async () => !flexAdmission || flexAdmission.worldId === ask.worldId
+    && kingdomFlexCreateAllowed((await recordedRounds(c.db, ask.gameId)).map(x => x.round), ask.requestKey, Date.now());
+  const flexWaiting = () => waiting('waiting for the current review or the Kingdom Flex overload cooldown');
   const cancelPolicy = events.length ? backgroundRoundOf(events).intent.cancelPolicy : prospectiveBackgroundCancelPolicy(lean?.version);
   const intent: BackgroundReviewIntent = { version: BACKGROUND_REVIEW_ROUND_VERSION, roundId: ctx.roundId, gameId: ask.gameId, worldId: ask.worldId,
     requestKey: ask.requestKey, fingerprint: question.fingerprint, bodySha256: sha(JSON.stringify(body)), reserveMicroUsd: ask.reserveMicroUsd, binding: ask.binding,
@@ -462,6 +469,7 @@ export async function askContinuityInBackground(c: Container, ask: BackgroundAsk
   const transport = c.backgroundReview;
   if (!events.length) {
     if (!transport) return held("the background transport is not configured; nothing was reserved or sent");
+    if (!await mayCreate()) return flexWaiting();
     const existing = await boardWizardBudgetOf(c).readRequest(ask.worldId, ask.requestKey);
     if (existing) return held(`${ask.requestKey} is already ${existing.state} outside a background round`);
     await writeIntent(ctx, intent);
@@ -483,7 +491,10 @@ export async function askContinuityInBackground(c: Container, ask: BackgroundAsk
     if (step.step === "wait") return waiting(step.reason);
     if (!transport) return waiting("the background transport is not configured; the round keeps its reservation");
     let gate: BackgroundGate | null = null;
-    if (step.step === "create") gate = await create(ctx, transport, body);
+    if (step.step === "create") {
+      if (!await mayCreate()) return flexWaiting();
+      gate = await create(ctx, transport, body);
+    }
     else if (step.step === "lost") await recordLost(ctx, "the create was claimed and its answer never arrived within its grace");
     else gate = await poll(ctx, transport, step.responseId, step.cancelDue);
     if (gate) return gate;

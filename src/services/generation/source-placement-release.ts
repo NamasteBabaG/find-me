@@ -4,6 +4,8 @@ import { createHash } from "node:crypto";
 import { detectivesOperationalPolicyOf } from "./detectives-operational-policy";
 import type { DetectivesOperationalReceipt } from "../../domain/generation/detectives-operational-policy";
 import { journeyWindowReleaseOf, type JourneyWindowPin } from './journey-window-release';
+import { kingdomGenerationReleaseOf } from './kingdom-generation-release';
+import { KINGDOM_GENERATION_WINDOWS } from '../../../content/detectives/retained-window-v1';
 import { JOURNEY_WINDOW_MANIFEST, JOURNEY_WINDOW_BODY_MANIFEST } from '../../../content/detectives/journey-window-release-v1';
 import { readSourceBodyRepairPin } from './source-body-repair-pin';
 import { SOURCE_BODY_REPAIR_MANIFEST, SOURCE_BODY_REPAIR_MANIFEST_SHA256 } from '../../../content/detectives/source-body-repair';
@@ -207,7 +209,7 @@ export type TrustedSourcePlacementContext = {
   readonly release: SourcePlacementReleasePin | null;
   readonly manifestSha256: string | null;
 };
-type ContextProof = { digest: string; contracts: Map<string, SourcePlacementHideContract>; bodies: Map<string, SourceBodyGeometry>; birthPin: DetectivesOperationalReceipt|null; windows:JourneyWindowPin|null };
+type ContextProof = { digest: string; contracts: Map<string, SourcePlacementHideContract>; bodies: Map<string, SourceBodyGeometry>; birthPin: DetectivesOperationalReceipt|null; windows:JourneyWindowPin|null; kingdomGeneration:boolean };
 const trustedContexts = new WeakMap<object, ContextProof>();
 function freeze<T>(value: T): T {
   if (value !== null && typeof value === "object") {
@@ -301,7 +303,9 @@ export async function resolveLocalPatchBoardsForGame(db: Reader, gameId: string,
   }
   const context: TrustedSourcePlacementContext = Object.freeze({ [contextBrand]: true as const, gameId, sceneVersion,
     boards, release: release ? freeze(release) : null, manifestSha256: release?.manifestSha256 ?? null });
-  trustedContexts.set(context, { digest: contextDigest(context), contracts, bodies, birthPin:birthPin?freeze(birthPin):null, windows });
+  const kingdomGeneration = release?.baseSceneVersion === 13 && release.worldSlug === 'kingdom'
+    && !!await kingdomGenerationReleaseOf(db, gameId);
+  trustedContexts.set(context, { digest: contextDigest(context), contracts, bodies, birthPin:birthPin?freeze(birthPin):null, windows, kingdomGeneration });
   return context;
 }
 
@@ -326,3 +330,10 @@ export function sourcePlacementManifestForHide(context:TrustedSourcePlacementCon
    :pin&&JOURNEY_WINDOW_MANIFEST.entries.some(e=>e.hideId===hideId)?pin.manifestSha256:context.manifestSha256;}
 
 export function sourceBodyBirthForHide(context:TrustedSourcePlacementContext,hideId:string){assertTrustedSourcePlacementContext(context);const proof=trustedContexts.get(context)!;return proof.bodies.has(hideId)?proof.birthPin:null;}
+
+export function kingdomGenerationWindowForHide(context: TrustedSourcePlacementContext, hideId: string) {
+  if (context.release?.baseSceneVersion !== 13 || context.release.worldSlug !== 'kingdom') return null;
+  assertTrustedSourcePlacementContext(context);
+  return trustedContexts.get(context)!.kingdomGeneration
+    ? KINGDOM_GENERATION_WINDOWS.find(profile => profile.authority.hideId === hideId) ?? null : null;
+}

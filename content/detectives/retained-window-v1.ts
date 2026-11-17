@@ -51,6 +51,9 @@ export function retainedWindowAuthorityFor(parent: AuthoredLocalPatchReturnContr
   } else if (manifest === RETAINED_KINGDOM_TAIL_MANIFEST_SHA256) {
     assertRetainedKingdomTailManifest();
     authorities = RETAINED_KINGDOM_TAIL_WINDOWS.map(item=>item.authority);
+  } else if (manifest === KINGDOM_GENERATION_WINDOWS_SHA256) {
+    assertKingdomGenerationWindows();
+    authorities = KINGDOM_GENERATION_WINDOWS.map(item => item.authority);
   } else return null;
   const a = authorities.find(a => a.hideId === parent?.hideId);
   const same = (x: unknown, y: unknown) => retainedWindowCanonicalHash(x) === retainedWindowCanonicalHash(y);
@@ -80,6 +83,47 @@ export const RETAINED_KINGDOM_TAIL_WINDOWS = Object.freeze([
     }),
   },
 ]);
+
+/** Prospective public geometry. These permissions do not name a paid attempt.
+ * The ordinary painter and reviewer still have to produce a complete child. */
+export const KINGDOM_GENERATION_WINDOWS = Object.freeze([
+  {
+    authority: RETAINED_KINGDOM_TAIL_WINDOWS[0]!.authority,
+    supportBottom: 568,
+    direction: 'Keep both skates, ankles and the point of contact with the ice inside the return. Match the original ground plane and preserve complete nearby skaters.',
+  },
+  {
+    authority: RETAINED_KINGDOM_TAIL_WINDOWS[1]!.authority,
+    direction: 'The source balcony railing and posts remain in front of the child. Keep the visible body continuous above the rail and put the hidden legs behind it.',
+  },
+  {
+    authority: Object.freeze({ ...authorityOf('kingdom-detectives/v1', 'dragoncave-detectives-hide-1', 'source-child'), preserveSourceNeighbors: true }),
+    direction: 'Replace only the central target. Preserve both neighbors including their visible bodies, and place all visible parts of the new child inside the return.',
+  },
+  {
+    authority: Object.freeze({ ...authorityOf('kingdom-detectives/v1', 'underwater-detectives-hide-3', 'source-child'), preserveSourceNeighbors: true }),
+    direction: 'Replace only the registered target. Preserve the foreground and the heads, limbs and positions of the people on either side of the child.',
+  },
+  ...['icepalace-detectives-hide-3', 'cloudcity-detectives-hide-1'].map(hideId => ({
+    authority: RETAINED_WINDOW_AUTHORITIES.find(authority => authority.hideId === hideId)!,
+    direction: 'Keep the complete target and its support inside the editable return. Preserve the source people that cross the crop.',
+  })),
+].map(profile => Object.freeze(profile)));
+
+export const KINGDOM_GENERATION_WINDOWS_SHA256 = 'd51f11d6fd3915b5d9f18f312805a82fc5d734aafbfe3d59984cb9fe4533349a';
+
+export function assertKingdomGenerationWindows() {
+  if (retainedWindowHash(KINGDOM_GENERATION_WINDOWS) !== KINGDOM_GENERATION_WINDOWS_SHA256)
+    throw Error('RETAINED_WINDOW: prospective Kingdom geometry differs from its release');
+  for (const profile of KINGDOM_GENERATION_WINDOWS) {
+    const { authority } = profile;
+    const supportBottom = 'supportBottom' in profile ? profile.supportBottom : undefined;
+    assertRetainedWindowAuthority(authority);
+    if (supportBottom !== undefined && (supportBottom <= authority.parentChild.top + authority.parentChild.height
+      || supportBottom > 768 - authority.frame - 2 * authority.feather))
+      throw Error('RETAINED_WINDOW: skating support must clear the editable frame');
+  }
+}
 /** Separate finite changed-source recovery. No old composition permission or
  * verdict changes; the rejected image and its paid answer remain in lineage. */
 export const RETAINED_WINDOW_NEIGHBOR_ALTERNATE = Object.freeze({

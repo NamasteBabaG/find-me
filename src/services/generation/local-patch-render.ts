@@ -15,7 +15,9 @@ import { WHOLE_SOURCE_CONTEXT_IMAGE_RESERVE } from "./whole-source-context-pin";
 import { wholeSourceContextImagePolicy, type WholeSourceContextTransport } from "../../infra/generation/openai-local-patch";
 import { sourceBodyMarkerSchema, sourceBodyDirections, sourceBodyOverlay, SOURCE_BODY_REPAIR_VERSION, type SourceBodyMarker } from '../../domain/scene/source-body-repair';
 import { sourceBodyMaskPng, applySourceBodyPixels } from './source-body-repair-compose';
-import { sourceBodyForHide, sourceBodyBirthForHide } from './source-placement-release';
+import { kingdomGenerationWindowForHide, sourceBodyForHide, sourceBodyBirthForHide } from './source-placement-release';
+import { KINGDOM_GENERATION_WINDOWS_SHA256, retainedWindowAuthorityFor } from '../../../content/detectives/retained-window-v1';
+import { protectRetainedWindowPaintAlpha } from '../../domain/generation/retained-window';
 import { sourceBodyBirthMarkerSchema, type SourceBodyBirthMarker } from '../../domain/generation/detectives-operational-policy';
 import { nativeMaskTailMarkerSchema, nativeMaskTailDirections, nativeMaskTailEditRegion, type NativeMaskTailMarker } from "../../domain/generation/native-mask-tail";
 import { GUIDED_FRAME_RECOVERY_VERSION, guidedFrameGeometry, guidedFrameOverlay, guidedFrameDirections, parseGuidedFrameMarker, guidedFrameVersionMatches, type GuidedFrameMarker } from '../../domain/generation/guided-frame-recovery';
@@ -524,10 +526,18 @@ async function renderLocalPatchHideInner(deps: LocalPatchRenderDeps, input: Loca
   const authoredMask = recovery?.protectedCore ?? maskForHide(hide);
   const bodyGeometry=(input.sourceBodyRepair||input.sourceBodyBirth)&&input.placementContext?sourceBodyForHide(input.placementContext,hide.id):null;
   if(bodyGeometry&&foreground)throw Error('SOURCE_BODY: a separate authored foreground requires its own qualification');
-  const guideReturn = guidedReturn?.local ?? authoredReturn?.local;
-  const guideGeometry = input.guidedFrameRecovery||input.placementGuide||bodyGeometry||input.wholeSourceContext ? guidedFrameGeometry(authoredMask, guideReturn!) : null;
+  const kingdomWindow = input.placementContext && !input.selfRepair && !journeyHead && !sourceHead && !input.wholeSourceContext && !bodyGeometry
+    ? kingdomGenerationWindowForHide(input.placementContext, hide.id) : null;
+  if (kingdomWindow && (!authoredReturn || !retainedWindowAuthorityFor(authoredReturn, KINGDOM_GENERATION_WINDOWS_SHA256)))
+    throw Error('RETAINED_WINDOW: the Kingdom paint frame differs from its authored source');
+  const supportBottom = kingdomWindow && 'supportBottom' in kingdomWindow ? kingdomWindow.supportBottom : undefined;
+  const preserveSourceNeighbors = kingdomWindow?.authority.preserveSourceNeighbors === true;
+  const guideChild = supportBottom === undefined ? authoredMask : { ...authoredMask, height: supportBottom - authoredMask.top };
+  const pinnedReturn = guidedReturn?.local ?? authoredReturn?.local;
+  const guideReturn = supportBottom === undefined ? pinnedReturn : { ...pinnedReturn!, height: supportBottom + 24 - pinnedReturn!.top };
+  const guideGeometry = input.guidedFrameRecovery||input.placementGuide||bodyGeometry||input.wholeSourceContext ? guidedFrameGeometry(guideChild, guideReturn!) : null;
   const mask = authoredMask;
-  const paintTarget = guideGeometry?.target ?? mask;
+  const paintTarget = guideGeometry?.target ?? guideChild;
   if (input.adaptiveRecovery && (attempt !== 3 || !isLocalPatchStrictVersion(input.contentVersion) || input.recoveryDirective)) {
     throw Error("ADAPTIVE_RECOVERY: a diagnosis belongs only to its final normal attempt");
   }
@@ -562,7 +572,7 @@ async function renderLocalPatchHideInner(deps: LocalPatchRenderDeps, input: Loca
   // This prospective companion direction is absent from every old paid prompt.
   const companion = authoredReturn?.sourcePlacement && input.placementContext
     ? sourcePlacementForHide(input.placementContext, hide.id) : null;
-  const paintReturn = recovery?.returnWindow ?? authoredReturn?.local;
+  const paintReturn = recovery?.returnWindow ?? (supportBottom === undefined ? authoredReturn?.local : guideReturn);
   const neighborContext = companion && paintReturn ? { boardId: companion.boardId, hideId: companion.hideId,
     source: companion.source, crop, returnRect: paintReturn } : null;
   const painterNeighbors = companion?.sourceNeighbors && neighborContext
@@ -579,7 +589,8 @@ async function renderLocalPatchHideInner(deps: LocalPatchRenderDeps, input: Loca
         heads: painterNeighbors.contract.neighbors.map(n => ({ sourceId: n.sourceId,
           head: { ...n.head, left: n.head.left - crop.left, top: n.head.top - crop.top } })) } : null })}.`,
     "All child/return/head coordinates above use the original 512x768 crop; negative or outside head coordinates are intentional. Paint the canonical TARGET child only within childEnvelope. The returnWindow is the exact area that will join back into the original board; its exterior is never replaced.",
-    "The registered heads identify original people for comparison, not a required final person count. Replace the authored TARGET with the canonical child. A source person wholly covered by the opaque return may be coherently removed or replaced WHOLE, with no original face, body or limb remnant; complete replacement is not a defect by itself.",
+    preserveSourceNeighbors ? "Replace the authored TARGET whole with the canonical child. Keep the registered non-target people in their original place and preserve their heads and visible anatomy."
+      : "The registered heads identify original people for comparison, not a required final person count. Replace the authored TARGET with the canonical child. A source person wholly covered by the opaque return may be coherently removed or replaced WHOLE, with no original face, body or limb remnant; complete replacement is not a defect by itself.",
     "For every person continuing outside returnWindow, preserve their original scene coordinates, visible contours and anatomy. A person partly cut off by the INPUT CROP continues outside it in the original board: preserve that visible fragment exactly. Never complete a crop-clipped person by moving their head or body inward, inventing a foreground copy, erasing only half of them, or leaving their original head/face/body fragment beside a shifted replacement. Preserve continuous scenery across the return boundary.",
     "Do not move or widen the crop/window to solve a defect. If a complete target or intact neighbour cannot fit, the result must fail independent review and return to the bounded recovery plan; this direction is never an approval.",
   ].join("\n") : "";
@@ -607,13 +618,13 @@ async function renderLocalPatchHideInner(deps: LocalPatchRenderDeps, input: Loca
     const directed = authoredPaint ? `${base}\n\n${authoredPaint}` : base;
     if(bodyGeometry)return directed+'\n\n'+sourceBodyDirections(bodyGeometry);
     if (!guideGeometry) return directed;
-    const guide = input.placementGuide ? placementGuideDirections(authoredMask, guideReturn!, input.placementGuide.version) : guidedFrameDirections(authoredMask, guideReturn!);
+    const guide = input.placementGuide ? placementGuideDirections(guideChild, guideReturn!, input.placementGuide.version, preserveSourceNeighbors) : guidedFrameDirections(guideChild, guideReturn!);
     const permission = input.nativeMaskTail ? guide.replace("The editor mask covers the orange context so surrounding scenery can be reconstructed coherently, but the child must stay inside cyan.",
       "The native editor mask covers only the ORIGINAL child envelope. Remove the original target person WHOLE inside that envelope, including hair above cyan, then draw the whole new child inside cyan. The orange return-boundary band is protected.") : guide;
     return directed + '\n\n' + permission + (input.nativeMaskTail ? '\n\n'+nativeMaskTailDirections : '');
   };
   const nativeDetailRepair=input.nativeDetailRepair ? nativeDetailEvidenceSchema.parse(input.nativeDetailRepair) : undefined;
-  const promptWith=(plan:SubjectRenderDirection|undefined)=>basePromptWith(plan)+(nativeDetailRepair
+  const promptWith=(plan:SubjectRenderDirection|undefined)=>basePromptWith(plan)+(kingdomWindow ? '\n\n'+kingdomWindow.direction : '')+(nativeDetailRepair
     ? '\n\n'+NATIVE_DETAIL_REPAIR_DIRECTION+'\nNATIVE_DETAIL_REFUSED_EVIDENCE: '+JSON.stringify(nativeDetailRepair) : '');
 
   const meta = await sharp(input.composedPng, { limitInputPixels: 8_294_400 }).metadata();
@@ -630,12 +641,18 @@ async function renderLocalPatchHideInner(deps: LocalPatchRenderDeps, input: Loca
   // and keep the whole target within its unchanged authored envelope via the cyan guide.
   // v2 also keeps the seam band shut: the seam check reads exactly that band back.
   const guideV2 = input.placementGuide?.version === PLACEMENT_GUIDE_V2_VERSION;
-  const guideEditable = guideV2 ? placementGuideEditableRect(authoredMask, guideReturn!) : nativeEdit ? nativeEdit.editable : guideReturn!;
-  let maskPng = journeyHead ? await journeyHeadMaskPng(journeyHead.authority) : sourceHead ? await sourceHeadMaskPng(sourceHead.authority) : bodyGeometry ? await sourceBodyMaskPng(bodyGeometry) : await poseMask(guideGeometry ? { ...hide, mask: guideEditable } : recovery ? { ...hide, mask } : hide);
+  const guideEditable = guideV2 ? placementGuideEditableRect(guideChild, guideReturn!) : nativeEdit ? nativeEdit.editable : guideReturn!;
+  const editable = guideGeometry ? guideEditable : guideChild;
+  let maskPng = journeyHead ? await journeyHeadMaskPng(journeyHead.authority) : sourceHead ? await sourceHeadMaskPng(sourceHead.authority) : bodyGeometry ? await sourceBodyMaskPng(bodyGeometry) : await poseMask({ ...hide, mask: editable });
+  if (kingdomWindow && (kingdomWindow.authority.foregroundTop || kingdomWindow.authority.preserveSourceNeighbors)) {
+    const { data, info } = await sharp(maskPng).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+    protectRetainedWindowPaintAlpha(kingdomWindow.authority, { ...info, data });
+    maskPng = await sharp(data, { raw: info }).png().toBuffer();
+  }
   let placementGuidePng: Buffer | undefined = guideGeometry ? await sharp(stylePng).composite([...(bodyGeometry?[{input:Buffer.from(sourceBodyOverlay(bodyGeometry))}]:[]),{ input:Buffer.from(guidedFrameOverlay(authoredMask,guideReturn!)) }]).png().toBuffer() : undefined;
   if (input.placementGuide) {
     const entry = sourcePlacementForHide(input.placementContext!, hide.id);
-    placementGuidePng = await (guideV2 ? localPatchPlacementGuideV2Pixels : localPatchPlacementGuidePixels)({ sourcePng: input.composedPng, crop, child: authoredMask,
+    placementGuidePng = await (guideV2 ? localPatchPlacementGuideV2Pixels : localPatchPlacementGuidePixels)({ sourcePng: input.composedPng, crop, child: guideChild,
       returned: guideReturn!, heads: entry?.sourceNeighbors?.contract.neighbors.map(n => n.head) ?? [] });
   }
   // Refused before anything is reserved, not after: one frame for source, mask and guide.

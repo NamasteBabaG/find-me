@@ -36,8 +36,9 @@ export function placementGuideEditableRect(child: GuideRect, returned: GuideRect
   return open;
 }
 
-export function placementGuideDirections(child: GuideRect, returned: GuideRect, version: PlacementGuideVersion = PLACEMENT_GUIDE_VERSION): string {
-  if (version === PLACEMENT_GUIDE_V2_VERSION) return placementGuideV2Directions(child, returned);
+export function placementGuideDirections(child: GuideRect, returned: GuideRect, version: PlacementGuideVersion = PLACEMENT_GUIDE_VERSION,
+  preserveSourceNeighbors = false): string {
+  if (version === PLACEMENT_GUIDE_V2_VERSION) return placementGuideV2Directions(child, returned, preserveSourceNeighbors);
   return guidedFrameDirections(child, returned)
     .replace("single-low-guided-frame-recovery/v1", PLACEMENT_GUIDE_VERSION)
     .replace("The LAST reference is a marked copy of this SAME original 512x768 crop, used for position only.",
@@ -45,12 +46,14 @@ export function placementGuideDirections(child: GuideRect, returned: GuideRect, 
     + " In RIGHT, white outlines the input crop, orange the fixed returned area, cyan the whole-target frame and magenta registered original heads. Follow each person's visible body across the orange/white boundaries in the ORIGINAL context. Preserve its continuous fragment at the exact original position; never erase its torso while its original head survives outside the crop. Do not paint the right panel, markers, or a two-panel layout into the final image. Return ONLY the edited unmarked 512x768 original crop.";
 }
 
-function placementGuideV2Directions(child: GuideRect, returned: GuideRect): string {
+function placementGuideV2Directions(child: GuideRect, returned: GuideRect, preserveSourceNeighbors: boolean): string {
   const g = guidedFrameGeometry(child, returned), open = placementGuideEditableRect(child, returned);
   return "GEOMETRY GUIDE " + PLACEMENT_GUIDE_V2_VERSION + ". The LAST reference is a marked copy of this SAME original 512x768 crop at the SAME scale and framing, used for position only. Edit the FIRST original image and keep its exact camera, scale and framing: never zoom out, widen, shift, mirror or recompose the scene. "
     + "Orange marks the fixed return window " + JSON.stringify(g.returned) + ". The editor mask opens only " + JSON.stringify(open) + ": the " + LOCAL_PATCH_RETURN_FEATHER + "-pixel band just inside orange and everything outside orange are protected original pixels and must come back unchanged, so scenery and people crossing that band continue exactly where they are. "
     + "Cyan marks the safe whole-target frame " + JSON.stringify(g.target) + ". Draw the complete visible crown, hair/hat, head, torso and naturally visible limbs INSIDE cyan. Preserve the stated age and proportions, pose, depth, support and natural occlusion; do not make the child younger to fit. The whole cyan frame is a maximum, not an instruction to fill it. "
     // Registrations can include the authored target itself (Tokyo hide 3), so they name comparison people, not people to keep.
-    + "Magenta outlines registered source heads for comparison, including the original authored TARGET when registered; these boxes are not a required final person count. Replace the authored TARGET WHOLE with the canonical child, leaving no original face, body or limb remnant. For the other registered people follow the SOURCE-BOUND placement data: a person wholly covered by the opaque return may be coherently removed or replaced WHOLE where allowed, while a person continuing outside the return window or input crop keeps the exact original coordinates and intact visible fragments. Never erase or move only part of a person. "
+    + "Magenta outlines registered source heads for comparison, including the original authored TARGET when registered; these boxes are not a required final person count. Replace the authored TARGET WHOLE with the canonical child, leaving no original face, body or limb remnant. "
+    + (preserveSourceNeighbors ? "Keep every registered non-target person in the original position and preserve their visible contours and anatomy. "
+      : "For the other registered people follow the SOURCE-BOUND placement data: a person wholly covered by the opaque return may be coherently removed or replaced WHOLE where allowed, while a person continuing outside the return window or input crop keeps the exact original coordinates and intact visible fragments. Never erase or move only part of a person. ")
     + "People continuing outside orange or outside the crop must remain whole at their original coordinates. No guide colour, text, outline, box or marker may appear in the final art. Never crop a head to fit the frame; paint it at the correct location. Return ONLY the edited unmarked 512x768 original crop.";
 }

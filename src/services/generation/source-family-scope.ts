@@ -10,6 +10,7 @@ import { dualVisualReviewVersion, DUAL_VISUAL_REVIEW_V3 } from './visual-review-
 import { identitySourceReleaseOf, IDENTITY_SOURCE_RELEASE, identitySourceAuditId } from './identity-source-release';
 import { env } from '../../lib/env';
 import { createHash } from 'node:crypto';
+import { pinKingdomGenerationRelease } from './kingdom-generation-release';
 
 type Reader=Pick<Prisma.TransactionClient,'auditLog'>;
 const demand=(v:unknown,why:string):void=>{if(!v)throw Error('SOURCE_FAMILY_SCOPE: '+why);};
@@ -87,4 +88,5 @@ export async function sealDetectiveSourceFamily(tx:Prisma.TransactionClient,game
   const pin=await expectedBinding(tx,gameId,w!);
   await tx.auditLog.create({data:{id:'aud_source_family_'+gameId,actorType:'SYSTEM',action:'generation:source-family-policy',entityType:'Game',entityId:gameId,metaJson:canonical(pin)}});
   await pinDetectivesOperationalPolicy(tx,gameId,scope.operationalRelease,scope.storageId,true);
+  if (w === 'kingdom') await pinKingdomGenerationRelease(tx, gameId);
 }

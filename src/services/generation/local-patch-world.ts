@@ -40,7 +40,7 @@ import type { Container } from "../container";
 import { type LocalPatchBoard, type LocalPatchHide } from "../../domain/scene/local-patch-hides";
 import { ALL_LOCAL_PATCH_BOARDS, localPatchBoardForVersion, isLocalPatchAdvisoryVersion, isLocalPatchStrictVersion } from "../../domain/scene/local-patch-catalog";
 import { worldsOwned } from "../world-catalog.service";
-import { resolveLocalPatchBoardsForGame } from "./source-placement-release";
+import { kingdomGenerationWindowForHide, resolveLocalPatchBoardsForGame } from "./source-placement-release";
 import { deliverLocalPatchNotifications } from "../local-patch-notifications";
 import { GenerationPaused, boardWizardBudgetOf, boardWizardWorldId } from "./board-conditioned-wizard";
 import { retainedPurchaseKeysFor } from "../../infra/db/prisma-retained-purchase-store";
@@ -84,6 +84,9 @@ import { enrollLeanWorld } from "./lean-enrollment";
 import { isLeanWorld } from "./lean-release";
 import { boundLeanRecoveryHold } from "./lean-review-recovery-pin";
 import { leanSubjectOnlyRefusal } from "./lean-repair";
+import { kingdomPaintLimit } from '../../domain/generation/kingdom-generation';
+import { kingdomGenerationReleaseOf } from './kingdom-generation-release';
+import { prepareKingdomWindow } from './retained-window-recovery';
 import {
   LOCAL_PATCH_MAX_ATTEMPTS, LOCAL_PATCH_PROVIDER, LOCAL_PATCH_VARIANT, runLocalPatchHide,
   type LocalPatchHideDeps, type LocalPatchHideOutcome,
@@ -305,6 +308,7 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
   // version. No pin retains the original catalog objects and geometry exactly.
   const placementContexts = await Promise.all([...new Set(game.scenes.map(scene => scene.sceneVersion))]
     .map(version => resolveLocalPatchBoardsForGame(c.db, gameId, version)));
+  const kingdomPlacement = placementContexts.find(context => context.release?.baseSceneVersion === 13 && context.release.worldSlug === 'kingdom');
   const boardFor = (slug: string, version: number) => placementContexts.find(context => context.sceneVersion === version)
     ?.boards.find(board => board.board === slug) ?? null;
   // local-patch-slice-pacing/v1: the provider passes below name each question whose answer the provider has just
@@ -505,8 +509,10 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
     const answered = await backgroundReviewAnswered(c.db, gameId);
     if (!answered.size) return [];
     const budget = boardWizardBudgetOf(c), worldId = boardWizardWorldId(gameId);
+    // Kingdom's paid-continuation recovery also reads the answer for a row held by its preceding transport failure.
+    const kingdomContinuation = !!kingdomPlacement;
     const current = await c.db.targetVariantAsset.findMany({ where: { variant: LOCAL_PATCH_VARIANT,
-      status: { in: ["GENERATED", "FAILED"] }, targetInstance: { gameScene: { gameId } } },
+      status: kingdomContinuation ? { in: ["GENERATED", "FAILED"] } : "GENERATED", targetInstance: { gameScene: { gameId } } },
       include: { targetInstance: { select: { gameSceneId: true } } } });
     const waiting: { sceneId: string; hideId: string; key: string }[] = [];
     for (const row of current) {
@@ -514,7 +520,7 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
       try { receipt = JSON.parse(row.judgeJson ?? "null"); } catch { continue; }
       if (!receipt || typeof receipt.judgedSha256 !== "string" || typeof receipt.hide !== "string") continue;
       const waitingForFirstAnswer = row.status === "GENERATED" && receipt.reviewState === "pending-board-review";
-      if (!waitingForFirstAnswer && !localPatchEvidenceRecovery(row)?.retry) continue;
+      if (!waitingForFirstAnswer && !(kingdomContinuation && localPatchEvidenceRecovery(row)?.retry)) continue;
       const key = `${row.id}:${receipt.judgedSha256}`;
       if (unreplayable.has(key)) continue;
       for (const requestKey of answered.get(key) ?? []) {
@@ -635,6 +641,7 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
   // terminal game transition. That is still unresolved evidence on restart,
   // never permission to buy another image merely to obtain a different judge.
   const extraPlan = await readLocalPatchExtraAttemptPlan(c, gameId);
+  const kingdomRelease = !!kingdomPlacement && !extraPlan && await kingdomGenerationReleaseOf(c.db, gameId);
   // local-patch-continue-in-slice/v1. A ledger held only by review answers the automatic continuation admits does not
   // park the world: it yields, queued (a candidate of the scheduled selection), and its next slice continues them first.
   // A continuation this slice already tried and could not complete parks the world, never yields it again, and the park
@@ -668,6 +675,14 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
   // is timed by board so a slow one shows in the logs. A board whose questions only await their provider is not rebuilt.
   let longestReviewMs = 0;
   const reviewFits = () => options.hardDeadlineAt === undefined || localPatchReviewFits(options.hardDeadlineAt - Date.now(), longestReviewMs);
+  if (kingdomRelease && kingdomPlacement) {
+    for (const item of work) {
+      const row = stateOf(item.sceneId, item.hide.targetId);
+      if (!row || !kingdomGenerationWindowForHide(kingdomPlacement, item.hide.id)) continue;
+      if (!reviewFits()) return yieldToContinue();
+      if (await prepareKingdomWindow(c, gameId, item.hide.id, row, fence, deps.readBoardArt)) return yieldToContinue();
+    }
+  }
   const timedReview = async <T extends { readonly state: string }>(board: string, kind: "retained" | "settled" | "first" | "complete", review: () => Promise<T>) => {
     const started = Date.now();
     let state = "failed";
@@ -926,7 +941,7 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
     for (const { scene, ready, firstWork, retry } of plans) {
       if (!hasLocalPatchCapability(scene.sceneVersion, "integratedQuality") || scene.generationStatus === "GENERATED" && !subjectPending.has(scene.id)) continue;
       if (!(firstWork || retry) && ready.length !== boardFor(scene.sceneSlug, scene.sceneVersion)?.hides.length) continue;
-      if (!firstWork && retry && !firstPassComplete()) continue;
+      if (!kingdomRelease && !firstWork && retry && !firstPassComplete()) continue;
       // Every question it owes is sent: decided by a later slice, once its answer arrives.
       if (awaitingBoards.has(scene.id)) continue;
       // local-patch-slice-pacing/v1: no board is started that the slice cannot finish; the next tick takes the rest.
@@ -1055,7 +1070,11 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
   // corrections above, then skips BOTH paid diagnosis/repair and render queues.
   // maxHides:0 cannot express this: the historical image limit clamps to one.
   const limit = workMode === REVIEW_EXISTING_WORK_MODE ? 0
-    : Math.max(1, options.maxHides ?? (advisory ? 5 : LOCAL_PATCH_HIDES_PER_SLICE));
+    : kingdomRelease ? kingdomPaintLimit(rows.some(row => {
+      const evidence = localPatchEvidenceRecovery(row);
+      return readyReviewOwed(row) || rejudgePending(row) || localPatchContinuityPending(row)
+        || !!(evidence?.retry || evidence?.waiting);
+    })) : Math.max(1, options.maxHides ?? (advisory ? 5 : LOCAL_PATCH_HIDES_PER_SLICE));
   let paused = false;
   let attention: string | null = null;
 
@@ -1104,12 +1123,12 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
     for (const entry of ordered ?? todo.map(item => ({ item, kind: "render" as const }))) {
       const item = entry.item;
       if (entry.kind === "repair") {
-        if (repairsStarted >= limit) continue;
+        if (repairsStarted + (kingdomRelease ? outcomes.length : 0) >= limit) continue;
         if (options.hardDeadlineAt !== undefined && options.hardDeadlineAt - Date.now() < minHideMs) break;
         await repairOne(item);
         continue;
       }
-      if (outcomes.length >= limit) { if (ordered) continue; break; }
+      if (outcomes.length + (kingdomRelease ? repairsStarted : 0) >= limit) { if (ordered) continue; break; }
       if (options.hardDeadlineAt !== undefined && options.hardDeadlineAt - Date.now() < minHideMs) break;
       if (await tabbedInstead(item)) continue;
       let outcome: LocalPatchHideOutcome;
@@ -1146,6 +1165,8 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
       }
       // A world that cannot buy anything is not a world to keep buying in.
       if (outcome.state === "stopped") break;
+      if (kingdomRelease && (outcome.state === 'generated' || outcome.state === 'refused' || outcome.state === 'gave-up'))
+        return { ...await yieldToContinue(), outcomes, blocked };
     }
   } catch (error) {
     // No budget stop while an answer already paid for still awaits its reading (local-patch-settled-answer-first/v1).

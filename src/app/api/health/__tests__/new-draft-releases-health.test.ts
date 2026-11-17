@@ -64,6 +64,17 @@ describe('health reports the prospective Detective judge separately from histori
   Object.assign(f.environment,{LOCAL_PATCH_LEAN:'lean-v1',LOCAL_PATCH_IDENTITY_SOURCE:'full-source-v1'});
   expect((await health()).body.visualReview.detectivesNewGames).toMatchObject({version:'detectives-operational/v1',reviewMode:'single-sol-medium/v1',model:'gpt-6.1-sol',effort:'medium',birthReviewMode:'single-sol-low/v1',birthEffort:'low',nativeHeadReturnEvidence:true,oneUsableAssessmentPerImage:true,normalImageAttemptLimit:3,worldCapMicroUsd:4000000,automaticBudgetExtension:false});
  });
+ it('advertises the inclusive Kingdom ceiling only for qualified real Sunburst drafts', async () => {
+  Object.assign(f.environment, { LOCAL_PATCH_PAINTER: 'sunburst-v1', LOCAL_PATCH_QUALITY_CHANNEL: 'sync',
+    LOCAL_PATCH_LEAN: 'lean-v1', LOCAL_PATCH_IDENTITY_SOURCE: 'full-source-v1', DETECTIVES_WINDOW_RELEASE: 'v1' });
+  const real = (await health()).body.visualReview.detectivesNewGames;
+  expect(real.kingdomGenerationRelease).toMatchObject({ version: 'kingdom-generation/v1', world: 'kingdom', prospectiveOnly: true,
+    paintAhead: 1, flexOverloadCooldownMs: 600_000, worldCapMicroUsd: 4_000_000,
+    includesUnknownReservations: true, automaticBudgetExtension: false });
+  expect(real.journeyWindowRelease.manifestSha256).toBe(JOURNEY_WINDOW_MANIFEST_SHA256);
+  Object.assign(f.environment, { QA_WIZARD_MOCK: 'on' });
+  expect((await health()).body.visualReview.detectivesNewGames.kingdomGenerationRelease).toBeUndefined();
+ });
  it.each([{APP_ENV:'production'},{LOCAL_PATCH_IDENTITY_SOURCE:'legacy'},{LOCAL_PATCH_LEAN:'off'},{STORAGE_PROVIDER:'local'}])('does not advertise the new Detective policy in an unqualified deployment: %j',async change=>{
   Object.assign(f.environment,{LOCAL_PATCH_LEAN:'lean-v1',LOCAL_PATCH_IDENTITY_SOURCE:'full-source-v1'},change);
   expect((await health()).body.visualReview.detectivesNewGames).toBeNull();

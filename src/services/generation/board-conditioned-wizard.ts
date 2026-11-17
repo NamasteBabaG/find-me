@@ -40,6 +40,7 @@ import { readBoardWizardBudgetExtension } from "./board-wizard-budget-extension"
 import { readLocalPatchEmergencyBudget } from "./local-patch-budget-recovery";
 import { readNewQaWorldBudget } from "./local-patch-qa-budget";
 import { readLeanWorldBudget } from "./lean-release";
+import { readKingdomGenerationBudget } from './kingdom-generation-release';
 import { recoverBoardOccludedUpperBody, type BoardUpperBodyRecoveryRequest } from "./board-upper-body-recovery";
 import { prepareBoardUpperBodyRecoveryPlayerBoard, bindBoardUpperBodyRecoveryPlayerGame } from "./board-conditioned-player";
 
@@ -119,6 +120,8 @@ const assetPath = (id: string) => `private/board-wizard/${id}.png`;
 /** Exact authority precedence shared by purchases and display. Only explicitly
  * bound recovery grants raise a lean pin; ordinary defaults never do. */
 export async function readBoardWizardBudgetAuthority(c: Container, worldId: string) {
+  const kingdomCeiling = await readKingdomGenerationBudget(c.db, worldId);
+  if (kingdomCeiling) return kingdomCeiling;
   // The explicit five-dollar completion of one existing game is read first and is
   // exclusive: it throws beside any other completion grant (never a sum or fallback).
   return await readQaFiveCompletionBudget(c, worldId) ?? await readQaCompletionCapacity(c, worldId) ?? await readDetectivesCompletionBudget(c, worldId) ?? await readLeanCapacityRecoveryBudget(c, worldId) ?? await readLeanCompletionBudget(c, worldId) ?? await readLeanWorldBudget(c, worldId)

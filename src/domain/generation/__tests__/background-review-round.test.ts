@@ -4,6 +4,7 @@ import {
   backgroundRoundOf, nextBackgroundStep, prospectiveBackgroundCancelPolicy, SINGLE_MEDIUM_FLEX_WAIT_VERSION, type BackgroundReviewEvent,
 } from "../background-review-round";
 import { leanReviewPolicy, singleMediumReviewPolicy, singleLowReviewPolicy } from "../visual-review-policy";
+import { KINGDOM_FLEX_OVERLOAD_COOLDOWN_MS, kingdomFlexCreateAllowed, kingdomPaintLimit } from '../kingdom-generation';
 
 const intent: BackgroundReviewEvent = { kind: "intent", intent: { version: BACKGROUND_REVIEW_ROUND_VERSION, roundId: "sbsynthetic", gameId: "game-synthetic",
   worldId: "game-synthetic:board-wizard", requestKey: `self-repair:board:newyork:${"a".repeat(64)}`, fingerprint: "a".repeat(64), bodySha256: "b".repeat(64),
@@ -11,6 +12,22 @@ const intent: BackgroundReviewEvent = { kind: "intent", intent: { version: BACKG
 const T = 1_800_000_000_000;
 
 describe("one background question, one create, polled by its id", () => {
+  it('waits for a claimed review, then honors the Kingdom Flex cooldown without repricing a round', () => {
+    const claim = { kind: 'claim', at: T } as const;
+    const submitted = { kind: 'submitted', responseId: 'resp_kingdom_flex', at: T } as const;
+    const failedAt = T + 1_000;
+    const failed = { kind: 'outcome', state: 'unpriced', responseId: submitted.responseId, providerStatus: 'failed',
+      at: failedAt, errorCode: 'server_is_overloaded' } as const;
+    expect(kingdomFlexCreateAllowed([backgroundRoundOf([intent])], 'another', T)).toBe(true);
+    expect(kingdomFlexCreateAllowed([backgroundRoundOf([intent, claim])], 'another', T)).toBe(false);
+    const terminal = backgroundRoundOf([intent, claim, submitted, failed]);
+    expect(kingdomFlexCreateAllowed([terminal], 'another', failedAt + KINGDOM_FLEX_OVERLOAD_COOLDOWN_MS - 1)).toBe(false);
+    expect(kingdomFlexCreateAllowed([terminal], 'another', failedAt + KINGDOM_FLEX_OVERLOAD_COOLDOWN_MS)).toBe(true);
+    expect(kingdomFlexCreateAllowed([backgroundRoundOf([intent, claim, submitted, { ...failed, errorCode: 'server_error' }])], 'another', failedAt)).toBe(true);
+    expect(terminal.intent.reserveMicroUsd).toBe(66_000);
+    expect(kingdomPaintLimit(true)).toBe(0);
+    expect(kingdomPaintLimit(false)).toBe(1);
+  });
   it("waits twenty-five minutes only for newly marked single MEDIUM Flex intents, preserving historical deadlines", () => {
     const medium = singleMediumReviewPolicy("flex").version;
     expect(prospectiveBackgroundCancelPolicy(medium)).toBe(SINGLE_MEDIUM_FLEX_WAIT_VERSION);

@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { assertRetainedWindowManifest, RETAINED_WINDOW_AUTHORITIES, RETAINED_KINGDOM_TAIL_WINDOWS,
+import { assertKingdomGenerationWindows, KINGDOM_GENERATION_WINDOWS, assertRetainedWindowManifest, RETAINED_WINDOW_AUTHORITIES, RETAINED_KINGDOM_TAIL_WINDOWS,
   RETAINED_KINGDOM_TAIL_MANIFEST_SHA256 } from '../../../../content/detectives/retained-window-v1';
 import { KINGDOM_DETECTIVE_SOURCE_PLACEMENT_RELEASE } from '../../../../content/detectives/kingdom/source-placement-release';
 import { DETECTIVE_SOURCE_PLACEMENT_RELEASE } from '../../../../content/detectives/source-placement-release';
-import { assertRetainedWindowAuthority, composeRetainedWindow, retainedWindowProtectedHeads, retainedWindowRegistration,
-  retainedWindowHeadMask, alignRetainedWindowRaw, retainedWindowCanonicalHash, retainedWindowHash,
+import { assertRetainedWindowAuthority, composeRetainedWindow, protectRetainedWindowPaintAlpha, retainedWindowProtectedHeads, retainedWindowRegistration,
+  retainedWindowHeadMask, retainedWindowReviewPrompt, alignRetainedWindowRaw, retainedWindowCanonicalHash, retainedWindowHash,
   RETAINED_WINDOW_VERSION, retainedWindowNeighborAlternateAllowed, type RetainedWindowAuthority, type RetainedWindowPixels } from '../retained-window';
 import { targetHeadReturnDecision, TARGET_HEAD_VISIBLE_VERSION, type TargetHeadEvidence } from '../target-head-return';
 
@@ -54,6 +54,23 @@ function shifted(p: RetainedWindowPixels, dx: number, dy: number): RetainedWindo
 }
 
 describe('paid native window recovery', () => {
+  it('locks Kingdom neighbors and the balcony in the painter mask while leaving the original target open', () => {
+    expect(assertKingdomGenerationWindows).not.toThrow();
+    const neighbors = KINGDOM_GENERATION_WINDOWS.find(x => x.authority.hideId === 'dragoncave-detectives-hide-1')!.authority;
+    const rail = KINGDOM_GENERATION_WINDOWS.find(x => x.authority.hideId === 'giantlibrary-detectives-hide-1')!.authority;
+    const mask = { data: new Uint8Array(512 * 768 * 4), width: 512, height: 768, channels: 4 };
+    protectRetainedWindowPaintAlpha(neighbors, mask);
+    for (const { head } of retainedWindowProtectedHeads(neighbors).filter(h => h.head.left >= 0)) {
+      expect(pixel(mask, head.left + 1, head.top + 1)[3]).toBe(255);
+    }
+    expect(pixel(mask, 225, 310)[3]).toBe(0);
+    expect(retainedWindowReviewPrompt(neighbors, 0, 0)).toContain('Keep the registered non-target people in place');
+    expect(retainedWindowReviewPrompt(neighbors, 0, 0)).not.toContain('may be preserved or cleanly replaced');
+    mask.data.fill(0);
+    protectRetainedWindowPaintAlpha(rail, mask);
+    expect(pixel(mask, 225, 310)[3]).toBe(0);
+    expect(pixel(mask, 225, 620)[3]).toBe(255);
+  });
   it('binds native compound mapping without treating a bounding-box clearance or SOURCE-hole corner as visible hair loss',()=>{
     const mask=retainedWindowHeadMask(authority(),1,-2),head={left:210,top:230,width:70,height:90};
     const evidence:TargetHeadEvidence={version:TARGET_HEAD_VISIBLE_VERSION,gameId:'synthetic',hideId:'synthetic-hide',sourceRequestKey:'synthetic:render:1',
