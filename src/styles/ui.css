@@ -161,12 +161,13 @@ a.fm-btn[aria-disabled="true"] { pointer-events: none; }
    fold away and one line under the dots says which step this is. */
 .fm-steps { display: flex; flex-direction: column; align-items: center; gap: var(--space-1); }
 .fm-steps__list { display: flex; justify-content: center; list-style: none; margin: 0; padding: 0; }
-.fm-steps__item { position: relative; display: flex; flex-direction: column; align-items: center; gap: var(--space-1); width: var(--space-16); }
-.fm-steps__item + .fm-steps__item::before { content: ""; position: absolute; top: var(--space-2); inset-inline-end: 50%; width: 100%; height: 2px; background: var(--line); }
+/* Compact (Guy, 2026-11-17: the wizard was too big): 24px dots, the names right under them. */
+.fm-steps__item { position: relative; display: flex; flex-direction: column; align-items: center; gap: var(--space-0-5); width: var(--space-12); }
+.fm-steps__item + .fm-steps__item::before { content: ""; position: absolute; top: calc(var(--space-3) / 2 - 1px); inset-inline-end: 50%; width: 100%; height: 2px; background: var(--line); }
 .fm-steps__item.is-done + .fm-steps__item::before, .fm-steps__item.is-done + .fm-steps__item.is-current::before { background: var(--sun); }
-.fm-steps__dot { position: relative; z-index: 1; display: grid; place-items: center; width: var(--space-4); height: var(--space-4); border-radius: var(--radius-pill); background: var(--white); box-shadow: inset 0 0 0 2px var(--line); font-family: var(--font-display); font-weight: 800; font-size: var(--fs-100); line-height: 1; color: var(--ink-2); transition: background var(--dur-2), box-shadow var(--dur-2), transform var(--dur-2) var(--ease-pop); }
+.fm-steps__dot { position: relative; z-index: 1; display: grid; place-items: center; width: var(--space-3); height: var(--space-3); border-radius: var(--radius-pill); background: var(--white); box-shadow: inset 0 0 0 2px var(--line); font-family: var(--font-display); font-weight: 800; font-size: var(--fs-50); line-height: 1; color: var(--ink-2); transition: background var(--dur-2), box-shadow var(--dur-2), transform var(--dur-2) var(--ease-pop); }
 .fm-steps__item.is-done .fm-steps__dot { background: var(--sun-soft); box-shadow: inset 0 0 0 2px var(--sun); color: var(--ink); }
-.fm-steps__item.is-current .fm-steps__dot { background: var(--sun); box-shadow: 0 0 0 4px var(--sun-soft), var(--shadow-1); color: var(--ink); transform: scale(1.12); }
+.fm-steps__item.is-current .fm-steps__dot { background: var(--sun); box-shadow: 0 0 0 3px var(--sun-soft), var(--shadow-1); color: var(--ink); transform: scale(1.12); }
 .fm-steps__label { font-family: var(--font-display); font-weight: 700; font-size: var(--fs-50); line-height: var(--lh-50); color: var(--ink-2); text-align: center; text-wrap: balance; padding-inline: var(--space-0-5); }
 .fm-steps__item.is-current .fm-steps__label { color: var(--ink); }
 .fm-steps__item.is-done .fm-steps__label { color: var(--ink-2); }

@@ -162,8 +162,12 @@ export function CreatingStatus({ gameId, childName, isAdmin }: { gameId: string;
       <div className="fm-card cp__card cp cp--done">
         <div className="cp__stage cp__stage--done">
           {s.avatarUrl ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={s.avatarUrl} alt="" className="cp__avatar" width={160} height={160} />
+            // The portrait is a square painting: the round frame clips it and the picture sits a little zoomed in,
+            // so the edges of its painted square never show inside the circle (Guy, 2026-11-17). Display only.
+            <span className="cp__portrait">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={s.avatarUrl} alt="" className="cp__avatar" width={160} height={160} />
+            </span>
           ) : (
             <span className="cp__party" aria-hidden>
               <Icon name="sparkle" />
@@ -228,8 +232,12 @@ export function CreatingStatus({ gameId, childName, isAdmin }: { gameId: string;
       <section className="fm-card cp__card" aria-live="polite">
         <div className={`cp__stage${s.avatarUrl ? " cp__stage--met" : ""}`}>
           {s.avatarUrl ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={s.avatarUrl} alt="" className="cp__avatar" width={160} height={160} />
+            // The portrait is a square painting: the round frame clips it and the picture sits a little zoomed in,
+            // so the edges of its painted square never show inside the circle (Guy, 2026-11-17). Display only.
+            <span className="cp__portrait">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={s.avatarUrl} alt="" className="cp__avatar" width={160} height={160} />
+            </span>
           ) : (
             <span className="cp__pencil" aria-hidden>
               <Icon name="pencil" />
