@@ -18,8 +18,9 @@ import { RETAINED_PURCHASE_VERSION, retainedPayloadDigest, type RetainedPurchase
 import { canonicalChargeEvidence, WorldBudgetError, type BudgetJson } from "./world-budget";
 import { sanitizeProviderError } from "../../domain/generation/background-provider-error";
 import { permanentFailureReason, permanentProviderFailure } from "../../domain/generation/lean-review-recovery";
-import { kingdomFlexCreateAllowed } from '../../domain/generation/kingdom-generation';
-import { kingdomGenerationReleaseOf } from './kingdom-generation-release';
+import { kingdomFlexCreateAllowed, kingdomFlexOverloaded } from '../../domain/generation/kingdom-generation';
+import { KINGDOM_GENERATION_V2, KINGDOM_GENERATION_V3, kingdomGenerationReleaseOf } from './kingdom-generation-release';
+import { kingdomDefaultTail } from './kingdom-default-tail';
 
 /**
  * A new Sol continuity question of an enrolled world, asked once as an OpenAI
@@ -130,6 +131,11 @@ async function recordedRounds(db: Pick<Prisma.TransactionClient, "auditLog">, ga
   }
   return [...byRound].map(([roundId, roundRows]) => ({ round: backgroundRoundOf(eventsOfRows(roundRows, gameId, roundId)),
     at: roundRows.find(row => row.id === eventId(roundId, "intent"))!.createdAt.getTime() }));
+}
+
+export async function kingdomFlexOutage(db: Pick<Prisma.TransactionClient, 'auditLog'>, gameId: string) {
+  const pin = await kingdomGenerationReleaseOf(db, gameId);
+  return pin?.version === KINGDOM_GENERATION_V2 && kingdomFlexOverloaded((await recordedRounds(db, gameId)).map(x => x.round));
 }
 
 /** One recorded round about one image's pixels, as its own record states it. */
@@ -457,11 +463,29 @@ export async function askContinuityInBackground(c: Container, ask: BackgroundAsk
   const ctx: Ctx = { ...ask, c, roundId: backgroundRoundIdOf(ask.worldId, ask.requestKey) };
   const body = solBackgroundReviewBody(question);
   let events = await readEvents(c.db, ask.gameId, ctx.roundId);
-  const flexAdmission = question.policy.serviceTier === 'flex'
-    && await kingdomGenerationReleaseOf(c.db, ask.gameId);
-  const mayCreate = async () => !flexAdmission || flexAdmission.worldId === ask.worldId
-    && kingdomFlexCreateAllowed((await recordedRounds(c.db, ask.gameId)).map(x => x.round), ask.requestKey, Date.now());
-  const flexWaiting = () => waiting('waiting for the current review or the Kingdom Flex overload cooldown');
+  const createBlock = async () => {
+    const pin = await kingdomGenerationReleaseOf(c.db, ask.gameId);
+    const flex = question.policy.serviceTier === 'flex', v2 = pin?.version === KINGDOM_GENERATION_V2;
+    if (!pin || !flex && !v2) return null;
+    if (pin.worldId !== ask.worldId) return held('the question differs from its pinned Kingdom world');
+    if (flex && pin.version === KINGDOM_GENERATION_V3) return held('the pinned Kingdom release starts in Default');
+    const rounds = (await recordedRounds(c.db, ask.gameId)).map(x => x.round);
+    const overloaded = v2 && kingdomFlexOverloaded(rounds);
+    if (flex) {
+      if (kingdomFlexCreateAllowed(rounds, ask.requestKey, Date.now(), v2)) return null;
+      return overloaded ? held('Kingdom Flex stopped after a recorded provider overload')
+        : waiting('waiting for the current review or the Kingdom Flex overload cooldown');
+    }
+    if (!overloaded) return null;
+    const onImage = await backgroundRoundsOnImage(c.db, ask.gameId, ask.binding);
+    if (onImage.some(round => round.requestKey !== ask.requestKey && round.tier === 'default'))
+      return held('the same Kingdom appearance already has a Default review round after the Flex overload');
+    if (onImage.some(roundAnswered)) return held('the same Kingdom appearance already has a retained answer');
+    const tail = await kingdomDefaultTail(c, ask.gameId, ask.worldId, {
+      variantId: ask.binding.variantId, requestKey: ask.requestKey, fingerprint: question.fingerprint, reserveMicroUsd: ask.reserveMicroUsd,
+    });
+    return tail.fits ? null : tail.pending ? waiting(tail.reason) : held(tail.reason);
+  };
   const cancelPolicy = events.length ? backgroundRoundOf(events).intent.cancelPolicy : prospectiveBackgroundCancelPolicy(lean?.version);
   const intent: BackgroundReviewIntent = { version: BACKGROUND_REVIEW_ROUND_VERSION, roundId: ctx.roundId, gameId: ask.gameId, worldId: ask.worldId,
     requestKey: ask.requestKey, fingerprint: question.fingerprint, bodySha256: sha(JSON.stringify(body)), reserveMicroUsd: ask.reserveMicroUsd, binding: ask.binding,
@@ -469,7 +493,8 @@ export async function askContinuityInBackground(c: Container, ask: BackgroundAsk
   const transport = c.backgroundReview;
   if (!events.length) {
     if (!transport) return held("the background transport is not configured; nothing was reserved or sent");
-    if (!await mayCreate()) return flexWaiting();
+    const blocked = await createBlock();
+    if (blocked) return blocked;
     const existing = await boardWizardBudgetOf(c).readRequest(ask.worldId, ask.requestKey);
     if (existing) return held(`${ask.requestKey} is already ${existing.state} outside a background round`);
     await writeIntent(ctx, intent);
@@ -492,7 +517,8 @@ export async function askContinuityInBackground(c: Container, ask: BackgroundAsk
     if (!transport) return waiting("the background transport is not configured; the round keeps its reservation");
     let gate: BackgroundGate | null = null;
     if (step.step === "create") {
-      if (!await mayCreate()) return flexWaiting();
+      const blocked = await createBlock();
+      if (blocked) return blocked;
       gate = await create(ctx, transport, body);
     }
     else if (step.step === "lost") await recordLost(ctx, "the create was claimed and its answer never arrived within its grace");

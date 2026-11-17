@@ -37,8 +37,9 @@ export function placementGuideEditableRect(child: GuideRect, returned: GuideRect
 }
 
 export function placementGuideDirections(child: GuideRect, returned: GuideRect, version: PlacementGuideVersion = PLACEMENT_GUIDE_VERSION,
-  preserveSourceNeighbors = false): string {
-  if (version === PLACEMENT_GUIDE_V2_VERSION) return placementGuideV2Directions(child, returned, preserveSourceNeighbors);
+  preserveSourceNeighbors = false, sourceErase?: GuideRect): string {
+  if (version === PLACEMENT_GUIDE_V2_VERSION) return placementGuideV2Directions(child, returned, preserveSourceNeighbors, sourceErase);
+  if (sourceErase) throw Error("PLACEMENT_GUIDE: source erasure requires the native editor mask");
   return guidedFrameDirections(child, returned)
     .replace("single-low-guided-frame-recovery/v1", PLACEMENT_GUIDE_VERSION)
     .replace("The LAST reference is a marked copy of this SAME original 512x768 crop, used for position only.",
@@ -46,10 +47,12 @@ export function placementGuideDirections(child: GuideRect, returned: GuideRect, 
     + " In RIGHT, white outlines the input crop, orange the fixed returned area, cyan the whole-target frame and magenta registered original heads. Follow each person's visible body across the orange/white boundaries in the ORIGINAL context. Preserve its continuous fragment at the exact original position; never erase its torso while its original head survives outside the crop. Do not paint the right panel, markers, or a two-panel layout into the final image. Return ONLY the edited unmarked 512x768 original crop.";
 }
 
-function placementGuideV2Directions(child: GuideRect, returned: GuideRect, preserveSourceNeighbors: boolean): string {
+function placementGuideV2Directions(child: GuideRect, returned: GuideRect, preserveSourceNeighbors: boolean, sourceErase?: GuideRect): string {
   const g = guidedFrameGeometry(child, returned), open = placementGuideEditableRect(child, returned);
   return "GEOMETRY GUIDE " + PLACEMENT_GUIDE_V2_VERSION + ". The LAST reference is a marked copy of this SAME original 512x768 crop at the SAME scale and framing, used for position only. Edit the FIRST original image and keep its exact camera, scale and framing: never zoom out, widen, shift, mirror or recompose the scene. "
-    + "Orange marks the fixed return window " + JSON.stringify(g.returned) + ". The editor mask opens only " + JSON.stringify(open) + ": the " + LOCAL_PATCH_RETURN_FEATHER + "-pixel band just inside orange and everything outside orange are protected original pixels and must come back unchanged, so scenery and people crossing that band continue exactly where they are. "
+    + "Orange marks the fixed return window " + JSON.stringify(g.returned) + ". The editor mask opens only " + JSON.stringify(open)
+    + (sourceErase ? " and this original-fragment erasure " + JSON.stringify(sourceErase) + ". Replace the old lower leg and boot completely. Where the new child does not cover it inside cyan, continue the neighboring bench cloth, rocks and cave floor at their original depth. Below cyan reconstruct only background. Keep every other lower-boundary pixel original. "
+      : ": the " + LOCAL_PATCH_RETURN_FEATHER + "-pixel band just inside orange and everything outside orange are protected original pixels and must come back unchanged, so scenery and people crossing that band continue exactly where they are. ")
     + "Cyan marks the safe whole-target frame " + JSON.stringify(g.target) + ". Draw the complete visible crown, hair/hat, head, torso and naturally visible limbs INSIDE cyan. Preserve the stated age and proportions, pose, depth, support and natural occlusion; do not make the child younger to fit. The whole cyan frame is a maximum, not an instruction to fill it. "
     // Registrations can include the authored target itself (Tokyo hide 3), so they name comparison people, not people to keep.
     + "Magenta outlines registered source heads for comparison, including the original authored TARGET when registered; these boxes are not a required final person count. Replace the authored TARGET WHOLE with the canonical child, leaving no original face, body or limb remnant. "

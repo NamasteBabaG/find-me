@@ -30,9 +30,18 @@ export const retainedWindowAuthoritySchema = z.object({
   foregroundTop: z.array(z.object({ x: z.number().int().min(0).max(511), y: z.number().int().min(1).max(767) }).strict()).min(2).max(24).optional(),
   /** Some Kingdom windows cross two nearby faces even inside the returned frame. */
   preserveSourceNeighbors: z.literal(true).optional(),
+  /** An original target fragment outside the regular edit. The new target's placement is independent. */
+  sourceErase: z.object({ fragment: rectangle, returned: rectangle }).strict().optional(),
 }).strict();
 export type RetainedWindowAuthority = z.infer<typeof retainedWindowAuthoritySchema>;
 export type RetainedWindowPixels = { data: Uint8Array; width: number; height: number; channels: number };
+const SOURCE_ERASE_FEATHER = 6;
+function inset(r: PatchRectangle, margin: number): PatchRectangle {
+  return { left: r.left + margin, top: r.top + margin, width: r.width - 2 * margin, height: r.height - 2 * margin };
+}
+export function retainedWindowSourceEraseEdit(a: RetainedWindowAuthority): PatchRectangle | undefined {
+  return a.sourceErase && inset(a.sourceErase.returned, SOURCE_ERASE_FEATHER);
+}
 /** JSONB object order is not an authority; array order and every value are. */
 export function retainedWindowCanonicalHash(value: unknown): string {
   const ordered = (v: unknown): unknown => v instanceof Date ? v.toISOString() : Array.isArray(v) ? v.map(ordered)
@@ -73,8 +82,19 @@ export function retainedWindowMeasurementBounds(a: RetainedWindowAuthority): Pat
   return { left, top, width: right - left, height: bottom - top };
 }
 
-export function retainedWindowReviewPrompt(a: RetainedWindowAuthority, sampleX: number, sampleY: number): string {
+export function retainedWindowReviewPrompt(a: RetainedWindowAuthority, sampleX: number, sampleY: number, compact = false): string {
   assertRetainedWindowAuthority(a);
+  if (compact) {
+    return '\nRETAINED SOURCE WINDOW: the native return and excluded SOURCE-head holes in HEAD_RETURN_EVIDENCE control the joins. '
+      + 'Trace their boundaries and all visible anatomy through them. Require whole replacement of original target ' + a.targetSourceId + ' with no residual head, limbs or clothes. '
+      + (a.preserveSourceNeighbors ? 'Non-target SOURCE people stay in place. ' : 'Allow coherent whole replacement or removal of non-target people. ')
+      + 'Keep people continuing beyond the permission coherent. Opaque SHIPPING samples RAW at integer offset [' + sampleX + ',' + sampleY + ']. '
+      + 'The original SOURCE frame is preserved. No prior judgment approves this composition.'
+      + (a.sourceErase ? '\nORIGINAL LEG AND BOOT: inspect the whole fragment ' + JSON.stringify(a.sourceErase.fragment)
+        + '. The leg and boot must disappear. Check continuous bench cloth, cave floor and rocks below the usual return, the six-pixel feather and neighboring feet.' : '')
+      + (a.foregroundTop ? '\nSOURCE FOREGROUND: keep railing and posts before the child at and below native contour '
+        + JSON.stringify(a.foregroundTop) + '. Require natural occlusion and coherent visible anatomy, no leg through the rail or original child remnant.' : '');
+  }
   return '\nRETAINED SOURCE WINDOW ' + RETAINED_WINDOW_VERSION + ': newly composed, UNAPPROVED shipping from the same already-paid RAW. '
     + 'The historical authored rectangle, registered source-neighbor contract.returnRect and repair plan are lineage/role registration, not the new outer boundary. The actual new join comparisons and compound permission below are authoritative for this composition. The new compound permission has a12px unchanged SOURCE frame,12px feather, and exact SOURCE holes protecting every registered head that crosses the new boundary. '
     + 'The registered original target is replaced WHOLE, not a person to preserve. Require its old head, hair, body and limbs to disappear completely, with no ghost or fragments. '
@@ -85,6 +105,8 @@ export function retainedWindowReviewPrompt(a: RetainedWindowAuthority, sampleX: 
     + 'No prior quality, identity, subject or head verdict transfers. Every ordinary MEDIUM field and doubt check remains blocking. '
     + 'RETAINED_WINDOW_PERMISSION: ' + JSON.stringify({ returned: retainedWindowRegion(a), targetSourceId: a.targetSourceId,
       protectedHeads: retainedWindowProtectedHeads(a), targetMeasurement: retainedWindowMeasurementBounds(a) })
+    + (a.sourceErase ? '\nORIGINAL LEG AND BOOT: ' + JSON.stringify(a.sourceErase)
+      + '. Check the entire old leg and boot disappeared. Where they do not overlap the canonical child inside its placement, require continuous bench cloth, rocks and cave floor. Only background belongs below the usual return. Inspect the full six-pixel feather and neighboring feet at the lower join.' : '')
     + (a.foregroundTop ? '\nSOURCE FOREGROUND: the original wooden balcony railing and posts stay in front of the child. '
       + 'Every pixel at or below this contour is copied from SOURCE: ' + JSON.stringify(a.foregroundTop)
       + '. Verify visible anatomy above the railing and natural occlusion by it. Reject any leg through the rail, '
@@ -118,7 +140,19 @@ export function assertRetainedWindowAuthority(value: RetainedWindowAuthority): v
     throw Error('RETAINED_WINDOW: invalid original foreground contour');
   if (a.preserveSourceNeighbors && a.family !== 'kingdom-detectives/v1')
     throw Error('RETAINED_WINDOW: unsupported neighbor protection');
+  if (a.sourceErase) {
+    const { returned, fragment } = a.sourceErase, bottom = a.parentReturn.top + a.parentReturn.height;
+    const edit = retainedWindowSourceEraseEdit(a)!;
+    if (a.family !== 'kingdom-detectives/v1' || !a.preserveSourceNeighbors || a.foregroundTop
+      || !contained(inset(retainedWindowRegion(a), a.feather), returned)
+      || returned.left < a.parentChild.left || returned.left + returned.width > a.parentChild.left + a.parentChild.width
+      || edit.top >= bottom - a.feather || fragment.top + fragment.height <= bottom || !contained(edit, fragment)
+      || a.sourceHeads.some(h => h.sourceId !== a.targetSourceId && overlap(returned, inset(localHead(a, h.head), -6))))
+      throw Error('RETAINED_WINDOW: source erasure exceeds the isolated original target');
+  }
 }
+const overlap = (a: PatchRectangle, b: PatchRectangle) =>
+  a.left < b.left + b.width && b.left < a.left + a.width && a.top < b.top + b.height && b.top < a.top + a.height;
 /** Only people crossing the new boundary must stay at the exact SOURCE pixels.
  * The original target is explicitly replaced, never mistakenly preserved. */
 export function retainedWindowProtectedHeads(a: RetainedWindowAuthority) {
@@ -128,7 +162,8 @@ export function retainedWindowProtectedHeads(a: RetainedWindowAuthority) {
     .map(h => ({ sourceId: h.sourceId, head: localHead(a, h.head) }));
 }
 export function retainedWindowHeadMask(a: RetainedWindowAuthority, sampleX: number, sampleY: number) {
-  const bottom = a.foregroundTop ? Math.min(...a.foregroundTop.map(point=>point.y)) - 4 : 744;
+  const bottom = a.sourceErase ? a.parentReturn.top + a.parentReturn.height - a.feather
+    : a.foregroundTop ? Math.min(...a.foregroundTop.map(point=>point.y)) - 4 : 744;
   return { opaque: { left: 24, top: 24, width: 464, height: bottom-24 }, sampleX, sampleY,
     excluded: retainedWindowProtectedHeads(a).map(h => {
       const left = Math.max(0, h.head.left - 6), top = Math.max(0, h.head.top - 6);
@@ -149,6 +184,10 @@ export function protectRetainedWindowPaintAlpha(a: RetainedWindowAuthority, mask
   if (mask.width !== 512 || mask.height !== 768 || mask.channels !== 4 || mask.data.length !== 512 * 768 * 4)
     throw Error('RETAINED_WINDOW: the paint mask must share the native RGBA crop');
   const heads = retainedWindowProtectedHeads(a);
+  const erasure = retainedWindowSourceEraseEdit(a);
+  if (erasure) for (let y = erasure.top; y < erasure.top + erasure.height; y++) {
+    for (let x = erasure.left; x < erasure.left + erasure.width; x++) mask.data[(y * 512 + x) * 4 + 3] = 0;
+  }
   for (let x = 0; x < 512; x++) {
     for (let y = Math.ceil(foregroundTopAt(a, x)); y < 768; y++) mask.data[(y * 512 + x) * 4 + 3] = 255;
   }
@@ -159,12 +198,22 @@ export function protectRetainedWindowPaintAlpha(a: RetainedWindowAuthority, mask
   }
 }
 
+/** Only the authored erasure can contribute RAW below the old lower seam. */
+function sourceEraseWeight(a: RetainedWindowAuthority, x: number, y: number): number {
+  const r = a.sourceErase?.returned;
+  if (!r) return 1;
+  const oldReturnBottom = a.parentReturn.top + a.parentReturn.height;
+  const oldWeight = (oldReturnBottom - y - 0.5) / a.feather;
+  const near = Math.min(x - r.left, r.left + r.width - 1 - x, y - r.top, r.top + r.height - 1 - y);
+  return Math.min(1, Math.max(0, oldWeight, (near + 0.5) / SOURCE_ERASE_FEATHER));
+}
+
 export function retainedWindowWeight(a: RetainedWindowAuthority, x: number, y: number): number {
   const edge = Math.min(x, y, 511 - x, 767 - y);
   let weight = Math.min(1, Math.max(0, (edge - a.frame + 0.5) / a.feather));
   // Keep a crossing SOURCE head entire, with a six-pixel transition outside it.
   for (const h of retainedWindowProtectedHeads(a)) weight = Math.min(weight, distance(h.head, x, y) / 6);
-  return Math.min(weight, Math.max(0, (foregroundTopAt(a,x)-y)/4));
+  return Math.min(weight, Math.max(0, (foregroundTopAt(a,x)-y)/4), sourceEraseWeight(a, x, y));
 }
 const checkPixels = (p: RetainedWindowPixels) => {
   if (p.width !== 512 || p.height !== 768 || p.channels !== 4 || p.data.length !== 512 * 768 * 4)
@@ -220,7 +269,7 @@ export function composeRetainedWindow(input: { authority: RetainedWindowAuthorit
     const edge = Math.min(x, y, 511 - x, 767 - y);
     let w = Math.min(1, Math.max(0, (edge - a.frame + 0.5) / a.feather));
     for (const h of protectedHeads) w = Math.min(w, distance(h.head, x, y) / 6);
-    w = Math.min(w, Math.max(0, (foregroundTop[x]!-y)/4));
+    w = Math.min(w, Math.max(0, (foregroundTop[x]!-y)/4), sourceEraseWeight(a, x, y));
     weights[y * 512 + x] = w;
     if (!w) continue;
     const rx = x + registration.sampleX, ry = y + registration.sampleY;
@@ -242,6 +291,11 @@ export function composeRetainedWindow(input: { authority: RetainedWindowAuthorit
   const targetHead = localHead(a, a.sourceHeads.find(h => h.sourceId === a.targetSourceId)!.head);
   for (let y = targetHead.top; y < targetHead.top + targetHead.height; y++) for (let x = targetHead.left; x < targetHead.left + targetHead.width; x++)
     if (weights[y * 512 + x] !== 1) throw Error('RETAINED_WINDOW: the old target head is not wholly replaced');
+  const fragment = a.sourceErase?.fragment;
+  if (fragment) for (let y = fragment.top; y < fragment.top + fragment.height; y++) {
+    for (let x = fragment.left; x < fragment.left + fragment.width; x++)
+      if (weights[y * 512 + x] !== 1) throw Error('RETAINED_WINDOW: the original target fragment is not wholly editable');
+  }
   return { pixels: { ...scene, data: output }, weights, proof: { version: RETAINED_WINDOW_VERSION, registration,
     appliedTranslation: { x: registration.sampleX ? -registration.sampleX : 0, y: registration.sampleY ? -registration.sampleY : 0 }, paidPixels, featherPixels,
     outsidePermissionChangedPixels: 0 as const, crossingSourceHeadChangedPixels: 0 as const,

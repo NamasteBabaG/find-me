@@ -6,6 +6,7 @@ vi.mock("@/services/container", () => ({ getContainer: () => ({ db: { $queryRaw:
 import { GET } from "../route";
 import { JOURNEY_WINDOW_MANIFEST_SHA256,JOURNEY_WINDOW_BODY_SHA256 } from '../../../../../content/detectives/journey-window-release-v1';
 import { SOURCE_BODY_REPAIR_MANIFEST_SHA256 } from '../../../../../content/detectives/source-body-repair';
+import { KINGDOM_GENERATION_WINDOWS_V2_SHA256 } from '../../../../../content/detectives/retained-window-v1';
 beforeEach(() => { f.environment = { APP_ENV: "qa", STORAGE_PROVIDER: "db", LOCAL_PATCH_PROMPT_RELEASE: "v19", LOCAL_PATCH_PAINTER: "low-v1",
   LOCAL_PATCH_QUALITY_CHANNEL: "anthropic-batch-v1", LOCAL_PATCH_VISUAL_REVIEW: "dual-high-v3", GENERATION_PROVIDER: "openai",
   OPENAI_API_KEY: "synthetic", ANTHROPIC_API_KEY: "synthetic" }; });
@@ -72,6 +73,16 @@ describe('health reports the prospective Detective judge separately from histori
     paintAhead: 1, flexOverloadCooldownMs: 600_000, worldCapMicroUsd: 4_000_000,
     includesUnknownReservations: true, automaticBudgetExtension: false });
   expect(real.journeyWindowRelease.manifestSha256).toBe(JOURNEY_WINDOW_MANIFEST_SHA256);
+  Object.assign(f.environment, { KINGDOM_GENERATION_RELEASE: 'v2' });
+  const versioned = (await health()).body.visualReview.detectivesNewGames;
+  expect(versioned.kingdomGenerationRelease).toMatchObject({ version: 'kingdom-generation/v2',
+    windowsSha256: KINGDOM_GENERATION_WINDOWS_V2_SHA256, stopFlexAfterOverload: true, worldCapMicroUsd: 4_000_000 });
+  expect(versioned.journeyWindowRelease).toEqual(real.journeyWindowRelease);
+  Object.assign(f.environment, { KINGDOM_GENERATION_RELEASE: 'v3' });
+  const compact = (await health()).body.visualReview.detectivesNewGames;
+  expect(compact.kingdomGenerationRelease).toMatchObject({ version: 'kingdom-generation/v3', initialTier: 'default',
+    reviewEvidence: 'kingdom-native-compact/v1', worldCapMicroUsd: 4_000_000, includesUnknownReservations: true, automaticBudgetExtension: false });
+  expect(compact.journeyWindowRelease).toEqual(real.journeyWindowRelease);
   Object.assign(f.environment, { QA_WIZARD_MOCK: 'on' });
   expect((await health()).body.visualReview.detectivesNewGames.kingdomGenerationRelease).toBeUndefined();
  });

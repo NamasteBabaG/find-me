@@ -5,6 +5,8 @@ import { BOUND_SUBJECT_QUALITY_ENVELOPE_READER_V2 } from "../../domain/generatio
 import { authenticateBoundSourceNeighborReading } from './bound-source-neighbor-reading';
 import { solBackgroundReviewBody } from '../../infra/generation/openai-background-review';
 import { singleMediumEvidence, singleMediumPrompt, singleMediumAnatomyPrompt } from "./single-medium-evidence";
+import { KINGDOM_GENERATION_V3, kingdomGenerationReleaseOf } from './kingdom-generation-release';
+import { kingdomCompactReview } from './kingdom-compact-review';
 import { publishedCrownSubjectAnchor } from "./published-crown-repair";
 import { singleReviewHeadEvidence } from "./single-review-head-evidence";
 import { targetHeadReturnPrompt } from "../../domain/generation/target-head-return";
@@ -29,7 +31,7 @@ import { SUBJECT_QUALITY_BUNDLE_VERSION } from "../../domain/generation/subject-
 import { localPatchBoardForVersion } from "../../domain/scene/local-patch-catalog";
 import { subjectPlanOfHide, subjectPlanSha256, subjectUpgradeOf, type SubjectUpgradeReceipt } from "./subject-enrollment";
 import { loadSubjectPhoto, subjectQuestion, combinedQualitySubjectQuestion, SubjectEvidenceUnavailable, subjectV2RefusalCodes, withSubject, withSubjectV2 } from "./local-patch-subject-review";
-import { askContinuityInBackground, backgroundRoundsOnImage, permanentFailureOnImage, providerEndedFailed, reconcileRefusedBackgroundRound,
+import { askContinuityInBackground, backgroundRoundsOnImage, kingdomFlexOutage, permanentFailureOnImage, providerEndedFailed, reconcileRefusedBackgroundRound,
   roundAnswered, type BackgroundGate, type ImageRound } from "./continuity-background";
 import type { BackgroundReviewBinding } from "../../domain/generation/background-review-round";
 import { isLeanWorld } from "./lean-release";
@@ -1126,24 +1128,29 @@ async function prepareSingleLowQuestion(c: Pick<Container, "db" | "storage">, pr
   const continued = singleVersion === SINGLE_VISUAL_REVIEW_VERSION ? lowContinued
     : (Array.isArray(receipt.evidenceAttempts) ? receipt.evidenceAttempts : []).filter((v: {single?:unknown;imageSha256?:unknown}) => v.single === singleVersion && v.imageSha256 === binding.imageSha256).length;
   const attempt = continued + 1;
+  const sourceRelease = prepared.placementContext.release;
+  const compactKingdom = sourceRelease?.baseSceneVersion === 13 && sourceRelease.worldSlug === 'kingdom'
+    && (await kingdomGenerationReleaseOf(c.db, prepared.game.id))?.version === KINGDOM_GENERATION_V3;
   let mediumPrompt = (singleVersion === SINGLE_MEDIUM_VISUAL_REVIEW_VERSION ? singleMediumPrompt(lowQuestion.prompt.replace(anatomy.prompt,()=>singleMediumAnatomyPrompt(anatomy.prompt)),binding,hideId) : lowQuestion.prompt).replace('"version":"' + SINGLE_VISUAL_REVIEW_VERSION + '"', '"version":"' + singleVersion + '"');
+  let compositionDirections = '';
   if (receipt.retainedWindow !== undefined) {
     const { retainedWindowAuthorityFor } = await import('../../../content/detectives/retained-window-v1');
     const { retainedWindowMarkerSchema, retainedWindowReviewPrompt } = await import('../../domain/generation/retained-window');
     const m = retainedWindowMarkerSchema.parse(receipt.retainedWindow), a = retainedWindowAuthorityFor(receipt.authoredReturn, m.manifestSha256);
     if (!a || singleVersion !== SINGLE_MEDIUM_VISUAL_REVIEW_VERSION) throw Error('RETAINED_WINDOW: fresh ordinary MEDIUM required');
-    mediumPrompt += retainedWindowReviewPrompt(a, m.sampleX, m.sampleY);
+    compositionDirections += retainedWindowReviewPrompt(a, m.sampleX, m.sampleY, compactKingdom);
   }
   if (receipt.sourceFigureReturn !== undefined) {
     const figure = await import('../../domain/generation/source-figure-return');
     const a = figure.sourceFigureAuthorityFor(receipt.authoredReturn, receipt.authoredRecovery?.returnWindow);
     if (!a || singleVersion !== SINGLE_MEDIUM_VISUAL_REVIEW_VERSION) throw Error('SOURCE_FIGURE: fresh ordinary MEDIUM evidence required');
-    mediumPrompt += figure.sourceFigureReviewPrompt(a);
+    compositionDirections += figure.sourceFigureReviewPrompt(a);
   }
   if (receipt.sourceBodyGapFill !== undefined) {
     if (singleVersion !== SINGLE_MEDIUM_VISUAL_REVIEW_VERSION) throw Error('BODY_GAP: fresh ordinary MEDIUM required');
-    mediumPrompt += '\n' + (await import('../../domain/generation/source-body-gap')).sourceBodyGapReviewDirection();
+    compositionDirections += '\n' + (await import('../../domain/generation/source-body-gap')).sourceBodyGapReviewDirection();
   }
+  mediumPrompt += compositionDirections;
   let journeyReviewCoverage = 250_000;
   if(receipt.journeyHeadRecovery!==undefined){
     const jh=await import('../../domain/generation/journey-source-head'),a=jh.journeyHeadAuthorityFor(receipt.authoredReturn,receipt.journeyHeadRecovery);
@@ -1173,9 +1180,33 @@ async function prepareSingleLowQuestion(c: Pick<Container, "db" | "storage">, pr
   const head = singleVersion === SINGLE_MEDIUM_VISUAL_REVIEW_VERSION ? await singleReviewHeadEvidence(c.db, {
     gameId: prepared.game.id, hide: entry.hide, attempt: entry.row.attempts, receipt, shipping: entry.bytes,
     geometrySha256: binding.geometrySha256, identitySha256: binding.identitySha256 }) : undefined;
+  if (compactKingdom) {
+    const view = prepared.request.hides[0]!;
+    if (!head || !sourceNeighbors || !entry.reviewContextRect || !view.returnedWindow || !view.expectation?.support || anchor)
+      throw Error('KINGDOM_REVIEW: fresh ordinary MEDIUM source evidence required');
+    const directions = compositionDirections
+      + (receipt.authoredRecovery ? '\nAUTONOMOUS REPAIR: judge the repaired pixels, including all visible limbs and the new join. A diagnosis is not approval.' : '')
+      + (continued ? '\nUNANSWERED TRANSPORT CONTINUATION ' + attempt + ': the earlier request ended without text or usage.' : '');
+    const { question, evidence } = await kingdomCompactReview({
+      media: { board: prepared.request.boardPng, portrait: prepared.request.identityPng, photo: subject.photoPng,
+        before: view.beforePng, after: view.afterPng, source: await sharp(prepared.composed).extract(entry.crop).png().toBuffer(),
+        raw: head.raw, shipping: entry.bytes, crop: entry.crop, context: entry.reviewContextRect, returned: view.returnedWindow },
+      template: { ...lowQuestion, ...(receipt.retainedWindow !== undefined ? { outputProfile: 'single-medium-6000/v1' as const } : {}) },
+      quality: quality.prompt, anatomy: anatomy.prompt, head: head.evidence, neighbors: sourceNeighbors,
+      subject: { plan: subject.plan, age: subject.upgrade.ageYears, binding: combined.binding }, binding, support: view.expectation.support, directions, attempt,
+    });
+    const bound = visualReviewMaxCharge(question);
+    if (!bound.ok || bound.microUsd > 250_000) throw Error('KINGDOM_REVIEW: exact request exceeds its qualified maximum');
+    return { binding, hideId, entry, receipt, sourceNeighbors, combined, question, bound,
+      requestKey: 'self-repair:board:' + prepared.board.board + ':' + question.fingerprint,
+      attempt, continued, singleVersion, head, anchor, nativeDetailEvidence: evidence };
+  }
   const shared = singleVersion === SINGLE_MEDIUM_VISUAL_REVIEW_VERSION ? await singleMediumEvidence(assessment,anatomy,hideId) : undefined;
+  const kingdomNewDefault = shared && sourceRelease?.baseSceneVersion === 13 && sourceRelease.worldSlug === 'kingdom'
+    && (rounds.length === 0 || rounds[0]?.tier === 'default')
+    && await kingdomFlexOutage(c.db, prepared.game.id);
   let question = singleVersion === SINGLE_VISUAL_REVIEW_VERSION ? lowQuestion : prepareVisualReview({ ...lowQuestion,
-    combined: singleVersion, effort: 'medium', tier: continued || receipt.journeyWallCoat !== undefined || receipt.journeyParisChair !== undefined ? 'default' : 'flex',
+    combined: singleVersion, effort: 'medium', tier: continued || kingdomNewDefault || receipt.journeyWallCoat !== undefined || receipt.journeyParisChair !== undefined ? 'default' : 'flex',
     ...(receipt.retainedWindow !== undefined || receipt.journeyHeadRecovery !== undefined ? { outputProfile: 'single-medium-6000/v1' as const } : {}),
     prompt: mediumPrompt + '\nMEDIUM SHARED NATIVE EVIDENCE: the quality AFTER image contains the anatomy context at LEFT and its exact native head detail at RIGHT across the 24px white gutter. Inspect both panels for every anatomy requirement; neither is a new appearance. All four AFTER-only joins remain supplied as the RIGHT native panels of their labelled BEFORE/AFTER return comparisons. Anatomy must inspect RIGHT AFTER only; never borrow a head from LEFT BEFORE. No required pixels or inspections were removed.' + targetHeadReturnPrompt(head!.evidence), images: [...shared!.images, head!.raw, entry.bytes],
     labels: [...shared!.labels.map(label=>anchor&&label.includes(hideId+':original-photo')?'EVIDENCE_ID='+hideId+':original-photo PRIOR PHOTO-APPROVED TARGET FACE ANCHOR, NOT the deleted photograph':label), 'EVIDENCE_ID='+hideId+':native-provider-raw 512x768 WHOLE RAW TARGET HEAD, crop-local axes',

@@ -6,14 +6,14 @@ import { env } from '../../lib/env';
 import { DbStorage } from '../../infra/storage/db';
 import { PrismaWorldBudgetStore } from '../../infra/db/prisma-world-budget-store';
 import { RETAINED_WINDOW_MANIFEST_SHA256, retainedWindowAuthorityFor, RETAINED_WINDOW_NEIGHBOR_ALTERNATE,
-  RETAINED_KINGDOM_TAIL_MANIFEST_SHA256, RETAINED_KINGDOM_TAIL_WINDOWS, KINGDOM_GENERATION_WINDOWS_SHA256 } from '../../../content/detectives/retained-window-v1';
+  RETAINED_KINGDOM_TAIL_MANIFEST_SHA256, RETAINED_KINGDOM_TAIL_WINDOWS, isKingdomGenerationManifest } from '../../../content/detectives/retained-window-v1';
 import { composeRetainedWindow, retainedWindowAuditId, retainedWindowCanonicalHash as hash, retainedWindowMarkerSchema,
   RETAINED_WINDOW_ACTION, RETAINED_WINDOW_VERSION, retainedWindowNeighborAlternateAllowed, type RetainedWindowAuthority } from '../../domain/generation/retained-window';
 import { TARGET_HEAD_VISIBLE_VERSION } from '../../domain/generation/target-head-return';
 import { resolveLocalPatchBoardsForGame } from './source-placement-release';
 import { expectedAuthoredLocalPatchReturn } from './local-patch-authored-return';
 import { readSettledTargetRaw } from './single-review-head-evidence';
-import { singleMediumReviewPolicyOf } from './single-medium-policy';
+import { ensureSingleMediumReviewPolicy, singleMediumReviewPolicyOf } from './single-medium-policy';
 import { readQaCompletionCapacity } from './qa-completion-capacity';
 import { QA_KINGDOM_TAIL_CAP } from '../../domain/generation/qa-completion-capacity';
 import { originalOrFiveDollarCap } from './qa-five-dollar-completion';
@@ -24,7 +24,7 @@ import { localPatchPublicationGeometryHash } from './local-patch-publication-pol
 import { fenceLocalPatchImages } from './local-patch-lifecycle';
 import { sha256Bytes as sha } from './fixed-sprite';
 import { cropOf } from '../../domain/scene/local-patch-hides';
-import { kingdomGenerationReleaseOf } from './kingdom-generation-release';
+import { KINGDOM_GENERATION_RELEASE, kingdomGenerationReleaseOf } from './kingdom-generation-release';
 
 type Db = Prisma.TransactionClient;
 type ReadArt = NonNullable<LocalPatchHideDeps['readBoardArt']>;
@@ -41,7 +41,7 @@ const tailAuditId = (gameId:string,rowId:string) => 'aud_retained_window_kingdom
 const generationAuditId = (gameId: string, rowId: string, attempt: number) =>
   'aud_retained_window_birth_' + hash([gameId, rowId, attempt]).slice(0, 40);
 const generationAction = RETAINED_WINDOW_ACTION + ':kingdom-generation-once';
-type ProspectiveClaim = { rowId: string; attempt: number; fence: (tx: Db) => Promise<void> };
+type ProspectiveClaim = { rowId: string; attempt: number; manifestSha256: string; fence: (tx: Db) => Promise<void> };
 
 function eligibleProspectiveRow(row: { status: string; attempts: number; judgeJson: string | null }) {
   if (row.attempts < 1 || row.attempts > 3) return false;
@@ -70,10 +70,10 @@ async function context(c: Container, gameId: string, rowId: string, publication:
   const game = await c.db.game.findUnique({ where: { id: gameId }, include: { childProfile: true, orders: true, scenes: true } });
   const row = await c.db.targetVariantAsset.findUnique({ where: { id: rowId }, include: { targetInstance: { include: { gameScene: true } } } });
   const child = game?.childProfile;
-  const prospective = manifest === KINGDOM_GENERATION_WINDOWS_SHA256;
+  const prospective = isKingdomGenerationManifest(manifest);
   const generation = prospective ? await kingdomGenerationReleaseOf(c.db, gameId) : null;
   if (!game || game.deletedAt || !game.paidAt || !child || child.deletedAt || child.ownerId !== game.ownerId
-    || (prospective ? !generation : child.ageYears !== 7 && child.ageYears !== 8)
+    || (prospective ? generation?.windowsSha256 !== manifest : child.ageYears !== 7 && child.ageYears !== 8)
     || !row || row.variant !== 'A' || row.provider !== 'local-patch'
     || row.targetInstance.gameScene.gameId !== gameId || game.styleVersion !== 'local-patch-world-v1'
     || !(game.status === 'TARGETS_GENERATING' || publication && ['READY', 'DELIVERED'].includes(game.status))
@@ -124,7 +124,7 @@ export async function restoreRetainedWindow(c: Container, gameId: string, hideId
   const neighborAlternate = kind==='neighbor-alternate', kingdomTail = kind==='kingdom-tail';
   const onceId = prospective ? (gameId: string, rowId: string) => generationAuditId(gameId, rowId, prospective.attempt)
     : kingdomTail ? tailAuditId : neighborAlternate ? alternateAuditId : rowAuditId;
-  const manifest = prospective ? KINGDOM_GENERATION_WINDOWS_SHA256
+  const manifest = prospective ? prospective.manifestSha256
     : kingdomTail ? RETAINED_KINGDOM_TAIL_MANIFEST_SHA256 : RETAINED_WINDOW_MANIFEST_SHA256;
   if (env().APP_ENV !== 'qa' || c.storage.id !== 'db' || !freeWindowHide(hideId)) return refuse('qa-scope-or-intrinsic-placement');
   return c.db.$transaction(async tx => {
@@ -169,7 +169,7 @@ export async function restoreRetainedWindow(c: Container, gameId: string, hideId
         const paid = await readSettledTargetRaw(tx, gameId, bill.requestKey);
         if (!same(paid.wire.authoredReturn, p.parent)) continue;
         const joined = await composeRetainedWindowPng(p.authority, before, paid.normalized);
-        if (sha(joined.png) === old.judgedSha256) continue;
+        if (!p.authority.sourceErase && sha(joined.png) === old.judgedSha256) continue;
         selected = { paid, joined, key: bill.requestKey }; break;
       } catch { /* No purchase on missing, unbound or geometrically unsafe RAW. */ }
     }
@@ -230,10 +230,15 @@ export async function restoreRetainedWindow(c: Container, gameId: string, hideId
 /** The ordinary worker applies an authenticated local recovery before asking its first review. */
 export async function prepareKingdomWindow(c: Container, gameId: string, hideId: string,
   row: { id: string; status: string; attempts: number; judgeJson: string | null },
-  fence: ProspectiveClaim['fence'], readArt?: ReadArt) {
+  fence: ProspectiveClaim['fence'], readArt?: ReadArt, observeRefusal?: (why: string) => void) {
   if (!eligibleProspectiveRow(row)) return false;
-  return restoreRetainedWindow(c, gameId, hideId, readArt, undefined, undefined, 'original', {
-    rowId: row.id, attempt: row.attempts, fence,
+  const pin = await kingdomGenerationReleaseOf(c.db, gameId);
+  if (!pin) return false;
+  // The erasure may be the world's first review candidate. Its local proof
+  // needs the from-birth MEDIUM receipt before the reviewer builds a question.
+  if (pin.version !== KINGDOM_GENERATION_RELEASE) await ensureSingleMediumReviewPolicy(c, gameId, fence);
+  return restoreRetainedWindow(c, gameId, hideId, readArt, observeRefusal, undefined, 'original', {
+    rowId: row.id, attempt: row.attempts, manifestSha256: pin.windowsSha256, fence,
   });
 }
 
@@ -262,7 +267,7 @@ export async function retainedWindowEvidenceMatches(db: Db, input: { gameId: str
     phase = 'audit';
     const audit = await db.auditLog.findUnique({ where: { id: auditId } }), saved = JSON.parse(audit?.metaJson ?? 'null');
     const kingdomTail=m.manifestSha256===RETAINED_KINGDOM_TAIL_MANIFEST_SHA256;
-    const prospective=m.manifestSha256===KINGDOM_GENERATION_WINDOWS_SHA256;
+    const prospective=isKingdomGenerationManifest(m.manifestSha256);
     const onceId = prospective ? generationAuditId(m.gameId, m.rowId, m.attempts)
       : (kingdomTail ? tailAuditId : rowAuditId)(m.gameId, m.rowId);
     const once = await db.auditLog.findUnique({ where: { id: onceId } });

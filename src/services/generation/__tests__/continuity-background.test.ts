@@ -18,11 +18,14 @@ import { prepareVisualReview } from "../visual-review";
 import { providerFailureRefusal } from "../local-patch-review-interruption-recovery";
 import { LOCAL_PATCH_LEAN_ACTION, leanReleaseAuditId, leanReleaseReceipt } from "../lean-release";
 import { LEAN_REVIEW_RECOVERY_ACTION, leanNewWorldRecoveryReceipt, leanReviewRecoveryAuditId } from "../../../domain/generation/lean-review-recovery";
-import { seedApprovedGame } from "./local-patch-fixtures";
+import { bill, seedApprovedGame } from "./local-patch-fixtures";
 import { SINGLE_MEDIUM_VISUAL_REVIEW_VERSION } from "../../../domain/generation/single-visual-review";
 import { recordSingleTransportFaults } from "../single-transport-continuation";
+import { localPatchPainterAuditId, LOCAL_PATCH_PAINTER_ACTION, sunburstPainterReceipt } from "../painter-release";
+import { pinKingdomGenerationRelease } from "../kingdom-generation-release";
+import { KINGDOM_DETECTIVE_SOURCE_PLACEMENT_RELEASE_SHA256 } from "../../../../content/detectives/kingdom/source-placement-release";
 
-vi.mock("../../../lib/env", () => ({ env: () => ({ APP_ENV: "qa", GENERATION_ENABLED: "on", GENERATION_DAILY_CENTS: 0, GENERATION_PROVIDER: "openai" }),
+vi.mock("../../../lib/env", () => ({ env: () => ({ APP_ENV: "qa", GENERATION_ENABLED: "on", GENERATION_DAILY_CENTS: 0, GENERATION_PROVIDER: "openai", KINGDOM_GENERATION_RELEASE: "v2" }),
   spendGuard: () => ({ appEnv: "qa", realGeneration: true, testers: [] }), flag: () => false, adminEmails: () => [] }));
 
 let directory: string, db: PrismaClient, base: Container;
@@ -436,6 +439,84 @@ describe("a lean world's background questions (local-patch-lean/v1)", () => {
     expect(await (await plain.fail(4, "default", "image_content_policy_violation"))()).toContain("content-policy");
     // A round that has not ended is never a failure to continue.
     expect(await providerFailureRefusal(pinned.c, "bg-bound-pinned", pinned.worldId, `self-repair:board:newyork:${"d".repeat(64)}`)).toContain("recorded no outcome");
+  });
+  it("admits one same-image Default round when the Kingdom v2 tail fits, including replay of its own reserved create", async () => {
+    let creates = 0;
+    const fake: BackgroundReviewTransport = { namespace: "openai:find-me-existing",
+      create: async () => ({ responseId: "resp_kingdom_tier_" + ++creates }),
+      retrieve: async responseId => responseId.endsWith("_1")
+        ? { status: "failed", reading: { responseId, raw: null, usage: null, model: "gpt-6.1-sol", finishReason: "failed",
+          serviceTier: "flex", providerError: { code: "server_is_overloaded", message: null } } }
+        : { status: "completed", reading: { responseId, raw: '{"cases":[]}', usage: { input_tokens: 2000, output_tokens: 500 },
+          model: "gpt-6.1-sol", finishReason: "stop", serviceTier: "default" } },
+      cancel: async () => {} };
+    const gameId = "bg-kingdom-v2";
+    const { c, ask, budget, worldId, requestKey } = await setup(gameId, fake, "Flex question about the paid candidate", "flex");
+    await db.$transaction(async tx => {
+      await tx.auditLog.createMany({ data: [
+        { id: leanReleaseAuditId(gameId), actorType: "SYSTEM", action: LOCAL_PATCH_LEAN_ACTION, entityType: "Game", entityId: gameId,
+          metaJson: JSON.stringify(leanReleaseReceipt(gameId)) },
+        { id: localPatchPainterAuditId(gameId), actorType: "SYSTEM", action: LOCAL_PATCH_PAINTER_ACTION, entityType: "Game", entityId: gameId,
+          metaJson: JSON.stringify(sunburstPainterReceipt(gameId)) },
+        { id: "aud_source_family_" + gameId, actorType: "SYSTEM", action: "generation:source-family-policy", entityType: "Game", entityId: gameId,
+          metaJson: JSON.stringify({ gameId, worldSlug: "kingdom", familyId: "kingdom-detectives/v1",
+            manifestSha256: KINGDOM_DETECTIVE_SOURCE_PLACEMENT_RELEASE_SHA256 }) },
+      ] });
+      await pinKingdomGenerationRelease(tx, gameId);
+    });
+    expect(await askContinuityInBackground(c, ask)).toEqual({ kind: "proceed" });
+    const unknown = (await budget.readRequest(worldId, requestKey))!;
+    expect(unknown).toMatchObject({ state: "unknown", reserveMicroUsd: 66_000 });
+    const another = (tier: "flex" | "default", prompt: string) => {
+      const question = prepareVisualReview({ ...ask.question, tier, prompt });
+      return { ...ask, question, requestKey: `self-repair:board:newyork:${question.fingerprint}` };
+    };
+    const newFlex = another("flex", "Other Flex question");
+    const fallback = another("default", "Same candidate once on Default");
+    expect(await askContinuityInBackground(c, newFlex)).toMatchObject({ kind: "held", reason: expect.stringContaining("Flex stopped") });
+    expect(await askContinuityInBackground(c, fallback)).toMatchObject({ kind: "held", reason: expect.stringContaining("Default tail needs") });
+    expect(await budget.readRequest(worldId, newFlex.requestKey)).toBeNull();
+    expect(await budget.readRequest(worldId, fallback.requestKey)).toBeNull();
+    expect(creates).toBe(1);
+
+    // Synthetic tail for admission only. The engine's separate test verifies the real family, paint and review pipeline.
+    const scene = await db.gameScene.findFirstOrThrow({ where: { gameId } });
+    for (let i = 0; i < 27; i++) {
+      await db.targetInstance.create({ data: { id: "target-bg-kingdom-" + i, gameSceneId: scene.id, targetId: "hide-" + i,
+        targetType: "child", slotAId: "A", slotBId: "B", variants: { create: {
+          id: i === 0 ? ask.binding.variantId : "variant-bg-kingdom-" + i, variant: "A", slotId: "A",
+          provider: "local-patch", status: "GENERATED", assetId: "synthetic-drawing-" + i,
+          judgeJson: i === 0 ? null : JSON.stringify({ reviewState: "board-review-complete", qualityDisposition: { state: "acceptable" },
+            judgedSha256: "sent-image", boardReview: { dual: { subject: {}, imageSha256: "sent-image" } } }),
+        } } } });
+    }
+    const approving = boardWizardBudgetOf(c, 1, { authorizeUnknownContinuation: async () => true });
+    const terms = { requestKey, scope: "judge" as const, operationFingerprint: ask.question.fingerprint, reserveMicroUsd: 66_000 };
+    await approving.authorizeUnknownContinuation(worldId, { ...terms, approvalId: "synthetic-kingdom-continuation",
+      unknownReasons: unknown.unknownReasons, operatorId: "synthetic", authorizationSha256: "e".repeat(64),
+      authorizedAt: "2026-11-17T12:00:00.000Z" });
+    const fill = (await budget.audit(worldId)).remainingMicroUsd - 250_000;
+    await budget.reserve(worldId, { requestKey: "synthetic-budget-fill", scope: "image", operationFingerprint: "f".repeat(64), reserveMicroUsd: fill });
+    await budget.settle(worldId, "synthetic-budget-fill", bill("synthetic-kingdom-fill", fill));
+    const reserve = WorldBudget.prototype.reserve;
+    const crashed = vi.spyOn(WorldBudget.prototype, "reserve").mockImplementationOnce(async function (this: WorldBudget, ...args: Parameters<typeof reserve>) {
+      await reserve.apply(this, args);
+      throw Error("synthetic interruption after reserving the same Default question");
+    });
+    try {
+      await expect(askContinuityInBackground(c, fallback)).rejects.toThrow("synthetic interruption");
+    } finally { crashed.mockRestore(); }
+    expect(creates).toBe(1);
+    expect(await budget.readRequest(worldId, fallback.requestKey)).toMatchObject({ state: "pending", reserveMicroUsd: 66_000 });
+    expect((await budget.audit(worldId)).remainingMicroUsd).toBe(184_000);
+    expect(await askContinuityInBackground(c, fallback)).toEqual({ kind: "proceed" });
+    expect(await askContinuityInBackground(c, fallback)).toEqual({ kind: "proceed" });
+    expect(await askContinuityInBackground(c, another("default", "Unpermitted second opinion"))).toMatchObject({ kind: "held",
+      reason: expect.stringContaining("already has a Default review round") });
+    expect(creates).toBe(2);
+    expect(await budget.readRequest(worldId, requestKey)).toEqual(unknown);
+    expect(await budget.readRequest(worldId, fallback.requestKey)).toMatchObject({ state: "settled", evidence: { amountMicroUsd: 10_000 } });
+    expect(await budget.audit(worldId)).toMatchObject({ capMicroUsd: 4_000_000, overCapMicroUsd: 0, unknownRequestKeys: [requestKey] });
   });
   it("stops every question about pixels the provider said can never succeed, whatever its charge: a settled bill stays settled, an unknown one unknown (Codex QA R1)", async () => {
     const pixels = { hideId: "newyork-v12-1", variantId: "tva-synthetic", imageSha256: "a".repeat(64), geometrySha256: "b".repeat(64), identitySha256: "c".repeat(64) };

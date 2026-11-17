@@ -4,7 +4,7 @@ import {
   backgroundRoundOf, nextBackgroundStep, prospectiveBackgroundCancelPolicy, SINGLE_MEDIUM_FLEX_WAIT_VERSION, type BackgroundReviewEvent,
 } from "../background-review-round";
 import { leanReviewPolicy, singleMediumReviewPolicy, singleLowReviewPolicy } from "../visual-review-policy";
-import { KINGDOM_FLEX_OVERLOAD_COOLDOWN_MS, kingdomFlexCreateAllowed, kingdomPaintLimit } from '../kingdom-generation';
+import { KINGDOM_FLEX_OVERLOAD_COOLDOWN_MS, kingdomDefaultTailPeak, kingdomFlexCreateAllowed, kingdomFlexOverloaded, kingdomPaintLimit } from '../kingdom-generation';
 
 const intent: BackgroundReviewEvent = { kind: "intent", intent: { version: BACKGROUND_REVIEW_ROUND_VERSION, roundId: "sbsynthetic", gameId: "game-synthetic",
   worldId: "game-synthetic:board-wizard", requestKey: `self-repair:board:newyork:${"a".repeat(64)}`, fingerprint: "a".repeat(64), bodySha256: "b".repeat(64),
@@ -27,6 +27,31 @@ describe("one background question, one create, polled by its id", () => {
     expect(terminal.intent.reserveMicroUsd).toBe(66_000);
     expect(kingdomPaintLimit(true)).toBe(0);
     expect(kingdomPaintLimit(false)).toBe(1);
+  });
+  it('stops v2 Flex creation after the first exact Flex overload without stopping polls or legacy creates', () => {
+    const submitted = { kind: 'submitted', responseId: 'resp_kingdom', at: T } as const;
+    const failed = { kind: 'outcome', state: 'unpriced', responseId: submitted.responseId, providerStatus: 'failed',
+      errorCode: 'server_is_overloaded', at: T + 1_000 } as const;
+    const round = (tier: 'flex' | 'default', code = 'server_is_overloaded', status = 'failed') => backgroundRoundOf([
+      { ...intent, intent: { ...intent.intent, policyVersion: singleMediumReviewPolicy(tier).version } },
+      { kind: 'claim', at: T }, submitted, { ...failed, errorCode: code, providerStatus: status },
+    ]);
+    const overload = round('flex'), muchLater = T + 80 * 60_000;
+    expect(kingdomFlexOverloaded([overload])).toBe(true);
+    expect(kingdomFlexCreateAllowed([overload], 'next', muchLater, true)).toBe(false);
+    expect(kingdomFlexCreateAllowed([overload], 'next', muchLater)).toBe(true);
+    expect(kingdomFlexOverloaded([round('default'), round('flex', 'server_error'), round('flex', 'server_is_overloaded', 'cancelled')])).toBe(false);
+    const sent = backgroundRoundOf([intent, { kind: 'claim', at: T }, submitted]);
+    expect(nextBackgroundStep(sent, T + 10)).toMatchObject({ step: 'poll', responseId: submitted.responseId });
+    expect(overload.intent.reserveMicroUsd).toBe(66_000);
+  });
+  it('projects the serial Default tail with full reserve for the last required step', () => {
+    expect(kingdomDefaultTailPeak(0, 0)).toBe(0);
+    expect(kingdomDefaultTailPeak(0, 1)).toBe(250_000);
+    expect(kingdomDefaultTailPeak(1, 0)).toBe(400_000);
+    expect(kingdomDefaultTailPeak(2, 1)).toBe(659_411);
+    expect(kingdomDefaultTailPeak(26, 1)).toBeGreaterThan(4_000_000);
+    expect(() => kingdomDefaultTailPeak(26, 2)).toThrow(/invalid tail counts/);
   });
   it("waits twenty-five minutes only for newly marked single MEDIUM Flex intents, preserving historical deadlines", () => {
     const medium = singleMediumReviewPolicy("flex").version;

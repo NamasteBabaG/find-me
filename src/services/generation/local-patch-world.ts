@@ -79,14 +79,16 @@ import { LOCAL_PATCH_BOARD_REVIEW_MIN_MS, localPatchBoardAwaitsProvider, localPa
   localPatchReviewFits, localPatchReadyReviewOwed, selfRepairProgress, type LocalPatchRest } from "../../domain/scene/local-patch-progress";
 import { continueAdmittedReviewInterruptions, openAdmittedInterruptions, recoverEnrolledReviewInterruptions, resumptionAfterContinuation,
   reviewContinuationRecorded, type ContinuationWhy } from "./subject-upgrade";
-import { advanceContinuityInBackground, backgroundReviewAnswered } from "./continuity-background";
+import { advanceContinuityInBackground, backgroundReviewAnswered, kingdomFlexOutage } from "./continuity-background";
 import { enrollLeanWorld } from "./lean-enrollment";
 import { isLeanWorld } from "./lean-release";
 import { boundLeanRecoveryHold } from "./lean-review-recovery-pin";
 import { leanSubjectOnlyRefusal } from "./lean-repair";
 import { kingdomPaintLimit } from '../../domain/generation/kingdom-generation';
-import { kingdomGenerationReleaseOf } from './kingdom-generation-release';
+import { KINGDOM_GENERATION_V2, kingdomGenerationReleaseOf } from './kingdom-generation-release';
 import { prepareKingdomWindow } from './retained-window-recovery';
+import { kingdomDefaultTail } from './kingdom-default-tail';
+import { retainedWindowMarkerSchema } from '../../domain/generation/retained-window';
 import {
   LOCAL_PATCH_MAX_ATTEMPTS, LOCAL_PATCH_PROVIDER, LOCAL_PATCH_VARIANT, runLocalPatchHide,
   type LocalPatchHideDeps, type LocalPatchHideOutcome,
@@ -678,9 +680,19 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
   if (kingdomRelease && kingdomPlacement) {
     for (const item of work) {
       const row = stateOf(item.sceneId, item.hide.targetId);
-      if (!row || !kingdomGenerationWindowForHide(kingdomPlacement, item.hide.id)) continue;
+      if (!row) continue;
+      const profile = kingdomGenerationWindowForHide(kingdomPlacement, item.hide.id);
+      if (!profile) continue;
       if (!reviewFits()) return yieldToContinue();
-      if (await prepareKingdomWindow(c, gameId, item.hide.id, row, fence, deps.readBoardArt)) return yieldToContinue();
+      let windowRefusal = 'candidate does not carry the paid render';
+      if (await prepareKingdomWindow(c, gameId, item.hide.id, row, fence, deps.readBoardArt, why => { windowRefusal = why; })) return yieldToContinue();
+      if (profile.authority.sourceErase && row.status === 'GENERATED'
+        && retainedWindowMarkerSchema.safeParse(JSON.parse(row.judgeJson ?? 'null')?.retainedWindow).data?.manifestSha256 !== profile.manifestSha256) {
+        if ((await boardWizardBudgetOf(c).audit(boardWizardWorldId(gameId))).pendingRequestKeys.length) return yieldToContinue();
+        const attention = 'Kingdom Dragon Cave 1: the painted window could not be authenticated with its original leg erasure (' + windowRefusal + ').';
+        await parkExhausted(attention);
+        return { ...empty, claimed: true, pending: false, paused: false, attention };
+      }
     }
   }
   const timedReview = async <T extends { readonly state: string }>(board: string, kind: "retained" | "settled" | "first" | "complete", review: () => Promise<T>) => {
@@ -1024,6 +1036,7 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
   const automaticWork = automatic && !extraPlan && !journeyPins.length ? work.filter(item => {
     const row = stateOf(item.sceneId, item.hide.targetId);
     if(row&&windowStops.has(row.id))return false;
+    if (kingdomRelease && kingdomPlacement && kingdomGenerationWindowForHide(kingdomPlacement, item.hide.id)?.authority.sourceErase) return false;
     return needsSelfRepair(row) && !legacyReviewOwed(row) && !headPainting(row) && !headExhausted(row) && !contextPainting(row) && !contextExhausted(row) && !sourceBodyBirthMarker(row!) && !bodyPainting(row) && !bodyExhausted(row) && !(row && (guidedFrameExhausted(row) && !completionRepair(row) && !mechanicalRepair(row) || nativeMaskTailExhausted(row))) && !leanThirdPainting(row) && !guidedThirdPainting(row) && !(hasLocalPatchCapability(game.scenes.find(scene => scene.id === item.sceneId)?.sceneVersion, "integratedQuality")
       && (localPatchEvidenceRecovery(row!) || playerReviewEnabled() && needsPlayerReview(row!)))
       // Re-asked under v2 about the same pixels before any repair (subject-rejudge/v1).
@@ -1077,6 +1090,15 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
     })) : Math.max(1, options.maxHides ?? (advisory ? 5 : LOCAL_PATCH_HIDES_PER_SLICE));
   let paused = false;
   let attention: string | null = null;
+  if (limit > 0 && (todo.length || automaticWork.length) && kingdomRelease && kingdomRelease.version === KINGDOM_GENERATION_V2
+    && await kingdomFlexOutage(c.db, gameId)) {
+    const tail = await kingdomDefaultTail(c, gameId, boardWizardWorldId(gameId));
+    if (!tail.fits) {
+      if (tail.pending || (await settledAnswersWaiting()).length) return yieldToContinue();
+      await parkExhausted(tail.reason);
+      return { ...empty, claimed: true, pending: false, paused: false, attention: tail.reason };
+    }
+  }
 
   // local-patch-progress/v1: one order for repairs and renders; an appearance whose repair cycles
   // under the current subject policy are spent is left out (and reported below, never repurchased).

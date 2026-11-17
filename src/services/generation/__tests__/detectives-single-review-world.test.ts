@@ -12,9 +12,9 @@ import { pinJourneyWindowRelease } from '../journey-window-release';
 import { windowStoppedRows } from '../repeat-window-stop';
 import * as nativeDetailPainterModule from "../native-detail-painter";
 import { KINGDOM_DETECTIVE_PATCH_BOARDS } from "../../../../content/detectives/kingdom/runtime-release";
-import { KINGDOM_GENERATION_WINDOWS } from '../../../../content/detectives/retained-window-v1';
+import { KINGDOM_GENERATION_WINDOWS, KINGDOM_GENERATION_WINDOWS_V2_SHA256 } from '../../../../content/detectives/retained-window-v1';
 import { retainedWindowRegion } from '../../../domain/generation/retained-window';
-import { KINGDOM_FLEX_OVERLOAD_COOLDOWN_MS } from '../../../domain/generation/kingdom-generation';
+import { KINGDOM_COMPACT_REVIEW, KINGDOM_FLEX_OVERLOAD_COOLDOWN_MS } from '../../../domain/generation/kingdom-generation';
 import { kingdomGenerationReleaseOf } from '../kingdom-generation-release';
 import { pinDetectiveSourceScope, sealDetectiveSourceFamily } from "../source-family-scope";
 import { planWholeSourceContextRepair, stageWholeSourceContextRepair, nextWholeSourceContextWake, resumeWholeSourceContextRepair } from "../whole-source-context-repair";
@@ -138,9 +138,10 @@ import { GOOD_V12_VERDICT, boundHide, longAnswer, publicationBinding } from "./l
 /** Actual public Detective sources plus synthetic identity/paint/review transport.
  * This exercises the complete ledger/publication/player path; it proves no
  * likeness, crowd anatomy, provider latency or two-hour live-delivery target. */
-const fixture = vi.hoisted(() => ({ testers: [] as string[] }));
+const fixture = vi.hoisted(() => ({ testers: [] as string[], kingdomRelease: 'v1' }));
 vi.mock("../../../lib/env", () => ({ env: () => ({ APP_ENV: "qa", GENERATION_ENABLED: "on", GENERATION_DAILY_CENTS: 0, LOCAL_PATCH_PLAYER_REVIEW: "on",
-  GENERATION_PROVIDER: "openai", GENERATION_MODEL: "gpt-image-2", GENERATION_QUALITY: "medium", LOCAL_PATCH_PROMPT_RELEASE: "v19", LOCAL_PATCH_IDENTITY_SOURCE: "full-source-v1" }),
+  GENERATION_PROVIDER: "openai", GENERATION_MODEL: "gpt-image-2", GENERATION_QUALITY: "medium", LOCAL_PATCH_PROMPT_RELEASE: "v19", LOCAL_PATCH_IDENTITY_SOURCE: "full-source-v1",
+  KINGDOM_GENERATION_RELEASE: fixture.kingdomRelease }),
   spendGuard: () => ({ appEnv: "qa", realGeneration: true, testers: fixture.testers }), flag: () => false, adminEmails: () => [] }));
 let directory: string, db: PrismaClient, c: Container;
 const sourceBytes = new Map<string, Promise<Buffer>>();
@@ -156,7 +157,7 @@ beforeAll(async () => {
     email: { id: "console", send: async () => ({ id: "synthetic-mail" }) }, emailFallbackTo: null } as unknown as Container;
   vi.stubGlobal("fetch", vi.fn(async () => { throw Error("Real provider calls forbidden in Detective integration"); }));
 }, 180_000);
-afterEach(()=>{vi.useRealTimers();vi.restoreAllMocks();});
+afterEach(()=>{fixture.kingdomRelease='v1';vi.useRealTimers();vi.restoreAllMocks();});
 afterAll(async () => {
   sourceBytes.clear(); vi.useRealTimers(); vi.unstubAllGlobals(); await db.$disconnect();
   if (path.dirname(directory) === realpathSync(tmpdir()) && path.basename(directory).startsWith("findme-detective-world-")) rmSync(directory, { recursive: true });
@@ -251,7 +252,8 @@ function controlledSol(interrupted = false, guided = false, guidedHideId?: strin
     const prompt = (body.input as { content: { text?: string }[] }[])[0]!.content[0]!.text!, quality = prompt.includes(SUBJECT_QUALITY_BUNDLE_VERSION);
     const hideId = boundHide(prompt).hideId; expect(subjectPlanOfHide(hideId, version)).not.toBeNull();
     expect(body.reasoning).toMatchObject({ effort: prompt.includes('"version":"'+SINGLE_MEDIUM_VISUAL_REVIEW_VERSION+'"') ? "medium" : "low" });
-    if (prompt.includes(SOURCE_NEIGHBOR_BUNDLE_VERSION)) expect(prompt).toContain('"assessment":<complete final assessment envelope above including quality, subject and sourceNeighbors>');
+    if (prompt.startsWith(KINGDOM_COMPACT_REVIEW)) expect(prompt).toContain('"sourceNeighbors":<sourceNeighbors>');
+    else if (prompt.includes(SOURCE_NEIGHBOR_BUNDLE_VERSION)) expect(prompt).toContain('"assessment":<complete final assessment envelope above including quality, subject and sourceNeighbors>');
     else expect(prompt).toContain('"assessment":<complete final quality and subject assessment envelope above>');
     if(prompt.includes("original photograph was normally deleted")){const blocks=(body.input as {content:{type:string}[]}[])[0]!.content;console.info("synthetic-crown-request",{hideId,promptBytes:Buffer.byteLength(prompt),images:blocks.filter(b=>b.type==="input_image").length,fullOutputTokens:body.max_output_tokens});}
     const labels = (body.input as { content: { type: string; text?: string }[] }[])[0]!.content.slice(1).filter(block => block.type === "input_text").map(block => block.text!);
@@ -543,6 +545,95 @@ it('prospective window stop serves the other26, permits a different-edge repair,
   }
   expect(await boardWizardBudgetOf(container).audit(boardWizardWorldId(gameId))).toEqual(ledger);
 },1500000);
+
+it.each(['v2', 'v3'] as const)('binds the Dragon Cave erasure to the actual Sunburst mask and uses the pinned Kingdom %s review', async release => {
+  fixture.kingdomRelease = release;
+  const gameId = 'kingdom-' + release + '-erasure-synthetic', hideId = 'dragoncave-detectives-hide-1';
+  await newDetectiveWorld(gameId, 8, true, false, true, false, true);
+  await db.game.update({ where: { id: gameId }, data: { paidAt: new Date() } });
+  fixture.kingdomRelease = 'v1';
+  expect(await kingdomGenerationReleaseOf(db, gameId)).toMatchObject({ version: 'kingdom-generation/' + release,
+    windowsSha256: KINGDOM_GENERATION_WINDOWS_V2_SHA256, worldCapMicroUsd: 4_000_000 });
+
+  const context = await resolveLocalPatchBoardsForGame(db, gameId, 13);
+  const board = context.boards.find(b => b.board === 'dragoncave')!, hide = board.hides.find(h => h.id === hideId)!;
+  const provider = controlledSol(release === 'v2', release === 'v3', hideId, true, release === 'v2', 13, 2, 'server_is_overloaded');
+  const forbidden = vi.fn(async () => { throw Error('Unexpected provider dispatch'); });
+  const container = { ...c, visualReview: { request: forbidden }, backgroundReview: provider.fake } as Container;
+  const rectangle = (width: number, height: number, background: string) =>
+    sharp({ create: { width, height, channels: 4, background } }).png().toBuffer();
+  const render = vi.fn<LocalPatchHideDeps['render']>(async ({ requestKey, prompt, stylePng, maskPng }) => {
+    expect(requestKey).toBe(hideId + ':sitting-cross-legged:render:1');
+    expect(prompt).toContain('Replace the old lower leg and boot completely');
+    expect(prompt).toContain('Below cyan reconstruct only background');
+    const alpha = await sharp(maskPng).ensureAlpha().raw().toBuffer();
+    const opens = (x: number, y: number) => alpha[(y * 512 + x) * 4 + 3] === 0;
+    for (let y = 515; y < 575; y++) for (let x = 260; x < 328; x++) {
+      if (!opens(x, y)) throw Error('The mask closes part of the original leg and boot');
+    }
+    expect(opens(336, 560)).toBe(false);
+    expect(opens(283, 584)).toBe(false);
+    const png = await sharp(stylePng).composite([
+      { input: await rectangle(90, 148, '#304f91'), left: 187, top: 335 },
+      { input: await rectangle(68, 60, '#685373'), left: 260, top: 515 },
+    ]).png().toBuffer();
+    return paintedOk(png, { ...bill('synthetic-kingdom-erase', 65_000), model: 'gpt-image-2.6-sunburst' });
+  });
+  const deps = { render, judge: forbidden, readBoardArt: readArt, renderPolicySha256: localPatchRenderPolicySha256(LOCAL_PATCH_SUNBURST_IMAGE_POLICY) };
+  const outcome = await runLocalPatchHide(container, deps, { gameId, board, hide });
+  expect(['generated', 'refused']).toContain(outcome.state);
+  const worldId = boardWizardWorldId(gameId), budget = boardWizardBudgetOf(container);
+  const afterPaint = await budget.audit(worldId);
+  const staged = await runLocalPatchWorldSlice(container, deps, gameId, { diagnose: forbidden });
+  expect(staged).toMatchObject({ pending: true, attention: null });
+  expect(provider.creates).toHaveLength(0);
+  expect(await budget.audit(worldId)).toEqual(afterPaint);
+  const restored = await db.targetVariantAsset.findFirstOrThrow({ where: { targetInstance: { gameScene: { gameId }, targetId: hide.targetId } } });
+  expect(JSON.parse(restored.judgeJson!).retainedWindow).toMatchObject({ manifestSha256: KINGDOM_GENERATION_WINDOWS_V2_SHA256 });
+  const asset = await db.asset.findUniqueOrThrow({ where: { id: restored.assetId! } });
+  const shipping = await c.storage.get(asset.storagePath);
+  expect(await sharp(shipping).extract({ left: 285, top: 569, width: 1, height: 1 }).ensureAlpha().raw().toBuffer())
+    .toEqual(Buffer.from([104, 83, 115, 255]));
+
+  if (release === 'v3') {
+    for (let step = 0; step < 4; step++) {
+      const row = await db.targetVariantAsset.findUniqueOrThrow({ where: { id: restored.id } });
+      if (JSON.parse(row.judgeJson!).boardReview?.raw) break;
+      await runLocalPatchWorldSlice(container, deps, gameId, { diagnose: forbidden, workMode: REVIEW_EXISTING_WORK_MODE });
+    }
+    expect(provider.creates.map(q => [q.hideId, q.tier, q.reasoning, q.labels.length])).toEqual([[hideId, 'default', { effort: 'medium' }, 6]]);
+    expect(provider.creates[0]!.prompt).toContain('ORIGINAL LEG AND BOOT');
+    expect(provider.creates[0]!.prompt).toContain('HEAD_RETURN_EVIDENCE');
+    const row = await db.targetVariantAsset.findUniqueOrThrow({ where: { id: restored.id } });
+    const receipt = JSON.parse(row.judgeJson!);
+    expect(receipt.boardReview.dual.quality.nativeDetailEvidence).toMatchObject({ version: 'native-detail/v1', shippingSha256: sha256Bytes(shipping) });
+    expect(receipt.verdict).toMatchObject({ verdict: 'fail', pictureWhole: 'fail', boundaryIntegrity: { top: { status: 'fail' } } });
+    expect(row.status).not.toBe('GENERATED');
+    expect((await budget.audit(worldId)).unknownRequestKeys).toEqual(afterPaint.unknownRequestKeys);
+    expect(await budget.readRequest(worldId, receipt.boardReview.dual.quality.requestKey)).toMatchObject({
+      state: 'settled', evidence: { amountMicroUsd: 10_000 },
+    });
+    expect(render).toHaveBeenCalledTimes(1);
+    expect(forbidden).not.toHaveBeenCalled();
+    return;
+  }
+
+  let result = staged;
+  for (let step = 0; step < 5 && result.pending; step++) {
+    result = await runLocalPatchWorldSlice(container, deps, gameId, { diagnose: forbidden });
+  }
+  expect(result).toMatchObject({ pending: false, attention: expect.stringContaining('Default tail needs') });
+  expect(provider.creates.map(question => [question.hideId, question.tier])).toEqual([[hideId, 'flex']]);
+  expect(provider.creates[0]!.prompt).toContain('ORIGINAL LEG AND BOOT');
+  expect(forbidden).not.toHaveBeenCalled();
+  expect(render).toHaveBeenCalledTimes(1);
+  const audit = await budget.audit(worldId);
+  expect(audit.capMicroUsd).toBe(4_000_000);
+  expect(audit.unknownRequestKeys).toHaveLength(1);
+  const unknown = await budget.readRequest(worldId, audit.unknownRequestKeys[0]!);
+  expect(unknown).toMatchObject({ state: 'unknown', scope: 'judge' });
+  expect(audit.committedMicroUsd - afterPaint.committedMicroUsd).toBe(unknown!.reserveMicroUsd);
+}, 180_000);
 
 it.each(["newyork-detectives-hide-1", "giza-detectives-hide-2"])("Sunburst refuses a new %s painting before spending its ordinary assessment coverage", async hideId => {
   const gameId = "synthetic-sunburst-capacity-" + hideId;

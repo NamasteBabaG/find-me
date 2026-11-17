@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { assertKingdomGenerationWindows, KINGDOM_GENERATION_WINDOWS, assertRetainedWindowManifest, RETAINED_WINDOW_AUTHORITIES, RETAINED_KINGDOM_TAIL_WINDOWS,
-  RETAINED_KINGDOM_TAIL_MANIFEST_SHA256 } from '../../../../content/detectives/retained-window-v1';
+  RETAINED_KINGDOM_TAIL_MANIFEST_SHA256, kingdomGenerationWindows, KINGDOM_GENERATION_WINDOWS_V2_SHA256 } from '../../../../content/detectives/retained-window-v1';
 import { KINGDOM_DETECTIVE_SOURCE_PLACEMENT_RELEASE } from '../../../../content/detectives/kingdom/source-placement-release';
 import { DETECTIVE_SOURCE_PLACEMENT_RELEASE } from '../../../../content/detectives/source-placement-release';
 import { assertRetainedWindowAuthority, composeRetainedWindow, protectRetainedWindowPaintAlpha, retainedWindowProtectedHeads, retainedWindowRegistration,
@@ -54,6 +54,40 @@ function shifted(p: RetainedWindowPixels, dx: number, dy: number): RetainedWindo
 }
 
 describe('paid native window recovery', () => {
+  it('opens the whole original Dragon Cave boot while returning exact SOURCE outside the lower erasure and at both neighbors', () => {
+    const hideId = 'dragoncave-detectives-hide-1';
+    const prior = KINGDOM_GENERATION_WINDOWS.find(w => w.authority.hideId === hideId)!.authority;
+    const release = kingdomGenerationWindows(KINGDOM_GENERATION_WINDOWS_V2_SHA256);
+    const current = release.find(w => w.authority.hideId === hideId)!.authority;
+    const { sourceErase, ...oldAuthority } = current;
+    expect(oldAuthority).toEqual(prior);
+    expect(release.filter(w => w.authority.hideId !== hideId)).toEqual(KINGDOM_GENERATION_WINDOWS.filter(w => w.authority.hideId !== hideId));
+    const { fragment, returned } = sourceErase!;
+    const mask = scene();
+    protectRetainedWindowPaintAlpha(current, mask);
+    const before = scene(), raw = { ...before, data: new Uint8Array(before.data) };
+    paint(raw, { left: 200, top: 265, width: 120, height: 343 });
+    paint(raw, { left: returned.left + returned.width, top: 560, width: 1, height: 1 });
+    for (const { head } of retainedWindowProtectedHeads(current)) {
+      const x = Math.max(20, head.left), y = Math.max(20, head.top);
+      expect(pixel(mask, x, y)[3]).toBe(255);
+      paint(raw, { left: x, top: y, width: 1, height: 1 });
+    }
+    const output = composeRetainedWindow({ authority: current, scene: before, raw });
+    let fullyPaintableAndCopied = 0;
+    for (let y = fragment.top; y < fragment.top + fragment.height; y++) {
+      for (let x = fragment.left; x < fragment.left + fragment.width; x++) {
+        if (pixel(mask, x, y)[3] === 0 && output.weights[y * 512 + x] === 1
+          && pixel(output.pixels, x, y).every((value, channel) => value === pixel(raw, x, y)[channel])) fullyPaintableAndCopied++;
+      }
+    }
+    expect(fullyPaintableAndCopied).toBe(4_080);
+    expect(pixel(output.pixels, returned.left - 1, 560)).toEqual(pixel(before, returned.left - 1, 560));
+    expect(pixel(output.pixels, returned.left + returned.width, 560)).toEqual(pixel(before, returned.left + returned.width, 560));
+    expect(pixel(output.pixels, 283, returned.top + returned.height)).toEqual(pixel(before, 283, returned.top + returned.height));
+    expect(retainedWindowReviewPrompt(current, 0, 0)).toContain('ORIGINAL LEG AND BOOT');
+    expect(() => assertRetainedWindowAuthority({ ...current, sourceErase: { fragment, returned: { ...returned, width: 200 } } })).toThrow(/isolated original target/);
+  });
   it('locks Kingdom neighbors and the balcony in the painter mask while leaving the original target open', () => {
     expect(assertKingdomGenerationWindows).not.toThrow();
     const neighbors = KINGDOM_GENERATION_WINDOWS.find(x => x.authority.hideId === 'dragoncave-detectives-hide-1')!.authority;

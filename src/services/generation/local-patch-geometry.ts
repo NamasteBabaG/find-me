@@ -9,7 +9,8 @@ import { assertSourceFigureAuthority, type SourceFigureAuthority } from "../../d
 import { sha256Bytes } from "./fixed-sprite";
 import { retainedWindowMeasurementBounds, retainedWindowCanonicalHash, type RetainedWindowAuthority } from '../../domain/generation/retained-window';
 import { RETAINED_WINDOW_AUTHORITIES, assertRetainedWindowManifest, RETAINED_KINGDOM_TAIL_WINDOWS,
-  assertRetainedKingdomTailManifest, KINGDOM_GENERATION_WINDOWS, assertKingdomGenerationWindows } from '../../../content/detectives/retained-window-v1';
+  assertRetainedKingdomTailManifest, kingdomGenerationWindows, KINGDOM_GENERATION_WINDOWS_SHA256,
+  KINGDOM_GENERATION_WINDOWS_V2_SHA256 } from '../../../content/detectives/retained-window-v1';
 import { JOURNEY_SOURCE_HEAD_AUTHORITIES } from '../../../content/detectives/journey-source-head-v2';
 import { JOURNEY_SUNBURST_TAIL_AUTHORITIES } from '../../../content/detectives/journey-sunburst-tail-v1';
 import { assertJourneySunburstTailManifest } from '../../domain/generation/journey-sunburst-tail';
@@ -104,10 +105,11 @@ export async function localPatchGeometry(input: {
     const originalPermission=RETAINED_WINDOW_AUTHORITIES.some(known=>same(known,a));
     if (!originalPermission) assertRetainedKingdomTailManifest();
     const tailPermission = !originalPermission && RETAINED_KINGDOM_TAIL_WINDOWS.some(w => same(w.authority,a));
-    if (!originalPermission && !tailPermission) assertKingdomGenerationWindows();
+    const planned = !originalPermission && !tailPermission && kingdomGenerationWindows(a.sourceErase
+      ? KINGDOM_GENERATION_WINDOWS_V2_SHA256 : KINGDOM_GENERATION_WINDOWS_SHA256).some(w => same(w.authority,a));
     if (input.sourceFigure || input.contentVersion !== 13 || hide.id !== a.hideId || !same(crop, a.crop) || !same(requested, a.parentChild)
       || art.width !== a.source.width || art.height !== a.source.height
-      || !(originalPermission || tailPermission || KINGDOM_GENERATION_WINDOWS.some(w => same(w.authority,a))))
+      || !(originalPermission || tailPermission || planned))
       throw Error('RETAINED_WINDOW: target geometry differs from the public permission');
     // The service verifies encoded public SOURCE and independently reproduces
     // these pixels/geometry on publication. Do not measure the entire crop.

@@ -51,9 +51,8 @@ export function retainedWindowAuthorityFor(parent: AuthoredLocalPatchReturnContr
   } else if (manifest === RETAINED_KINGDOM_TAIL_MANIFEST_SHA256) {
     assertRetainedKingdomTailManifest();
     authorities = RETAINED_KINGDOM_TAIL_WINDOWS.map(item=>item.authority);
-  } else if (manifest === KINGDOM_GENERATION_WINDOWS_SHA256) {
-    assertKingdomGenerationWindows();
-    authorities = KINGDOM_GENERATION_WINDOWS.map(item => item.authority);
+  } else if (isKingdomGenerationManifest(manifest)) {
+    authorities = kingdomGenerationWindows(manifest).map(item => item.authority);
   } else return null;
   const a = authorities.find(a => a.hideId === parent?.hideId);
   const same = (x: unknown, y: unknown) => retainedWindowCanonicalHash(x) === retainedWindowCanonicalHash(y);
@@ -112,10 +111,27 @@ export const KINGDOM_GENERATION_WINDOWS = Object.freeze([
 
 export const KINGDOM_GENERATION_WINDOWS_SHA256 = 'd51f11d6fd3915b5d9f18f312805a82fc5d734aafbfe3d59984cb9fe4533349a';
 
-export function assertKingdomGenerationWindows() {
-  if (retainedWindowHash(KINGDOM_GENERATION_WINDOWS) !== KINGDOM_GENERATION_WINDOWS_SHA256)
+export const KINGDOM_GENERATION_WINDOWS_V2 = Object.freeze(KINGDOM_GENERATION_WINDOWS.map(profile =>
+  profile.authority.hideId === 'dragoncave-detectives-hide-1' ? Object.freeze({
+    ...profile, authority: Object.freeze({
+      ...profile.authority,
+      // Original lower leg and boot in the public 512×768 crop, below the child's placement.
+      sourceErase: {
+        fragment: { left: 260, top: 515, width: 68, height: 60 },
+        returned: { left: 251, top: 506, width: 85, height: 77 },
+      },
+    }),
+  }) : profile));
+export const KINGDOM_GENERATION_WINDOWS_V2_SHA256 = '3b6dee1b69ca17e71f183984bada3f9dda04ba5536ac51f3a8430d85c724a109';
+
+export function isKingdomGenerationManifest(manifest: string) {
+  return manifest === KINGDOM_GENERATION_WINDOWS_SHA256 || manifest === KINGDOM_GENERATION_WINDOWS_V2_SHA256;
+}
+export function kingdomGenerationWindows(manifest: string) {
+  const windows = manifest === KINGDOM_GENERATION_WINDOWS_V2_SHA256 ? KINGDOM_GENERATION_WINDOWS_V2 : KINGDOM_GENERATION_WINDOWS;
+  if (!isKingdomGenerationManifest(manifest) || retainedWindowHash(windows) !== manifest)
     throw Error('RETAINED_WINDOW: prospective Kingdom geometry differs from its release');
-  for (const profile of KINGDOM_GENERATION_WINDOWS) {
+  for (const profile of windows) {
     const { authority } = profile;
     const supportBottom = 'supportBottom' in profile ? profile.supportBottom : undefined;
     assertRetainedWindowAuthority(authority);
@@ -123,6 +139,10 @@ export function assertKingdomGenerationWindows() {
       || supportBottom > 768 - authority.frame - 2 * authority.feather))
       throw Error('RETAINED_WINDOW: skating support must clear the editable frame');
   }
+  return windows;
+}
+export function assertKingdomGenerationWindows() {
+  kingdomGenerationWindows(KINGDOM_GENERATION_WINDOWS_SHA256);
 }
 /** Separate finite changed-source recovery. No old composition permission or
  * verdict changes; the rejected image and its paid answer remain in lineage. */

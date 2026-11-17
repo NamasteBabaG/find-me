@@ -16,7 +16,7 @@ import { AUTHORED_RECOVERY_COMPOSITION_VERSION, AUTHORED_RECOVERY_CONTEXT_VERSIO
 import { SELF_REPAIR_VERSION, selfRepairDecisionSchema } from "../../domain/scene/local-patch-self-repair";
 import { sourcePlacementRecoveryGeometryAllowed, type SourcePlacementHideContract } from "../../domain/scene/source-placement-release";
 import { prepareSourceNeighborContract } from "../../domain/scene/local-patch-source-neighbors";
-import { assertTrustedSourcePlacementContext, resolveLocalPatchBoardsForGame, sourcePlacementForHide,
+import { assertTrustedSourcePlacementContext, kingdomGenerationWindowForHide, resolveLocalPatchBoardsForGame, sourcePlacementForHide,
   type TrustedSourcePlacementContext, sourceBodyForHide, sourcePlacementManifestForHide } from "./source-placement-release";
 import { sceneBySlug } from "../scene-catalog.service";
 import { PrismaWorldBudgetStore } from "../../infra/db/prisma-world-budget-store";
@@ -187,6 +187,9 @@ export async function authoredLocalPatchRecoveryEvidenceMatches(db: Prisma.Trans
   board: LocalPatchBoard; hide: LocalPatchHide; sceneVersion: number; receipt: AuthoredLocalPatchReceipt;
   placementContext: TrustedSourcePlacementContext; promptVersion: string | null; beforePng?: Buffer; allowInterruptedReview?: boolean }): Promise<boolean> {
   const { receipt, placementContext, board, hide } = input;
+  const kingdomWindow = kingdomGenerationWindowForHide(placementContext, hide.id);
+  if (kingdomWindow?.authority.sourceErase
+    && retainedWindowMarkerSchema.safeParse(receipt.retainedWindow).data?.manifestSha256 !== kingdomWindow.manifestSha256) return false;
   if (receipt.retainedWindow !== undefined || receipt.compositionVersion === RETAINED_WINDOW_VERSION) {
     const m = retainedWindowMarkerSchema.safeParse(receipt.retainedWindow);
     const row = m.success ? await db.targetVariantAsset.findUnique({ where: { id: m.data.rowId }, select: { assetId: true } }) : null;

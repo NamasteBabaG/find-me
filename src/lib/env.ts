@@ -44,6 +44,8 @@ const EnvSchema = z.object({
   LOCAL_PATCH_PROMPT_RELEASE: z.enum(["v15", "v16", "v17", "v18", "v19"]).prefault("v15"),
   /** Explicit QA opt-in, pinned before the photo. Never changes an existing game. */
   DETECTIVES_WINDOW_RELEASE: z.enum(["off", "v1"]).prefault("off"),
+  /** Prospective Kingdom-only release, selected at checkout in real QA. */
+  KINGDOM_GENERATION_RELEASE: z.enum(["v1", "v2", "v3"]).prefault("v1"),
   /** Painting quality for NEW local-patch drafts, pinned per game when the draft
    * is created; a game keeps its pin, and a game without one keeps its content
    * version's own quality (MEDIUM for v12). low-v1 is qualified only on QA with
@@ -194,6 +196,9 @@ export function env(): Env {
   // cannot tell a staging box from the real thing.
   const appEnv = parsed.data.APP_ENV ?? (parsed.data.NODE_ENV === "production" ? "production" : "development");
   const settings = parsed.data;
+  if (settings.KINGDOM_GENERATION_RELEASE !== "v1" && (appEnv !== "qa" || settings.QA_WIZARD_MOCK === "on")) {
+    throw new Error("The selected KINGDOM_GENERATION_RELEASE requires the regular QA Wizard.");
+  }
   if (settings.QA_WIZARD_MOCK === "on") {
     const database = URL.canParse(settings.DATABASE_URL) ? new URL(settings.DATABASE_URL) : null;
     const isolatedDatabase = database !== null && (database.protocol === "postgresql:" || database.protocol === "postgres:")
