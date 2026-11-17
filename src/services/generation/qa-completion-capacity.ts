@@ -4,7 +4,8 @@ import type { Container } from "../container";
 import { env } from "../../lib/env";
 import { QA_COMPLETION_CAPACITY, QA_COMPLETION_CAP, qaCompletionCapacityId, qaCompletionStateSchema,
   qaCompletionPlanSchema, qaCompletionReceiptSchema, qaCompletionConfirmation, QA_KINGDOM_COMPLETION_CAPACITY,
-  QA_KINGDOM_COMPLETION_CAP, type QaCompletionReceipt } from "../../domain/generation/qa-completion-capacity";
+  QA_KINGDOM_COMPLETION_CAP, QA_KINGDOM_TAIL_CAPACITY, QA_KINGDOM_TAIL_CAP, qaKingdomTailCapacityId,
+  qaKingdomTailReviewSchema, type QaCompletionReceipt } from "../../domain/generation/qa-completion-capacity";
 import { SUNBURST_MIN_CAPACITY_MICRO_USD } from "../../domain/generation/sunburst-painter";
 import { boardConditioningHash as hash } from "./board-conditioned-source";
 import { sha256Bytes } from "./fixed-sprite";
@@ -14,8 +15,11 @@ import { identityRevisionPending } from "./identity-source-revision-state";
 import { identityGateReceiptOf, identityReceiptReadyForPublication } from "./board-wizard-identity-gate";
 import { resolveLocalPatchBoardsForGame } from "./source-placement-release";
 import { PrismaWorldBudgetStore, WORLD_BUDGET_LEDGER_MAX_REVISION } from "../../infra/db/prisma-world-budget-store";
-import { backgroundReviewWaiting } from "./continuity-background";
-import { auditWorldBudget } from "./world-budget";
+import { backgroundReviewWaiting, backgroundRoundOfKey } from "./continuity-background";
+import { auditWorldBudget, getMatchingUnknownContinuationApproval } from "./world-budget";
+import { WORLD_AUTOMATIC_REVIEW_RECOVERY_V5_LIMIT } from "../../domain/generation/world-budget";
+import { leanReviewPolicyOf } from "../../domain/generation/visual-review-policy";
+import { PrismaRetainedPurchaseStore } from "../../infra/db/prisma-retained-purchase-store";
 import { fenceLocalPatchImages } from "./local-patch-lifecycle";
 import { applyBoardWizardBudgetCap, type BoardWizardBudgetGrant } from "./board-wizard-budget";
 import { isGameStatus, isPlayable } from "../../domain/order-state";
@@ -28,6 +32,7 @@ import { retainedNormalHeadRecoveryCandidate } from "../../domain/generation/ret
 import { localPatchVarietyExhaustedUndecided } from "./local-patch-dual-evidence";
 
 const ACTION = "generation:qa-medium-completion-capacity";
+const TAIL_ACTION = "generation:qa-kingdom-tail-capacity";
 const EXHAUSTED = "local-patch:recovery-exhausted";
 function demand(value: unknown, message: string): asserts value { if (!value) throw Error("QA_COMPLETION: " + message); }
 const qualified = (c: Container) => env().APP_ENV === "qa" && c.storage?.id === "db";
@@ -81,11 +86,13 @@ async function stateOf(c: Container, gameId: string) {
 /** Shared read-only identity/payment/source binding; grants keep separate versions. */
 export const qaCompletionSourceState = stateOf;
 
-async function receiptOf(c: Container, gameId: string): Promise<QaCompletionReceipt|null> {
-  const row=await c.db.auditLog.findUnique({where:{id:qaCompletionCapacityId(gameId)}});if(!row)return null;
+type ReceiptDb = Pick<Prisma.TransactionClient, "auditLog">;
+async function receiptOf(db: ReceiptDb, gameId: string, tail = false): Promise<QaCompletionReceipt|null> {
+  const row=await db.auditLog.findUnique({where:{id:tail ? qaKingdomTailCapacityId(gameId) : qaCompletionCapacityId(gameId)}});if(!row)return null;
   const receipt=qaCompletionReceiptSchema.parse(JSON.parse(row.metaJson??"null")),{authorizationSha256,...body}=receipt;
   demand(row.actorType==="ADMIN"&&row.actorId===receipt.operatorId&&receipt.operatorId===receipt.state.ownerId
-    &&row.action===ACTION&&row.entityType==="Game"&&row.entityId===gameId&&receipt.state.gameId===gameId
+    &&row.action===(tail ? TAIL_ACTION : ACTION)&&(receipt.version===QA_KINGDOM_TAIL_CAPACITY)===tail
+    &&row.entityType==="Game"&&row.entityId===gameId&&receipt.state.gameId===gameId
     &&receipt.state.worldId===gameId+":board-wizard"&&row.metaJson===JSON.stringify(receipt)&&authorizationSha256===hash(body), "Invalid immutable completion authority");
   const {planSha256:_plan,operatorId:_operator,ownerAuthorizationSha256:_owner,authorizedAt:_at,automaticExtension:_extension,
     requestsPreserved:_requests,attemptsPreserved:_attempts,qualityPolicyPreserved:_quality,...binding}=body;
@@ -93,20 +100,42 @@ async function receiptOf(c: Container, gameId: string): Promise<QaCompletionRece
   return receipt;
 }
 
+async function verifyTailReceipt(db: ReceiptDb, gameId: string, previous: QaCompletionReceipt | null) {
+  const tail = await receiptOf(db, gameId, true);
+  if (!tail) return null;
+  demand(previous?.version === QA_KINGDOM_COMPLETION_CAPACITY && tail.previousAuthorizationSha256 === previous.authorizationSha256
+    && JSON.stringify(tail.state) === JSON.stringify(previous.state) && tail.ledgerRevision > previous.ledgerRevision,
+    "Tail receipt does not preserve its original authorization");
+  return tail;
+}
+
+export async function readQaKingdomTailReceipt(db: ReceiptDb, gameId: string) {
+  if (env().APP_ENV !== "qa") return null;
+  const previous = await receiptOf(db, gameId);
+  return previous?.version === QA_KINGDOM_COMPLETION_CAPACITY ? verifyTailReceipt(db, gameId, previous) : null;
+}
+
+async function effectiveReceipt(db: ReceiptDb, gameId: string) {
+  const previous = await receiptOf(db, gameId);
+  return previous?.version === QA_KINGDOM_COMPLETION_CAPACITY ? await verifyTailReceipt(db, gameId, previous) ?? previous : previous;
+}
+
 export async function readQaCompletionCapacity(c: Container, worldId: string): Promise<BoardWizardBudgetGrant|null> {
   if(!qualified(c)||!/^[A-Za-z0-9_-]{1,160}:board-wizard$/.test(worldId))return null;
-  const gameId=worldId.slice(0,-":board-wizard".length),receipt=await receiptOf(c,gameId);if(!receipt)return null;
+  const gameId=worldId.slice(0,-":board-wizard".length),receipt=await effectiveReceipt(c.db,gameId);if(!receipt)return null;
   let live;try{live=await stateOf(c,gameId);}catch{return null;}
   return JSON.stringify(live.state)===JSON.stringify(receipt.state)
-    && (receipt.version !== QA_KINGDOM_COMPLETION_CAPACITY || live.kingdomAgeEight)
-    ?{worldId,capMicroUsd:receipt.capMicroUsd,authorizationSha256:receipt.authorizationSha256}:null;
+    && (receipt.version === QA_COMPLETION_CAPACITY || live.kingdomAgeEight)
+    ?{worldId,capMicroUsd:receipt.capMicroUsd,
+      // Existing composition proofs name the original grant even after a budget amendment.
+      authorizationSha256:receipt.previousAuthorizationSha256 ?? receipt.authorizationSha256}:null;
 }
 
 /** Owner-admin visibility only: a recorded grant must not silently disappear
  * from the order page when its immutable source binding no longer matches. */
 export async function qaCompletionCapacityStatus(c: Container, gameId: string) {
   if(!qualified(c)||!/^[A-Za-z0-9_-]{1,160}$/.test(gameId))return null;
-  const receipt=await receiptOf(c,gameId);if(!receipt)return null;
+  const receipt=await effectiveReceipt(c.db,gameId);if(!receipt)return null;
   return {ownerId:receipt.state.ownerId,capMicroUsd:receipt.capMicroUsd,
     status:await readQaCompletionCapacity(c,receipt.state.worldId)?"active" as const:"withdrawn" as const};
 }
@@ -114,8 +143,10 @@ export async function qaCompletionCapacityStatus(c: Container, gameId: string) {
 /** No purchases or writes: freeze the exact paid unfinished world, hold and
  * financial history the owner administrator will authorize. */
 export async function planQaCompletionCapacity(c: Container, gameId: string) {
-  demand(!await receiptOf(c,gameId), "Completion authority already exists");
+  const previous = await effectiveReceipt(c.db, gameId);
+  demand(!previous || previous.version === QA_KINGDOM_COMPLETION_CAPACITY, "Completion authority already exists");
   const live=await stateOf(c,gameId),{game,child,state,kingdomAgeEight}=live;
+  demand(!previous || kingdomAgeEight && JSON.stringify(previous.state) === JSON.stringify(state), "Original Kingdom authority changed");
   demand(game.status==="TARGETS_GENERATING"&&!game.configJson&&!game.readyAt&&child.originalPhotoAssetId===state.photoAssetId, "Unfinished original source required");
   const photo=await c.db.asset.findUniqueOrThrow({where:{id:state.photoAssetId}});
   demand(photo.ownerId===state.ownerId&&photo.visibility==="PRIVATE"&&photo.status==="READY"&&!photo.deletedAt
@@ -128,16 +159,56 @@ export async function planQaCompletionCapacity(c: Container, gameId: string) {
   demand(!(await backgroundReviewWaiting(c.db,gameId,{inFlightOnly:true})).size,"Existing provider work must settle first");
   const stored=await PrismaWorldBudgetStore.forReadOnlyTransaction(c.db).read(state.worldId);
   demand(stored&&stored.revision<WORLD_BUDGET_LEDGER_MAX_REVISION,"Safe existing ledger required");
-  const audit=applyBoardWizardBudgetCap(auditWorldBudget(stored.snapshot));
+  const audit=previous ? auditWorldBudget(stored.snapshot, QA_KINGDOM_COMPLETION_CAP)
+    : applyBoardWizardBudgetCap(auditWorldBudget(stored.snapshot));
   demand(audit.committedMicroUsd>0&&!audit.overCapMicroUsd&&!audit.pendingRequestKeys.length&&!audit.conflictRequestKeys.length&&!audit.overrunRequestKeys.length, "Reconcile pending or conflicting purchases first");
   demand(!kingdomAgeEight || audit.remainingMicroUsd < SUNBURST_MIN_CAPACITY_MICRO_USD, "The next painting still fits the original Kingdom budget");
   const rows=await c.db.targetVariantAsset.findMany({where:{variant:"A",targetInstance:{gameScene:{gameId}}},orderBy:{id:"asc"}});
   demand(kingdomAgeEight ? rows.length === 27 : rows.length > 0,"Retained work required");
-  const binding=qaCompletionPlanSchema.parse({version:kingdomAgeEight ? QA_KINGDOM_COMPLETION_CAPACITY : QA_COMPLETION_CAPACITY,
-    state,baseCapMicroUsd:4_000_000,capMicroUsd:kingdomAgeEight ? QA_KINGDOM_COMPLETION_CAP : QA_COMPLETION_CAP,
+  let tail = {};
+  if (previous) {
+    const remaining = rows.filter(row => {
+      const receipt=JSON.parse(row.judgeJson??"null");
+      return row.status!=="GENERATED" || receipt?.reviewState!=="board-review-complete" || receipt?.qualityDisposition?.state!=="acceptable";
+    });
+    demand(remaining.length>=1 && remaining.length<=3, "Only a diagnosed Kingdom tail may receive the additional dollar");
+    const held = stored.snapshot.requests.filter(row => row.state === "unknown"
+      && !getMatchingUnknownContinuationApproval(stored.snapshot, row.requestKey));
+    const failure = held[0];
+    demand(held.length === 1 && failure?.scope === "judge" && failure.origin === "reserved"
+      && (stored.snapshot.unknownContinuationApprovals??[]).filter(a=>a.version==="world-automatic-review-recovery/v5").length===WORLD_AUTOMATIC_REVIEW_RECOVERY_V5_LIMIT
+      && qaCompletionUnknownsPreserved(stored.snapshot.requests.filter(row=>row.requestKey!==failure.requestKey), previous.unknowns),
+      "The exact new interrupted review and prior full reserves are required");
+    const [round, retained] = await Promise.all([
+      backgroundRoundOfKey(c.db, gameId, state.worldId, failure.requestKey),
+      new PrismaRetainedPurchaseStore(c.db).get(state.worldId, failure.requestKey),
+    ]);
+    const { admittedInterruption, providerFailureRefusal } = await import("./local-patch-review-interruption-recovery");
+    const interruption = retained && !retained.evidence && retained.operationFingerprint===failure.operationFingerprint
+      ? await admittedInterruption(c,gameId,state.worldId,failure.requestKey,retained) : null;
+    demand(round?.terminal?.kind==="outcome" && round.terminal.errorCode==="server_is_overloaded"
+      && leanReviewPolicyOf(round.intent.policyVersion??"")?.serviceTier==="flex"
+      && round.intent.fingerprint===failure.operationFingerprint && round.intent.reserveMicroUsd===failure.reserveMicroUsd
+      && interruption?.shape==="provider-failed" && !await providerFailureRefusal(c,gameId,state.worldId,failure.requestKey),
+      "A bound terminal Flex overload with no usable answer is required");
+    const bound = remaining.find(row=>row.id===round.intent.binding.variantId);
+    const candidate = JSON.parse(bound?.judgeJson??"null");
+    demand(bound?.status==="GENERATED" && !!bound.assetId && candidate?.reviewState==="pending-board-review"
+      && candidate.hide===round.intent.binding.hideId && candidate.judgedSha256===round.intent.binding.imageSha256
+      && candidate.geometrySha256===round.intent.binding.geometrySha256 && round.intent.binding.identitySha256===state.identitySha256,
+      "The exact already-painted shipping must still await review");
+    tail={previousAuthorizationSha256:previous.authorizationSha256,interruptedReview:qaKingdomTailReviewSchema.parse({
+      requestKey:failure.requestKey,operationFingerprint:failure.operationFingerprint,variantId:bound.id,
+      imageSha256:candidate.judgedSha256,geometrySha256:candidate.geometrySha256,roundSha256:hash({intent:round.intent,terminal:round.terminal}),
+    })};
+  }
+  const binding=qaCompletionPlanSchema.parse({version:previous ? QA_KINGDOM_TAIL_CAPACITY : kingdomAgeEight ? QA_KINGDOM_COMPLETION_CAPACITY : QA_COMPLETION_CAPACITY,
+    state,baseCapMicroUsd:previous ? QA_KINGDOM_COMPLETION_CAP : 4_000_000,
+    capMicroUsd:previous ? QA_KINGDOM_TAIL_CAP : kingdomAgeEight ? QA_KINGDOM_COMPLETION_CAP : QA_COMPLETION_CAP,
     jobId:job.id,jobSha256:hash(job),ledgerRevision:stored.revision,ledgerSha256:hash(stored.snapshot),rowsSha256:hash(rows),
     committedMicroUsd:audit.committedMicroUsd,reservedMicroUsd:audit.reservedMicroUsd,
-    unknowns:stored.snapshot.requests.filter(r=>r.state==="unknown").map(r=>({requestKey:r.requestKey,operationFingerprint:r.operationFingerprint,reserveMicroUsd:r.reserveMicroUsd})).sort((a,b)=>a.requestKey.localeCompare(b.requestKey))});
+    unknowns:stored.snapshot.requests.filter(r=>r.state==="unknown").map(r=>({requestKey:r.requestKey,operationFingerprint:r.operationFingerprint,reserveMicroUsd:r.reserveMicroUsd})).sort((a,b)=>a.requestKey.localeCompare(b.requestKey)),
+    ...tail});
   return {binding,planSha256:hash(binding),job};
 }
 
@@ -148,7 +219,8 @@ export async function authorizeQaCompletionCapacity(c: Container,input:{gameId:s
   demand(qualified(c)&&/^[a-f0-9]{64}$/.test(input.expectedPlanSha256)&&/^[a-f0-9]{64}$/.test(input.ownerAuthorizationSha256),"Bound owner authorization required");
   const user=await c.db.user.findUnique({where:{id:input.operatorId}});
   demand(user&&c.adminEmails?.some(email=>email.trim().toLowerCase()===user.email.trim().toLowerCase()),"Owner administrator required");
-  const previous=await receiptOf(c,input.gameId);
+  const previous=input.confirmation===qaCompletionConfirmation(QA_KINGDOM_TAIL_CAP)
+    ? await readQaKingdomTailReceipt(c.db,input.gameId) : await receiptOf(c.db,input.gameId);
   if(previous){demand(previous.operatorId===input.operatorId&&previous.planSha256===input.expectedPlanSha256
     &&previous.ownerAuthorizationSha256===input.ownerAuthorizationSha256
     &&(input.confirmation ?? qaCompletionConfirmation(QA_COMPLETION_CAP)) === qaCompletionConfirmation(previous.capMicroUsd)
@@ -168,7 +240,9 @@ export async function authorizeQaCompletionCapacity(c: Container,input:{gameId:s
     const job=await tx.generationJob.updateMany({where:{id:receipt.jobId,status:fresh.job.status,currentStep:fresh.job.currentStep,attempts:fresh.job.attempts,
       updatedAt:fresh.job.updatedAt,lastError:fresh.job.lastError},data:{status:"QUEUED",currentStep:"local-patch",lastError:null}});
     demand(ledger.count===1&&job.count===1,"Completion hold changed before authorization");
-    await tx.auditLog.create({data:{id:qaCompletionCapacityId(input.gameId),actorType:"ADMIN",actorId:input.operatorId,action:ACTION,entityType:"Game",entityId:input.gameId,metaJson:JSON.stringify(receipt)}});
+    const tail=receipt.version===QA_KINGDOM_TAIL_CAPACITY;
+    await tx.auditLog.create({data:{id:tail ? qaKingdomTailCapacityId(input.gameId) : qaCompletionCapacityId(input.gameId),
+      actorType:"ADMIN",actorId:input.operatorId,action:tail ? TAIL_ACTION : ACTION,entityType:"Game",entityId:input.gameId,metaJson:JSON.stringify(receipt)}});
     return receipt;
   },{isolationLevel:Prisma.TransactionIsolationLevel.Serializable,timeout:30000});
 }
@@ -180,7 +254,7 @@ export async function planQaCompletionRecovery(c: Container, gameId: string) {
   const job = await c.db.generationJob.findUnique({ where: { id: "job_" + gameId } });
   if (!job || job.gameId !== gameId || job.status !== "FAILED" || job.currentStep !== EXHAUSTED
     || !qaCompletionEngineRest(job.lastError)) return null;
-  const receipt = await receiptOf(c, gameId); if (!receipt) return null;
+  const receipt = await effectiveReceipt(c.db, gameId); if (!receipt) return null;
   let live; try { live = await stateOf(c, gameId); } catch { return null; }
   if (live.game.status !== "TARGETS_GENERATING" || live.game.configJson || live.game.readyAt
     || JSON.stringify(live.state) !== JSON.stringify(receipt.state)) return null;

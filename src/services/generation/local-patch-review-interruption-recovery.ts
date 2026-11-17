@@ -11,7 +11,9 @@ import type { prepareLocalPatchBoardReview } from "./local-patch-board-review";
 import { fenceLocalPatchImages, LocalPatchRetainedPurchaseStore } from "./local-patch-lifecycle";
 import { sha256Bytes } from "./fixed-sprite";
 import { WorldBudgetError, type WorldAutomaticReviewRecovery, type WorldAutomaticReviewRecoveryV2, type WorldAutomaticReviewRecoveryV3, type WorldAutomaticReviewRecoveryV4, type WorldAutomaticReviewRecoveryV5 } from "./world-budget";
-import { WORLD_AUTOMATIC_REVIEW_RECOVERY_V1_LIMIT, WORLD_AUTOMATIC_REVIEW_RECOVERY_V2_LIMIT, WORLD_AUTOMATIC_REVIEW_RECOVERY_V3_LIMIT } from "../../domain/generation/world-budget";
+import { WORLD_AUTOMATIC_REVIEW_RECOVERY_V1_LIMIT, WORLD_AUTOMATIC_REVIEW_RECOVERY_V2_LIMIT, WORLD_AUTOMATIC_REVIEW_RECOVERY_V3_LIMIT, WORLD_AUTOMATIC_REVIEW_RECOVERY_V5_LIMIT } from "../../domain/generation/world-budget";
+import type { QaCompletionReceipt } from "../../domain/generation/qa-completion-capacity";
+import { boardConditioningHash } from "./board-conditioned-source";
 import type { EvidenceRole, EvidenceStrategy } from "../../domain/scene/local-patch-evidence-policy";
 import { dualReviewReserves } from "../../domain/generation/dual-review-reserve";
 import { SUBJECT_REVIEW_RECOVERY, subjectUpgradeOf } from "./subject-enrollment";
@@ -132,6 +134,10 @@ export async function recoverPreparedLocalPatchReviews(c: Container, prepared: P
   const counts = await prepared.budget.countContinuationApprovals(prepared.worldId);
   const singleGrant = await detectivesSingleReviewAuthorization(c.db, prepared.game.id);
   const singleAuthorized = singleGrant && await hasDetectivesLowCapacity(c, prepared.game.id);
+  const singleCount = counts[REVIEW_APPROVAL_V5] ?? 0;
+  const tail = singleAuthorized && singleCount >= WORLD_AUTOMATIC_REVIEW_RECOVERY_V5_LIMIT && prepared.scene.sceneVersion === 13
+    && questions.some(q => q.single === SINGLE_MEDIUM_VISUAL_REVIEW_VERSION)
+    ? await (await import("./qa-completion-capacity")).readQaKingdomTailReceipt(c.db, prepared.game.id) : null;
   let freeV1 = WORLD_AUTOMATIC_REVIEW_RECOVERY_V1_LIMIT - (counts[REVIEW_APPROVAL_V1] ?? 0);
   let freeV2 = enrolled ? WORLD_AUTOMATIC_REVIEW_RECOVERY_V2_LIMIT - (counts[REVIEW_APPROVAL_V2] ?? 0) : 0;
   let freeV3 = pinned ? WORLD_AUTOMATIC_REVIEW_RECOVERY_V3_LIMIT - (counts[REVIEW_APPROVAL_V3] ?? 0) : 0;
@@ -139,12 +145,17 @@ export async function recoverPreparedLocalPatchReviews(c: Container, prepared: P
   const planned: Planned[] = [];
   for (const question of questions) {
     const prior = await prepared.budget.readContinuationApproval(prepared.worldId, question.requestKey);
+    const tailReview = tail?.interruptedReview?.requestKey === question.requestKey
+      && (singleCount === WORLD_AUTOMATIC_REVIEW_RECOVERY_V5_LIMIT
+        || prior?.version === REVIEW_APPROVAL_V5 && prior.completionGrantSha256 === tail.authorizationSha256) ? tail : null;
     if (prior && prior.version !== REVIEW_APPROVAL_V1 && !(prior.version === REVIEW_APPROVAL_V2 && enrolled) && !(prior.version === REVIEW_APPROVAL_V3 && pinned)
       && !(prior.version === REVIEW_APPROVAL_V4 && capacity && prior.grantSha256 === capacity.authorizationSha256)
-      && !(prior.version === REVIEW_APPROVAL_V5 && singleAuthorized && prior.grantSha256 === singleGrant.authorizationSha256))
+      && !(prior.version === REVIEW_APPROVAL_V5 && singleAuthorized && prior.grantSha256 === singleGrant.authorizationSha256
+        && (prior.completionGrantSha256 === undefined || !!tailReview)))
       return refuse(`${question.requestKey} already carries a ${prior.version} approval that this continuation does not finish`);
     const release = isSingleVisualReviewVersion(question.single)
-      ? singleAuthorized && (!prior || prior.version === REVIEW_APPROVAL_V5) && (prior || (counts[REVIEW_APPROVAL_V5] ?? 0) < 5) ? "v5" : null
+      ? singleAuthorized && (!prior || prior.version === REVIEW_APPROVAL_V5)
+        && (prior || singleCount < WORLD_AUTOMATIC_REVIEW_RECOVERY_V5_LIMIT || !!tailReview) ? "v5" : null
       : prior?.version === REVIEW_APPROVAL_V1 ? "v1" : prior?.version === REVIEW_APPROVAL_V2 ? "v2" : prior?.version === REVIEW_APPROVAL_V3 ? "v3" : prior ? "v4"
       : freeV1 > 0 ? (freeV1--, "v1") : freeV2 > 0 ? (freeV2--, "v2") : freeV3 > 0 ? (freeV3--, "v3") : freeV4 > 0 ? (freeV4--, "v4") : null;
     if (!release) return refuse(`the world's automatic review continuations are spent (${counts[REVIEW_APPROVAL_V1] ?? 0}/${WORLD_AUTOMATIC_REVIEW_RECOVERY_V1_LIMIT} under v1`
@@ -152,7 +163,7 @@ export async function recoverPreparedLocalPatchReviews(c: Container, prepared: P
       + `${pinned ? `, ${counts[REVIEW_APPROVAL_V3] ?? 0}/${WORLD_AUTOMATIC_REVIEW_RECOVERY_V3_LIMIT} under v3` : ""}`
       + `${capacity ? `, ${counts[REVIEW_APPROVAL_V4] ?? 0}/${capacity.maxContinuations} under v4` : ""}); ${question.requestKey} stays reserved in full`
       + " until a person reconciles or authorizes it");
-    const one = await checkInterruption(c, prepared, question, release, !!options.admitProviderFailed, options.roundCandidates ?? questions);
+    const one = await checkInterruption(c, prepared, question, release, !!options.admitProviderFailed, options.roundCandidates ?? questions, tailReview);
     if (!one) return refuse(`${question.requestKey}: its record no longer matches an interruption this continuation admits on these pixels`);
     // A failure of a kind never asked again, or past its image's bound: refused with exactly why, nothing written.
     if ("refused" in one) return refuse(one.refused);
@@ -219,7 +230,7 @@ async function writeApproval(c: Container, prepared: Prepared, { recovery }: Pla
 /** Everything one question's continuation must satisfy, and the approval it would write. Reads only. `refused`: an
  * interruption of a kind, or past a bound, that is never continued automatically, and exactly why. */
 async function checkInterruption(c: Container, prepared: Prepared, question: InterruptedQuestion, release: "v1" | "v2" | "v3" | "v4" | "v5",
-  admitProviderFailed: boolean, roundCandidates: readonly InterruptedQuestion[]): Promise<Planned | { refused: string } | null> {
+  admitProviderFailed: boolean, roundCandidates: readonly InterruptedQuestion[], tail: QaCompletionReceipt | null): Promise<Planned | { refused: string } | null> {
   const singlePolicyId = question.single === SINGLE_MEDIUM_VISUAL_REVIEW_VERSION ? "single-sol-medium-transport-recovery/v1" as const : "single-sol-low-transport-recovery/v1" as const;
   const policyId = release === "v1" ? REVIEW_INTERRUPTION_POLICY : release === "v2" ? REVIEW_INTERRUPTION_POLICY_V2 : release === "v3" ? REVIEW_INTERRUPTION_POLICY_V3 : release === "v4" ? CAPACITY_REVIEW_POLICY : singlePolicyId;
   const { game, scene, request, worldId, budget } = prepared, { requestKey, fingerprint } = question;
@@ -259,6 +270,15 @@ async function checkInterruption(c: Container, prepared: Prepared, question: Int
     errorCode = terminal?.kind === "outcome" ? terminal.errorCode ?? null : null;
     failureKind = backgroundFailureKind(errorCode === null ? null : { code: errorCode, message: null });
   }
+  if (tail) {
+    const pin = tail.interruptedReview, round = await backgroundRoundOfKey(c.db, game.id, worldId, requestKey);
+    if (release !== "v5" || question.single !== SINGLE_MEDIUM_VISUAL_REVIEW_VERSION
+      || shape !== "provider-failed" || !capacityFailureCode(errorCode) || !pin || !round
+      || pin.requestKey !== requestKey || pin.operationFingerprint !== fingerprint || pin.variantId !== selected.row.id
+      || pin.imageSha256 !== selected.imageSha256 || pin.geometrySha256 !== selected.geometrySha256
+      || tail.state.identitySha256 !== sha256Bytes(prepared.sheet) || tail.state.ownerId !== game.ownerId
+      || pin.roundSha256 !== boardConditioningHash({intent:round.intent,terminal:round.terminal})) return null;
+  }
   const capacity = release === "v4" ? await leanCapacityRecoveryOf(c.db, game.id) : null;
   let startedFlexRound: object | undefined;
   if (release === "v4") {
@@ -283,6 +303,7 @@ async function checkInterruption(c: Container, prepared: Prepared, question: Int
     ...((release === "v3" || release === "v4") && failureKind ? { failureKind, ...(errorCode ? { errorCode } : {}) } : {}),
     ...(capacity ? { grantSha256: capacity.authorizationSha256 } : {}),
     ...(single ? { single: question.single, grantSha256: single.authorizationSha256 } : {}),
+    ...(tail ? { completionGrantSha256: tail.authorizationSha256 } : {}),
     ...(startedFlexRound ? { startedFlexRound } : {}) };
   const proofHash = sha256Bytes(Buffer.from(JSON.stringify(proof)));
   const approvalId = release === "v1" ? `auto-review-${proofHash}` : `auto-review-${release}-${proofHash}`;
@@ -300,6 +321,7 @@ async function checkInterruption(c: Container, prepared: Prepared, question: Int
       authorizedAt: prior?.version === "world-automatic-review-recovery/v4" ? prior.authorizedAt : selected.row.updatedAt.toISOString() }
     : { version: "world-automatic-review-recovery/v5", ...base, policyId: singlePolicyId, grantSha256: single!.authorizationSha256,
       variantId: selected.row.id, imageSha256: selected.imageSha256,
+      ...(tail ? { completionGrantSha256: tail.authorizationSha256 } : {}),
       authorizedAt: prior?.version === "world-automatic-review-recovery/v5" ? prior.authorizedAt : selected.row.updatedAt.toISOString() };
   return { authorized: { question, policyId, approvalId, proof, reserveMicroUsd: held.reserveMicroUsd, shape, wireFault }, recovery };
 }

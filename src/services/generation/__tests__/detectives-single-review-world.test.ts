@@ -49,7 +49,8 @@ import { PENDING_IMAGE_LEASE_MS } from "../../../domain/generation/pending-image
 import { ensureSingleMediumReviewPolicy } from "../single-medium-policy";
 import { planQaCompletionCapacity,authorizeQaCompletionCapacity,readQaCompletionCapacity,qaCompletionCapacityStatus,
   planQaCompletionRecovery,resumeQaCompletionRecovery,nextQaCompletionRecovery } from "../qa-completion-capacity";
-import { qaCompletionCapacityId,QA_COMPLETION_CAP,QA_KINGDOM_COMPLETION_CAP,QA_KINGDOM_COMPLETION_CONFIRMATION } from "../../../domain/generation/qa-completion-capacity";
+import { qaCompletionCapacityId,QA_COMPLETION_CAP,QA_KINGDOM_COMPLETION_CAP,QA_KINGDOM_COMPLETION_CONFIRMATION,
+  QA_KINGDOM_TAIL_CAP,QA_KINGDOM_TAIL_CONFIRMATION } from "../../../domain/generation/qa-completion-capacity";
 import * as singlePolicyModule from "../single-low-policy";
 import * as dualReviewModule from "../local-patch-dual-review";
 import { planPublishedCrownRepair,stagePublishedCrownRepair,publishedCrownRepairOf,publishedCrownReviewOrder } from "../published-crown-repair";
@@ -1207,6 +1208,107 @@ it.each([
     expect((await db.auditLog.findUniqueOrThrow({where:{id:audit.id}})).metaJson).toBeNull();
     expect((await db.worldBudgetLedger.findUniqueOrThrow({where:{worldId}})).snapshotJson).toBe(closedLedger.snapshotJson);
     expect(f.render).toHaveBeenCalledTimes(imageCalls);expect(fetch).not.toHaveBeenCalled();
+  }finally{vi.useRealTimers();}
+},300000);
+
+it("age-eight Kingdom cumulative tail continues the exact sixth interrupted review at the default tier",async()=>{
+  vi.useFakeTimers({toFake:["Date"]});
+  try{
+    const f=await legacyKingdomHeadFixture("synthetic-age-eight-interrupted-tail","redraw-with-new-placement",false,false,true,0,0,8);
+    const worldId=boardWizardWorldId(f.gameId),budget=boardWizardBudgetOf(c),renders=f.render.mock.calls.length;
+    const order=await db.order.findUniqueOrThrow({where:{id:"order-"+f.gameId}});
+    const game=await db.game.update({where:{id:f.gameId},data:{paidAt:order.paidAt}});
+    const placement=await resolveLocalPatchBoardsForGame(db,f.gameId,13);
+    for(const board of placement.boards)for(const hide of board.hides){
+      if(hide.id===f.hide.id)continue;
+      const boardScene=await db.gameScene.findFirstOrThrow({where:{gameId:f.gameId,sceneSlug:board.board}});
+      const target=sceneBySlug(board.board,13).targets.find(t=>t.id===hide.targetId)!;
+      const instance=await db.targetInstance.create({data:{id:"tail-target-"+hide.id,gameSceneId:boardScene.id,targetId:target.id,
+        targetType:target.targetType,spriteKind:"image",slotAId:target.slots[0].id,slotBId:target.slots[1].id}});
+      await db.targetVariantAsset.create({data:{id:"tail-variant-"+hide.id,targetInstanceId:instance.id,variant:"A",slotId:target.slots[0].id,
+        status:"PENDING",provider:"local-patch",attempts:0}});
+    }
+    const single=(await singlePolicyModule.singleLowReviewAuthorization(db,f.gameId))!;
+    // Historical transport approvals are fixtures. The new failure, receipt,
+    // provider fallback and proof below use the real review path.
+    for(let i=1;i<=5;i++){
+      const fingerprint=i.toString(16).padStart(64,"0"),requestKey="self-repair:board:"+f.board.board+":"+fingerprint;
+      const billTerms={requestKey,operationFingerprint:fingerprint,scope:"judge" as const,reserveMicroUsd:200_000};
+      await budget.reserve(worldId,billTerms);await budget.markUnknown(worldId,requestKey,"Synthetic historical transport failure");
+      const approvalId="synthetic-original-transport-"+i;
+      await boardWizardBudgetOf(c,1,{authorizeAutomaticReviewRecoveryV5:async()=>true}).authorizeAutomaticReviewRecoveryV5(worldId,{
+        ...billTerms,approvalId,unknownReasons:["Synthetic historical transport failure"],
+        policyId:"single-sol-medium-transport-recovery/v1",grantSha256:single.authorizationSha256,
+        variantId:"synthetic-previous-image-"+i,imageSha256:fingerprint,authorizationSha256:"a".repeat(64),authorizedAt:new Date().toISOString(),
+      });
+      await db.auditLog.create({data:{id:approvalId,actorType:"SYSTEM",entityType:"Game",entityId:f.gameId,action:"synthetic-historical-transport"}});
+    }
+    const fill=async(requestKey:string,remaining:number)=>{
+      const amount=(await budget.audit(worldId)).remainingMicroUsd-remaining;
+      await budget.reserve(worldId,{requestKey,scope:"image",operationFingerprint:"e".repeat(64),reserveMicroUsd:amount});
+      await budget.settle(worldId,requestKey,bill("settled-"+requestKey,amount));
+    };
+    await fill("synthetic-initial-kingdom-cost",50_000);
+    await db.generationJob.update({where:{id:"job_"+f.gameId},data:{status:"FAILED",currentStep:"local-patch:recovery-exhausted"}});
+    await db.targetVariantAsset.update({where:{id:f.candidate.id},data:{status:"FAILED"}});
+    const original=await planQaCompletionCapacity(c,f.gameId);
+    const owner={gameId:f.gameId,operatorId:game.ownerId!,ownerAuthorizationSha256:"b".repeat(64)};
+    await authorizeQaCompletionCapacity(c,{...owner,expectedPlanSha256:original.planSha256,confirmation:QA_KINGDOM_COMPLETION_CONFIRMATION});
+    expect(await restoreRetainedWindow(c,f.gameId,f.hide.id,readArt)).toBe(true);
+    await fill("synthetic-additional-kingdom-cost",360_000);
+    const provider=controlledSol(false,false,undefined,true),retrieve=provider.fake.retrieve.bind(provider.fake);
+    provider.fake.retrieve=async id=>{
+      const result=await retrieve(id);
+      if(result.status!=="completed")return result;
+      if(id==="resp_detective_1")return{status:"failed",reading:{responseId:id,raw:null,usage:null,model:"gpt-6.1-sol",
+        finishReason:"failed",serviceTier:"flex",providerError:{code:"server_is_overloaded",message:"Synthetic exact Flex overload"}}};
+      const answer=JSON.parse(result.reading.raw!);
+      answer.head.rawHead={left:154,top:184,width:140,height:170};answer.head.shippingHead=answer.head.rawHead;
+      return{...result,reading:{...result.reading,raw:JSON.stringify(answer)}};
+    };
+    const container={...c,backgroundReview:provider.fake,
+      visualReview:{request:async()=>{throw Error("No synchronous review in the Kingdom continuation test");}}} as Container;
+    const read=()=>db.targetVariantAsset.findUniqueOrThrow({where:{id:f.candidate.id}});
+    const review=()=>reviewLocalPatchBoard(container,{gameId:f.gameId,sceneId:f.scene.id,deadlineAt:Date.now()+270000},
+      {fence:async()=>{},readBoardArt:readArt},{onlyHideId:f.hide.id});
+    await review();
+    for(let i=0;i<4;i++)await advanceContinuityInBackground(container,f.gameId,{deadlineAt:Date.now()+270000});
+    expect(provider.creates.map(call=>call.tier)).toEqual(["flex"]);
+    expect(await budget.audit(worldId)).toMatchObject({held:true});
+    const {continueAdmittedReviewInterruptions}=await import("../subject-upgrade");
+    const resume=()=>continueAdmittedReviewInterruptions(container,f.gameId,{readBoardArt:readArt},Date.now()+270000,async()=>{});
+    expect(await resume()).toBe("blocked");
+    await db.targetVariantAsset.updateMany({where:{targetInstance:{gameScene:{gameId:f.gameId}},id:{not:f.candidate.id}},
+      data:{status:"GENERATED",judgeJson:JSON.stringify({reviewState:"board-review-complete",qualityDisposition:{state:"acceptable"}})}});
+    const before=await db.worldBudgetLedger.findUniqueOrThrow({where:{worldId}});
+    const plan=await planQaCompletionCapacity(container,f.gameId);
+    expect(plan.binding).toMatchObject({capMicroUsd:QA_KINGDOM_TAIL_CAP,previousAuthorizationSha256:expect.any(String),
+      interruptedReview:{variantId:f.candidate.id,imageSha256:JSON.parse((await read()).judgeJson!).judgedSha256}});
+    const grant={...owner,expectedPlanSha256:plan.planSha256,confirmation:QA_KINGDOM_TAIL_CONFIRMATION};
+    await expect(authorizeQaCompletionCapacity(container,{...grant,operatorId:"another-user"})).rejects.toThrow(/Owner administrator/);
+    const receipt=await authorizeQaCompletionCapacity(container,grant);
+    expect(await authorizeQaCompletionCapacity(container,grant)).toEqual(receipt);
+    expect((await db.worldBudgetLedger.findUniqueOrThrow({where:{worldId}})).snapshotJson).toBe(before.snapshotJson);
+    expect(provider.creates).toHaveLength(1);
+    expect(await resume()).toBe("done");
+    const approval=await budget.readContinuationApproval(worldId,plan.binding.interruptedReview!.requestKey);
+    expect(approval).toMatchObject({completionGrantSha256:receipt.authorizationSha256});
+    const {singleLowContinuationPublishable}=await import("../detectives-completion-budget");
+    if(approval?.version!=="world-automatic-review-recovery/v5")throw Error("Expected the exact supplemental continuation");
+    expect(await singleLowContinuationPublishable(db,f.gameId,approval)).toBe(true);
+    expect(await singleLowContinuationPublishable(db,f.gameId,{...approval,completionGrantSha256:"0".repeat(64)})).toBe(false);
+    for(let i=0;i<5&&JSON.parse((await read()).judgeJson!).verdict?.verdict!=="pass";i++){
+      await vi.advanceTimersByTimeAsync(LEAN_RECOVERY_BACKOFF_MS+1);await review();
+      await advanceContinuityInBackground(container,f.gameId,{deadlineAt:Date.now()+270000});
+    }
+    expect(provider.creates.map(call=>call.tier)).toEqual(["flex","default"]);
+    const approved=await read();
+    expect(await allowedDualPublication(db,{...publicationBinding(f.gameId,approved),sceneVersion:13})).toBe(true);
+    const oldRequests=JSON.parse(before.snapshotJson).requests;
+    for(const originalRequest of oldRequests.filter((row:{state:string})=>row.state==="unknown"))
+      expect(await budget.readRequest(worldId,originalRequest.requestKey)).toEqual(originalRequest);
+    expect(await budget.audit(worldId)).toMatchObject({capMicroUsd:7_000_000,held:false});
+    expect(f.render).toHaveBeenCalledTimes(renders);expect(fetch).not.toHaveBeenCalled();
   }finally{vi.useRealTimers();}
 },300000);
 

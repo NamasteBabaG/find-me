@@ -1,7 +1,7 @@
 "use server";
 
 import { createHash } from "node:crypto";
-import { QA_COMPLETION_CONFIRMATION, QA_KINGDOM_COMPLETION_CONFIRMATION } from "@/domain/generation/qa-completion-capacity";
+import { QA_COMPLETION_CONFIRMATION, QA_KINGDOM_COMPLETION_CONFIRMATION, QA_KINGDOM_TAIL_CONFIRMATION } from "@/domain/generation/qa-completion-capacity";
 import { authorizeQaCompletionCapacity } from "@/services/generation/qa-completion-capacity";
 
 import { LEAN_CAPACITY_RECOVERY_CONFIRMATION } from "@/domain/generation/lean-capacity-recovery";
@@ -43,7 +43,7 @@ function str(fd: FormData, key: string): string {
 export async function authorizeQaCompletionCapacityAction(fd:FormData):Promise<void>{
   const actor=await admin(),gameId=str(fd,"gameId"),planSha256=str(fd,"planSha256");
   const confirmation=str(fd,"confirm");
-  const kingdom = confirmation === QA_KINGDOM_COMPLETION_CONFIRMATION;
+  const kingdom = confirmation === QA_KINGDOM_COMPLETION_CONFIRMATION || confirmation === QA_KINGDOM_TAIL_CONFIRMATION;
   const submittedEvidence = str(fd,"ownerAuthorizationSha256");
   const validEvidence = kingdom ? fd.getAll("ownerAuthorizationSha256").length === 0
     : fd.getAll("ownerAuthorizationSha256").length === 1 && /^[a-f0-9]{64}$/.test(submittedEvidence);
@@ -52,7 +52,7 @@ export async function authorizeQaCompletionCapacityAction(fd:FormData):Promise<v
   try{const origin=h.get("origin"),host=h.get("x-forwarded-host")??h.get("host");sameOrigin=!!origin&&!!host&&new URL(origin).host===host&&h.get("sec-fetch-site")!=="cross-site";}catch{/* refuse invalid origin */}
   if(env().APP_ENV!=="qa"||!sameOrigin||fd.getAll("gameId").length!==1||fd.getAll("planSha256").length!==1||!/^[a-f0-9]{64}$/.test(planSha256)
     ||!validEvidence
-    ||fd.getAll("confirm").length!==1||![QA_COMPLETION_CONFIRMATION, QA_KINGDOM_COMPLETION_CONFIRMATION].includes(confirmation)){
+    ||fd.getAll("confirm").length!==1||!kingdom&&confirmation!==QA_COMPLETION_CONFIRMATION){
     console.warn("[qa-completion] blocked",{reason:"request-validation"});redirect(`${destination}?qaCompletion=blocked`);
   }
   const ownerAuthorizationSha256 = kingdom

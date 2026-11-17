@@ -567,6 +567,13 @@ export async function singleLowContinuationPublishable(db: Pick<Prisma.Transacti
   if (!grant || approval.worldId !== worldOf(gameId) || approval.grantSha256 !== grant.authorizationSha256) return false;
   const medium = approval.policyId === "single-sol-medium-transport-recovery/v1";
   if (medium && !await (await import("./single-medium-policy")).singleMediumReviewPolicyOf(db, gameId)) return false;
+  if (approval.completionGrantSha256 !== undefined) {
+    const tail = await (await import("./qa-completion-capacity")).readQaKingdomTailReceipt(db, gameId);
+    const review = tail?.interruptedReview;
+    if (!medium || !review || tail.authorizationSha256 !== approval.completionGrantSha256
+      || review.requestKey !== approval.requestKey || review.operationFingerprint !== approval.operationFingerprint
+      || review.variantId !== approval.variantId || review.imageSha256 !== approval.imageSha256) return false;
+  }
   const single = medium ? "single-sol-medium/v1" : SINGLE_VISUAL_REVIEW_VERSION;
   const row = await db.auditLog.findUnique({where:{id:approval.approvalId}});
   let proof: Record<string,unknown>; try { proof=JSON.parse(row?.metaJson ?? "null"); } catch { return false; }
@@ -574,6 +581,7 @@ export async function singleLowContinuationPublishable(db: Pick<Prisma.Transacti
     && row.entityType === "Game" && row.entityId === gameId && proof?.single === single && proof.policyId === approval.policyId
     && proof.grantSha256 === grant.authorizationSha256 && proof.variantId === approval.variantId && proof.imageSha256 === approval.imageSha256
     && proof.requestKey === approval.requestKey && proof.operationFingerprint === approval.operationFingerprint
+    && proof.completionGrantSha256 === approval.completionGrantSha256
     && typeof proof.retainedPayloadSha256 === "string" && /^[a-f0-9]{64}$/.test(proof.retainedPayloadSha256) && sha256Bytes(Buffer.from(JSON.stringify(proof))) === approval.authorizationSha256;
 }
 

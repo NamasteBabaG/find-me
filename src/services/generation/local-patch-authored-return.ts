@@ -110,7 +110,8 @@ export function assertAuthoredLocalPatchRecoveryGeometry(parent: AuthoredLocalPa
 export function authoredLocalPatchSourceNeighborContract(entry: SourcePlacementHideContract, receipt: AuthoredLocalPatchReceipt) {
   if (!entry.sourceNeighbors) return null;
   if (receipt.retainedWindow !== undefined) {
-    const m = retainedWindowMarkerSchema.parse(receipt.retainedWindow), a = retainedWindowAuthorityFor(receipt.authoredReturn as AuthoredLocalPatchReturnContract);
+    const m = retainedWindowMarkerSchema.parse(receipt.retainedWindow),
+      a = retainedWindowAuthorityFor(receipt.authoredReturn as AuthoredLocalPatchReturnContract,m.manifestSha256);
     if (!a || m.hideId !== entry.hideId || retainedWindowCanonicalHash(a) !== m.authoritySha256 || receipt.compositionVersion !== RETAINED_WINDOW_VERSION)
       throw Error('RETAINED_WINDOW: source-neighbor authority differs');
     // Role registration is the original immutable contract. Actual wider
@@ -141,7 +142,7 @@ export function authoredLocalPatchReturnMatches(receipt: AuthoredLocalPatchRecei
   if (receipt?.retainedWindow !== undefined || receipt?.compositionVersion === RETAINED_WINDOW_VERSION) {
     try {
       const m = retainedWindowMarkerSchema.parse(receipt?.retainedWindow), parent = expectedAuthoredLocalPatchReturn(board, hide, contentVersion, placementContext);
-      const a = parent && retainedWindowAuthorityFor(parent), review = object(receipt?.boardReview);
+      const a = parent && retainedWindowAuthorityFor(parent,m.manifestSha256), review = object(receipt?.boardReview);
       return !!a && contentVersion === 13 && m.hideId === hide.id && retainedWindowCanonicalHash(a) === m.authoritySha256
         && receipt?.compositionVersion === RETAINED_WINDOW_VERSION && equal(receipt.authoredReturn, parent)
         && (!reviewed || review.compositionVersion === RETAINED_WINDOW_VERSION && equal(review.authoredReturn, parent)

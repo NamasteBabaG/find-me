@@ -18,6 +18,25 @@ const input=(n=1):WorldAutomaticReviewRecoveryV5Input=>({requestKey:"self-repair
  approvalId:"single-low-"+n,unknownReasons:["no usable response"],policyId:"single-sol-low-transport-recovery/v1",grantSha256:"a".repeat(64),variantId:"synthetic-row-"+n,imageSha256:n.toString(16).padStart(64,"0"),authorizationSha256:"b".repeat(64),authorizedAt:"2026-10-23T00:00:00.000Z"});
 async function fixture(){const r=repository(),budget=new WorldBudget(r.repository,{authorizeAutomaticReviewRecoveryV5:async()=>true});const i=input();await budget.reserve("world",i);await budget.markUnknown("world",i.requestKey,"no usable response");return{...r,budget,i};}
 describe("LOW no-answer accounting",()=>{
+ it("retains all five historical reserves and permits only one separately authorized MEDIUM continuation",async()=>{
+   const f=await fixture();
+   await f.budget.authorizeAutomaticReviewRecoveryV5("world",f.i);
+   for(let n=2;n<=5;n++){
+     const next=input(n);await f.budget.reserve("world",next);
+     await f.budget.markUnknown("world",next.requestKey,"no usable response");
+     await f.budget.authorizeAutomaticReviewRecoveryV5("world",next);
+   }
+   const extra={...input(6),policyId:"single-sol-medium-transport-recovery/v1" as const,completionGrantSha256:"c".repeat(64)};
+   await f.budget.reserve("world",extra);await f.budget.markUnknown("world",extra.requestKey,"no usable response");
+   const before=f.rows.get("world")!.snapshot.requests;
+   await expect(new WorldBudget(f.repository).authorizeAutomaticReviewRecoveryV5("world",extra)).rejects.toMatchObject({code:"invalid_input"});
+   await f.budget.authorizeAutomaticReviewRecoveryV5("world",extra);
+   expect(f.rows.get("world")!.snapshot.requests).toEqual(before);
+   expect(await f.budget.audit("world")).toMatchObject({reservedMicroUsd:6*210_553,held:false});
+   const seventh={...extra,...input(7),policyId:extra.policyId};
+   await f.budget.reserve("world",seventh);await f.budget.markUnknown("world",seventh.requestKey,"no usable response");
+   await expect(f.budget.authorizeAutomaticReviewRecoveryV5("world",seventh)).rejects.toMatchObject({code:"invalid_snapshot"});
+ });
  it("preserves the exact dynamic reservation and idempotent approval; publication needs the explicit callback",async()=>{const f=await fixture(),before=await f.budget.readRequest("world",f.i.requestKey);expect(await f.budget.authorizeAutomaticReviewRecoveryV5("world",f.i)).toMatchObject({acquired:true});expect(await f.budget.authorizeAutomaticReviewRecoveryV5("world",f.i)).toMatchObject({acquired:false});expect(await f.budget.readRequest("world",f.i.requestKey)).toEqual(before);expect(await f.budget.audit("world")).toMatchObject({held:false,reservedMicroUsd:210_553,settledMicroUsd:0});expect(await localPatchBudgetReadyForPublication(f.budget,"world",13,{reviewRecoveryV3:true})).toBe(false);expect(await localPatchBudgetReadyForPublication(f.budget,"world",13,{reviewRecoveryV3:true,singleLowContinuation:async()=>true})).toBe(true);expect(await localPatchBudgetReadyForPublication(f.budget,"world",12,{reviewRecoveryV3:true})).toBe(false);expect(await localPatchBudgetReadyForPublication(f.budget,"world",12,{reviewRecoveryV3:true,singleLowContinuation:async()=>true})).toBe(true);expect(await localPatchBudgetReadyForPublication(f.budget,"world",11,{singleLowContinuation:async()=>true})).toBe(false);});
  it("requires the trusted resolver and exact unknown-reason history",async()=>{const f=await fixture();await expect(new WorldBudget(f.repository).authorizeAutomaticReviewRecoveryV5("world",f.i)).rejects.toMatchObject({code:"invalid_input"});await expect(f.budget.authorizeAutomaticReviewRecoveryV5("world",{...f.i,unknownReasons:["changed"]})).rejects.toMatchObject({code:"key_conflict"});});
  it.each([0,250_001,210_552])("never lowers or exceeds the captured reserve (%s)",async n=>{const f=await fixture();await expect(f.budget.authorizeAutomaticReviewRecoveryV5("world",{...f.i,reserveMicroUsd:n})).rejects.toBeInstanceOf(Error);expect((await f.budget.audit("world")).held).toBe(true);});

@@ -24,7 +24,7 @@ const selected = [
   ['journey-detectives/v1', 'greatwall-detectives-hide-1', 'source-pink-pinwheel-child'],
 ] as const;
 
-export const RETAINED_WINDOW_AUTHORITIES: readonly RetainedWindowAuthority[] = Object.freeze(selected.map(([family, hideId, targetSourceId]) => {
+function authorityOf(family: RetainedWindowAuthority['family'], hideId: string, targetSourceId: string) {
   const release = family === 'kingdom-detectives/v1' ? KINGDOM_DETECTIVE_SOURCE_PLACEMENT_RELEASE : DETECTIVE_SOURCE_PLACEMENT_RELEASE;
   const entry = release.inventory.find(e => e.hideId === hideId);
   if (!entry?.sourceNeighbors) throw Error('RETAINED_WINDOW: complete public SOURCE neighborhood required');
@@ -38,11 +38,21 @@ export const RETAINED_WINDOW_AUTHORITIES: readonly RetainedWindowAuthority[] = O
   };
   assertRetainedWindowAuthority(authority);
   return Object.freeze(authority);
-}));
+}
+export const RETAINED_WINDOW_AUTHORITIES: readonly RetainedWindowAuthority[] = Object.freeze(selected.map(([family,hideId,targetSourceId]) =>
+  authorityOf(family,hideId,targetSourceId)));
 
-export function retainedWindowAuthorityFor(parent: AuthoredLocalPatchReturnContract): RetainedWindowAuthority | null {
-  assertRetainedWindowManifest();
-  const a = RETAINED_WINDOW_AUTHORITIES.find(a => a.hideId === parent?.hideId);
+export function retainedWindowAuthorityFor(parent: AuthoredLocalPatchReturnContract,
+  manifest = RETAINED_WINDOW_MANIFEST_SHA256): RetainedWindowAuthority | null {
+  let authorities: readonly RetainedWindowAuthority[];
+  if (manifest === RETAINED_WINDOW_MANIFEST_SHA256) {
+    assertRetainedWindowManifest();
+    authorities = RETAINED_WINDOW_AUTHORITIES;
+  } else if (manifest === RETAINED_KINGDOM_TAIL_MANIFEST_SHA256) {
+    assertRetainedKingdomTailManifest();
+    authorities = RETAINED_KINGDOM_TAIL_WINDOWS.map(item=>item.authority);
+  } else return null;
+  const a = authorities.find(a => a.hideId === parent?.hideId);
   const same = (x: unknown, y: unknown) => retainedWindowCanonicalHash(x) === retainedWindowCanonicalHash(y);
   return a && parent.contentVersion === a.sceneVersion && parent.boardId === a.boardId && same(parent.source, a.source)
     && same(parent.crop, a.crop) && same(parent.child, a.parentChild) && same(parent.local, a.parentReturn)
@@ -51,6 +61,25 @@ export function retainedWindowAuthorityFor(parent: AuthoredLocalPatchReturnContr
 
 // Frozen public-only inventory. This permission is not a visual or spending approval.
 export const RETAINED_WINDOW_MANIFEST_SHA256 = '5ddc3e7511e0d5ecd32ccba31442c11a9892e177df072c3dc7b8fb95b3bed4e6';
+export const RETAINED_KINGDOM_TAIL_MANIFEST_SHA256 = '7a3af0b65356d142a7c1d81fe4a7eaace30d58f4b033ced00bfce3d62435e395';
+export const RETAINED_KINGDOM_TAIL_WINDOWS = Object.freeze([
+  {
+    sourceRequestKey:'icepalace-detectives-hide-1:standing:render:3',
+    authority:authorityOf('kingdom-detectives/v1','icepalace-detectives-hide-1','source-child'),
+  },
+  {
+    sourceRequestKey:'giantlibrary-detectives-hide-1:standing:render:3',
+    authority:Object.freeze({
+      ...authorityOf('kingdom-detectives/v1','giantlibrary-detectives-hide-1','source-child'),
+      // Original balcony rail and posts, measured in the unchanged 512×768 SOURCE crop.
+      foregroundTop:[
+        {x:0,y:503},{x:128,y:535},{x:144,y:527},{x:155,y:515},{x:197,y:516},
+        {x:210,y:535},{x:222,y:554},{x:415,y:608},{x:432,y:600},{x:448,y:587},
+        {x:475,y:598},{x:496,y:615},{x:511,y:620},
+      ],
+    }),
+  },
+]);
 /** Separate finite changed-source recovery. No old composition permission or
  * verdict changes; the rejected image and its paid answer remain in lineage. */
 export const RETAINED_WINDOW_NEIGHBOR_ALTERNATE = Object.freeze({
@@ -62,4 +91,8 @@ export const RETAINED_WINDOW_NEIGHBOR_ALTERNATE = Object.freeze({
 export function assertRetainedWindowManifest() {
   if (retainedWindowHash(RETAINED_WINDOW_AUTHORITIES) !== RETAINED_WINDOW_MANIFEST_SHA256)
     throw Error('RETAINED_WINDOW: public permissions differ from the frozen release');
+}
+export function assertRetainedKingdomTailManifest() {
+  if(retainedWindowHash(RETAINED_KINGDOM_TAIL_WINDOWS)!==RETAINED_KINGDOM_TAIL_MANIFEST_SHA256)
+    throw Error('RETAINED_WINDOW: Kingdom recovery differs from its public release');
 }

@@ -42,3 +42,17 @@ it("shows and confirms the smaller Kingdom ceiling from the reviewed plan", asyn
   expect(html).not.toContain('name="ownerAuthorizationSha256"');
   expect(f.grant).not.toHaveBeenCalled();
 });
+it("offers the additional dollar only when the existing Kingdom grant has a fresh plan",async()=>{
+  f.status.mockResolvedValue({ownerId:"synthetic-admin",status:"active",capMicroUsd:6_000_000});
+  f.plan.mockRejectedValueOnce(Error("unfinished provider check"));
+  const old=renderToStaticMarkup(await QaCompletionCapacityForm({gameId:"synthetic-kingdom"}));
+  expect(old).toContain(he.adminQaCompletion.active.replace("{cap}","$6.00"));
+  expect(old).not.toContain("<form");
+  f.plan.mockResolvedValue({binding:{state:{ownerId:"synthetic-admin"},capMicroUsd:7_000_000,
+    committedMicroUsd:5_838_608,reservedMicroUsd:1_221_721},planSha256:"b".repeat(64)});
+  const form=renderToStaticMarkup(await QaCompletionCapacityForm({gameId:"synthetic-kingdom"}));
+  expect(form).toContain(he.adminQaCompletion.confirm.replace("{cap}","$7.00"));
+  expect(form).toContain('value="owner-authorized-kingdom-age-eight-qa-completion-seven-total-v1"');
+  expect(form).not.toContain('name="ownerAuthorizationSha256"');
+  expect(f.grant).not.toHaveBeenCalled();
+});

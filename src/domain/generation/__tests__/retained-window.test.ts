@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { assertRetainedWindowManifest, RETAINED_WINDOW_AUTHORITIES } from '../../../../content/detectives/retained-window-v1';
+import { assertRetainedWindowManifest, RETAINED_WINDOW_AUTHORITIES, RETAINED_KINGDOM_TAIL_WINDOWS,
+  RETAINED_KINGDOM_TAIL_MANIFEST_SHA256 } from '../../../../content/detectives/retained-window-v1';
 import { KINGDOM_DETECTIVE_SOURCE_PLACEMENT_RELEASE } from '../../../../content/detectives/kingdom/source-placement-release';
 import { DETECTIVE_SOURCE_PLACEMENT_RELEASE } from '../../../../content/detectives/source-placement-release';
 import { assertRetainedWindowAuthority, composeRetainedWindow, retainedWindowProtectedHeads, retainedWindowRegistration,
-  retainedWindowHeadMask, alignRetainedWindowRaw, retainedWindowCanonicalHash,
+  retainedWindowHeadMask, alignRetainedWindowRaw, retainedWindowCanonicalHash, retainedWindowHash,
   RETAINED_WINDOW_VERSION, retainedWindowNeighborAlternateAllowed, type RetainedWindowAuthority, type RetainedWindowPixels } from '../retained-window';
 import { targetHeadReturnDecision, TARGET_HEAD_VISIBLE_VERSION, type TargetHeadEvidence } from '../target-head-return';
 
@@ -98,6 +99,25 @@ describe('paid native window recovery', () => {
     expect(pixel(result.pixels, 250, 250)).toEqual(pixel(raw, 251, 248));
     expect(pixel(result.pixels, 350, 450)).toEqual(pixel(before, 350, 450));
     expect(pixel(result.pixels, 4, 400)).toEqual(pixel(before, 4, 400));
+  });
+
+  it('keeps the actual public Kingdom railing pixels in front without admitting an incomplete head', () => {
+    expect(retainedWindowHash(RETAINED_KINGDOM_TAIL_WINDOWS)).toBe(RETAINED_KINGDOM_TAIL_MANIFEST_SHA256);
+    expect(()=>assertRetainedWindowManifest()).not.toThrow();
+    const library=RETAINED_KINGDOM_TAIL_WINDOWS.find(w=>w.authority.hideId==='giantlibrary-detectives-hide-1')!.authority;
+    expect(()=>assertRetainedWindowAuthority(library)).not.toThrow();
+    const a={...authority(),foregroundTop:library.foregroundTop};
+    const before=scene(),raw={...before,data:new Uint8Array(before.data)};
+    paint(raw,{left:205,top:220,width:100,height:460});
+    paint(raw,{left:155,top:511,width:38,height:60});
+    const output=composeRetainedWindow({authority:a,scene:before,raw});
+    expect(pixel(output.pixels,250,250)).toEqual(pixel(raw,250,250));
+    expect(pixel(output.pixels,250,600)).toEqual(pixel(before,250,600));
+    expect(pixel(output.pixels,165,518)).toEqual(pixel(before,165,518));
+    expect(pixel(output.pixels,165,518)).not.toEqual(pixel(raw,165,518));
+    expect(output.proof.foregroundChangedPixels).toBe(0);
+    expect(retainedWindowHeadMask(a,0,0).opaque.height).toBeLessThan(retainedWindowHeadMask(authority(),0,0).opaque.height);
+    expect(()=>assertRetainedWindowAuthority({...a,foregroundTop:[{x:0,y:315},{x:511,y:620}]})).toThrow(/foreground contour/);
   });
 
   it('refuses rewritten scenery, excessive drift, missing native pixels, and transparency', () => {

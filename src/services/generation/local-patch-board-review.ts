@@ -309,7 +309,7 @@ export async function prepareLocalPatchBoardReview(c: Container, input: { gameId
       let closeupPng: Buffer | undefined, afterEvidencePng: Buffer | undefined;
       if (strict) {
         const receipt = JSON.parse(e.row.judgeJson!);
-        const windowAuthority = receipt.retainedWindow !== undefined ? retainedWindowAuthorityFor(receipt.authoredReturn) : null;
+        const windowAuthority = receipt.retainedWindow !== undefined ? retainedWindowAuthorityFor(receipt.authoredReturn, receipt.retainedWindow.manifestSha256) : null;
         const mask = windowAuthority ? retainedWindowMeasurementBounds(windowAuthority) : [SELF_REPAIR_COMPOSITION_VERSION, AUTHORED_RECOVERY_COMPOSITION_VERSION].includes(receipt.compositionVersion)
           ? selfRepairDecisionSchema.parse(receipt.selfRepair.decision).faceRect : maskForHide(e.hide);
         const guard = LOCAL_PATCH_REVIEW_CLOSEUP_GUARD_PX;
@@ -330,7 +330,7 @@ export async function prepareLocalPatchBoardReview(c: Container, input: { gameId
         afterEvidencePng = await boundedVisualEvidencePng(afterEvidencePng);
       }
       const receipt = JSON.parse(e.row.judgeJson!);
-      const windowAuthority = receipt.retainedWindow !== undefined ? retainedWindowAuthorityFor(receipt.authoredReturn) : null;
+      const windowAuthority = receipt.retainedWindow !== undefined ? retainedWindowAuthorityFor(receipt.authoredReturn, receipt.retainedWindow.manifestSha256) : null;
       const returned = windowAuthority ? retainedWindowRegion(windowAuthority) : receipt.crownReturn!==undefined ? sourceCrownReturned(receipt.authoredReturn,receipt.crownReturn)! : [SELF_REPAIR_COMPOSITION_VERSION, AUTHORED_RECOVERY_COMPOSITION_VERSION].includes(receipt.compositionVersion)
         ? selfRepairDecisionSchema.parse(receipt.selfRepair.decision).returnWindow
         : localPatchReturnRegion(e.crop, maskForHide(e.hide), e.hide.returnRect).local;

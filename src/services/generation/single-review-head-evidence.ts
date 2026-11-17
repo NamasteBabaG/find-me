@@ -57,7 +57,7 @@ function journeyFaceScaleOf(r:Receipt){
  return{version:marker.faceScale,sourceHead:a.targetRegisteredHead};
 }
 function windowAuthority(receipt:Receipt){
- const m=retainedWindowMarkerSchema.parse(receipt.retainedWindow),a=retainedWindowAuthorityFor(receipt.authoredReturn as Parameters<typeof retainedWindowAuthorityFor>[0]);
+ const m=retainedWindowMarkerSchema.parse(receipt.retainedWindow),a=retainedWindowAuthorityFor(receipt.authoredReturn as Parameters<typeof retainedWindowAuthorityFor>[0],m.manifestSha256);
  if(!a||retainedWindowCanonicalHash(a)!==m.authoritySha256)throw Error('HEAD_RETURN: retained window public permission differs');
  return{m,a};
 }

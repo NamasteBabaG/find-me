@@ -5,7 +5,8 @@ import type { Container } from '../container';
 import { env } from '../../lib/env';
 import { DbStorage } from '../../infra/storage/db';
 import { PrismaWorldBudgetStore } from '../../infra/db/prisma-world-budget-store';
-import { RETAINED_WINDOW_MANIFEST_SHA256, retainedWindowAuthorityFor, RETAINED_WINDOW_NEIGHBOR_ALTERNATE } from '../../../content/detectives/retained-window-v1';
+import { RETAINED_WINDOW_MANIFEST_SHA256, retainedWindowAuthorityFor, RETAINED_WINDOW_NEIGHBOR_ALTERNATE,
+  RETAINED_KINGDOM_TAIL_MANIFEST_SHA256, RETAINED_KINGDOM_TAIL_WINDOWS } from '../../../content/detectives/retained-window-v1';
 import { composeRetainedWindow, retainedWindowAuditId, retainedWindowCanonicalHash as hash, retainedWindowMarkerSchema,
   RETAINED_WINDOW_ACTION, RETAINED_WINDOW_VERSION, retainedWindowNeighborAlternateAllowed, type RetainedWindowAuthority } from '../../domain/generation/retained-window';
 import { TARGET_HEAD_VISIBLE_VERSION } from '../../domain/generation/target-head-return';
@@ -14,6 +15,7 @@ import { expectedAuthoredLocalPatchReturn } from './local-patch-authored-return'
 import { readSettledTargetRaw } from './single-review-head-evidence';
 import { singleMediumReviewPolicyOf } from './single-medium-policy';
 import { readQaCompletionCapacity } from './qa-completion-capacity';
+import { QA_KINGDOM_TAIL_CAP } from '../../domain/generation/qa-completion-capacity';
 import { originalOrFiveDollarCap } from './qa-five-dollar-completion';
 import { boardWizardBudgetOf } from './board-conditioned-wizard';
 import { readShippedBoardArt, type LocalPatchHideDeps } from './local-patch-hide';
@@ -34,6 +36,13 @@ const geometryOf = (m: Awaited<ReturnType<typeof localPatchGeometry>>) => ({ rec
 const assetIdOf = (gameId: string, hideId: string, image: string) => 'ast_rsw_' + hash([gameId, hideId, image]).slice(0, 24);
 const rowAuditId = (gameId: string, rowId: string) => 'aud_retained_window_row_' + hash([gameId, rowId]).slice(0, 40);
 const alternateAuditId = (gameId: string, rowId: string) => 'aud_retained_window_alt_row_' + hash([gameId, rowId]).slice(0, 40);
+const tailAuditId = (gameId:string,rowId:string) => 'aud_retained_window_kingdom_' + hash([gameId,rowId]).slice(0,40);
+const tailWindow = (hideId: string) => RETAINED_KINGDOM_TAIL_WINDOWS.find(w=>w.authority.hideId===hideId);
+const tailEligible = (old: any, attempts: number, hideId: string, sourceRequestKey: string | undefined) =>
+  attempts===3 && sourceRequestKey===tailWindow(hideId)?.sourceRequestKey && !!tailWindow(hideId)
+  && old?.retainedWindow===undefined && old?.wireFault===null && old?.reviewState==='board-review-complete'
+  && old?.qualityDisposition?.state==='retry' && old?.qualityDisposition?.faults?.includes('severeSeam')
+  && old?.qualityDisposition?.faults?.includes('childComplete') && old?.selfRepair?.subjectContext?.intrinsic!==true;
 const alternateEligible = (old: any, hideId: string) => hideId === RETAINED_WINDOW_NEIGHBOR_ALTERNATE.hideId
   && retainedWindowNeighborAlternateAllowed({ currentSourceKey: old?.retainedWindow?.sourceRequestKey,
     ...RETAINED_WINDOW_NEIGHBOR_ALTERNATE, reviewState: old?.reviewState, disposition: old?.qualityDisposition?.state,
@@ -44,7 +53,7 @@ const demand = (ok: unknown, why: string): void => { if (!ok) throw Error('RETAI
  * placements need a different, separately qualified drawing recipe. */
 const freeWindowHide = (id: string) => !['newyork-detectives-hide-1', 'paris-detectives-hide-1'].includes(id);
 
-async function context(c: Container, gameId: string, rowId: string, publication: boolean) {
+async function context(c: Container, gameId: string, rowId: string, publication: boolean, manifest: string) {
   const game = await c.db.game.findUnique({ where: { id: gameId }, include: { childProfile: true, orders: true, scenes: true } });
   const row = await c.db.targetVariantAsset.findUnique({ where: { id: rowId }, include: { targetInstance: { include: { gameScene: true } } } });
   const child = game?.childProfile;
@@ -66,7 +75,7 @@ async function context(c: Container, gameId: string, rowId: string, publication:
   const placement = await resolveLocalPatchBoardsForGame(c.db, gameId, 13), scene = row.targetInstance.gameScene;
   const board = placement.boards.find(b => b.board === scene.sceneSlug), hide = board?.hides.find(h => h.targetId === row.targetInstance.targetId);
   const parent = board && hide ? expectedAuthoredLocalPatchReturn(board, hide, 13, placement) : null;
-  const authority = parent && retainedWindowAuthorityFor(parent);
+  const authority = parent && retainedWindowAuthorityFor(parent, manifest);
   if (!board || !hide || !parent || !authority || !freeWindowHide(hide.id)) return null;
   if (child.ageYears === 8 && authority.family !== 'kingdom-detectives/v1') return null;
   if (board.hides.some(other => other.id !== hide.id && (() => {
@@ -74,6 +83,7 @@ async function context(c: Container, gameId: string, rowId: string, publication:
     return q.left < r.left + r.width && q.left + q.width > r.left && q.top < r.top + r.height && q.top + q.height > r.top;
   })())) return null;
   const grant = await readQaCompletionCapacity(c, gameId + ':board-wizard');
+  if (manifest===RETAINED_KINGDOM_TAIL_MANIFEST_SHA256 && (child.ageYears!==8 || grant?.capMicroUsd!==QA_KINGDOM_TAIL_CAP)) return null;
   const budget = await boardWizardBudgetOf(c).audit(gameId + ':board-wizard');
   const validCap = grant ? budget.capMicroUsd === grant.capMicroUsd
     : child.ageYears === 8 ? budget.capMicroUsd === policy.worldCapMicroUsd
@@ -92,8 +102,11 @@ async function compose(authority: RetainedWindowAuthority, before: Buffer, raw: 
 /** Only an explicit, named QA restore turn calls this. It never invokes a
  * painter or a reviewer. One immutable application per row, then yield. */
 export async function restoreRetainedWindow(c: Container, gameId: string, hideId: string, readArt: ReadArt = readShippedBoardArt,
-  observeRefusal?: (why: string) => void, sourceRequestKey?: string, neighborAlternate = false) {
+  observeRefusal?: (why: string) => void, sourceRequestKey?: string, kind: 'original'|'neighbor-alternate'|'kingdom-tail' = 'original') {
   const refuse = (why: string) => { observeRefusal?.(why); return false; };
+  const neighborAlternate = kind==='neighbor-alternate', kingdomTail = kind==='kingdom-tail';
+  const onceId = kingdomTail ? tailAuditId : neighborAlternate ? alternateAuditId : rowAuditId;
+  const manifest = kingdomTail ? RETAINED_KINGDOM_TAIL_MANIFEST_SHA256 : RETAINED_WINDOW_MANIFEST_SHA256;
   if (env().APP_ENV !== 'qa' || c.storage.id !== 'db' || !freeWindowHide(hideId)) return refuse('qa-scope-or-intrinsic-placement');
   return c.db.$transaction(async tx => {
     await fenceLocalPatchImages(tx, gameId);
@@ -106,9 +119,10 @@ export async function restoreRetainedWindow(c: Container, gameId: string, hideId
     const placement = await resolveLocalPatchBoardsForGame(tx, gameId, 13), b = placement.boards.find(b => b.hides.some(h => h.id === hideId));
     const hide = b?.hides.find(h => h.id === hideId), row = rows.find(r => r.targetInstance.gameScene.sceneSlug === b?.board && r.targetInstance.targetId === hide?.targetId);
     if (!row || row.status !== 'FAILED' || row.attempts < 1 || row.attempts > 8
-      || await tx.auditLog.findUnique({ where: { id: neighborAlternate ? alternateAuditId(gameId, row.id) : rowAuditId(gameId, row.id) } }))
+      || await tx.auditLog.findUnique({ where: { id: onceId(gameId, row.id) } }))
       return refuse('failed-paid-row-or-already-restored');
     const old = JSON.parse(row.judgeJson ?? 'null');
+    if (kingdomTail && !tailEligible(old,row.attempts,hideId,sourceRequestKey)) return refuse('not-the-diagnosed-kingdom-window');
     if (neighborAlternate && (!alternateEligible(old, hideId) || sourceRequestKey !== RETAINED_WINDOW_NEIGHBOR_ALTERNATE.replacementSourceKey
       || !await retainedWindowEvidenceMatches(tx, { gameId, sceneVersion: 13, hideId, variantId: row.id,
         assetId: row.assetId ?? undefined, judgeJson: row.judgeJson }, readArt))) return refuse('no-genuine-prior-neighbor-refusal');
@@ -116,7 +130,7 @@ export async function restoreRetainedWindow(c: Container, gameId: string, hideId
     if (rows.some(r => { if (neighborAlternate && r.id === row.id) return false; try { const j = JSON.parse(r.judgeJson ?? 'null'); return j?.retainedWindow !== undefined
       && (r.status !== 'GENERATED' || j.reviewState !== 'board-review-complete' || j.qualityDisposition?.state !== 'acceptable'); } catch { return true; } }))
       return refuse('previous-restoration-awaits-ordinary-pass');
-    const p = await context(scoped, gameId, row.id, false);
+    const p = await context(scoped, gameId, row.id, false, manifest);
     if (!old || !p || old.hide !== hideId || old.pose !== p.hide.pose || !same(old.authoredReturn, p.parent)) return refuse('original-source-or-receipt');
     const stored = await PrismaWorldBudgetStore.forReadOnlyTransaction(tx).read(worldId);
     if (!stored || stored.snapshot.requests.some(r => r.state === 'pending')) return refuse('pending-purchase');
@@ -144,7 +158,7 @@ export async function restoreRetainedWindow(c: Container, gameId: string, hideId
     const originalRequests = stored.snapshot.requests.map(r => ({ requestKey: r.requestKey, sha256: hash(r) }));
     const protectedRows = rows.filter(r => r.id !== row.id).map(r => ({ id: r.id, sha256: hash({ ...r, targetInstance: undefined }) }));
     const body = { version: RETAINED_WINDOW_VERSION, gameId, rowId: row.id, hideId, attempts: row.attempts,
-      authoritySha256: hash(p.authority), manifestSha256: RETAINED_WINDOW_MANIFEST_SHA256, parentSha256: hash(p.parent), previousRowSha256,
+      authoritySha256: hash(p.authority), manifestSha256: manifest, parentSha256: hash(p.parent), previousRowSha256,
       originalRequestsSha256: hash(originalRequests), protectedRowsSha256: hash(protectedRows),
       sourceRequestKey: key, sourceFingerprint: paid.kept.operationFingerprint, sourcePayloadSha256: paid.kept.payloadSha256,
       normalizedRawSha256: sha(paid.normalized), sourcePngSha256: sha(before), candidateSha256,
@@ -171,8 +185,8 @@ export async function restoreRetainedWindow(c: Container, gameId: string, hideId
         protectedRows, selection: sourceRequestKey === undefined ? 'latest-admissible-paid-raw' : 'explicit-authenticated-paid-raw',
         ...(neighborAlternate ? { neighborAlternate: { ...RETAINED_WINDOW_NEIGHBOR_ALTERNATE, previousAuditId: old.retainedWindow.auditId } } : {}),
         providerCalls: 0, approvalTransferred: false }) } });
-    await tx.auditLog.create({ data: { id: neighborAlternate ? alternateAuditId(gameId, row.id) : rowAuditId(gameId, row.id), actorType: 'SYSTEM',
-      action: RETAINED_WINDOW_ACTION + (neighborAlternate ? ':alternate-once' : ':once'), entityType: 'Game', entityId: gameId,
+    await tx.auditLog.create({ data: { id: onceId(gameId,row.id), actorType: 'SYSTEM',
+      action: RETAINED_WINDOW_ACTION + (kingdomTail ? ':kingdom-tail-once' : neighborAlternate ? ':alternate-once' : ':once'), entityType: 'Game', entityId: gameId,
       metaJson: JSON.stringify(neighborAlternate ? { auditId: marker.auditId, previousAuditId: old.retainedWindow.auditId } : { auditId: marker.auditId }) } });
     await tx.targetVariantAsset.update({ where: { id: row.id }, data: { status: 'GENERATED', assetId, ...geometry, lastError: null,
       judgeJson: JSON.stringify(receipt), rejectedAssetIdsJson: JSON.stringify([...new Set([...(retired as string[]), ...(row.assetId ? [row.assetId] : [])])]) } });
@@ -189,7 +203,13 @@ export async function restoreRetainedWindow(c: Container, gameId: string, hideId
 
 export function restoreRetainedWindowNeighborAlternate(c: Container, gameId: string, hideId: string, readArt?: ReadArt,
   observeRefusal?: (why: string) => void) {
-  return restoreRetainedWindow(c, gameId, hideId, readArt, observeRefusal, RETAINED_WINDOW_NEIGHBOR_ALTERNATE.replacementSourceKey, true);
+  return restoreRetainedWindow(c, gameId, hideId, readArt, observeRefusal, RETAINED_WINDOW_NEIGHBOR_ALTERNATE.replacementSourceKey, 'neighbor-alternate');
+}
+
+export function restoreRetainedKingdomTail(c: Container, gameId: string, hideId: string, readArt?: ReadArt,
+  observeRefusal?: (why: string) => void) {
+  const recipe=tailWindow(hideId);
+  return recipe ? restoreRetainedWindow(c,gameId,hideId,readArt,observeRefusal,recipe.sourceRequestKey,'kingdom-tail') : Promise.resolve(false);
 }
 
 /** Composition provenance only, called before a question and again by the
@@ -205,8 +225,10 @@ export async function retainedWindowEvidenceMatches(db: Db, input: { gameId: str
       || auditId !== retainedWindowAuditId(body) || j.compositionVersion !== RETAINED_WINDOW_VERSION) return refuse();
     phase = 'audit';
     const audit = await db.auditLog.findUnique({ where: { id: auditId } }), saved = JSON.parse(audit?.metaJson ?? 'null');
-    const once = await db.auditLog.findUnique({ where: { id: rowAuditId(m.gameId, m.rowId) } });
+    const kingdomTail=m.manifestSha256===RETAINED_KINGDOM_TAIL_MANIFEST_SHA256;
+    const once = await db.auditLog.findUnique({ where: { id: (kingdomTail ? tailAuditId : rowAuditId)(m.gameId, m.rowId) } });
     let onceMatches = same(JSON.parse(once?.metaJson ?? 'null'), { auditId });
+    if (kingdomTail) onceMatches=onceMatches && tailEligible(JSON.parse(saved?.previousRow?.judgeJson??'null'),m.attempts,m.hideId,m.sourceRequestKey);
     if (saved?.neighborAlternate !== undefined) {
       const previous = JSON.parse(saved.previousRow?.judgeJson ?? 'null'), alt = saved.neighborAlternate;
       const second = await db.auditLog.findUnique({ where: { id: alternateAuditId(m.gameId, m.rowId) } });
@@ -220,11 +242,11 @@ export async function retainedWindowEvidenceMatches(db: Db, input: { gameId: str
       || audit.entityId !== m.gameId || !same(saved?.marker, m) || saved.providerCalls !== 0 || saved.approvalTransferred !== false
       || hash(saved.previousRow) !== m.previousRowSha256 || hash(saved.originalRequests) !== m.originalRequestsSha256
       || hash(saved.protectedRows) !== m.protectedRowsSha256 || once?.actorType !== 'SYSTEM' || once.actorId !== null
-      || once.action !== RETAINED_WINDOW_ACTION + ':once' || once.entityType !== 'Game' || once.entityId !== m.gameId
+      || once.action !== RETAINED_WINDOW_ACTION + (kingdomTail ? ':kingdom-tail-once' : ':once') || once.entityType !== 'Game' || once.entityId !== m.gameId
       || !onceMatches) return refuse();
     phase = 'live-world';
-    const c = { db, storage: new DbStorage(db) } as unknown as Container, p = await context(c, m.gameId, m.rowId, true);
-    if (!p || hash(p.authority) !== m.authoritySha256 || RETAINED_WINDOW_MANIFEST_SHA256 !== m.manifestSha256
+    const c = { db, storage: new DbStorage(db) } as unknown as Container, p = await context(c, m.gameId, m.rowId, true,m.manifestSha256);
+    if (!p || hash(p.authority) !== m.authoritySha256
       || hash(p.parent) !== m.parentSha256 || p.identitySha256 !== m.identitySha256 || input.identitySha256 !== undefined && input.identitySha256 !== m.identitySha256
       || p.row.attempts !== m.attempts || p.row.costCents !== saved.previousRow.costCents || !same(JSON.parse(p.row.judgeJson ?? 'null'), j)
       || j.hide !== m.hideId || j.pose !== p.hide.pose || j.headPolicyVersion !== TARGET_HEAD_VISIBLE_VERSION || !same(j.authoredReturn, p.parent)

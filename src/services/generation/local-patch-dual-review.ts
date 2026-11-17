@@ -1130,7 +1130,7 @@ async function prepareSingleLowQuestion(c: Pick<Container, "db" | "storage">, pr
   if (receipt.retainedWindow !== undefined) {
     const { retainedWindowAuthorityFor } = await import('../../../content/detectives/retained-window-v1');
     const { retainedWindowMarkerSchema, retainedWindowReviewPrompt } = await import('../../domain/generation/retained-window');
-    const a = retainedWindowAuthorityFor(receipt.authoredReturn), m = retainedWindowMarkerSchema.parse(receipt.retainedWindow);
+    const m = retainedWindowMarkerSchema.parse(receipt.retainedWindow), a = retainedWindowAuthorityFor(receipt.authoredReturn, m.manifestSha256);
     if (!a || singleVersion !== SINGLE_MEDIUM_VISUAL_REVIEW_VERSION) throw Error('RETAINED_WINDOW: fresh ordinary MEDIUM required');
     mediumPrompt += retainedWindowReviewPrompt(a, m.sampleX, m.sampleY);
   }

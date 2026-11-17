@@ -92,7 +92,7 @@ export async function POST(req: Request) {
     }
     if (restore !== null) {
       const hideId = query.get('hideId'), sourceKey = query.get('sourceKey');
-      if (!['retained-window-v1','retained-window-alternate-v1','journey-source-head-v2','journey-source-head-sunburst-v1','journey-source-head-sunburst-tail-v1','journey-head-frame-v1',JOURNEY_WALL_COAT_SELECTOR,JOURNEY_PARIS_CHAIR_SELECTOR].includes(restore) || requestedMode !== 'review-existing' || !gameId || env().APP_ENV !== 'qa'
+      if (!['retained-window-v1','retained-window-alternate-v1','retained-kingdom-tail-v1','journey-source-head-v2','journey-source-head-sunburst-v1','journey-source-head-sunburst-tail-v1','journey-head-frame-v1',JOURNEY_WALL_COAT_SELECTOR,JOURNEY_PARIS_CHAIR_SELECTOR].includes(restore) || requestedMode !== 'review-existing' || !gameId || env().APP_ENV !== 'qa'
         || c.storage.id !== 'db' || !hideId || !/^[A-Za-z0-9._:-]{1,160}$/.test(hideId)
         || sourceKey !== null && !/^[A-Za-z0-9._:-]{1,240}$/.test(sourceKey))
         return NextResponse.json({ error: 'unsupported-free-restore' }, { status: 400 });
@@ -135,6 +135,11 @@ export async function POST(req: Request) {
       }
       enter('retained-window-free-restore');
       const recovery = await import('@/services/generation/retained-window-recovery');
+      if(restore==='retained-kingdom-tail-v1'){
+        if(sourceKey!==null)return NextResponse.json({error:'unsupported-kingdom-tail-source-key'},{status:400});
+        const restored=await recovery.restoreRetainedKingdomTail(c,gameId,hideId);
+        return NextResponse.json({restored,providerCalls:0,approvalTransferred:false},{headers:{'Cache-Control':'no-store'}});
+      }
       if(restore==='retained-window-alternate-v1'){
         if(sourceKey!==null)return NextResponse.json({error:'unsupported-alternate-source-key'},{status:400});
         const restored=await recovery.restoreRetainedWindowNeighborAlternate(c,gameId,hideId);

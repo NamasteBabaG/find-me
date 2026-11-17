@@ -8,7 +8,8 @@ import { isLocalPatchStrictVersion } from "../../domain/scene/local-patch-catalo
 import { assertSourceFigureAuthority, type SourceFigureAuthority } from "../../domain/generation/source-figure-return";
 import { sha256Bytes } from "./fixed-sprite";
 import { retainedWindowMeasurementBounds, retainedWindowCanonicalHash, type RetainedWindowAuthority } from '../../domain/generation/retained-window';
-import { RETAINED_WINDOW_AUTHORITIES, assertRetainedWindowManifest } from '../../../content/detectives/retained-window-v1';
+import { RETAINED_WINDOW_AUTHORITIES, assertRetainedWindowManifest, RETAINED_KINGDOM_TAIL_WINDOWS,
+  assertRetainedKingdomTailManifest } from '../../../content/detectives/retained-window-v1';
 import { JOURNEY_SOURCE_HEAD_AUTHORITIES } from '../../../content/detectives/journey-source-head-v2';
 import { JOURNEY_SUNBURST_TAIL_AUTHORITIES } from '../../../content/detectives/journey-sunburst-tail-v1';
 import { assertJourneySunburstTailManifest } from '../../domain/generation/journey-sunburst-tail';
@@ -100,8 +101,11 @@ export async function localPatchGeometry(input: {
   if (input.retainedWindow) {
     const a = input.retainedWindow, same = (x: unknown, y: unknown) => retainedWindowCanonicalHash(x) === retainedWindowCanonicalHash(y);
     assertRetainedWindowManifest();
+    const originalPermission=RETAINED_WINDOW_AUTHORITIES.some(known=>same(known,a));
+    if(!originalPermission)assertRetainedKingdomTailManifest();
     if (input.sourceFigure || input.contentVersion !== 13 || hide.id !== a.hideId || !same(crop, a.crop) || !same(requested, a.parentChild)
-      || art.width !== a.source.width || art.height !== a.source.height || !RETAINED_WINDOW_AUTHORITIES.some(known => same(known, a)))
+      || art.width !== a.source.width || art.height !== a.source.height
+      || !originalPermission&&!RETAINED_KINGDOM_TAIL_WINDOWS.some(w=>same(w.authority,a)))
       throw Error('RETAINED_WINDOW: target geometry differs from the public permission');
     // The service verifies encoded public SOURCE and independently reproduces
     // these pixels/geometry on publication. Do not measure the entire crop.

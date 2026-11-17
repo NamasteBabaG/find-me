@@ -26,6 +26,8 @@ export const retainedWindowAuthoritySchema = z.object({
   crop: rectangle, parentChild: rectangle, parentReturn: rectangle, parentPlacementSha256: digest,
   targetSourceId: id, sourceHeads: z.array(z.object({ sourceId: id, head: rectangle }).strict()).min(1).max(8),
   frame: z.literal(12), feather: z.literal(12), maxRegistration: z.literal(3), maximumMeanDifference: z.literal(24),
+  /** The original foreground owns every pixel at or below this public contour. */
+  foregroundTop: z.array(z.object({ x: z.number().int().min(0).max(511), y: z.number().int().min(1).max(767) }).strict()).min(2).max(24).optional(),
 }).strict();
 export type RetainedWindowAuthority = z.infer<typeof retainedWindowAuthoritySchema>;
 export type RetainedWindowPixels = { data: Uint8Array; width: number; height: number; channels: number };
@@ -78,7 +80,11 @@ export function retainedWindowReviewPrompt(a: RetainedWindowAuthority, sampleX: 
     + 'Compare the whole crown, face, full body, feet, pose, size and support against RAW and SOURCE. Inspect all four outer joins and the protected SOURCE-head holes. Reject cut or faded hair, residual source limbs, duplicate heads, seams, age/identity uncertainty, excessive sharpness, photographic texture, blur or a depth/style mismatch. '
     + 'No prior quality, identity, subject or head verdict transfers. Every ordinary MEDIUM field and doubt check remains blocking. '
     + 'RETAINED_WINDOW_PERMISSION: ' + JSON.stringify({ returned: retainedWindowRegion(a), targetSourceId: a.targetSourceId,
-      protectedHeads: retainedWindowProtectedHeads(a), targetMeasurement: retainedWindowMeasurementBounds(a) });
+      protectedHeads: retainedWindowProtectedHeads(a), targetMeasurement: retainedWindowMeasurementBounds(a) })
+    + (a.foregroundTop ? '\nSOURCE FOREGROUND: the original wooden balcony railing and posts stay in front of the child. '
+      + 'Every pixel at or below this contour is copied from SOURCE: ' + JSON.stringify(a.foregroundTop)
+      + '. Verify visible anatomy above the railing and natural occlusion by it. Reject any leg through the rail, '
+      + 'duplicated original child, visible discontinuity, or body part cut in an unoccluded area.' : '');
 }
 const contained = (outer: PatchRectangle, inner: PatchRectangle) => inner.left >= outer.left && inner.top >= outer.top
   && inner.left + inner.width <= outer.left + outer.width && inner.top + inner.height <= outer.top + outer.height;
@@ -101,6 +107,11 @@ export function assertRetainedWindowAuthority(value: RetainedWindowAuthority): v
   if (!target || a.sourceHeads.some(h => !contained(board, h.head))
     || !contained({ left: 24, top: 24, width: 464, height: 720 }, localHead(a, target.head)))
     throw Error('RETAINED_WINDOW: the replaced source head must be whole inside the new return');
+  if (a.foregroundTop && (a.family !== 'kingdom-detectives/v1' || a.foregroundTop[0]!.x !== 0
+    || a.foregroundTop.at(-1)!.x !== 511
+    || a.foregroundTop.some((p,i) => (i>0 && p.x<=a.foregroundTop![i-1]!.x)
+      || p.y < target.head.top-a.crop.top+target.head.height+4)))
+    throw Error('RETAINED_WINDOW: invalid original foreground contour');
 }
 /** Only people crossing the new boundary must stay at the exact SOURCE pixels.
  * The original target is explicitly replaced, never mistakenly preserved. */
@@ -111,19 +122,28 @@ export function retainedWindowProtectedHeads(a: RetainedWindowAuthority) {
     .map(h => ({ sourceId: h.sourceId, head: localHead(a, h.head) }));
 }
 export function retainedWindowHeadMask(a: RetainedWindowAuthority, sampleX: number, sampleY: number) {
-  return { opaque: { left: 24, top: 24, width: 464, height: 720 }, sampleX, sampleY,
+  const bottom = a.foregroundTop ? Math.min(...a.foregroundTop.map(point=>point.y)) - 4 : 744;
+  return { opaque: { left: 24, top: 24, width: 464, height: bottom-24 }, sampleX, sampleY,
     excluded: retainedWindowProtectedHeads(a).map(h => {
       const left = Math.max(0, h.head.left - 6), top = Math.max(0, h.head.top - 6);
       return { left, top, width: Math.max(0, Math.min(512, h.head.left + h.head.width + 6) - left),
         height: Math.max(0, Math.min(768, h.head.top + h.head.height + 6) - top) };
     }).filter(r => r.width > 0 && r.height > 0) };
 }
+function foregroundTopAt(a: RetainedWindowAuthority, x: number): number {
+  if (!a.foregroundTop) return 772;
+  const right = a.foregroundTop.findIndex(point => point.x >= x);
+  if (right<=0) return a.foregroundTop[0]!.y;
+  const p=a.foregroundTop[right-1]!, q=a.foregroundTop[right]!;
+  return p.y + (x-p.x)*(q.y-p.y)/(q.x-p.x);
+}
+
 export function retainedWindowWeight(a: RetainedWindowAuthority, x: number, y: number): number {
   const edge = Math.min(x, y, 511 - x, 767 - y);
   let weight = Math.min(1, Math.max(0, (edge - a.frame + 0.5) / a.feather));
   // Keep a crossing SOURCE head entire, with a six-pixel transition outside it.
   for (const h of retainedWindowProtectedHeads(a)) weight = Math.min(weight, distance(h.head, x, y) / 6);
-  return weight;
+  return Math.min(weight, Math.max(0, (foregroundTopAt(a,x)-y)/4));
 }
 const checkPixels = (p: RetainedWindowPixels) => {
   if (p.width !== 512 || p.height !== 768 || p.channels !== 4 || p.data.length !== 512 * 768 * 4)
@@ -173,11 +193,13 @@ export function composeRetainedWindow(input: { authority: RetainedWindowAuthorit
   const registration = retainedWindowRegistration(a, scene, raw), output = new Uint8Array(scene.data), protectedHeads = retainedWindowProtectedHeads(a);
   let paidPixels = 0, featherPixels = 0;
   const weights = new Float32Array(512 * 768);
+  const foregroundTop = Array.from({length:512},(_,x)=>foregroundTopAt(a,x));
   // Hoist validated SOURCE cores out of the pixel loop.
   for (let y = 0; y < 768; y++) for (let x = 0; x < 512; x++) {
     const edge = Math.min(x, y, 511 - x, 767 - y);
     let w = Math.min(1, Math.max(0, (edge - a.frame + 0.5) / a.feather));
     for (const h of protectedHeads) w = Math.min(w, distance(h.head, x, y) / 6);
+    w = Math.min(w, Math.max(0, (foregroundTop[x]!-y)/4));
     weights[y * 512 + x] = w;
     if (!w) continue;
     const rx = x + registration.sampleX, ry = y + registration.sampleY;
@@ -192,10 +214,15 @@ export function composeRetainedWindow(input: { authority: RetainedWindowAuthorit
       const i = (y * 512 + x) * 4;
       if ([0, 1, 2, 3].some(c => output[i + c] !== scene.data[i + c])) throw Error('RETAINED_WINDOW: crossing SOURCE head changed');
     }
+  if (a.foregroundTop) for (let x=0;x<512;x++) for (let y=Math.ceil(foregroundTop[x]!);y<768;y++) {
+    const i=(y*512+x)*4;
+    if ([0,1,2,3].some(c=>output[i+c]!==scene.data[i+c])) throw Error('RETAINED_WINDOW: original foreground changed');
+  }
   const targetHead = localHead(a, a.sourceHeads.find(h => h.sourceId === a.targetSourceId)!.head);
   for (let y = targetHead.top; y < targetHead.top + targetHead.height; y++) for (let x = targetHead.left; x < targetHead.left + targetHead.width; x++)
     if (weights[y * 512 + x] !== 1) throw Error('RETAINED_WINDOW: the old target head is not wholly replaced');
   return { pixels: { ...scene, data: output }, weights, proof: { version: RETAINED_WINDOW_VERSION, registration,
     appliedTranslation: { x: registration.sampleX ? -registration.sampleX : 0, y: registration.sampleY ? -registration.sampleY : 0 }, paidPixels, featherPixels,
-    outsidePermissionChangedPixels: 0 as const, crossingSourceHeadChangedPixels: 0 as const } };
+    outsidePermissionChangedPixels: 0 as const, crossingSourceHeadChangedPixels: 0 as const,
+    ...(a.foregroundTop ? { foregroundChangedPixels: 0 as const } : {}) } };
 }

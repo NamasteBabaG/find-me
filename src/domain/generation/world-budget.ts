@@ -11,7 +11,7 @@ import { DUAL_REVIEW_RESERVES_MICRO_USD } from "./dual-review-reserve";
 export const WORLD_BUDGET_CAP_MICRO_USD = 5_000_000;
 /** Six dollars requires a trusted per-world QA authorization resolver; default remains five. */
 /** 12_000_000: the named QA pilot completion ceiling (qa-world-budget-policy.ts), one world only. */
-export type WorldBudgetCapMicroUsd = typeof WORLD_BUDGET_CAP_MICRO_USD | 6_000_000 | 8_000_000 | 10_000_000 | 12_000_000;
+export type WorldBudgetCapMicroUsd = typeof WORLD_BUDGET_CAP_MICRO_USD | 6_000_000 | 7_000_000 | 8_000_000 | 10_000_000 | 12_000_000;
 export const WORLD_BUDGET_SCOPES = ["identity", "sheet", "image", "judge", "repair"] as const;
 export type WorldBudgetScope = typeof WORLD_BUDGET_SCOPES[number];
 export type BudgetJson = null | boolean | number | string | readonly BudgetJson[] | { readonly [key: string]: BudgetJson };
@@ -129,6 +129,7 @@ export interface WorldAutomaticReviewRecoveryV5 extends WorldReservationInput {
   worldId: string; approvalId: string; unknownReasons: readonly string[];
   policyId: "single-sol-low-transport-recovery/v1" | "single-sol-medium-transport-recovery/v1";
   grantSha256: string; variantId: string; imageSha256: string; authorizationSha256: string; authorizedAt: string;
+  completionGrantSha256?: string;
 }
 export const WORLD_AUTOMATIC_REVIEW_RECOVERY_V5_LIMIT = 5;
 export type WorldAutomaticReviewRecoveryV5Input = Omit<WorldAutomaticReviewRecoveryV5, "version" | "worldId">;
@@ -318,7 +319,8 @@ export function validateUnknownContinuationApproval(value: WorldContinuationReco
     || value.version === "world-automatic-review-recovery/v2" || value.version === "world-automatic-review-recovery/v3"
     || value.version === "world-automatic-review-recovery/v4" || value.version === "world-automatic-review-recovery/v5";
   const expected = ["version", "worldId", "approvalId", "requestKey", "scope", "operationFingerprint", "reserveMicroUsd", "unknownReasons", automatic ? "policyId" : "operatorId", "authorizationSha256", "authorizedAt",
-    ...(value.version === "world-automatic-review-recovery/v4" ? ["grantSha256"] : value.version === "world-automatic-review-recovery/v5" ? ["grantSha256", "variantId", "imageSha256"] : [])].sort();
+    ...(value.version === "world-automatic-review-recovery/v4" ? ["grantSha256"] : value.version === "world-automatic-review-recovery/v5" ? ["grantSha256", "variantId", "imageSha256",
+      ...(value.completionGrantSha256===undefined ? [] : ["completionGrantSha256"])] : [])].sort();
   if (JSON.stringify(Object.keys(value).sort()) !== JSON.stringify(expected) || Object.values(Object.getOwnPropertyDescriptors(value)).some(p => !Object.hasOwn(p, "value"))) fail("invalid_input", "Continuation approval has unexpected fields");
   if (!automatic && value.version !== "world-unknown-continuation/v1") fail("invalid_input", "Unknown continuation approval version");
   if (value.version === "world-automatic-image-recovery/v1" && (value.policyId !== "local-patch-image-interruption/v1" || value.scope !== "image"
@@ -346,7 +348,9 @@ export function validateUnknownContinuationApproval(value: WorldContinuationReco
     || value.scope !== "judge" || !Number.isSafeInteger(value.reserveMicroUsd) || value.reserveMicroUsd < 1 || value.reserveMicroUsd > 250_000
     || !interruptedLocalPatchReviewRequest(value.requestKey, value.operationFingerprint)
     || !/^[a-f0-9]{64}$/.test(value.grantSha256) || !/^[a-f0-9]{64}$/.test(value.imageSha256)
-    || !/^[A-Za-z0-9_:-]{1,240}$/.test(value.variantId)))
+    || !/^[A-Za-z0-9_:-]{1,240}$/.test(value.variantId)
+    || value.completionGrantSha256!==undefined && (value.policyId!=="single-sol-medium-transport-recovery/v1"
+      || !/^[a-f0-9]{64}$/.test(value.completionGrantSha256))))
     fail("invalid_input", "Single LOW recovery requires its exact bounded reservation, image and grant");
   if (!automatic && (typeof value.operatorId !== "string" || !/^[A-Za-z0-9_:.@/-]{1,500}$/.test(value.operatorId) || value.operatorId.includes("://") || /^sk-/i.test(value.operatorId)))
     fail("invalid_input", "Continuation approval requires a bounded operator identifier");
@@ -374,6 +378,7 @@ export function validateWorldUnknownContinuationApprovals(snapshot: WorldBudgetS
   const leanReviews = new Set<string>();
   const capacityReviews = new Set<string>();
   const singleImages = new Set<string>();
+  let additionalSingleReview = false;
   for (const approval of snapshot.unknownContinuationApprovals) {
     if (approval.version === "world-automatic-review-recovery/v2") {
       if (enrolledReviews.has(approval.requestKey) || enrolledReviews.size >= WORLD_AUTOMATIC_REVIEW_RECOVERY_V2_LIMIT)
@@ -392,9 +397,13 @@ export function validateWorldUnknownContinuationApprovals(snapshot: WorldBudgetS
     }
     if (approval.version === "world-automatic-review-recovery/v5") {
       const image = approval.variantId + ":" + approval.imageSha256;
-      if (singleImages.has(image) || singleImages.size >= WORLD_AUTOMATIC_REVIEW_RECOVERY_V5_LIMIT)
-        fail("invalid_snapshot", "Only one unanswered single-review retry per image and five per authorized world");
+      const additional = approval.completionGrantSha256 !== undefined;
+      if (singleImages.has(image) || additionalSingleReview || (additional
+        ? singleImages.size !== WORLD_AUTOMATIC_REVIEW_RECOVERY_V5_LIMIT
+        : singleImages.size >= WORLD_AUTOMATIC_REVIEW_RECOVERY_V5_LIMIT))
+        fail("invalid_snapshot", "Single-review continuation exceeds its image or authorized world limit");
       singleImages.add(image);
+      additionalSingleReview = additional;
     }
     validateUnknownContinuationApproval(approval);
     if (approval.version === "world-automatic-image-recovery/v1") {
@@ -429,7 +438,7 @@ export function getMatchingUnknownContinuationApproval(snapshot: WorldBudgetSnap
 
 /** Pure audit; corrupt/duplicate canonical rows fail closed instead of undercounting. */
 export function auditWorldBudget(snapshot: WorldBudgetSnapshot, capMicroUsd: WorldBudgetCapMicroUsd = WORLD_BUDGET_CAP_MICRO_USD): WorldBudgetAudit {
-  if (capMicroUsd !== WORLD_BUDGET_CAP_MICRO_USD && capMicroUsd !== 6_000_000 && capMicroUsd !== 8_000_000 && capMicroUsd !== 10_000_000 && capMicroUsd !== 12_000_000) fail("invalid_input", "Unsupported verified world budget ceiling");
+  if (capMicroUsd !== WORLD_BUDGET_CAP_MICRO_USD && capMicroUsd !== 6_000_000 && capMicroUsd !== 7_000_000 && capMicroUsd !== 8_000_000 && capMicroUsd !== 10_000_000 && capMicroUsd !== 12_000_000) fail("invalid_input", "Unsupported verified world budget ceiling");
   nonempty(snapshot.worldId, "worldId");
   validateWorldUnknownContinuationApprovals(snapshot);
   const byScope = Object.fromEntries(WORLD_BUDGET_SCOPES.map(item => [item, { settledMicroUsd: 0, reservedMicroUsd: 0 }])) as WorldBudgetAudit["byScope"];
