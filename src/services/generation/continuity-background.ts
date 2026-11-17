@@ -19,7 +19,7 @@ import { canonicalChargeEvidence, WorldBudgetError, type BudgetJson } from "./wo
 import { sanitizeProviderError } from "../../domain/generation/background-provider-error";
 import { permanentFailureReason, permanentProviderFailure } from "../../domain/generation/lean-review-recovery";
 import { kingdomFlexCreateAllowed, kingdomFlexOverloaded } from '../../domain/generation/kingdom-generation';
-import { KINGDOM_GENERATION_V2, KINGDOM_GENERATION_V3, kingdomGenerationReleaseOf } from './kingdom-generation-release';
+import { KINGDOM_GENERATION_V2, kingdomGenerationReleaseOf } from './kingdom-generation-release';
 import { kingdomDefaultTail } from './kingdom-default-tail';
 
 /**
@@ -468,7 +468,7 @@ export async function askContinuityInBackground(c: Container, ask: BackgroundAsk
     const flex = question.policy.serviceTier === 'flex', v2 = pin?.version === KINGDOM_GENERATION_V2;
     if (!pin || !flex && !v2) return null;
     if (pin.worldId !== ask.worldId) return held('the question differs from its pinned Kingdom world');
-    if (flex && pin.version === KINGDOM_GENERATION_V3) return held('the pinned Kingdom release starts in Default');
+    if (flex && pin.initialTier === 'default') return held('the pinned Kingdom release starts in Default');
     const rounds = (await recordedRounds(c.db, ask.gameId)).map(x => x.round);
     const overloaded = v2 && kingdomFlexOverloaded(rounds);
     if (flex) {

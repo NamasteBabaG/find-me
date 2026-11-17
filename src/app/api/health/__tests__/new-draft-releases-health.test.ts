@@ -83,6 +83,11 @@ describe('health reports the prospective Detective judge separately from histori
   expect(compact.kingdomGenerationRelease).toMatchObject({ version: 'kingdom-generation/v3', initialTier: 'default',
     reviewEvidence: 'kingdom-native-compact/v1', worldCapMicroUsd: 4_000_000, includesUnknownReservations: true, automaticBudgetExtension: false });
   expect(compact.journeyWindowRelease).toEqual(real.journeyWindowRelease);
+  Object.assign(f.environment, { KINGDOM_GENERATION_RELEASE: 'v4' });
+  const playability = (await health()).body.visualReview.detectivesNewGames;
+  expect(playability.kingdomGenerationRelease).toEqual({ ...compact.kingdomGenerationRelease,
+    version: 'kingdom-generation/v4', reviewEvidence: 'kingdom-native-compact/v2' });
+  expect(playability.journeyWindowRelease).toEqual(real.journeyWindowRelease);
   Object.assign(f.environment, { QA_WIZARD_MOCK: 'on' });
   expect((await health()).body.visualReview.detectivesNewGames.kingdomGenerationRelease).toBeUndefined();
  });

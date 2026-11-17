@@ -5,7 +5,7 @@ import { BOUND_SUBJECT_QUALITY_ENVELOPE_READER_V2 } from "../../domain/generatio
 import { authenticateBoundSourceNeighborReading } from './bound-source-neighbor-reading';
 import { solBackgroundReviewBody } from '../../infra/generation/openai-background-review';
 import { singleMediumEvidence, singleMediumPrompt, singleMediumAnatomyPrompt } from "./single-medium-evidence";
-import { KINGDOM_GENERATION_V3, kingdomGenerationReleaseOf } from './kingdom-generation-release';
+import { kingdomGenerationReleaseOf } from './kingdom-generation-release';
 import { kingdomCompactReview } from './kingdom-compact-review';
 import { publishedCrownSubjectAnchor } from "./published-crown-repair";
 import { singleReviewHeadEvidence } from "./single-review-head-evidence";
@@ -1129,8 +1129,8 @@ async function prepareSingleLowQuestion(c: Pick<Container, "db" | "storage">, pr
     : (Array.isArray(receipt.evidenceAttempts) ? receipt.evidenceAttempts : []).filter((v: {single?:unknown;imageSha256?:unknown}) => v.single === singleVersion && v.imageSha256 === binding.imageSha256).length;
   const attempt = continued + 1;
   const sourceRelease = prepared.placementContext.release;
-  const compactKingdom = sourceRelease?.baseSceneVersion === 13 && sourceRelease.worldSlug === 'kingdom'
-    && (await kingdomGenerationReleaseOf(c.db, prepared.game.id))?.version === KINGDOM_GENERATION_V3;
+  const kingdomReviewEvidence = sourceRelease?.baseSceneVersion === 13 && sourceRelease.worldSlug === 'kingdom'
+    ? (await kingdomGenerationReleaseOf(c.db, prepared.game.id))?.reviewEvidence : undefined;
   let mediumPrompt = (singleVersion === SINGLE_MEDIUM_VISUAL_REVIEW_VERSION ? singleMediumPrompt(lowQuestion.prompt.replace(anatomy.prompt,()=>singleMediumAnatomyPrompt(anatomy.prompt)),binding,hideId) : lowQuestion.prompt).replace('"version":"' + SINGLE_VISUAL_REVIEW_VERSION + '"', '"version":"' + singleVersion + '"');
   let compositionDirections = '';
   if (receipt.retainedWindow !== undefined) {
@@ -1138,7 +1138,7 @@ async function prepareSingleLowQuestion(c: Pick<Container, "db" | "storage">, pr
     const { retainedWindowMarkerSchema, retainedWindowReviewPrompt } = await import('../../domain/generation/retained-window');
     const m = retainedWindowMarkerSchema.parse(receipt.retainedWindow), a = retainedWindowAuthorityFor(receipt.authoredReturn, m.manifestSha256);
     if (!a || singleVersion !== SINGLE_MEDIUM_VISUAL_REVIEW_VERSION) throw Error('RETAINED_WINDOW: fresh ordinary MEDIUM required');
-    compositionDirections += retainedWindowReviewPrompt(a, m.sampleX, m.sampleY, compactKingdom);
+    compositionDirections += retainedWindowReviewPrompt(a, m.sampleX, m.sampleY, kingdomReviewEvidence !== undefined);
   }
   if (receipt.sourceFigureReturn !== undefined) {
     const figure = await import('../../domain/generation/source-figure-return');
@@ -1180,7 +1180,7 @@ async function prepareSingleLowQuestion(c: Pick<Container, "db" | "storage">, pr
   const head = singleVersion === SINGLE_MEDIUM_VISUAL_REVIEW_VERSION ? await singleReviewHeadEvidence(c.db, {
     gameId: prepared.game.id, hide: entry.hide, attempt: entry.row.attempts, receipt, shipping: entry.bytes,
     geometrySha256: binding.geometrySha256, identitySha256: binding.identitySha256 }) : undefined;
-  if (compactKingdom) {
+  if (kingdomReviewEvidence) {
     const view = prepared.request.hides[0]!;
     if (!head || !sourceNeighbors || !entry.reviewContextRect || !view.returnedWindow || !view.expectation?.support || anchor)
       throw Error('KINGDOM_REVIEW: fresh ordinary MEDIUM source evidence required');
@@ -1188,6 +1188,7 @@ async function prepareSingleLowQuestion(c: Pick<Container, "db" | "storage">, pr
       + (receipt.authoredRecovery ? '\nAUTONOMOUS REPAIR: judge the repaired pixels, including all visible limbs and the new join. A diagnosis is not approval.' : '')
       + (continued ? '\nUNANSWERED TRANSPORT CONTINUATION ' + attempt + ': the earlier request ended without text or usage.' : '');
     const { question, evidence } = await kingdomCompactReview({
+      reviewEvidence: kingdomReviewEvidence,
       media: { board: prepared.request.boardPng, portrait: prepared.request.identityPng, photo: subject.photoPng,
         before: view.beforePng, after: view.afterPng, source: await sharp(prepared.composed).extract(entry.crop).png().toBuffer(),
         raw: head.raw, shipping: entry.bytes, crop: entry.crop, context: entry.reviewContextRect, returned: view.returnedWindow },

@@ -14,7 +14,7 @@ import * as nativeDetailPainterModule from "../native-detail-painter";
 import { KINGDOM_DETECTIVE_PATCH_BOARDS } from "../../../../content/detectives/kingdom/runtime-release";
 import { KINGDOM_GENERATION_WINDOWS, KINGDOM_GENERATION_WINDOWS_V2_SHA256 } from '../../../../content/detectives/retained-window-v1';
 import { retainedWindowRegion } from '../../../domain/generation/retained-window';
-import { KINGDOM_COMPACT_REVIEW, KINGDOM_FLEX_OVERLOAD_COOLDOWN_MS } from '../../../domain/generation/kingdom-generation';
+import { KINGDOM_COMPACT_REVIEW, KINGDOM_FLEX_OVERLOAD_COOLDOWN_MS, KINGDOM_PLAYABILITY_REVIEW } from '../../../domain/generation/kingdom-generation';
 import { kingdomGenerationReleaseOf } from '../kingdom-generation-release';
 import { pinDetectiveSourceScope, sealDetectiveSourceFamily } from "../source-family-scope";
 import { planWholeSourceContextRepair, stageWholeSourceContextRepair, nextWholeSourceContextWake, resumeWholeSourceContextRepair } from "../whole-source-context-repair";
@@ -252,7 +252,7 @@ function controlledSol(interrupted = false, guided = false, guidedHideId?: strin
     const prompt = (body.input as { content: { text?: string }[] }[])[0]!.content[0]!.text!, quality = prompt.includes(SUBJECT_QUALITY_BUNDLE_VERSION);
     const hideId = boundHide(prompt).hideId; expect(subjectPlanOfHide(hideId, version)).not.toBeNull();
     expect(body.reasoning).toMatchObject({ effort: prompt.includes('"version":"'+SINGLE_MEDIUM_VISUAL_REVIEW_VERSION+'"') ? "medium" : "low" });
-    if (prompt.startsWith(KINGDOM_COMPACT_REVIEW)) expect(prompt).toContain('"sourceNeighbors":<sourceNeighbors>');
+    if (prompt.startsWith(KINGDOM_COMPACT_REVIEW) || prompt.startsWith(KINGDOM_PLAYABILITY_REVIEW)) expect(prompt).toContain('"sourceNeighbors":<sourceNeighbors>');
     else if (prompt.includes(SOURCE_NEIGHBOR_BUNDLE_VERSION)) expect(prompt).toContain('"assessment":<complete final assessment envelope above including quality, subject and sourceNeighbors>');
     else expect(prompt).toContain('"assessment":<complete final quality and subject assessment envelope above>');
     if(prompt.includes("original photograph was normally deleted")){const blocks=(body.input as {content:{type:string}[]}[])[0]!.content;console.info("synthetic-crown-request",{hideId,promptBytes:Buffer.byteLength(prompt),images:blocks.filter(b=>b.type==="input_image").length,fullOutputTokens:body.max_output_tokens});}
@@ -546,9 +546,12 @@ it('prospective window stop serves the other26, permits a different-edge repair,
   expect(await boardWizardBudgetOf(container).audit(boardWizardWorldId(gameId))).toEqual(ledger);
 },1500000);
 
-it.each(['v2', 'v3'] as const)('binds the Dragon Cave erasure to the actual Sunburst mask and uses the pinned Kingdom %s review', async release => {
+it.each([
+  { release: 'v2', finding: 'overload' }, { release: 'v3', finding: 'broken-join' },
+  { release: 'v4', finding: 'peripheral-mark' }, { release: 'v4', finding: 'cut-lower-limb' },
+] as const)('binds the Dragon Cave erasure to the Sunburst mask and uses the pinned Kingdom $release review for $finding', async ({ release, finding }) => {
   fixture.kingdomRelease = release;
-  const gameId = 'kingdom-' + release + '-erasure-synthetic', hideId = 'dragoncave-detectives-hide-1';
+  const gameId = 'kingdom-' + release + '-' + finding + '-erasure-synthetic', hideId = 'dragoncave-detectives-hide-1';
   await newDetectiveWorld(gameId, 8, true, false, true, false, true);
   await db.game.update({ where: { id: gameId }, data: { paidAt: new Date() } });
   fixture.kingdomRelease = 'v1';
@@ -557,7 +560,24 @@ it.each(['v2', 'v3'] as const)('binds the Dragon Cave erasure to the actual Sunb
 
   const context = await resolveLocalPatchBoardsForGame(db, gameId, 13);
   const board = context.boards.find(b => b.board === 'dragoncave')!, hide = board.hides.find(h => h.id === hideId)!;
-  const provider = controlledSol(release === 'v2', release === 'v3', hideId, true, release === 'v2', 13, 2, 'server_is_overloaded');
+  const provider = controlledSol(finding === 'overload', finding === 'broken-join', hideId, true, release === 'v2', 13, 2, 'server_is_overloaded');
+  if (release === 'v4') {
+    const retrieve = provider.fake.retrieve.bind(provider.fake);
+    provider.fake.retrieve = async id => {
+      const answer = await retrieve(id);
+      if (answer.status !== 'completed') return answer;
+      const raw = JSON.parse(answer.reading.raw!);
+      const quality = raw.assessment.assessment.quality.hides[0].verdict;
+      if (finding === 'peripheral-mark') {
+        quality.integrationEvidence.style = 'A small blue paint mark remains at the right join. The arms and legs are coherent and the nearby props are intact.';
+      } else {
+        Object.assign(raw.continuity.cases[0], { state: 'broken', faults: [
+          { kind: 'disconnected-limb', where: 'Both trousers end in open space at the lower join, above the floor. The rail does not cover the endpoints.' },
+        ] });
+      }
+      return { ...answer, reading: { ...answer.reading, raw: JSON.stringify(raw) } };
+    };
+  }
   const forbidden = vi.fn(async () => { throw Error('Unexpected provider dispatch'); });
   const container = { ...c, visualReview: { request: forbidden }, backgroundReview: provider.fake } as Container;
   const rectangle = (width: number, height: number, background: string) =>
@@ -595,7 +615,7 @@ it.each(['v2', 'v3'] as const)('binds the Dragon Cave erasure to the actual Sunb
   expect(await sharp(shipping).extract({ left: 285, top: 569, width: 1, height: 1 }).ensureAlpha().raw().toBuffer())
     .toEqual(Buffer.from([104, 83, 115, 255]));
 
-  if (release === 'v3') {
+  if (release !== 'v2') {
     for (let step = 0; step < 4; step++) {
       const row = await db.targetVariantAsset.findUniqueOrThrow({ where: { id: restored.id } });
       if (JSON.parse(row.judgeJson!).boardReview?.raw) break;
@@ -604,11 +624,31 @@ it.each(['v2', 'v3'] as const)('binds the Dragon Cave erasure to the actual Sunb
     expect(provider.creates.map(q => [q.hideId, q.tier, q.reasoning, q.labels.length])).toEqual([[hideId, 'default', { effort: 'medium' }, 6]]);
     expect(provider.creates[0]!.prompt).toContain('ORIGINAL LEG AND BOOT');
     expect(provider.creates[0]!.prompt).toContain('HEAD_RETURN_EVIDENCE');
+    const prompt = provider.creates[0]!.prompt;
+    if (release === 'v4') {
+      expect(prompt.startsWith(KINGDOM_PLAYABILITY_REVIEW + '.')).toBe(true);
+      expect(prompt).toContain('small peripheral paint fragment can pass');
+      expect(prompt).toContain('A modest size difference is acceptable');
+      expect(prompt).toContain("target child's two arms and two legs");
+      expect(prompt).toContain('Set occluder to null for every other outcome');
+      expect(prompt).toContain('include 8, fit within 6–9');
+    } else {
+      expect(prompt.startsWith(KINGDOM_COMPACT_REVIEW + '.')).toBe(true);
+      expect(prompt).not.toContain('PLAYABILITY.');
+    }
     const row = await db.targetVariantAsset.findUniqueOrThrow({ where: { id: restored.id } });
     const receipt = JSON.parse(row.judgeJson!);
     expect(receipt.boardReview.dual.quality.nativeDetailEvidence).toMatchObject({ version: 'native-detail/v1', shippingSha256: sha256Bytes(shipping) });
-    expect(receipt.verdict).toMatchObject({ verdict: 'fail', pictureWhole: 'fail', boundaryIntegrity: { top: { status: 'fail' } } });
-    expect(row.status).not.toBe('GENERATED');
+    if (finding === 'broken-join') {
+      expect(receipt.verdict).toMatchObject({ verdict: 'fail', pictureWhole: 'fail', boundaryIntegrity: { top: { status: 'fail' } } });
+      expect(row.status).toBe('FAILED');
+    } else if (finding === 'cut-lower-limb') {
+      expect(row.status).toBe('FAILED');
+      expect(row.lastError).toContain('pictureWhole');
+    } else {
+      expect(receipt.verdict).toMatchObject({ verdict: 'pass', styleMatch: 'pass' });
+      expect(row.status).toBe('GENERATED');
+    }
     expect((await budget.audit(worldId)).unknownRequestKeys).toEqual(afterPaint.unknownRequestKeys);
     expect(await budget.readRequest(worldId, receipt.boardReview.dual.quality.requestKey)).toMatchObject({
       state: 'settled', evidence: { amountMicroUsd: 10_000 },
