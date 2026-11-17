@@ -47,11 +47,17 @@ p {
   text-wrap: pretty;
 }
 
+/* A link in running text wears the text's own colour and a soft underline that firms up under the pointer.
+   Blue underlined words in the middle of a form read as unstyled (Guy, 2026-11-17); actions that matter are
+   buttons or chips, never bare links. */
 a {
-  color: var(--sea-deep);
-  text-decoration-thickness: 2px;
+  color: inherit;
+  text-decoration-thickness: 1px;
+  text-decoration-color: color-mix(in srgb, currentColor 45%, transparent);
   text-underline-offset: 3px;
+  transition: text-decoration-color var(--dur-1);
 }
+a:hover { text-decoration-color: currentColor; }
 
 button,
 input,

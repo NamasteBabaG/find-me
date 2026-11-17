@@ -165,13 +165,18 @@ Guy: keep the fun colours, but there must be rules. A neutral version (sun for a
 | The tint run: `sun → aqua → lavender → coral` (the `-soft` tints) | A row of icon chips on paper | "How it works" and "What's inside" take the run in this order and start again (`.tint--*` in `site.css`); neighbours never share a tint |
 | A sheet's own tint (`lavender`, `aqua`) | One section, one tint | The gift sheet is lavender and its occasion icons are lavender-deep in white discs; the trust sheet is aqua and its icons are aqua-deep in white discs |
 | `--leaf` | Included, found, done | Every "included" tick (a leaf disc in a list, the bare leaf tick in running facts and on the dark price card), "found" in the game and the passport, "done" in the family area |
-| `--sea` | Interaction state | Selected cards, focus rings, input focus, links |
+| `--sea` | Interaction state | Selected cards, focus rings, input focus |
 | `--night` / `--ink` | The stage | The passport, the first-world price card, the dark secondary button |
 | `--gold` | Stars only | What a child collects; never a button |
 
 - **Down the page the sheets take turns**, never two of the same tint in a row: sun (demo) → paper → lavender (gift) → paper (price) → aqua (trust) → paper (FAQ) → sun (final).
 - **The paintings are the loudest thing on a screen.** Chrome around a board (frames, HUD, the carousel's buttons) keeps to the product's colours; a world's palette stays inside its picture.
 - A new colour on a parent screen needs a job from this table, or it is noise.
+- **Links are not a colour** (Guy, 2026-11-17: blue underlined words in a form read as unstyled). A link in running text wears the text's own colour and a soft underline that firms up under the pointer (`base.css`); a step's own small actions ("edit name, age or path", "9 places") are paper chips; anything that matters is a button.
+
+## Wizard density (2026-11-17)
+
+Guy: the whole wizard was a bit too big, and some screens scrolled for nothing. Measured on a 1366×768 laptop, every step ran 260-510px past the fold with its button under it. Now the steps keep every field and word and lose the air: a form's margin (`.create.fm-section`), a 32px step title, 24px stepper dots, 24px panel padding, the search levels as compact rows side by side, a crop circle sized by the screen's height (`--crop`), and, from 900px wide, the photo step in two columns (the picture beside its tips, consent and buttons). On short laptops (to 900px tall) a step's button bar stays at the bottom of the screen. Result: name and both photo states fit a laptop and the name step fits a phone without scrolling; the photo step is within about one button's height of the fold on a 390×844 phone. The checkout still scrolls on a phone (summary, legal text and the pay form are all required). The portrait on the creating screen is a square painting: its round frame clips it and the picture sits 1.18× inside, so its painted edges never show.
 
 ## Life on the page and in the game (2026-11-16)
 

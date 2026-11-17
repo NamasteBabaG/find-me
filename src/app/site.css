@@ -463,13 +463,11 @@
 .level-card__name { grid-area: name; font-family: var(--font-display); font-weight: 800; font-size: var(--fs-300); line-height: var(--lh-300); overflow-wrap: anywhere; }
 .level-card__line { grid-area: line; font-size: var(--fs-100); line-height: var(--lh-100); color: var(--ink-3); }
 .level-choice--invalid .level-card { border-color: var(--danger); box-shadow: 0 0 0 4px var(--coral-soft), var(--shadow-1); }
+/* Wide enough, the two answers sit side by side, each still a compact row (picture, name, line): as tall
+   centred cards they pushed the age and the button under a laptop's fold (Guy, 2026-11-17). */
 @container level (min-width: 440px) {
   .level-choice__options { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .level-card { grid-template-columns: minmax(0, 1fr); grid-template-areas: "art" "name" "line"; justify-items: center; align-content: start; row-gap: var(--space-0-5); padding: var(--space-3) var(--space-2) var(--space-2); text-align: center; }
-  .level-card__art { align-self: center; width: var(--space-8); height: var(--space-8); border-radius: var(--radius-3); margin-bottom: var(--space-1); }
-  .level-art { width: var(--space-6); height: var(--space-6); }
-  .level-card__name { font-size: var(--fs-400); line-height: var(--lh-400); }
-  .level-card__line { max-width: 24ch; }
+  .level-card__art { align-self: center; }
 }
 /* An answer, not a headline. At 32px centred and black, the example name read
    as the page's title and the age's "Choose age" was cut in half. */
@@ -494,7 +492,7 @@
 /* A laptop with a short window: the header, the dots and the title take the
    top, and the step's button used to sit a few pixels under the fold. The
    action stays on screen here too, at the bottom of whatever it belongs to. */
-@media (min-width: 721px) and (max-height: 760px) {
+@media (min-width: 721px) and (max-height: 900px) {
   .create__actions--sticky { position: sticky; bottom: 0; z-index: var(--z-ui); padding-block: var(--space-1); background: color-mix(in srgb, var(--white) 92%, transparent); backdrop-filter: blur(8px); }
 }
 @media (max-width: 720px) {
@@ -612,7 +610,11 @@
 .summary__face { width: var(--space-10); height: var(--space-10); flex-shrink: 0; }
 .summary__identity { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: var(--space-2); align-items: center; }
 .summary__identity > div { min-width: 0; display: grid; gap: var(--space-0-5); }
-.summary__edit { justify-self: start; display: inline-flex; align-items: center; min-height: var(--touch-min); font-size: var(--fs-100); }
+/* "Edit name, age or path" and "9 places" are small chips, not loose blue underlined text (Guy, 2026-11-17).
+   Drawn 32px tall; an invisible band above and below keeps the 48px a finger needs. */
+.summary__edit, .summary__more > summary { position: relative; justify-self: start; display: inline-flex; align-items: center; gap: var(--space-0-5); min-height: var(--space-4); padding-inline: var(--space-2); border-radius: var(--radius-pill); background: var(--paper-2); color: var(--ink); font-family: var(--font-display); font-weight: 700; font-size: var(--fs-100); line-height: var(--lh-100); text-decoration: none; cursor: pointer; transition: background var(--dur-1); }
+.summary__edit::after, .summary__more > summary::after { content: ""; position: absolute; inset: calc(var(--space-1) * -1) 0; }
+.summary__edit:hover, .summary__more > summary:hover { background: var(--paper-3); }
 .summary__passport { padding: var(--space-2); background: var(--sun-soft); border-radius: var(--radius-2); }
 .summary__pay[aria-busy="true"] .fm-btn__label { visibility: visible; opacity: 1; }
 .summary__pay[aria-busy="true"] .fm-spinner { position: static; margin: 0; }
@@ -625,13 +627,84 @@
 .summary__row { display: flex; justify-content: space-between; gap: var(--space-2); padding-block: var(--space-1); border-bottom: 1px solid var(--line); }
 .summary__row:last-child { border-bottom: 0; }
 .summary__scenes { display: flex; gap: var(--space-1); flex-wrap: wrap; }
-.summary__more > summary { cursor: pointer; font-weight: 700; color: var(--sea-deep); font-size: var(--fs-100); line-height: var(--lh-100); list-style: none; display: inline-flex; align-items: center; min-height: var(--touch-min); }
+.summary__more > summary { list-style: none; }
 .summary__more > summary::-webkit-details-marker { display: none; }
-.summary__more > summary::before { content: "▸ "; white-space: pre; }
-/* A closed disclosure points the way the line reads. */
-.summary__more:dir(rtl) > summary::before { content: "◂ "; }
-.summary__more[open] > summary::before { content: "▾ "; }
-.summary__more[open] > summary { margin-bottom: 0; }
+/* The drawn chevron, never a typed triangle: a closed disclosure points the way the line reads; open, it points down. */
+.summary__more > summary::before { content: ""; flex: none; width: var(--space-2); height: var(--space-2); background: currentColor; -webkit-mask: var(--icon-chevron) center / contain no-repeat; mask: var(--icon-chevron) center / contain no-repeat; transform: rotate(-90deg); transition: transform var(--dur-2) var(--ease-expo); }
+.summary__more:dir(rtl) > summary::before { transform: rotate(90deg); }
+.summary__more[open] > summary::before { transform: none; }
+.summary__more[open] > summary { margin-bottom: var(--space-1); }
+
+/* ─── Wizard density (Guy, 2026-11-17: "the whole wizard is a bit too big; no needless scrolling") ───
+   Measured before: on a 1366×768 laptop every step ran 260-510px past the fold with its button under it,
+   and a phone's photo and summary steps 250-750px. The steps keep every field, word and control; they
+   lose the air around them: a form's margin instead of a landing's, a step title instead of a section
+   title, smaller dots, tighter cards, a crop circle sized to the screen's height. Display only. */
+.create.fm-section { padding-block: var(--space-4) var(--space-8); }
+.create { gap: var(--space-3); }
+.create__head { gap: var(--space-1); }
+.create__title { font-size: var(--fs-500); line-height: var(--lh-500); letter-spacing: -0.02em; }
+.create__head .fm-lead { font-size: var(--fs-200); line-height: var(--lh-200); }
+.create__qa { max-width: 80ch; margin-inline: auto; font-size: var(--fs-50); line-height: var(--lh-50); color: var(--ink-2); }
+/* The step's own panels (the name form, the summary, the pay form, a package); the world and level cards keep theirs. */
+.create .fm-card--pad-4, .create .fm-card--pad-6 { padding: var(--space-3) var(--space-4); border-radius: var(--radius-3); }
+.create__child-fields { gap: var(--space-2); }
+.level-choice__title { font-size: var(--fs-200); line-height: var(--lh-200); }
+.level-choice__options { gap: var(--space-1); }
+.create .fm-label { font-size: var(--fs-200); line-height: var(--lh-200); }
+.uploader { gap: var(--space-2); }
+.dropzone { min-height: 0; padding: var(--space-4) var(--space-3); gap: var(--space-1); }
+.dropzone__icon { width: var(--space-8); height: var(--space-8); font-size: var(--fs-500); }
+/* The circle follows the screen's height as well as its width, so the consent and the button stay in view. */
+.uploader { --crop: min(68vw, 30svh, 300px); }
+.cropper { width: var(--crop); height: var(--crop); box-shadow: 0 0 0 6px var(--white), 0 0 0 8px var(--sun-soft), var(--shadow-2); }
+.cropper__zoom-row { width: var(--crop); }
+/* Wide enough, the photo step is two columns instead of one tall one: the picture (the drop zone, or the
+   crop circle and its zoom) on one side, what goes with it (tips, the privacy line, the consent, the buttons)
+   on the other. Same elements, same order for a screen reader. */
+@media (min-width: 900px) {
+  .uploader:has(> .dropzone), .uploader:has(> .cropper) { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); column-gap: var(--space-5); row-gap: var(--space-2); align-items: start; }
+  .uploader > .uploader__error, .uploader:has(> .dropzone) > .create__actions { grid-column: 1 / -1; }
+  .uploader:has(> .dropzone) > .dropzone { grid-row: span 2; align-self: stretch; justify-content: center; }
+  .uploader:has(> .dropzone) > .tips, .uploader:has(> .dropzone) > .fm-stack { grid-column: 2; }
+  .uploader:has(> .cropper) { grid-template-columns: auto minmax(0, 1fr); align-items: center; }
+  .uploader > .cropper { grid-column: 1; grid-row: span 2; }
+  .uploader > .cropper__zoom-field { grid-column: 1; }
+  .uploader > .cropper__lead { grid-column: 2; grid-row: 1; align-self: end; max-width: none; margin: 0; text-align: start; }
+  .uploader > .create__actions--panel { grid-column: 2; grid-row: 2 / span 2; align-self: start; }
+  .uploader:has(> .uploader__error) > .cropper__lead { grid-row: 2; }
+  .uploader:has(> .uploader__error) > .create__actions--panel { grid-row: 3 / span 2; }
+  .uploader { --crop: min(30svh, 280px); }
+}
+.package { gap: var(--space-1); }
+.package__n { font-size: var(--fs-700); line-height: var(--lh-700); }
+.package__price { font-size: var(--fs-500); line-height: var(--lh-500); }
+.summary__face { width: var(--space-8); height: var(--space-8); }
+.create .fm-card--pad-4.fm-stack--3, .create .fm-card--pad-6.fm-stack--3 { gap: var(--space-2); }
+@media (max-width: 720px) {
+  .create.fm-section { padding-block: var(--space-2) var(--space-6); }
+  .create { gap: var(--space-2); }
+  .create__head { gap: var(--space-0-5); }
+  .create .fm-card--pad-4, .create .fm-card--pad-6 { padding: var(--space-3) var(--space-2); }
+  /* A phone: the circle takes a quarter of the height, the tips wrap as short ticked words, the drop zone is a
+     compact panel, and "another photo" sits beside the main button instead of under it. */
+  .uploader { --crop: min(60vw, 24svh, 280px); }
+  .uploader:has(> .cropper) { gap: var(--space-1); }
+  .uploader > .cropper { margin-block: var(--space-1); }
+  .uploader > .cropper__lead { font-size: var(--fs-100); line-height: var(--lh-100); }
+  /* The two magnifiers say "zoom"; the word stays for screen readers only. */
+  .cropper__zoom-field > .fm-hint { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .cropper, .cropper__zoom { width: var(--crop); }
+  .cropper { height: var(--crop); }
+  .dropzone { padding: var(--space-3) var(--space-2); }
+  .dropzone__icon { width: var(--space-6); height: var(--space-6); font-size: var(--fs-400); }
+  .tips__list { display: flex; flex-wrap: wrap; gap: var(--space-0-5) var(--space-2); }
+  .uploader .create__actions--row { flex-direction: row-reverse; flex-wrap: wrap; align-items: center; }
+  .uploader .create__actions--row > .fm-btn--lg { flex: 1; width: auto; }
+  .uploader .create__actions--row > .fm-btn--ghost { flex: none; width: auto; padding-inline: var(--space-2); }
+  .summary__identity { gap: var(--space-1) var(--space-2); }
+  .summary__passport { padding: var(--space-1) var(--space-2); }
+}
 
 /* Mock payment (sandbox PSP page) */
 .psp { max-width: 560px; }
@@ -663,7 +736,9 @@
 }
 .cp__stage--met::before { border-style: solid; animation: cp-bloom var(--dur-3) var(--ease-out) both; }
 .cp__stage--done::before { border-style: solid; animation: none; }
-.cp__avatar { width: 100%; height: 100%; border-radius: var(--radius-pill); object-fit: cover; background: var(--white); animation: cp-pop var(--dur-3) var(--ease-out) both; }
+/* The round frame clips; the square painting inside is zoomed a little past its own painted edges. */
+.cp__portrait { display: block; width: 100%; height: 100%; border-radius: var(--radius-pill); overflow: hidden; background: var(--white); isolation: isolate; animation: cp-pop var(--dur-3) var(--ease-out) both; }
+.cp__avatar { display: block; width: 100%; height: 100%; object-fit: cover; transform: scale(1.18); transform-origin: 50% 42%; }
 .cp--done { gap: var(--space-3); }
 .cp__delivery { display: flex; flex-direction: column; align-items: center; gap: var(--space-1); padding-top: var(--space-2); border-top: 1px solid var(--line); width: 100%; }
 .cp__manage { display: inline-flex; align-items: center; justify-content: center; min-height: var(--touch-min); padding-inline: var(--space-2); }
@@ -700,7 +775,7 @@
   .cp__open:hover, .cp__open:focus-visible, .cp__open:active { animation-play-state: paused; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .cp__stage::before, .cp__pencil, .cp__avatar { animation: none; }
+  .cp__stage::before, .cp__pencil, .cp__portrait { animation: none; }
   .cp__fill { transition: none; }
 }
 @media (max-width: 720px) {
