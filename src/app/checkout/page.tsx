@@ -8,7 +8,11 @@ import { gameShape, worldsOwned } from "@/services/world-catalog.service";
 import { currentUser, isAdminEmail } from "@/lib/server/session";
 import { boardsFor, priceFor, WORLD_PRICES } from "@/domain/package";
 import { childHasPaidWorld } from "@/services/child-pricing.service";
-import { isCollectionVersion } from "@/domain/scene/local-patch-versions";
+import { parsePhotoCrop } from "@/domain/photo-frame";
+import { FramedPhoto } from "@/ui/FramedPhoto";
+import { WorldEmblem } from "@/ui/WorldEmblem";
+import { Icon } from "@/ui/Icon";
+import { LinkButton } from "@/ui/Button";
 import { getCurrency, getI18n } from "@/i18n/server";
 import { formatMoney, pick, tf } from "@/i18n";
 import { CreateFrame } from "../create/CreateLayout";
@@ -43,16 +47,21 @@ export default async function CheckoutPage({ searchParams }: { searchParams: Pro
   if (!purchase && !terms.openPayment && level === "detectives" && !await detectiveSelectionEligible(c, draft)) redirect(creationDraftHref("scenes", draft.id));
   const [summary, worldCount] = await Promise.all([draftSummary(c, draft.id), worldsForDraft(c, draft.styleVersion, level).then(w => w.length)]);
   if (!summary?.pkg || summary.scenes.length !== boardsFor(summary.pkg.tier)) redirect(creationDraftHref("scenes", draft.id));
-  // When the package takes every world there is, the worlds step was skipped, so "back" means the package step.
-  const backHref = purchase ? worldPurchaseHref(purchase.familyChildId, purchase.worldSlug, purchase.returnGameId) : worldCount === summary.pkg.worldCount ? creationDraftHref("package", draft.id) : creationDraftHref("scenes", draft.id);
+  // When the draft holds every world there is, the worlds step skips itself, so "back" means the photo.
+  const backToPhoto = worldCount === summary.pkg.worldCount;
+  const backHref = purchase ? worldPurchaseHref(purchase.familyChildId, purchase.worldSlug, purchase.returnGameId) : creationDraftHref(backToPhoto ? "photo" : "scenes", draft.id);
+  const backLabel = purchase ? t.worldPurchase.checkoutBack : backToPhoto ? t.create.checkout.backPhoto : t.create.checkout.backScenes;
   const ck = t.create.checkout;
   const currency = await getCurrency();
   const continuation = !!user && user.id === draft.ownerId && await childHasPaidWorld(c.db, { ownerId: user.id, familyChildId: draft.familyChildId, excludeGameId: draft.id });
   const price = formatMoney(priceFor(summary.pkg.tier, currency, continuation), currency, locale);
-  const packageName = continuation && summary.pkg.tier === "ONE_WORLD" ? t.home.pricing.additionalTitle : pick(summary.pkg.name, locale);
   const name = summary.child?.displayName ?? "";
   const shape = gameShape(summary.game.scenes);
-  const worldNames = worldsOwned(summary.game.scenes.map(s => s.sceneSlug)).map(w => pick(w.name, locale)).join(" · ");
+  const worlds = worldsOwned(summary.game.scenes.map(s => s.sceneSlug));
+  const photoSrc = purchase ? `/api/drafts/photo?game=${encodeURIComponent(draft.id)}` : `/api/drafts/photo?draft=${encodeURIComponent(draft.id)}`;
+  const facts = [summary.child?.ageYears != null ? tf(ck.childAge, { age: summary.child.ageYears }) : null,
+    // The parent sees the path they chose before paying; a game from before the cards says nothing new.
+    draft.searchLevel ? t.create.level[level].name : null].filter(Boolean).join(" · ");
   // The address the parent typed last time, not the account they happen to be
   // signed in with: a grandparent buying a gift while logged in as themselves
   // came back from a declined card to find their own email in the box.
@@ -61,57 +70,59 @@ export default async function CheckoutPage({ searchParams }: { searchParams: Pro
   const outcome = params.declined === "1" ? "declined" : params.cancelled === "1" ? "cancelled" : null;
 
   return (
-    <CreateFrame width="mid" step={4} title={ck.title} user={user} isAdmin={isAdminEmail(user?.email)}>
+    <CreateFrame width="mid" step={3} title={ck.title} user={user} isAdmin={isAdminEmail(user?.email)}>
+      {/* Two equal halves: what is being bought, and paying for it (Guy, 2026-11-18). Only what the
+          parent needs to decide: who, which world, how big, the price. The board list stays a surprise. */}
       <div className="summary">
-        <div className="fm-card fm-card--pad-4 fm-stack fm-stack--3">
-          <div className="summary__identity">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={purchase ? `/api/drafts/photo?game=${encodeURIComponent(draft.id)}` : `/api/drafts/photo?draft=${encodeURIComponent(draft.id)}`} alt="" className="fm-sticker summary__face" width={80} height={80} />
-            <div>
-              <h3>{tf(ck.gameTitle, { name })}</h3>
-              {summary.child?.ageYears != null ? <p className="fm-muted">{tf(ck.childAge, { age: summary.child.ageYears })}</p> : null}
-              {/* The parent sees what they chose before paying; a game from before the cards says nothing new. */}
-              {draft.searchLevel ? <p className="fm-muted">{tf(t.create.level.chosen, { level: t.create.level[level].name })}</p> : null}
-              {purchase ? <p className="fm-hint">{tf(t.worldPurchase.frozenAge, { age: summary.child?.ageYears ?? "" })}</p> : <a className="summary__edit" href={creationDraftHref("name", draft.id)}>{draft.searchLevel ? ck.editChildLevel : ck.editChild}</a>}
+        <section className="fm-card summary__card summary__order" aria-labelledby="order-title">
+          <div className="summary__who">
+            <FramedPhoto src={photoSrc} crop={parsePhotoCrop(draft.childProfile.photoCropJson)} size={64} className="summary__face" />
+            <div className="summary__lines">
+              <h2 id="order-title" className="summary__title">{tf(ck.gameTitle, { name })}</h2>
+              {facts ? <p className="summary__meta">{facts}</p> : null}
+              {purchase ? <p className="summary__meta">{tf(t.worldPurchase.frozenAge, { age: summary.child?.ageYears ?? "" })}</p> : null}
             </div>
+            {purchase ? null : (
+              <a className="summary__edit" href={creationDraftHref("name", draft.id)} aria-label={draft.searchLevel ? ck.editChildLevel : ck.editChild}>
+                <Icon name="pencil" />
+                {ck.edit}
+              </a>
+            )}
           </div>
-          <div className="fm-stack fm-stack--1">
-            <h3>{worldNames}</h3>
-            <p className="fm-muted">{tf(ck.summaryLine, { pkg: packageName, boards: shape.places, spots: shape.spots })}</p>
-          </div>
-          {/* The full list is there for whoever wants it; it is not the first thing on the page. */}
-          <details className="summary__more">
-            <summary>{tf(ck.places, { n: summary.scenes.length })}</summary>
-            <div className="summary__scenes">
-              {summary.scenes.map((s) => (
-                <span key={s.slug} className="fm-badge fm-badge--sea">
-                  {pick(s.name, locale)}
-                </span>
-              ))}
+          {worlds.map((world) => (
+            <div key={world.slug} className="summary__world">
+              <WorldEmblem slug={world.slug} className="summary__emblem" />
+              <div className="summary__lines">
+                <h3 className="summary__world-name">{pick(world.name, locale)}</h3>
+                {worlds.length === 1 ? <p className="summary__meta">{tf(ck.summaryLine, { boards: shape.places, spots: shape.spots })}</p> : null}
+              </div>
             </div>
-          </details>
-          <div>
-            <div className="summary__row">
-              <span>{ck.total}</span>
-              <strong className="package__worlds">{price}</strong>
-            </div>
+          ))}
+          {worlds.length > 1 ? <p className="summary__meta">{tf(ck.summaryLine, { boards: shape.places, spots: shape.spots })}</p> : null}
+          <p className="summary__included"><Icon name="check" strokeWidth={3} />{t.home.pricing.passport}</p>
+          {continuation ? <p className="summary__meta">{tf(t.home.pricing.returning, { price: formatMoney(WORLD_PRICES[currency].additional, currency, locale) })}</p> : null}
+          <div className="summary__total">
+            <span>{ck.total}</span>
+            <span className="summary__price"><strong>{price}</strong><small>{ck.vat}</small></span>
           </div>
-          <p className="summary__passport">{t.home.pricing.passport}</p>
-          {continuation ? <p className="fm-hint">{tf(t.home.pricing.returning, { price: formatMoney(WORLD_PRICES[currency].additional, currency, locale) })}</p> : null}
-          <p className="fm-small">{ck.vat}</p>
+        </section>
+        <div className="summary__side">
+          <CheckoutForm
+            defaultEmail={defaultEmail}
+            priceLabel={price}
+            outcome={outcome}
+            gameId={purchase ? draft.id : undefined}
+            draftGameId={purchase ? undefined : draft.id}
+            lockedEmail={Boolean(purchase)}
+          />
+          {user && lastOrder?.userId === user.id && outstandingCheckout(lastOrder) ? <ClosePaymentForm gameId={draft.id} orderId={lastOrder.id} /> : null}
         </div>
-        <div className="fm-stack fm-stack--3"><CheckoutForm
-          automaticPublication={summary.game.scenes.every(scene => scene.sceneVersion === 7 || isCollectionVersion(scene.sceneVersion))}
-          defaultEmail={defaultEmail}
-          priceLabel={price}
-          outcome={outcome}
-          backHref={backHref}
-          gameId={purchase ? draft.id : undefined}
-          draftGameId={purchase ? undefined : draft.id}
-          backLabel={purchase ? t.worldPurchase.checkoutBack : undefined}
-          lockedEmail={Boolean(purchase)}
-        />
-        {user && lastOrder?.userId === user.id && outstandingCheckout(lastOrder) ? <ClosePaymentForm gameId={draft.id} orderId={lastOrder.id} /> : null}</div>
+      </div>
+      <div className="summary__back">
+        <LinkButton href={backHref} variant="ghost">
+          <span className="fm-btn__arrow fm-btn__arrow--back" aria-hidden />
+          {backLabel}
+        </LinkButton>
       </div>
     </CreateFrame>
   );

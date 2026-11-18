@@ -50,6 +50,13 @@ if (activeBoardCatalog.boards.length !== 9 || activeBoardAssetPaths.length !== 3
  *
  * `img-src` allows data: and blob: because the photo step previews the parent's
  * file locally before it is ever uploaded.
+ *
+ * `'wasm-unsafe-eval'` lets the photo step compile WebAssembly: it finds the
+ * child's face in the parent's own browser (MediaPipe, served from this origin)
+ * so the picture never leaves the device before the parent confirms it. It
+ * allows WebAssembly compilation only, not JavaScript eval, and it has to be on
+ * every page: a policy belongs to the document, and the wizard reaches the
+ * photo step by client-side navigation from wherever the visit began.
  */
 const csp = [
   "default-src 'self'",
@@ -61,7 +68,7 @@ const csp = [
   "media-src 'self' data:",
   "font-src 'self' data:",
   "style-src 'self' 'unsafe-inline'",
-  `script-src 'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ""}`,
+  `script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'${isDev ? " 'unsafe-eval'" : ""}`,
   `connect-src 'self'${isDev ? " ws: http://localhost:*" : ""}`,
   "upgrade-insecure-requests",
 ].join("; ");

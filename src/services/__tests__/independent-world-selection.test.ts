@@ -28,6 +28,32 @@ async function draft(localPatch = false) {
 }
 const scenes = (id: string) => db.gameScene.findMany({ where: { gameId: id }, orderBy: { orderIndex: "asc" } });
 
+describe("a new adventure starts with one world, chosen without a package step", () => {
+  it("takes the one-world package together with the chosen world", async () => {
+    const g = await draft(), c = context();
+    expect(await selectWorlds(c, g.id, ["kingdom"])).toEqual({ ok: true });
+    const game = await db.game.findUniqueOrThrow({ where: { id: g.id } });
+    expect(game.packageTier).toBe("ONE_WORLD");
+    expect(game.status).toBe("PACKAGE_SELECTED");
+    expect((await scenes(g.id)).map(s => s.sceneSlug)).toEqual(boardsOfWorlds(["kingdom"]));
+  });
+  it("still refuses two worlds, an unknown world and a draft without an approved photo, writing nothing", async () => {
+    const two = await draft(), c = context();
+    for (const slugs of [["journey", "kingdom"], ["no-such-world"], []]) expect(await selectWorlds(c, two.id, slugs)).toMatchObject({ ok: false });
+    expect(await db.game.findUniqueOrThrow({ where: { id: two.id } })).toMatchObject({ packageTier: null, status: "PHOTO_APPROVED" });
+    expect(await scenes(two.id)).toEqual([]);
+    const early = await db.game.create({ data: { id: `independent-${++sequence}`, ownerId: "parent", draftToken: `cookie-${sequence}`, status: "PHOTO_VALIDATING" } });
+    expect(await selectWorlds(c, early.id, ["kingdom"])).toMatchObject({ ok: false });
+    expect(await scenes(early.id)).toEqual([]);
+  });
+  it("keeps a package the draft already has", async () => {
+    const g = await draft(), c = context();
+    await selectPackage(c, g.id, "TWO_WORLDS");
+    expect(await selectWorlds(c, g.id, ["timetravel", "journey"])).toEqual({ ok: true });
+    expect((await db.game.findUniqueOrThrow({ where: { id: g.id } })).packageTier).toBe("TWO_WORLDS");
+  });
+});
+
 describe("independent worlds are a choice, not a difficulty ladder", () => {
   it("allows the second world as the only purchased world, and preserves it on returning to packages", async () => {
     const g = await draft(), c = context();

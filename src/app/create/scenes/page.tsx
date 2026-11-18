@@ -12,8 +12,6 @@ import { pick, tf } from "@/i18n";
 import { CreateFrame } from "../CreateLayout";
 import { currentDraft } from "@/lib/server/current-draft";
 import { ScenePicker } from "./ScenePicker";
-import { boardPresentation, presentationMatchesScene } from "../../../../content/home/board-presentation";
-import { findScene } from "../../../../content/scenes";
 
 export async function generateMetadata() {
   const { t } = await getI18n();
@@ -26,8 +24,10 @@ export default async function CreateScenesPage({ searchParams }: { searchParams:
   const c = getContainer();
   const [user, draft, { t, locale }] = await Promise.all([currentUser(), currentDraft(params?.draft, "creation"), getI18n()]);
   if (!draft?.childProfile) redirect(creationDraftHref("name", params?.draft));
-  if (!draft.packageTier || !isPackageTier(draft.packageTier)) redirect(creationDraftHref("package", draft.id));
-  const want = PACKAGES[draft.packageTier].worldCount;
+  if (!draft.childProfile.originalPhotoAssetId) redirect(creationDraftHref("photo", draft.id));
+  // There is no package step: a new adventure starts with one world, which this
+  // step settles when the parent picks it. A draft that has a package keeps it.
+  const want = PACKAGES[draft.packageTier && isPackageTier(draft.packageTier) ? draft.packageTier : "ONE_WORLD"].worldCount;
   const level = storedSearchLevel(draft.searchLevel);
   const version = sceneVersionForLevel(draft.styleVersion, level);
   const terms = await searchLevelTerms(c, draft);
@@ -40,22 +40,15 @@ export default async function CreateScenesPage({ searchParams }: { searchParams:
   const heldBoards = new Set(draft.scenes.map((s) => s.sceneSlug));
   const chosen = worlds.filter((w) => boardSlugs(w).every((slug) => heldBoards.has(slug)));
 
-  // Nothing to choose: the package takes every world there is, and the package
-  // step already stored that selection. Rendering a page must never write, so we
-  // only skip ahead when the draft is already complete; otherwise the picker posts it.
+  // Nothing to choose: the draft already holds every world there is. Rendering a
+  // page must never write, so we only skip ahead when the draft is already
+  // complete; otherwise the picker posts it.
   if (worlds.length === want && chosen.length === want) redirect(creationDraftHref("checkout", draft.id));
 
-  const options = worlds.map((w) => {
-    const slug = boardSlugs(w)[0]!;
-    const scene = findScene(slug, version);
-    return {
-    slug: w.slug,
-    name: pick(w.name, locale),
-    tagline: pick(w.tagline, locale),
-    thumbnail: presentationMatchesScene(slug, scene?.art) ? boardPresentation(slug)!.thumbnail : scene?.art.thumbnail ?? w.map.artPortrait ?? w.map.art,
-  }; });
+  // The emblem stands for the world on the card; its boards stay hidden until the child plays.
+  const options = worlds.map((w) => ({ slug: w.slug, name: pick(w.name, locale), tagline: pick(w.tagline, locale) }));
   return (
-    <CreateFrame width="mid" step={3} title={t.create.scenes.title} lead={t.create.scenes.lead} user={user} isAdmin={isAdminEmail(user?.email)}>
+    <CreateFrame width="mid" step={2} title={t.create.scenes.title} user={user} isAdmin={isAdminEmail(user?.email)}>
       <ScenePicker draftGameId={draft.id} note={explorersOnly.length ? tf(t.create.scenes.explorersOnly, { worlds: explorersOnly.join(", ") }) : undefined} key={`${want}:${chosen.map(w => w.slug).join(",")}`} scenes={options} want={want} preselected={chosen.map((w) => w.slug)} />
     </CreateFrame>
   );

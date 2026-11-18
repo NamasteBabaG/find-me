@@ -12,7 +12,7 @@ const prefetch = vi.hoisted(() => vi.fn());
 vi.mock("next/navigation", () => ({ useRouter: () => ({ prefetch }) }));
 beforeEach(() => vi.stubGlobal("React", React));
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
-const options = ["journey", "kingdom", "timetravel"].map(slug => ({ slug, name: slug, tagline: "Nine places", thumbnail: "/demo.webp" }));
+const options = ["journey", "kingdom", "timetravel"].map(slug => ({ slug, name: slug, tagline: "Nine places" }));
 const submitted = (container: HTMLElement) => [...container.querySelectorAll<HTMLInputElement>('input[name="scene"]')].map(input => input.value);
 
 describe("accessible independent-world selection", () => {

@@ -95,8 +95,7 @@
    state and not a colour. */
 .tf-world__base,
 .tf-world__patch,
-.tf-portrait img,
-.pick img { filter: var(--lit-art); }
+.tf-portrait img { filter: var(--lit-art); }
 
 /* Readable game preview, not a squeezed screenshot. The chrome flows as a
    layout: on narrow screens the rail starts AFTER the HUD's actual height.
@@ -416,37 +415,43 @@
 @keyframes final-look { 0%, 20% { transform: translateX(0); } 35%, 50% { transform: translateX(-1.6px); } 65%, 80% { transform: translateX(1.2px); } 100% { transform: translateX(0); } }
 @media (prefers-reduced-motion: reduce) { .final__peek, .final__peek circle { animation: none; } }
 
-/* ═══ Create flow ═══ */
-.create { display: flex; flex-direction: column; gap: var(--space-4); }
-.create__head { animation: fm-fade-up var(--dur-3) var(--ease-out) both;  display: flex; flex-direction: column; gap: var(--space-2); align-items: center; text-align: center; max-width: 64ch; margin-inline: auto; }
-.create__title { font-size: var(--fs-700); line-height: var(--lh-700); letter-spacing: -0.02em; }
-/* The way on is in the middle of the step, where the eye already is, with the
-   way back quiet underneath it. It used to sit off in a corner of the card. */
+/* ═══ Create flow ═══
+   One block for the whole wizard (rewritten 2026-11-18, Guy: "the wizard is too big; only the words
+   it must have; a wow wizard"). Four steps: name and age, photo, world, payment. Each step is a form's
+   width and a form's margins, and its button is in view on a laptop. */
+.create.fm-section { padding-block: var(--space-4) var(--space-8); }
+.create { display: flex; flex-direction: column; gap: var(--space-3); }
+.create__head { display: flex; flex-direction: column; gap: var(--space-1); align-items: center; text-align: center; max-width: 64ch; margin-inline: auto; animation: fm-fade-up var(--dur-3) var(--ease-out) both; }
+.create__title { font-size: var(--fs-500); line-height: var(--lh-500); letter-spacing: -0.02em; text-wrap: balance; }
+.create__head .fm-lead { font-size: var(--fs-200); line-height: var(--lh-200); }
+.create__qa { max-width: 80ch; margin-inline: auto; font-size: var(--fs-50); line-height: var(--lh-50); color: var(--ink-2); }
+/* The way on is in the middle of the step, where the eye already is, with the way back quiet under it. */
 .create__actions { display: flex; flex-direction: column-reverse; align-items: center; justify-content: center; gap: var(--space-1); }
 .create__actions > .fm-btn, .create__actions > button { flex: none; }
-/* A panel that holds the consent and the buttons it unlocks, as one block. */
-.create__actions--panel { flex-direction: column; align-items: stretch; gap: var(--space-2); }
-.create__actions--row { width: 100%; }
-.create__child-fields { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-3); }
+.create .fm-label { font-size: var(--fs-200); line-height: var(--lh-200); }
+.create .fm-card--pad-4, .create .fm-card--pad-6 { padding: var(--space-3) var(--space-4); border-radius: var(--radius-3); }
+.create .fm-card--pad-4.fm-stack--3, .create .fm-card--pad-6.fm-stack--3 { gap: var(--space-2); }
+
+/* ─── 1. Name, path, age ─── */
+.create__child-fields { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-2); }
 .create__child-fields > .fm-field { min-width: 0; }
-/* The long age note runs under both fields, so the row stays level. */
 .create__child-note { grid-column: 1 / -1; margin-top: calc(var(--space-1) * -1); }
 @media (min-width: 721px) { .create__child-fields { grid-template-columns: minmax(0, 1fr) minmax(200px, 240px); } }
 /* With the search level the step reads top to bottom: name, path, exact age (Guy, 2026-10-09). */
 @media (min-width: 721px) { .create__child-fields--level { grid-template-columns: minmax(0, 1fr); } }
-
-/* Explorers or Detectives: two answers of equal weight, each card the whole tap
-   target. A phone stacks them as rows (at 320px two columns left 84px for a word);
-   a wider form sets them side by side. Selection is the wizard's own language
-   (sea rim and ring, a tick that pops), never colour alone. */
+/* An answer, not a headline: the typed name in the display face, at a field's size. */
+.create__child-fields .fm-input { min-height: var(--control-h); font-family: var(--font-display); font-weight: 600; font-size: var(--fs-300); line-height: var(--lh-300); text-align: start; }
+.create__child-fields .fm-input::placeholder { font-weight: 500; color: var(--ink-3); }
+/* Explorers or Detectives: two answers of equal weight, each card the whole tap target; a phone stacks
+   them as rows, a wider form sets them side by side. Selection is sea, with a tick that pops. */
 .level-choice { container: level / inline-size; min-width: 0; margin: 0; padding: 0; border: 0; display: flex; flex-direction: column; gap: var(--space-1); }
-.level-choice__title { padding: 0; font-family: var(--font-display); font-weight: 700; font-size: var(--fs-300); line-height: var(--lh-300); }
-.level-choice__options { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-2); padding-top: var(--space-1); }
+.level-choice__title { padding: 0; font-family: var(--font-display); font-weight: 700; font-size: var(--fs-200); line-height: var(--lh-200); }
+.level-choice__options { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-1); padding-top: var(--space-1); }
 .level-card { position: relative; display: grid; grid-template-columns: auto minmax(0, 1fr); grid-template-areas: "art name" "art line"; align-content: center; column-gap: var(--space-2); min-width: 0; min-height: var(--touch-min); padding: var(--space-2); text-align: start; color: var(--ink); }
 .level-card:active { transform: scale(0.98); }
 .level-card:has(.level-card__input:focus-visible) { outline: 3px solid var(--focus); outline-offset: 4px; }
 .level-card__input { position: absolute; opacity: 0; width: 0; height: 0; pointer-events: none; }
-.level-card__art { grid-area: art; align-self: start; position: relative; display: grid; place-items: center; width: var(--space-6); height: var(--space-6); border-radius: var(--radius-2); transform: rotate(-4deg); transition: transform var(--dur-2) var(--ease-pop); }
+.level-card__art { grid-area: art; align-self: center; position: relative; display: grid; place-items: center; width: var(--space-6); height: var(--space-6); border-radius: var(--radius-2); transform: rotate(-4deg); transition: transform var(--dur-2) var(--ease-pop); }
 .level-card[data-level="explorers"] .level-card__art { background: var(--aqua-soft); }
 .level-card[data-level="detectives"] .level-card__art { background: var(--lavender-soft); }
 .level-card:hover .level-card__art, .level-card.fm-card--selected .level-card__art { transform: rotate(4deg); }
@@ -455,271 +460,220 @@
 .level-art__lens { fill: var(--sea-soft); }
 .level-art__spark { fill: var(--sun); }
 .level-art__step { fill: var(--ink); }
-/* The tick rides the card's corner: an empty ring until chosen, a sea tick that
-   pops once chosen. Outside the text box, so a phone row never loses a word to it. */
 .level-card__check { position: absolute; top: calc(var(--space-1) * -1); inset-inline-end: calc(var(--space-1) * -1); display: grid; place-items: center; width: var(--space-3); height: var(--space-3); border-radius: var(--radius-pill); background: var(--white); box-shadow: inset 0 0 0 2px var(--ink-4), var(--shadow-1); transition: background var(--dur-1), box-shadow var(--dur-1); }
 .level-card.fm-card--selected .level-card__check { background: var(--sea); box-shadow: var(--shadow-1); animation: fm-pop-in var(--dur-3) var(--ease-pop); }
-.level-card.fm-card--selected .level-card__check::after { content: "✓"; font-family: var(--font-display); font-weight: 900; font-size: var(--fs-100); line-height: 1; color: var(--white); }
+.level-card.fm-card--selected .level-card__check::after { content: ""; width: var(--space-2); height: var(--space-2); background: var(--white); -webkit-mask: var(--icon-check) center / contain no-repeat; mask: var(--icon-check) center / contain no-repeat; }
 .level-card__name { grid-area: name; font-family: var(--font-display); font-weight: 800; font-size: var(--fs-300); line-height: var(--lh-300); overflow-wrap: anywhere; }
 .level-card__line { grid-area: line; font-size: var(--fs-100); line-height: var(--lh-100); color: var(--ink-3); }
 .level-choice--invalid .level-card { border-color: var(--danger); box-shadow: 0 0 0 4px var(--coral-soft), var(--shadow-1); }
-/* Wide enough, the two answers sit side by side, each still a compact row (picture, name, line): as tall
-   centred cards they pushed the age and the button under a laptop's fold (Guy, 2026-11-17). */
-@container level (min-width: 440px) {
-  .level-choice__options { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .level-card__art { align-self: center; }
-}
-/* An answer, not a headline. At 32px centred and black, the example name read
-   as the page's title and the age's "Choose age" was cut in half. */
-.create__child-fields .fm-input { min-height: var(--control-h); font-family: var(--font-display); font-weight: 600; font-size: var(--fs-300); line-height: var(--lh-300); text-align: start; }
-.create__child-fields .fm-input::placeholder { font-weight: 500; color: var(--ink-3); }
-.create__actions--single { justify-content: stretch; }
-.create__actions--single > * { flex: 1; }
-/* A phone on its side: 375px tall, and the header, dots and title used to take
-   all of it. The step's content has to be on screen before anyone scrolls. */
-@media (max-height: 480px) and (orientation: landscape) {
-  .create.fm-section { padding-block: var(--space-2); }
-  .create { gap: var(--space-2); }
-  .create__head { gap: var(--space-0-5); }
-  .create__title { font-size: var(--fs-500); line-height: var(--lh-500); }
-  .create__head .fm-lead { font-size: var(--fs-100); line-height: var(--lh-100); }
-  .create__actions--sticky { padding-block: var(--space-1); }
-}
-@media (min-width: 1024px) {
-  .create--mid { gap: var(--space-6); }
-  .create--mid .picker, .create--mid .packages { gap: var(--space-4); }
-}
-/* A laptop with a short window: the header, the dots and the title take the
-   top, and the step's button used to sit a few pixels under the fold. The
-   action stays on screen here too, at the bottom of whatever it belongs to. */
-@media (min-width: 721px) and (max-height: 900px) {
-  .create__actions--sticky { position: sticky; bottom: 0; z-index: var(--z-ui); padding-block: var(--space-1); background: color-mix(in srgb, var(--white) 92%, transparent); backdrop-filter: blur(8px); }
-}
-@media (max-width: 720px) {
-  .create { gap: var(--space-3); }
-  .create__head { gap: var(--space-1); }
-  .create__actions--sticky { position: sticky; bottom: 0; z-index: var(--z-ui); margin-inline: calc(var(--gutter) * -1); padding: var(--space-2) var(--gutter) calc(var(--space-2) + env(safe-area-inset-bottom, 0px)); background: color-mix(in srgb, var(--paper) 90%, transparent); backdrop-filter: blur(12px); }
-  .create__actions { flex-direction: column-reverse; align-items: stretch; gap: var(--space-1); }
-  /* The consent panel keeps its order (consent, then the buttons); only the button row flips. */
-  .create__actions--panel { flex-direction: column; gap: var(--space-2); }
-  .create__actions .fm-btn { width: 100%; padding-inline: var(--space-3); }
-  .create__actions .fm-small { text-align: center; }
-  .create__actions .fm-btn--lg { min-height: var(--control-h); font-size: var(--fs-200); }
-  .create { gap: var(--space-2); }
-  .create__head { gap: var(--space-0-5); }
-  .create__title { font-size: var(--fs-600); line-height: var(--lh-600); }
-  .create__head .fm-lead { font-size: var(--fs-200); line-height: var(--lh-200); }
-  .dropzone { padding: var(--space-3) var(--space-2); gap: var(--space-1); }
-  .dropzone__icon { font-size: var(--fs-500); }
-  .tips { padding: var(--space-1) var(--space-2); gap: var(--space-0-5); }
-  .tips__list { display: flex; flex-wrap: wrap; gap: var(--space-0-5) var(--space-2); }
-  .package { gap: var(--space-1); }
-  .package__price { font-size: var(--fs-500); line-height: var(--lh-500); }
-  .packages, .picker, .summary { gap: var(--space-2); }
-  .cropper, .cropper__zoom { width: min(72vw, 280px); }
-  .cropper { height: min(72vw, 280px); }
-  .uploader .fm-lead { font-size: var(--fs-200); line-height: var(--lh-200); }
-}
+@container level (min-width: 440px) { .level-choice__options { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 
-/* Photo uploader */
-.uploader { display: flex; flex-direction: column; gap: var(--space-3); align-items: center; }
+/* ─── 2. The photo ───
+   Three states share one circle, so nothing jumps between them: an empty dashed slot (pick), the
+   parent's photo framed on the face (frame), or the photo already saved (saved). The circle's size
+   follows the screen's height as well as its width, so the button stays in view. */
+.uploader { --crop: min(68vw, 34svh, 300px); display: flex; flex-direction: column; align-items: center; gap: var(--space-2); }
 .uploader__error { width: 100%; }
-/* Parental consent: the whole label is the tap target (≥ 48px), and the tick
-   is drawn by the product — the browser's blue square was the one control on
-   the screen that belonged to somebody else. */
-.uploader__consent { position: relative; display: flex; gap: var(--space-2); align-items: center; width: 100%; min-height: var(--touch-min); padding: var(--space-2); border-radius: var(--radius-2); background: var(--white); box-shadow: inset 0 0 0 2px var(--line); font-size: var(--fs-100); line-height: var(--lh-100); color: var(--ink-2); text-align: start; cursor: pointer; transition: box-shadow var(--dur-2), color var(--dur-2); }
-.uploader__consent:hover { box-shadow: inset 0 0 0 2px var(--ink-4); }
-.uploader__consent:has(:checked) { box-shadow: inset 0 0 0 2px var(--sun); color: var(--ink); }
-.uploader__consent:has(:focus-visible) { outline: 3px solid var(--focus); outline-offset: 3px; }
-.uploader__consent input { position: absolute; opacity: 0; width: 0; height: 0; }
-.uploader__tick { flex-shrink: 0; display: grid; place-items: center; width: var(--space-3); height: var(--space-3); border-radius: var(--radius-1); background: var(--white); box-shadow: inset 0 0 0 2px var(--ink-4); color: transparent; font-family: var(--font-display); font-weight: 900; font-size: var(--fs-100); line-height: 1; transition: background var(--dur-1), box-shadow var(--dur-1), color var(--dur-1), transform var(--dur-2) var(--ease-pop); }
-.uploader__consent:has(:checked) .uploader__tick { background: var(--sun); box-shadow: inset 0 0 0 2px var(--sun-deep); color: var(--ink); transform: scale(1.08); }
-.dropzone { width: 100%; border: 3px dashed var(--ink-4); border-radius: var(--radius-4); padding: var(--space-6) var(--space-3); text-align: center; display: flex; flex-direction: column; gap: var(--space-2); align-items: center; background: var(--white); cursor: pointer; transition: border-color var(--dur-1), background var(--dur-1); min-height: var(--space-16); }
-.dropzone:hover, .dropzone--over { border-color: var(--sea); background: var(--sea-soft); }
-@media (max-width: 720px) { .dropzone { padding: var(--space-4) var(--space-2); min-height: 0; } .uploader { gap: var(--space-2); } }
-/* The camera sits in the same tilted chip the site's steps use, and straightens when the parent hovers the zone. */
-.dropzone__icon { display: grid; place-items: center; width: var(--space-10); height: var(--space-10); border-radius: var(--radius-3); background: var(--sun-soft); font-size: var(--fs-600); line-height: 1; box-shadow: var(--shadow-1); transform: rotate(-4deg); transition: transform var(--dur-2) var(--ease-pop); }
-.dropzone:hover .dropzone__icon, .dropzone--over .dropzone__icon { transform: rotate(4deg) scale(1.08); }
-.tips { width: 100%; padding: var(--space-2) var(--space-3); border-radius: var(--radius-2); background: var(--paper-2); display: flex; flex-direction: column; gap: var(--space-1); }
-.tips__title { font-family: var(--font-display); font-weight: 700; font-size: var(--fs-100); line-height: var(--lh-100); color: var(--ink-3); }
-.tips__list { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-0-5) var(--space-3); grid-template-columns: repeat(2, minmax(0, 1fr)); }
-/* Each tip opens with the product's tick, where an emoji used to stand. */
-.tips__list li { display: flex; align-items: center; gap: var(--space-1); }
+.uploader__stage { display: flex; flex-direction: column; align-items: center; gap: var(--space-2); min-width: 0; }
+.uploader__confirm { display: flex; flex-direction: column; gap: var(--space-2); width: 100%; max-width: 400px; }
+/* Pick: a dashed circle waiting for a face, and one button. The whole block takes a dropped file. */
+.dropzone { display: flex; flex-direction: column; align-items: center; gap: var(--space-3); padding: var(--space-2); border-radius: var(--radius-4); cursor: pointer; transition: background var(--dur-2); }
+.dropzone__slot { display: grid; place-items: center; width: var(--crop); height: var(--crop); border-radius: var(--radius-pill); border: 3px dashed var(--ink-4); background: var(--white); color: var(--ink); font-size: var(--fs-600); box-shadow: 0 0 0 6px var(--white), 0 0 0 8px var(--sun-soft), var(--shadow-1); transition: border-color var(--dur-2), background var(--dur-2), transform var(--dur-3) var(--ease-pop); }
+.dropzone__slot .fm-icon { width: var(--space-10); height: var(--space-10); padding: var(--space-2); border-radius: var(--radius-3); background: var(--sun-soft); transform: rotate(-4deg); transition: transform var(--dur-2) var(--ease-pop); }
+.dropzone:hover .dropzone__slot, .dropzone--over .dropzone__slot { border-color: var(--sea); background: var(--sea-soft); transform: scale(1.02); }
+.dropzone:hover .dropzone__slot .fm-icon, .dropzone--over .dropzone__slot .fm-icon { transform: rotate(4deg) scale(1.06); }
+.dropzone:has(input:focus-visible) .dropzone__button { outline: 3px solid var(--focus); outline-offset: 4px; }
+.dropzone__button { pointer-events: none; }
+.tips__list { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; justify-content: center; gap: var(--space-1) var(--space-3); }
+.tips__list li { display: flex; align-items: center; gap: var(--space-1); font-size: var(--fs-100); line-height: var(--lh-100); color: var(--ink-2); }
 .tips__mark { color: var(--leaf-deep); }
-.tips__list li { display: flex; gap: var(--space-1); align-items: center; font-size: var(--fs-100); line-height: var(--lh-100); color: var(--ink-2); }
-@media (max-width: 480px) { .tips__list { grid-template-columns: 1fr; } }
-/* The crop is a sticker being made: the circle wears the product's white rim
-   on a paper ground, with a dashed guide ring inside it. */
-.cropper__lead { max-width: 34ch; margin-inline: auto; }
-.cropper { animation: fm-pop-in var(--dur-3) var(--ease-pop); position: relative; width: min(80vw, 320px); height: min(80vw, 320px); border-radius: var(--radius-pill); overflow: hidden; background: var(--paper-2); touch-action: none; cursor: grab; box-shadow: 0 0 0 8px var(--white), 0 0 0 10px var(--sun-soft), var(--shadow-3); }
+/* Frame: the circle is a sticker being made, white rim and sun halo. The photo inside moves by
+   transform only; it glides to the face once (the step's one moment), and follows the finger after. */
+.cropper { position: relative; width: var(--crop); height: var(--crop); flex: none; border-radius: var(--radius-pill); touch-action: none; cursor: grab; box-shadow: 0 0 0 6px var(--white), 0 0 0 8px var(--sun-soft), var(--shadow-2); animation: fm-pop-in var(--dur-3) var(--ease-pop); }
 .cropper:active { cursor: grabbing; }
 .cropper:focus-visible { outline: 3px solid var(--focus); outline-offset: 12px; }
-.cropper img { position: absolute; left: 0; top: 0; transform-origin: 0 0; user-select: none; -webkit-user-drag: none; max-width: none; }
-.cropper__ring { position: absolute; inset: var(--space-2); border-radius: var(--radius-pill); border: 2px dashed rgba(255, 255, 255, 0.85); box-shadow: 0 0 0 1px rgba(23, 22, 43, 0.12); pointer-events: none; }
-/* The zoom slider in the product's own clothes: a paper track, a white thumb ringed in sea, a small face and a big one at the ends. */
-.cropper__zoom-field { align-items: center; }
-.cropper__zoom-row { display: flex; align-items: center; gap: var(--space-1); width: min(80vw, 320px); }
-.cropper__zoom-glyph { font-size: var(--fs-100); line-height: 1; flex-shrink: 0; }
+.cropper__window { position: absolute; inset: 0; border-radius: var(--radius-pill); overflow: hidden; background: var(--paper-2); }
+.cropper img { position: absolute; left: 0; top: 0; max-width: none; transform-origin: 0 0; user-select: none; -webkit-user-drag: none; will-change: transform; }
+.cropper--glide img { transition: transform 900ms var(--ease-expo); }
+/* The guide ring turns while the face is being looked for, and lets go once it is found. */
+.cropper__ring { position: absolute; inset: var(--space-2); border-radius: var(--radius-pill); border: 2px dashed color-mix(in srgb, var(--white) 85%, transparent); box-shadow: 0 0 0 1px color-mix(in srgb, var(--ink) 12%, transparent); pointer-events: none; transition: opacity var(--dur-3) var(--ease-out), transform var(--dur-3) var(--ease-out); }
+.cropper--looking .cropper__ring { animation: cropper-turn 2.4s linear infinite; }
+.cropper--found .cropper__ring { opacity: 0; transform: scale(1.08); }
+@keyframes cropper-turn { to { transform: rotate(1turn); } }
+.cropper__pill { position: absolute; inset-inline: 0; bottom: var(--space-3); width: max-content; max-width: 80%; margin-inline: auto; padding: var(--space-0-5) var(--space-2); border-radius: var(--radius-pill); background: color-mix(in srgb, var(--white) 92%, transparent); box-shadow: var(--shadow-1); font-family: var(--font-display); font-weight: 700; font-size: var(--fs-100); line-height: var(--lh-100); color: var(--ink); opacity: 0; transform: translateY(var(--space-1)); transition: opacity var(--dur-2), transform var(--dur-2) var(--ease-out); pointer-events: none; }
+.cropper--looking .cropper__pill { opacity: 1; transform: none; }
+/* Found: a leaf tick lands on the rim, the product's word for "done". */
+.cropper__found { position: absolute; bottom: 4%; inset-inline-end: 4%; display: grid; place-items: center; width: var(--space-5); height: var(--space-5); border-radius: var(--radius-pill); background: var(--leaf); color: var(--white); box-shadow: 0 0 0 4px var(--white), var(--shadow-1); font-size: var(--fs-300); opacity: 0; transform: scale(0.4); pointer-events: none; }
+.cropper--found .cropper__found { opacity: 1; transform: none; transition: opacity var(--dur-2) 700ms, transform var(--dur-3) var(--ease-pop) 700ms; }
+.cropper__status { max-width: 36ch; margin: 0; text-align: center; font-size: var(--fs-100); line-height: var(--lh-100); color: var(--ink-2); }
+.cropper__status--ask { padding: var(--space-1) var(--space-2); border-radius: var(--radius-2); background: var(--sun-soft); color: var(--ink); }
+.cropper__tools { display: flex; flex-wrap: wrap; justify-content: center; gap: var(--space-1); }
+.cropper__tool { gap: var(--space-1); font-family: var(--font-display); font-weight: 700; }
+.cropper__tool .fm-icon { font-size: var(--fs-300); }
+.cropper__tool--on { background: var(--sea-soft); box-shadow: inset 0 0 0 2px var(--sea); }
+.cropper__zoom-row { display: flex; align-items: center; gap: var(--space-1); width: var(--crop); }
+.cropper__zoom-row[hidden] { display: none; }
+.cropper__zoom-glyph { flex: none; font-size: var(--fs-100); line-height: 1; color: var(--ink-2); }
 .cropper__zoom-glyph--big { font-size: var(--fs-400); }
-/* The input is a full 48px row to grab; only its track is drawn 8px tall. */
-.cropper__zoom { flex: 1; min-width: 0; height: var(--touch-min); margin: 0; border-radius: var(--radius-pill); background: transparent; appearance: none; -webkit-appearance: none; cursor: pointer; accent-color: var(--sun-deep); }
+/* The input is a full 48px row to grab; only its track is drawn. */
+.cropper__zoom { flex: 1; min-width: 0; height: var(--touch-min); margin: 0; background: transparent; appearance: none; -webkit-appearance: none; cursor: pointer; accent-color: var(--sun-deep); }
 .cropper__zoom::-webkit-slider-runnable-track { height: var(--space-1); border-radius: var(--radius-pill); background: var(--paper-3); }
 .cropper__zoom::-moz-range-track { height: var(--space-1); border-radius: var(--radius-pill); background: var(--paper-3); }
 .cropper__zoom::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: var(--space-3); height: var(--space-3); margin-top: calc((var(--space-3) - var(--space-1)) / -2); border-radius: var(--radius-pill); background: var(--sun); box-shadow: inset 0 0 0 2px var(--white), 0 0 0 2px var(--sun-deep), var(--shadow-1); cursor: grab; transition: transform var(--dur-1) var(--ease-out); }
 .cropper__zoom::-moz-range-thumb { width: var(--space-3); height: var(--space-3); border: 0; border-radius: var(--radius-pill); background: var(--sun); box-shadow: inset 0 0 0 2px var(--white), 0 0 0 2px var(--sun-deep), var(--shadow-1); cursor: grab; }
 .cropper__zoom:active::-webkit-slider-thumb { transform: scale(1.12); cursor: grabbing; }
 .cropper__zoom:focus-visible { outline: 3px solid var(--focus); outline-offset: 6px; }
+.cropper--saved { display: grid; place-items: center; cursor: default; touch-action: auto; background: var(--paper-2); font-size: var(--fs-600); color: var(--ink-3); }
+.cropper--saved .framed-photo { box-shadow: none; }
+/* The notice, the consent and the button they unlock, as one block. The notice is the fine print it is. */
+.uploader__legal { margin: 0; font-size: var(--fs-50); line-height: var(--lh-50); color: var(--ink-2); }
+/* Parental consent: the whole label is the tap target (≥ 48px) and the tick is drawn by the product. */
+.uploader__consent { position: relative; display: flex; gap: var(--space-2); align-items: center; width: 100%; min-height: var(--touch-min); padding: var(--space-2); border-radius: var(--radius-2); background: var(--white); box-shadow: inset 0 0 0 2px var(--line); font-size: var(--fs-100); line-height: var(--lh-100); color: var(--ink-2); text-align: start; cursor: pointer; transition: box-shadow var(--dur-2), color var(--dur-2); }
+.uploader__consent:hover { box-shadow: inset 0 0 0 2px var(--ink-4); }
+.uploader__consent:has(:checked) { box-shadow: inset 0 0 0 2px var(--sun); color: var(--ink); }
+.uploader__consent:has(:focus-visible) { outline: 3px solid var(--focus); outline-offset: 3px; }
+.uploader__consent input { position: absolute; opacity: 0; width: 0; height: 0; }
+.uploader__tick { flex-shrink: 0; display: grid; place-items: center; width: var(--space-3); height: var(--space-3); border-radius: var(--radius-1); background: var(--white); box-shadow: inset 0 0 0 2px var(--ink-4); color: transparent; font-size: var(--fs-200); transition: background var(--dur-1), box-shadow var(--dur-1), color var(--dur-1), transform var(--dur-2) var(--ease-pop); }
+.uploader__consent:has(:checked) .uploader__tick { background: var(--sun); box-shadow: inset 0 0 0 2px var(--sun-deep); color: var(--ink); transform: scale(1.08); }
+/* Wide enough, the photo and what goes with it sit side by side: the circle and its tools on one side,
+   the consent and the button on the other. Same order for a screen reader. */
+@media (min-width: 721px) {
+  .uploader--frame, .uploader--saved { display: grid; grid-template-columns: auto minmax(0, 360px); justify-content: center; align-items: center; column-gap: var(--space-6); }
+  .uploader--frame > .uploader__error, .uploader--saved > .uploader__error { grid-column: 1 / -1; }
+  .uploader { --crop: min(40svh, 300px); }
+  /* The empty slot is a little smaller than the framed photo: it shares the screen with the tips. */
+  .uploader.uploader--pick { --crop: min(34svh, 260px); }
+}
 
-/* Package picker (create) */
-.packages { display: grid; gap: var(--space-3); grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); align-items: stretch; }
-.package { position: relative; display: flex; flex-direction: column; gap: var(--space-2); text-align: center; align-items: center; }
-.package__price { font-family: var(--font-display); font-size: var(--fs-600); line-height: var(--lh-600); font-weight: 900; }
-/* The world count is the choice, drawn the way the site's pricing draws it: a big number, the word small beside it. */
-.package__worlds { display: inline-flex; align-items: baseline; gap: var(--space-1); font-family: var(--font-display); font-weight: 800; }
-.package__n { font-size: var(--fs-800); line-height: var(--lh-800); font-weight: 900; letter-spacing: -0.02em; }
-.package__worlds small { font-size: var(--fs-300); line-height: var(--lh-300); font-weight: 700; color: var(--ink-3); }
-.package__meta { font-size: var(--fs-100); line-height: var(--lh-100); max-width: 26ch; }
-/* The card is the control; this pill only says what a tap does, and turns sun once chosen. */
-.package__cta { display: inline-flex; align-items: center; justify-content: center; min-height: var(--control-h-sm); padding-inline: var(--space-3); border-radius: var(--radius-pill); background: var(--white); box-shadow: inset 0 0 0 2px var(--line); font-family: var(--font-display); font-weight: 800; font-size: var(--fs-100); color: var(--ink-2); transition: background var(--dur-2), box-shadow var(--dur-2), color var(--dur-2); }
-.package__cta--on { background: var(--sun); box-shadow: var(--shadow-1); color: var(--ink); }
-/* The pills line up along the bottom of the row, however the text above them wrapped. */
-.package .package__cta { margin-top: auto; }
-.package:hover .package__cta:not(.package__cta--on) { box-shadow: inset 0 0 0 2px var(--ink-4); color: var(--ink); }
-.package__ribbon { position: absolute; top: calc(var(--space-2) * -1); inset-inline-start: 50%; transform: translateX(-50%) rotate(-3deg); }
-[dir="rtl"] .package__ribbon { transform: translateX(50%) rotate(-3deg); }
-
-/* Scene picker */
-.picker { display: grid; gap: var(--space-3); grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); }
-.pick { position: relative; display: flex; flex-direction: column; gap: var(--space-1); padding: var(--space-1); text-align: start; }
-/* The world paintings are 3:2; cropping them to 16:10 took the sky off every one. */
-.pick img { border-radius: var(--radius-3); aspect-ratio: 3 / 2; object-fit: cover; width: 100%; }
-.pick__name { font-family: var(--font-display); font-weight: 800; font-size: var(--fs-300); line-height: var(--lh-300); padding-inline: var(--space-1); }
-.pick__tag { font-size: var(--fs-100); line-height: var(--lh-100); color: var(--ink-3); padding-inline: var(--space-1); padding-bottom: var(--space-1); }
-.pick__check { position: absolute; top: var(--space-2); inset-inline-end: var(--space-2); width: var(--space-4); height: var(--space-4); border-radius: var(--radius-pill); background: var(--white); box-shadow: var(--shadow-1); display: grid; place-items: center; font-family: var(--font-display); font-weight: 900; color: var(--ink-3); }
-.fm-card--selected .pick__check { background: var(--sea); color: var(--white); animation: fm-pop-in var(--dur-3) var(--ease-pop); }
-.pick { cursor: pointer; color: inherit; font: inherit; min-width: 0; }
-.pick:focus-visible { outline: 3px solid var(--sea); outline-offset: 4px; }
+/* ─── 3. The world ───
+   Each world is its emblem, never a board: a board would give its hiding places away (Guy, 2026-11-18).
+   The cards sit in the middle however many worlds there are. Selection is the wizard's sea. */
+.worlds { display: flex; flex-direction: column; gap: var(--space-3); }
+.worlds__count { display: flex; flex-direction: column; align-items: center; gap: var(--space-1); }
+.picker { display: grid; grid-template-columns: repeat(auto-fit, minmax(184px, 232px)); justify-content: center; gap: var(--space-3); }
+.worlds > .fm-notice { max-width: 64ch; margin-inline: auto; font-size: var(--fs-100); line-height: var(--lh-100); }
+.pick { position: relative; display: flex; flex-direction: column; align-items: center; gap: var(--space-0-5); min-width: 0; padding: var(--space-2) var(--space-2) var(--space-3); border: 2px solid transparent; border-radius: var(--radius-4); background: var(--white); box-shadow: var(--hairline-out), var(--shadow-1); color: inherit; font: inherit; text-align: center; cursor: pointer; transition: transform var(--dur-2) var(--ease-expo), box-shadow var(--dur-2) var(--ease-expo), border-color var(--dur-1); }
+.pick:hover { transform: translateY(-3px); box-shadow: var(--hairline-out), var(--shadow-2); }
+.pick:active { transform: scale(0.98); }
+.pick:focus-visible { outline: 3px solid var(--focus); outline-offset: 4px; }
 .pick[aria-disabled="true"] { cursor: not-allowed; }
-.pick__state { align-self: flex-start; margin: var(--space-0-5) var(--space-1) var(--space-1); padding: 2px var(--space-2); border-radius: var(--radius-pill); font-family: var(--font-display); font-weight: 700; font-size: var(--fs-50); line-height: var(--lh-50); background: var(--paper-2); color: var(--ink-3); }
-.pick--in .pick__state { background: var(--leaf-soft); color: var(--leaf-deep); }
-.pick__counter { position: sticky; top: var(--space-12); z-index: var(--z-ui); }
+.pick--in { border-color: var(--sea); box-shadow: 0 0 0 4px var(--sea-soft), var(--shadow-2); }
+.pick__art { display: block; width: 72%; margin-bottom: var(--space-1); }
+.pick__art .world-emblem { display: block; width: 100%; height: auto; transition: transform var(--dur-3) var(--ease-pop); }
+.pick:hover .world-emblem, .pick--in .world-emblem { transform: scale(1.04) rotate(-2deg); }
+.pick__name { font-family: var(--font-display); font-weight: 800; font-size: var(--fs-300); line-height: var(--lh-300); }
+.pick__tag { max-width: 28ch; font-size: var(--fs-100); line-height: var(--lh-100); color: var(--ink-2); }
+.pick__check { position: absolute; top: var(--space-2); inset-inline-end: var(--space-2); display: grid; place-items: center; width: var(--space-4); height: var(--space-4); border-radius: var(--radius-pill); background: var(--white); box-shadow: inset 0 0 0 2px var(--ink-4), var(--shadow-1); color: transparent; font-size: var(--fs-200); transition: background var(--dur-1), box-shadow var(--dur-1), color var(--dur-1); }
+.pick--in .pick__check { background: var(--sea); box-shadow: var(--shadow-1); color: var(--white); animation: fm-pop-in var(--dur-3) var(--ease-pop); }
+/* The chosen world comes alive (and any world under the pointer): the balloon, the dragon or the rocket
+   floats, its cloud drifts, the spark twinkles. Only there, so a weak tablet paints one small emblem. */
+:is(.pick--in, .pick:hover) .world-emblem__float { animation: emblem-float 3.2s var(--ease-in-out) infinite alternate; }
+:is(.pick--in, .pick:hover) .world-emblem__cloud { animation: emblem-drift 10s var(--ease-in-out) infinite alternate; }
+:is(.pick--in, .pick:hover) .world-emblem__spark { animation: emblem-spark 2.4s var(--ease-in-out) infinite alternate; }
+@keyframes emblem-float { from { transform: translateY(2px) rotate(-2deg); } to { transform: translateY(-2px) rotate(2deg); } }
+@keyframes emblem-drift { from { transform: translateX(-3px); } to { transform: translateX(3px); } }
+@keyframes emblem-spark { from { transform: scale(0.85); opacity: 0.7; } to { transform: scale(1.1) rotate(15deg); opacity: 1; } }
 
-/* Summary */
-/* Each card is as tall as its own words: a summary stretched to the pay card's height was half empty. */
-.summary { display: grid; gap: var(--space-3); grid-template-columns: minmax(0, 1fr); align-items: start; }
-.summary__face { width: var(--space-10); height: var(--space-10); flex-shrink: 0; }
-.summary__identity { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: var(--space-2); align-items: center; }
-.summary__identity > div { min-width: 0; display: grid; gap: var(--space-0-5); }
-/* "Edit name, age or path" and "9 places" are small chips, not loose blue underlined text (Guy, 2026-11-17).
-   Drawn 32px tall; an invisible band above and below keeps the 48px a finger needs. */
-.summary__edit, .summary__more > summary { position: relative; justify-self: start; display: inline-flex; align-items: center; gap: var(--space-0-5); min-height: var(--space-4); padding-inline: var(--space-2); border-radius: var(--radius-pill); background: var(--paper-2); color: var(--ink); font-family: var(--font-display); font-weight: 700; font-size: var(--fs-100); line-height: var(--lh-100); text-decoration: none; cursor: pointer; transition: background var(--dur-1); }
-.summary__edit::after, .summary__more > summary::after { content: ""; position: absolute; inset: calc(var(--space-1) * -1) 0; }
-.summary__edit:hover, .summary__more > summary:hover { background: var(--paper-3); }
-.summary__passport { padding: var(--space-2); background: var(--sun-soft); border-radius: var(--radius-2); }
+/* ─── 4. Summary and payment ───
+   Two equal halves (Guy, 2026-11-18): what is being bought, and paying for it. Each card ends on its
+   decisive line (the total, the pay button), and the two lines meet at the same height. */
+.summary { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-3); align-items: stretch; }
+@media (min-width: 861px) { .summary { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.summary__card { display: flex; flex-direction: column; gap: var(--space-2); height: 100%; padding: var(--space-3); border-radius: var(--radius-4); }
+.summary__side { display: flex; flex-direction: column; gap: var(--space-2); min-width: 0; }
+.summary__side > .summary__card { flex: 1; }
+.summary__lines { display: flex; flex-direction: column; gap: var(--space-0-5); min-width: 0; }
+.summary__who { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: var(--space-2); }
+.summary__title { font-family: var(--font-display); font-weight: 800; font-size: var(--fs-300); line-height: var(--lh-300); overflow-wrap: anywhere; }
+.summary__meta { font-size: var(--fs-100); line-height: var(--lh-100); color: var(--ink-2); }
+/* "Edit" is a small chip, not loose underlined text; an invisible band keeps the 48px a finger needs. */
+.summary__edit { position: relative; display: inline-flex; align-items: center; gap: var(--space-0-5); min-height: var(--space-4); padding-inline: var(--space-2); border-radius: var(--radius-pill); background: var(--paper-2); color: var(--ink); font-family: var(--font-display); font-weight: 700; font-size: var(--fs-100); line-height: var(--lh-100); text-decoration: none; transition: background var(--dur-1); }
+.summary__edit::after { content: ""; position: absolute; inset: calc(var(--space-1) * -1) 0; }
+.summary__edit:hover { background: var(--paper-3); }
+.summary__world { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: var(--space-2); padding: var(--space-1) var(--space-2) var(--space-1) var(--space-1); border-radius: var(--radius-3); background: var(--paper-2); }
+.summary__emblem { display: block; width: var(--space-8); height: var(--space-8); flex: none; }
+.summary__world-name { font-family: var(--font-display); font-weight: 800; font-size: var(--fs-300); line-height: var(--lh-300); }
+.summary__included { display: flex; align-items: center; gap: var(--space-1); font-size: var(--fs-100); line-height: var(--lh-100); color: var(--ink-2); }
+.summary__included .fm-icon { width: var(--space-3); height: var(--space-3); padding: var(--space-0-5); border-radius: var(--radius-pill); background: var(--leaf-soft); color: var(--leaf-deep); }
+.summary__total { display: flex; align-items: flex-end; justify-content: space-between; gap: var(--space-2); margin-top: auto; padding-top: var(--space-2); border-top: 1px solid var(--line); font-family: var(--font-display); font-weight: 700; font-size: var(--fs-200); line-height: var(--lh-200); }
+.summary__price { display: flex; flex-direction: column; align-items: flex-end; }
+.summary__price strong { font-weight: 900; font-size: var(--fs-500); line-height: var(--lh-500); letter-spacing: -0.02em; }
+.summary__price small { font-family: var(--font-body); font-weight: 500; font-size: var(--fs-50); line-height: var(--lh-50); color: var(--ink-3); }
+.summary__legal { margin: 0; font-size: var(--fs-50); line-height: var(--lh-50); color: var(--ink-2); }
+.summary__pay { margin-top: auto; }
 .summary__pay[aria-busy="true"] .fm-btn__label { visibility: visible; opacity: 1; }
 .summary__pay[aria-busy="true"] .fm-spinner { position: static; margin: 0; }
-@media (max-width: 720px) {
-  .summary > .fm-card { padding: var(--space-3); gap: var(--space-2); }
-  .summary__face { width: var(--space-8); height: var(--space-8); }
-  .summary__identity h3 { font-size: var(--fs-300); line-height: var(--lh-300); }
-}
-@media (min-width: 900px) { .summary { grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); } }
-.summary__row { display: flex; justify-content: space-between; gap: var(--space-2); padding-block: var(--space-1); border-bottom: 1px solid var(--line); }
-.summary__row:last-child { border-bottom: 0; }
-.summary__scenes { display: flex; gap: var(--space-1); flex-wrap: wrap; }
-.summary__more > summary { list-style: none; }
-.summary__more > summary::-webkit-details-marker { display: none; }
-/* The drawn chevron, never a typed triangle: a closed disclosure points the way the line reads; open, it points down. */
-.summary__more > summary::before { content: ""; flex: none; width: var(--space-2); height: var(--space-2); background: currentColor; -webkit-mask: var(--icon-chevron) center / contain no-repeat; mask: var(--icon-chevron) center / contain no-repeat; transform: rotate(-90deg); transition: transform var(--dur-2) var(--ease-expo); }
-.summary__more:dir(rtl) > summary::before { transform: rotate(90deg); }
-.summary__more[open] > summary::before { transform: none; }
-.summary__more[open] > summary { margin-bottom: var(--space-1); }
+.summary__back { display: flex; justify-content: center; }
 
-/* ─── Wizard density (Guy, 2026-11-17: "the whole wizard is a bit too big; no needless scrolling") ───
-   Measured before: on a 1366×768 laptop every step ran 260-510px past the fold with its button under it,
-   and a phone's photo and summary steps 250-750px. The steps keep every field, word and control; they
-   lose the air around them: a form's margin instead of a landing's, a step title instead of a section
-   title, smaller dots, tighter cards, a crop circle sized to the screen's height. Display only. */
-.create.fm-section { padding-block: var(--space-4) var(--space-8); }
-.create { gap: var(--space-3); }
-.create__head { gap: var(--space-1); }
-.create__title { font-size: var(--fs-500); line-height: var(--lh-500); letter-spacing: -0.02em; }
-.create__head .fm-lead { font-size: var(--fs-200); line-height: var(--lh-200); }
-.create__qa { max-width: 80ch; margin-inline: auto; font-size: var(--fs-50); line-height: var(--lh-50); color: var(--ink-2); }
-/* The step's own panels (the name form, the summary, the pay form, a package); the world and level cards keep theirs. */
-.create .fm-card--pad-4, .create .fm-card--pad-6 { padding: var(--space-3) var(--space-4); border-radius: var(--radius-3); }
-.create__child-fields { gap: var(--space-2); }
-.level-choice__title { font-size: var(--fs-200); line-height: var(--lh-200); }
-.level-choice__options { gap: var(--space-1); }
-.create .fm-label { font-size: var(--fs-200); line-height: var(--lh-200); }
-.uploader { gap: var(--space-2); }
-.dropzone { min-height: 0; padding: var(--space-4) var(--space-3); gap: var(--space-1); }
-.dropzone__icon { width: var(--space-8); height: var(--space-8); font-size: var(--fs-500); }
-/* The circle follows the screen's height as well as its width, so the consent and the button stay in view. */
-.uploader { --crop: min(68vw, 30svh, 300px); }
-.cropper { width: var(--crop); height: var(--crop); box-shadow: 0 0 0 6px var(--white), 0 0 0 8px var(--sun-soft), var(--shadow-2); }
-.cropper__zoom-row { width: var(--crop); }
-/* Wide enough, the photo step is two columns instead of one tall one: the picture (the drop zone, or the
-   crop circle and its zoom) on one side, what goes with it (tips, the privacy line, the consent, the buttons)
-   on the other. Same elements, same order for a screen reader. */
-@media (min-width: 900px) {
-  .uploader:has(> .dropzone), .uploader:has(> .cropper) { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); column-gap: var(--space-5); row-gap: var(--space-2); align-items: start; }
-  .uploader > .uploader__error, .uploader:has(> .dropzone) > .create__actions { grid-column: 1 / -1; }
-  .uploader:has(> .dropzone) > .dropzone { grid-row: span 2; align-self: stretch; justify-content: center; }
-  .uploader:has(> .dropzone) > .tips, .uploader:has(> .dropzone) > .fm-stack { grid-column: 2; }
-  .uploader:has(> .cropper) { grid-template-columns: auto minmax(0, 1fr); align-items: center; }
-  .uploader > .cropper { grid-column: 1; grid-row: span 2; }
-  .uploader > .cropper__zoom-field { grid-column: 1; }
-  .uploader > .cropper__lead { grid-column: 2; grid-row: 1; align-self: end; max-width: none; margin: 0; text-align: start; }
-  .uploader > .create__actions--panel { grid-column: 2; grid-row: 2 / span 2; align-self: start; }
-  .uploader:has(> .uploader__error) > .cropper__lead { grid-row: 2; }
-  .uploader:has(> .uploader__error) > .create__actions--panel { grid-row: 3 / span 2; }
-  .uploader { --crop: min(30svh, 280px); }
+/* The parent's photo as framed, in a round sticker (FramedPhoto). */
+.framed-photo { position: relative; display: block; flex: none; border-radius: var(--radius-pill); overflow: hidden; background: var(--paper-2); box-shadow: 0 0 0 3px var(--white), var(--shadow-1); }
+.framed-photo img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.framed-photo img.framed-photo__cropped { position: absolute; max-width: none; object-fit: fill; }
+
+/* A laptop with a short window, or any phone: the step's button stays at the bottom of the screen. */
+@media (min-width: 721px) and (max-height: 900px) {
+  /* The bar fades into the page instead of cutting across a card's edge. */
+  .create__actions--bar { position: sticky; bottom: 0; z-index: var(--z-ui); padding-block: var(--space-3) var(--space-1); background: linear-gradient(to top, var(--paper) 70%, color-mix(in srgb, var(--paper) 0%, transparent)); }
 }
-.package { gap: var(--space-1); }
-.package__n { font-size: var(--fs-700); line-height: var(--lh-700); }
-.package__price { font-size: var(--fs-500); line-height: var(--lh-500); }
-.summary__face { width: var(--space-8); height: var(--space-8); }
-.create .fm-card--pad-4.fm-stack--3, .create .fm-card--pad-6.fm-stack--3 { gap: var(--space-2); }
 @media (max-width: 720px) {
   .create.fm-section { padding-block: var(--space-2) var(--space-6); }
   .create { gap: var(--space-2); }
   .create__head { gap: var(--space-0-5); }
+  .create__title { font-size: var(--fs-600); line-height: var(--lh-600); }
   .create .fm-card--pad-4, .create .fm-card--pad-6 { padding: var(--space-3) var(--space-2); }
-  /* A phone: the circle takes a quarter of the height, the tips wrap as short ticked words, the drop zone is a
-     compact panel, and "another photo" sits beside the main button instead of under it. */
-  .uploader { --crop: min(60vw, 24svh, 280px); }
-  .uploader:has(> .cropper) { gap: var(--space-1); }
-  .uploader > .cropper { margin-block: var(--space-1); }
-  .uploader > .cropper__lead { font-size: var(--fs-100); line-height: var(--lh-100); }
-  /* The two magnifiers say "zoom"; the word stays for screen readers only. */
-  .cropper__zoom-field > .fm-hint { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
-  .cropper, .cropper__zoom { width: var(--crop); }
-  .cropper { height: var(--crop); }
-  .dropzone { padding: var(--space-3) var(--space-2); }
-  .dropzone__icon { width: var(--space-6); height: var(--space-6); font-size: var(--fs-400); }
-  .tips__list { display: flex; flex-wrap: wrap; gap: var(--space-0-5) var(--space-2); }
-  .uploader .create__actions--row { flex-direction: row-reverse; flex-wrap: wrap; align-items: center; }
-  .uploader .create__actions--row > .fm-btn--lg { flex: 1; width: auto; }
-  .uploader .create__actions--row > .fm-btn--ghost { flex: none; width: auto; padding-inline: var(--space-2); }
-  .summary__identity { gap: var(--space-1) var(--space-2); }
-  .summary__passport { padding: var(--space-1) var(--space-2); }
+  .create__actions { align-items: stretch; }
+  .create__actions .fm-btn { width: 100%; padding-inline: var(--space-3); }
+  .create__actions .fm-btn--lg { min-height: var(--control-h); font-size: var(--fs-200); }
+  .create__actions--bar { position: sticky; bottom: 0; z-index: var(--z-ui); margin-inline: calc(var(--gutter) * -1); padding: var(--space-2) var(--gutter) calc(var(--space-2) + env(safe-area-inset-bottom, 0px)); background: color-mix(in srgb, var(--paper) 90%, transparent); backdrop-filter: blur(12px); }
+  .uploader { --crop: min(62vw, 28svh, 260px); }
+  .uploader.uploader--pick { --crop: min(56vw, 28svh, 240px); }
+  .dropzone { gap: var(--space-2); }
+  .uploader__confirm .fm-btn--lg { min-height: var(--control-h); font-size: var(--fs-200); }
+  /* A phone lists the worlds as rows: the emblem beside its name, so two worlds fit one screen. */
+  .picker { grid-template-columns: minmax(0, 1fr); gap: var(--space-2); }
+  .pick { display: grid; grid-template-columns: var(--space-12) minmax(0, 1fr); grid-template-areas: "art name" "art tag"; align-content: center; column-gap: var(--space-2); padding: var(--space-1); padding-inline-end: var(--space-6); text-align: start; border-radius: var(--radius-3); }
+  .pick__art { grid-area: art; width: 100%; margin: 0; }
+  .pick__name { grid-area: name; align-self: end; }
+  .pick__tag { grid-area: tag; align-self: start; }
+  .pick__check { top: 50%; margin-top: calc(var(--space-4) / -2); }
+  .summary { gap: var(--space-2); }
+  .summary__card { padding: var(--space-2); border-radius: var(--radius-3); }
+  /* The name keeps its line; "Edit" sits under it. */
+  .summary__who { grid-template-columns: auto minmax(0, 1fr); row-gap: var(--space-1); }
+  .summary__edit { grid-column: 2; justify-self: start; }
+}
+/* A phone on its side: 375px tall. The step's content has to be on screen before anyone scrolls. */
+@media (max-height: 480px) and (orientation: landscape) {
+  .create.fm-section { padding-block: var(--space-2); }
+  .create { gap: var(--space-2); }
+  .create__head { gap: var(--space-0-5); }
+  .create__title { font-size: var(--fs-400); line-height: var(--lh-400); }
+  .uploader { --crop: min(60svh, 220px); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .cropper--glide img, .cropper--looking .cropper__ring, .world-emblem__float, .world-emblem__cloud, .world-emblem__spark { animation: none; transition: none; }
 }
 
-/* Mock payment (sandbox PSP page) */
-.psp { max-width: 560px; }
-.psp__card { background: var(--white); border-radius: var(--radius-4); box-shadow: var(--shadow-2); overflow: hidden; display: flex; flex-direction: column; }
-.psp__head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); padding: var(--space-2) var(--space-3); background: var(--ink); color: var(--white); font-family: var(--font-display); font-weight: 800; }
+/* Mock payment (the sandbox PSP page): a payment provider's small card, not a page of its own. */
+.psp { max-width: 440px; padding-block: var(--space-4) var(--space-6); }
+.psp__card { display: flex; flex-direction: column; overflow: hidden; border-radius: var(--radius-3); background: var(--white); box-shadow: var(--hairline-out), var(--shadow-2); }
+.psp__head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); padding: var(--space-1) var(--space-2); background: var(--ink); color: var(--white); font-family: var(--font-display); font-weight: 800; font-size: var(--fs-100); line-height: var(--lh-100); }
 .psp__brand { display: inline-flex; align-items: center; gap: var(--space-1); }
-.psp__body { padding: var(--space-3); display: flex; flex-direction: column; gap: var(--space-3); }
-.psp__summary { margin: 0; display: grid; gap: var(--space-0-5); padding: var(--space-2) var(--space-3); border-radius: var(--radius-2); background: var(--paper-2); }
+.psp__body { display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-3); }
+.psp__title { font-family: var(--font-display); font-weight: 800; font-size: var(--fs-300); line-height: var(--lh-300); }
+.psp__summary { display: grid; gap: var(--space-0-5); margin: 0; padding: var(--space-1) var(--space-2); border-radius: var(--radius-2); background: var(--paper-2); }
 .psp__summary div { display: flex; justify-content: space-between; gap: var(--space-2); font-size: var(--fs-100); line-height: var(--lh-100); }
 .psp__summary dt { color: var(--ink-3); }
 .psp__summary dd { margin: 0; font-weight: 700; text-align: end; }
-.psp__amount { font-family: var(--font-display); font-size: var(--fs-300); }
+.psp__amount { font-family: var(--font-display); font-size: var(--fs-200); }
 .psp__row { display: grid; gap: var(--space-2); grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
 .psp__foot { display: flex; flex-direction: column; align-items: center; gap: var(--space-1); }
-@media (max-width: 720px) { .psp__card { border-radius: var(--radius-3); } .psp__body { gap: var(--space-2); padding: var(--space-2); } .psp__body h1 { font-size: var(--fs-400); line-height: var(--lh-400); } .psp .fm-input { min-height: var(--touch-min); } .psp .fm-field { gap: var(--space-0-5); } .psp .fm-label { font-size: var(--fs-200); line-height: var(--lh-200); } }
+.psp .fm-field { gap: var(--space-0-5); }
+.psp .psp__body > form.fm-stack { gap: var(--space-2); }
+.psp .fm-label { font-size: var(--fs-100); line-height: var(--lh-100); }
+.psp .fm-input { min-height: var(--touch-min); padding-inline: var(--space-2); font-size: var(--fs-200); line-height: var(--lh-200); }
+.psp .fm-btn--lg { min-height: var(--control-h); font-size: var(--fs-200); }
+.psp .fm-hint, .psp .fm-small { font-size: var(--fs-50); line-height: var(--lh-50); }
 
 /* Creating: one portrait, with progress underneath. */
 .cp__card { display: flex; flex-direction: column; align-items: center; gap: var(--space-2); text-align: center; padding: var(--space-4); overflow: hidden; }
@@ -1060,7 +1014,6 @@
 /* Icons that replaced emoji (2026-11-16): the colour of each mark, the size stays the box's em. */
 .cp__pencil { color: var(--sun-deep); }
 .cp__party { color: var(--gold-deep); display: inline-flex; }
-.dropzone__icon { color: var(--ink); }
 .lib__wrap { color: var(--ink-2); display: inline-flex; }
 .magic-confirm-mark { color: var(--ink); }
 .psp__brand .fm-icon { margin-inline-end: var(--space-0-5); }
