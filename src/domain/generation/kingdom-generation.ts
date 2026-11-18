@@ -5,7 +5,8 @@ import { leanReviewPolicyOf } from './visual-review-policy';
 export const KINGDOM_FLEX_OVERLOAD_COOLDOWN_MS = 10 * 60_000;
 export const KINGDOM_COMPACT_REVIEW = 'kingdom-native-compact/v1';
 export const KINGDOM_PLAYABILITY_REVIEW = 'kingdom-native-compact/v2';
-export type KingdomReviewEvidence = typeof KINGDOM_COMPACT_REVIEW | typeof KINGDOM_PLAYABILITY_REVIEW;
+export const KINGDOM_GAMEPLAY_NEIGHBOR_REVIEW = 'kingdom-native-compact/v3';
+export type KingdomReviewEvidence = typeof KINGDOM_COMPACT_REVIEW | typeof KINGDOM_PLAYABILITY_REVIEW | typeof KINGDOM_GAMEPLAY_NEIGHBOR_REVIEW;
 
 export function kingdomFlexOverloaded(rounds: readonly BackgroundReviewRound[]) {
   return rounds.some(({ intent, terminal }) => leanReviewPolicyOf(intent.policyVersion ?? '')?.serviceTier === 'flex'

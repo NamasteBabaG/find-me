@@ -45,7 +45,7 @@ const EnvSchema = z.object({
   /** Explicit QA opt-in, pinned before the photo. Never changes an existing game. */
   DETECTIVES_WINDOW_RELEASE: z.enum(["off", "v1"]).prefault("off"),
   /** Prospective Kingdom-only release, selected at checkout in real QA. */
-  KINGDOM_GENERATION_RELEASE: z.enum(["v1", "v2", "v3", "v4"]).prefault("v1"),
+  KINGDOM_GENERATION_RELEASE: z.enum(["v1", "v2", "v3", "v4", "v5"]).prefault("v1"),
   /** Painting quality for NEW local-patch drafts, pinned per game when the draft
    * is created; a game keeps its pin, and a game without one keeps its content
    * version's own quality (MEDIUM for v12). low-v1 is qualified only on QA with

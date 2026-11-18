@@ -5,8 +5,8 @@ import { BOUND_SUBJECT_QUALITY_ENVELOPE_READER_V2 } from "../../domain/generatio
 import { authenticateBoundSourceNeighborReading } from './bound-source-neighbor-reading';
 import { solBackgroundReviewBody } from '../../infra/generation/openai-background-review';
 import { singleMediumEvidence, singleMediumPrompt, singleMediumAnatomyPrompt } from "./single-medium-evidence";
-import { kingdomGenerationReleaseOf } from './kingdom-generation-release';
 import { kingdomCompactReview } from './kingdom-compact-review';
+import { kingdomReviewEvidenceForContext } from './source-placement-release';
 import { publishedCrownSubjectAnchor } from "./published-crown-repair";
 import { singleReviewHeadEvidence } from "./single-review-head-evidence";
 import { targetHeadReturnPrompt } from "../../domain/generation/target-head-return";
@@ -1129,8 +1129,7 @@ async function prepareSingleLowQuestion(c: Pick<Container, "db" | "storage">, pr
     : (Array.isArray(receipt.evidenceAttempts) ? receipt.evidenceAttempts : []).filter((v: {single?:unknown;imageSha256?:unknown}) => v.single === singleVersion && v.imageSha256 === binding.imageSha256).length;
   const attempt = continued + 1;
   const sourceRelease = prepared.placementContext.release;
-  const kingdomReviewEvidence = sourceRelease?.baseSceneVersion === 13 && sourceRelease.worldSlug === 'kingdom'
-    ? (await kingdomGenerationReleaseOf(c.db, prepared.game.id))?.reviewEvidence : undefined;
+  const kingdomReviewEvidence = kingdomReviewEvidenceForContext(prepared.placementContext, hideId);
   let mediumPrompt = (singleVersion === SINGLE_MEDIUM_VISUAL_REVIEW_VERSION ? singleMediumPrompt(lowQuestion.prompt.replace(anatomy.prompt,()=>singleMediumAnatomyPrompt(anatomy.prompt)),binding,hideId) : lowQuestion.prompt).replace('"version":"' + SINGLE_VISUAL_REVIEW_VERSION + '"', '"version":"' + singleVersion + '"');
   let compositionDirections = '';
   if (receipt.retainedWindow !== undefined) {

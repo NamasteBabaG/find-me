@@ -5,6 +5,7 @@ import { readSourceNeighborQualityBundle, sourceNeighborQualityBundleDirection,
 import { prepareSourceNeighborContract, SOURCE_NEIGHBOR_ANSWER_VERSION, SOURCE_NEIGHBOR_BUNDLE_VERSION,
   SOURCE_NEIGHBOR_CONTRACT_VERSION, SOURCE_NEIGHBOR_LIMITS, SOURCE_NEIGHBOR_POLICY, SOURCE_NEIGHBOR_READER,
   type SourceNeighborContract, type SourceNeighborAnswer } from "../../scene/local-patch-source-neighbors";
+import { SOURCE_NEIGHBOR_GAMEPLAY_ANSWER, SOURCE_NEIGHBOR_GAMEPLAY_POLICY, SOURCE_NEIGHBOR_GAMEPLAY_READER } from '../../scene/local-patch-source-neighbors';
 
 const contract: SourceNeighborContract = {
   version: SOURCE_NEIGHBOR_CONTRACT_VERSION, boardId: "synthetic-market", hideId: "synthetic-market-2",
@@ -31,6 +32,67 @@ function neighbors(): SourceNeighborAnswer { return { version: SOURCE_NEIGHBOR_A
 const bundle = (assessment: Record<string, unknown> = quality()) => ({ version: SOURCE_NEIGHBOR_BUNDLE_VERSION, assessment, sourceNeighbors: neighbors() });
 const expected = () => ({ contract: structuredClone(contract), binding: { ...binding } });
 const read = (value: unknown, e = expected()) => readSourceNeighborQualityBundle(JSON.stringify(value), e);
+
+describe('source-neighbor gameplay evidence', () => {
+  const gameplayBinding: SourceNeighborQualityBundleBinding = { ...binding, policy: SOURCE_NEIGHBOR_GAMEPLAY_POLICY, reader: SOURCE_NEIGHBOR_GAMEPLAY_READER };
+  function invalidRegistration() {
+    const original = neighbors();
+    return { version: SOURCE_NEIGHBOR_BUNDLE_VERSION, assessment: quality(), sourceNeighbors: {
+      ...original, version: SOURCE_NEIGHBOR_GAMEPLAY_ANSWER,
+      neighbors: [{ ...original.neighbors[0]!, outcome: 'invalid-registration', status: 'unsure', after: [] as SourceNeighborAnswer['neighbors'][number]['after'], remnants: 'unsure',
+        observation: 'The SOURCE registration contains a lantern; the actual people are coherent in AFTER.' }],
+    } };
+  }
+  const gameplayRead = (value: unknown) => readSourceNeighborQualityBundle(JSON.stringify(value), { contract, binding: gameplayBinding });
+  it('keeps positive scene evidence when a non-target reference box is unusable', () => {
+    const document = invalidRegistration(), r = gameplayRead(document);
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.sourceNeighbors.disposition).toBe('pass');
+    expect(JSON.parse(r.assessment.raw)).toEqual(document.assessment);
+    expect(read(document).ok).toBe(false);
+  });
+  it('keeps a visible failed neighbor check in the scene assessment', () => {
+    const document = invalidRegistration();
+    document.assessment.hides[0]!.verdict.neighborsIntact = 'fail';
+    document.assessment.hides[0]!.verdict.verdict = 'fail';
+    document.assessment.hides[0]!.verdict.faults.push({ check: 'neighborsIntact', where: 'A clear bystander face is split at the actual join in the game view.' });
+    const r = gameplayRead(document);
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(JSON.parse(r.assessment.raw).hides[0].verdict).toMatchObject({ neighborsIntact: 'fail', verdict: 'fail' });
+  });
+  it.each(['target', 'claim-pass', 'remnant', 'representation', 'missing-id', 'wrong-image', 'wrong-reader'])('refuses %s hidden behind an annotation observation', mutation => {
+    const document = invalidRegistration();
+    if (mutation === 'target') {
+      document.sourceNeighbors.neighbors[0]!.sourceId = 'source-child';
+      const targetContract = { ...contract, neighbors: [{ ...contract.neighbors[0]!, sourceId: 'source-child' }] };
+      const { version: _v, neighbors: _n, ...ctx } = targetContract;
+      const p = prepareSourceNeighborContract(targetContract, ctx);
+      expect(p.ok).toBe(true);
+      if (!p.ok) return;
+      document.sourceNeighbors.contractSha256 = p.contractSha256;
+      expect(readSourceNeighborQualityBundle(JSON.stringify(document), { contract: targetContract,
+        binding: { ...gameplayBinding, contractSha256: p.contractSha256 } }).ok).toBe(false);
+      return;
+    }
+    if (mutation === 'claim-pass') document.sourceNeighbors.neighbors[0]!.status = 'pass';
+    if (mutation === 'remnant') document.sourceNeighbors.neighbors[0]!.remnants = 'present';
+    if (mutation === 'representation') document.sourceNeighbors.neighbors[0]!.after = neighbors().neighbors[0]!.after;
+    if (mutation === 'missing-id') document.sourceNeighbors.neighbors = [];
+    if (mutation === 'wrong-image') document.sourceNeighbors.candidateSha256 = 'c'.repeat(64);
+    if (mutation === 'wrong-reader') {
+      expect(readSourceNeighborQualityBundle(JSON.stringify(document), { contract, binding: { ...gameplayBinding, reader: SOURCE_NEIGHBOR_READER } }).ok).toBe(false);
+      return;
+    }
+    expect(gameplayRead(document).ok).toBe(false);
+  });
+  it('still classifies a visible duplicate as repair under the new policy', () => {
+    const document = { ...bundle(), sourceNeighbors: { ...neighbors(), version: SOURCE_NEIGHBOR_GAMEPLAY_ANSWER } };
+    document.sourceNeighbors.neighbors[0]!.after.push({ ref: 'extra-maker', rect: { left: 1160, top: 850, width: 70, height: 90 } });
+    const r = gameplayRead(document);
+    expect(r.ok && r.sourceNeighbors.disposition).toBe('repair');
+  });
+});
 
 describe("new quality/source-neighbor answer envelope", () => {
   it("keeps an entire plain quality assessment, including its evidence IDs and fields", () => {

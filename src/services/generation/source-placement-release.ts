@@ -5,6 +5,7 @@ import { detectivesOperationalPolicyOf } from "./detectives-operational-policy";
 import type { DetectivesOperationalReceipt } from "../../domain/generation/detectives-operational-policy";
 import { journeyWindowReleaseOf, type JourneyWindowPin } from './journey-window-release';
 import { kingdomGenerationReleaseOf } from './kingdom-generation-release';
+import { KINGDOM_GAMEPLAY_NEIGHBOR_REVIEW, type KingdomReviewEvidence } from '../../domain/generation/kingdom-generation';
 import { kingdomGenerationWindows } from '../../../content/detectives/retained-window-v1';
 import { JOURNEY_WINDOW_MANIFEST, JOURNEY_WINDOW_BODY_MANIFEST } from '../../../content/detectives/journey-window-release-v1';
 import { readSourceBodyRepairPin } from './source-body-repair-pin';
@@ -209,7 +210,7 @@ export type TrustedSourcePlacementContext = {
   readonly release: SourcePlacementReleasePin | null;
   readonly manifestSha256: string | null;
 };
-type ContextProof = { digest: string; contracts: Map<string, SourcePlacementHideContract>; bodies: Map<string, SourceBodyGeometry>; birthPin: DetectivesOperationalReceipt|null; windows:JourneyWindowPin|null; kingdomGeneration:string|null };
+type ContextProof = { digest: string; contracts: Map<string, SourcePlacementHideContract>; bodies: Map<string, SourceBodyGeometry>; birthPin: DetectivesOperationalReceipt|null; windows:JourneyWindowPin|null; kingdomGeneration:string|null; kingdomReview: KingdomReviewEvidence | null; neighborReviewHide: string | null };
 const trustedContexts = new WeakMap<object, ContextProof>();
 function freeze<T>(value: T): T {
   if (value !== null && typeof value === "object") {
@@ -303,9 +304,13 @@ export async function resolveLocalPatchBoardsForGame(db: Reader, gameId: string,
   }
   const context: TrustedSourcePlacementContext = Object.freeze({ [contextBrand]: true as const, gameId, sceneVersion,
     boards, release: release ? freeze(release) : null, manifestSha256: release?.manifestSha256 ?? null });
-  const kingdomGeneration = release?.baseSceneVersion === 13 && release.worldSlug === 'kingdom'
-    ? (await kingdomGenerationReleaseOf(db, gameId))?.windowsSha256 ?? null : null;
-  trustedContexts.set(context, { digest: contextDigest(context), contracts, bodies, birthPin:birthPin?freeze(birthPin):null, windows, kingdomGeneration });
+  const kingdomPin = release?.baseSceneVersion === 13 && release.worldSlug === 'kingdom'
+    ? await kingdomGenerationReleaseOf(db, gameId) : null;
+  const kingdomGeneration = kingdomPin?.windowsSha256 ?? null;
+  const neighborReview = kingdomPin && await (await import('./kingdom-neighbor-review')).kingdomNeighborReviewOf(db, gameId);
+  trustedContexts.set(context, { digest: contextDigest(context), contracts, bodies, birthPin:birthPin?freeze(birthPin):null, windows, kingdomGeneration,
+    kingdomReview: kingdomPin && 'reviewEvidence' in kingdomPin ? kingdomPin.reviewEvidence ?? null : null,
+    neighborReviewHide: neighborReview?.hideId ?? null });
   return context;
 }
 
@@ -318,6 +323,11 @@ export function assertTrustedSourcePlacementContext(value: unknown): asserts val
 export function sourcePlacementForHide(context: TrustedSourcePlacementContext, hideId: string): SourcePlacementHideContract | null {
   assertTrustedSourcePlacementContext(context);
   return trustedContexts.get(context)!.contracts.get(hideId) ?? null;
+}
+export function kingdomReviewEvidenceForContext(context: TrustedSourcePlacementContext, hideId: string) {
+  assertTrustedSourcePlacementContext(context);
+  const proof = trustedContexts.get(context)!;
+  return proof.neighborReviewHide === hideId ? KINGDOM_GAMEPLAY_NEIGHBOR_REVIEW : proof.kingdomReview;
 }
 export async function resolveLocalPatchBoardForGame(db: Reader, gameId: string, boardId: string, sceneVersion: number) {
   const context = await resolveLocalPatchBoardsForGame(db, gameId, sceneVersion);

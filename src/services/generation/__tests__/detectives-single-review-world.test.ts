@@ -14,8 +14,9 @@ import * as nativeDetailPainterModule from "../native-detail-painter";
 import { KINGDOM_DETECTIVE_PATCH_BOARDS } from "../../../../content/detectives/kingdom/runtime-release";
 import { KINGDOM_GENERATION_WINDOWS, KINGDOM_GENERATION_WINDOWS_V2_SHA256 } from '../../../../content/detectives/retained-window-v1';
 import { retainedWindowRegion } from '../../../domain/generation/retained-window';
-import { KINGDOM_COMPACT_REVIEW, KINGDOM_FLEX_OVERLOAD_COOLDOWN_MS, KINGDOM_PLAYABILITY_REVIEW } from '../../../domain/generation/kingdom-generation';
+import { KINGDOM_COMPACT_REVIEW, KINGDOM_FLEX_OVERLOAD_COOLDOWN_MS, KINGDOM_PLAYABILITY_REVIEW, KINGDOM_GAMEPLAY_NEIGHBOR_REVIEW } from '../../../domain/generation/kingdom-generation';
 import { kingdomGenerationReleaseOf } from '../kingdom-generation-release';
+import { resumeKingdomNeighborReview, kingdomNeighborReviewOf } from '../kingdom-neighbor-review';
 import { pinDetectiveSourceScope, sealDetectiveSourceFamily } from "../source-family-scope";
 import { planWholeSourceContextRepair, stageWholeSourceContextRepair, nextWholeSourceContextWake, resumeWholeSourceContextRepair } from "../whole-source-context-repair";
 import { readWholeSourceContextPin, wholeSourceContextPinId, wholeSourceContextWakeId, wholeSourceContextRowHash, wholeSourceContextMarkerFor, fenceWholeSourceContextPurchase } from "../whole-source-context-pin";
@@ -111,7 +112,7 @@ import { maskForHide } from "../../../domain/scene/local-patch-hides";
 import { LOCAL_PATCH_FIXED_SCENERY_PROMPT_VERSION } from "../local-patch-prompt";
 import { parseGameConfig } from "../../../domain/game/config";
 import { PrismaRetainedPurchaseStore, retainedPurchaseKey } from "../../../infra/db/prisma-retained-purchase-store";
-import { SOURCE_NEIGHBOR_ANSWER_VERSION, SOURCE_NEIGHBOR_BUNDLE_VERSION, type SourceNeighborContract } from "../../../domain/scene/local-patch-source-neighbors";
+import { SOURCE_NEIGHBOR_ANSWER_VERSION, SOURCE_NEIGHBOR_BUNDLE_VERSION, SOURCE_NEIGHBOR_GAMEPLAY_ANSWER, type SourceNeighborContract } from "../../../domain/scene/local-patch-source-neighbors";
 import type { SourceNeighborQualityBundleBinding } from "../../../domain/generation/source-neighbor-quality-bundle";
 import { SUBJECT_POLICY_V2, SUBJECT_READER_V2, readSubjectAnswerV2 } from "../../../domain/generation/subject-policy";
 import { SUBJECT_QUALITY_BUNDLE_VERSION } from "../../../domain/generation/subject-quality-bundle";
@@ -237,10 +238,11 @@ function cleanQuality(prompt: string, version = 13): string {
     if (version === 13) throw Error("Every Detective quality role must include its actual source contract");
     return JSON.stringify(assessment);
   }
-  const line = prompt.split("\n").find(text => text.startsWith("AUTHORITATIVE SOURCE NEIGHBORS: "))!;
-  const { contract } = JSON.parse(line.slice("AUTHORITATIVE SOURCE NEIGHBORS: ".length)) as { contract: SourceNeighborContract };
+  const prefix = prompt.startsWith(KINGDOM_GAMEPLAY_NEIGHBOR_REVIEW) ? 'SOURCE LOCATION AIDS: ' : 'AUTHORITATIVE SOURCE NEIGHBORS: ';
+  const line = prompt.split("\n").find(text => text.startsWith(prefix))!;
+  const { contract } = JSON.parse(line.slice(prefix.length)) as { contract: SourceNeighborContract };
   const binding = JSON.parse(/Wrapper binding metadata \(do not add policy\/reader fields to the answer\): (\{[^\n]+\})\./.exec(prompt)![1]!) as SourceNeighborQualityBundleBinding;
-  return JSON.stringify({ version: SOURCE_NEIGHBOR_BUNDLE_VERSION, assessment, sourceNeighbors: { version: SOURCE_NEIGHBOR_ANSWER_VERSION, contractSha256: binding.contractSha256, candidateSha256: binding.candidateSha256,
+  return JSON.stringify({ version: SOURCE_NEIGHBOR_BUNDLE_VERSION, assessment, sourceNeighbors: { version: prompt.startsWith(KINGDOM_GAMEPLAY_NEIGHBOR_REVIEW) ? SOURCE_NEIGHBOR_GAMEPLAY_ANSWER : SOURCE_NEIGHBOR_ANSWER_VERSION, contractSha256: binding.contractSha256, candidateSha256: binding.candidateSha256,
     neighbors: contract.neighbors.map((neighbor, i) => ({ sourceId: neighbor.sourceId, outcome: "preserved", status: "pass", after: [{ ref: "controlled-neighbor-" + i, rect: neighbor.head }],
       remnants: "none", occluder: null, observation: "One coherent synthetic source correspondence without shifted or remaining representation." })) } });
 }
@@ -252,7 +254,7 @@ function controlledSol(interrupted = false, guided = false, guidedHideId?: strin
     const prompt = (body.input as { content: { text?: string }[] }[])[0]!.content[0]!.text!, quality = prompt.includes(SUBJECT_QUALITY_BUNDLE_VERSION);
     const hideId = boundHide(prompt).hideId; expect(subjectPlanOfHide(hideId, version)).not.toBeNull();
     expect(body.reasoning).toMatchObject({ effort: prompt.includes('"version":"'+SINGLE_MEDIUM_VISUAL_REVIEW_VERSION+'"') ? "medium" : "low" });
-    if (prompt.startsWith(KINGDOM_COMPACT_REVIEW) || prompt.startsWith(KINGDOM_PLAYABILITY_REVIEW)) expect(prompt).toContain('"sourceNeighbors":<sourceNeighbors>');
+    if (prompt.startsWith(KINGDOM_COMPACT_REVIEW) || prompt.startsWith(KINGDOM_PLAYABILITY_REVIEW) || prompt.startsWith(KINGDOM_GAMEPLAY_NEIGHBOR_REVIEW)) expect(prompt).toContain('"sourceNeighbors":<sourceNeighbors>');
     else if (prompt.includes(SOURCE_NEIGHBOR_BUNDLE_VERSION)) expect(prompt).toContain('"assessment":<complete final assessment envelope above including quality, subject and sourceNeighbors>');
     else expect(prompt).toContain('"assessment":<complete final quality and subject assessment envelope above>');
     if(prompt.includes("original photograph was normally deleted")){const blocks=(body.input as {content:{type:string}[]}[])[0]!.content;console.info("synthetic-crown-request",{hideId,promptBytes:Buffer.byteLength(prompt),images:blocks.filter(b=>b.type==="input_image").length,fullOutputTokens:body.max_output_tokens});}
@@ -549,6 +551,7 @@ it('prospective window stop serves the other26, permits a different-edge repair,
 it.each([
   { release: 'v2', finding: 'overload' }, { release: 'v3', finding: 'broken-join' },
   { release: 'v4', finding: 'peripheral-mark' }, { release: 'v4', finding: 'cut-lower-limb' },
+  { release: 'v5', finding: 'bad-registration' }, { release: 'v5', finding: 'cut-lower-limb' },
 ] as const)('binds the Dragon Cave erasure to the Sunburst mask and uses the pinned Kingdom $release review for $finding', async ({ release, finding }) => {
   fixture.kingdomRelease = release;
   const gameId = 'kingdom-' + release + '-' + finding + '-erasure-synthetic', hideId = 'dragoncave-detectives-hide-1';
@@ -561,14 +564,18 @@ it.each([
   const context = await resolveLocalPatchBoardsForGame(db, gameId, 13);
   const board = context.boards.find(b => b.board === 'dragoncave')!, hide = board.hides.find(h => h.id === hideId)!;
   const provider = controlledSol(finding === 'overload', finding === 'broken-join', hideId, true, release === 'v2', 13, 2, 'server_is_overloaded');
-  if (release === 'v4') {
+  if (release === 'v4' || release === 'v5') {
     const retrieve = provider.fake.retrieve.bind(provider.fake);
     provider.fake.retrieve = async id => {
       const answer = await retrieve(id);
       if (answer.status !== 'completed') return answer;
       const raw = JSON.parse(answer.reading.raw!);
       const quality = raw.assessment.assessment.quality.hides[0].verdict;
-      if (finding === 'peripheral-mark') {
+      if (finding === 'bad-registration') {
+        const invalid = raw.assessment.sourceNeighbors.neighbors.find((neighbor: { sourceId: string }) => neighbor.sourceId !== 'source-child');
+        Object.assign(invalid, { outcome: 'invalid-registration', status: 'unsure', after: [], remnants: 'unsure', occluder: null,
+          observation: 'The source box marks a background object. The people visible in AFTER are coherent at game size.' });
+      } else if (finding === 'peripheral-mark') {
         quality.integrationEvidence.style = 'A small blue paint mark remains at the right join. The arms and legs are coherent and the nearby props are intact.';
       } else {
         Object.assign(raw.continuity.cases[0], { state: 'broken', faults: [
@@ -625,13 +632,18 @@ it.each([
     expect(provider.creates[0]!.prompt).toContain('ORIGINAL LEG AND BOOT');
     expect(provider.creates[0]!.prompt).toContain('HEAD_RETURN_EVIDENCE');
     const prompt = provider.creates[0]!.prompt;
-    if (release === 'v4') {
-      expect(prompt.startsWith(KINGDOM_PLAYABILITY_REVIEW + '.')).toBe(true);
+    if (release === 'v4' || release === 'v5') {
+      expect(prompt.startsWith((release === 'v5' ? KINGDOM_GAMEPLAY_NEIGHBOR_REVIEW : KINGDOM_PLAYABILITY_REVIEW) + '.')).toBe(true);
       expect(prompt).toContain('small peripheral paint fragment can pass');
       expect(prompt).toContain('A modest size difference is acceptable');
       expect(prompt).toContain("target child's two arms and two legs");
       expect(prompt).toContain('Set occluder to null for every other outcome');
       expect(prompt).toContain('include 8, fit within 6–9');
+      if (release === 'v5') {
+        expect(prompt).toContain('NEIGHBORS AT PLAY SIZE.');
+        expect(prompt).toContain('Annotation ambiguity alone does not make the picture');
+        expect(prompt).toContain(SOURCE_NEIGHBOR_GAMEPLAY_ANSWER);
+      }
     } else {
       expect(prompt.startsWith(KINGDOM_COMPACT_REVIEW + '.')).toBe(true);
       expect(prompt).not.toContain('PLAYABILITY.');
@@ -693,16 +705,19 @@ it.each(["newyork-detectives-hide-1", "giza-detectives-hide-2"])("Sunburst refus
   expect(rows).toHaveLength(1); expect(rows[0]).toMatchObject({ attempts: 0, status: "PENDING" });
 });
 
-it.each([{mode:"clean",interrupted:false,guided:false},{mode:"transport",interrupted:true,guided:false},{mode:"guided",interrupted:false,guided:true},{mode:"tail",interrupted:false,guided:true},{mode:"body",interrupted:false,guided:true}].map(v=>({...v,born:false})).concat([{mode:"born-clean",interrupted:false,guided:false,born:true},{mode:"born-guided",interrupted:false,guided:true,born:true},{mode:"born-transport",interrupted:true,guided:false,born:true},{mode:"born-crown",interrupted:false,guided:false,born:true},{mode:"kingdom-clean",interrupted:false,guided:false,born:true},{mode:"kingdom-transport",interrupted:true,guided:false,born:true},{mode:"kingdom-guided",interrupted:false,guided:true,born:true},{mode:"window-clean",interrupted:false,guided:false,born:true},{mode:"sunburst-clean",interrupted:false,guided:false,born:true},{mode:"kingdom-sunburst-paced",interrupted:true,guided:false,born:true}]).map(testCase => ({ ...testCase, reviewEffort: testCase.born && testCase.mode !== "born-crown" ? "MEDIUM" : "LOW" })))("completes 27 hides with bounded $reviewEffort review and no extra planner; mode=$mode", async ({mode,interrupted,guided,born}) => {
+it.each([{mode:"clean",interrupted:false,guided:false},{mode:"transport",interrupted:true,guided:false},{mode:"guided",interrupted:false,guided:true},{mode:"tail",interrupted:false,guided:true},{mode:"body",interrupted:false,guided:true}].map(v=>({...v,born:false})).concat([{mode:"born-clean",interrupted:false,guided:false,born:true},{mode:"born-guided",interrupted:false,guided:true,born:true},{mode:"born-transport",interrupted:true,guided:false,born:true},{mode:"born-crown",interrupted:false,guided:false,born:true},{mode:"kingdom-clean",interrupted:false,guided:false,born:true},{mode:"kingdom-transport",interrupted:true,guided:false,born:true},{mode:"kingdom-guided",interrupted:false,guided:true,born:true},{mode:"window-clean",interrupted:false,guided:false,born:true},{mode:"sunburst-clean",interrupted:false,guided:false,born:true},{mode:"kingdom-sunburst-paced",interrupted:true,guided:false,born:true}]).concat([{mode:"kingdom-neighbor-recovery",interrupted:false,guided:false,born:true}]).map(testCase => ({ ...testCase, reviewEffort: testCase.born && testCase.mode !== "born-crown" ? "MEDIUM" : "LOW" })))("completes 27 hides with bounded $reviewEffort review and no extra planner; mode=$mode", async ({mode,interrupted,guided,born}) => {
   vi.useFakeTimers({ toFake: ["Date"] });
   const kingdom = mode.startsWith("kingdom-"), crown = mode === "born-crown", body = mode === "body";
-  const paced = mode === 'kingdom-sunburst-paced', sunburst = mode === 'sunburst-clean' || paced;
-  const age = paced || !body && !born ? 8 : 7;
+  const neighborRecovery = mode === 'kingdom-neighbor-recovery';
+  const compact = mode === 'kingdom-sunburst-paced' || neighborRecovery;
+  const paced = mode === 'kingdom-sunburst-paced', sunburst = mode === 'sunburst-clean' || compact;
+  const age = compact || !body && !born ? 8 : 7;
   const gameId = "detective-single-world-synthetic-" + mode;
+  if (neighborRecovery) fixture.kingdomRelease = 'v4';
   await newDetectiveWorld(gameId, age, born, false, kingdom, mode === 'window-clean', sunburst);
-  if (paced) await db.game.update({ where: { id: gameId }, data: { paidAt: new Date() } });
+  if (compact) await db.game.update({ where: { id: gameId }, data: { paidAt: new Date() } });
   if (sunburst) expect(await localPatchPainterRelease(db, gameId)).toBe(LOCAL_PATCH_SUNBURST_PAINTER);
-  expect(!!await kingdomGenerationReleaseOf(db, gameId)).toBe(paced);
+  expect(!!await kingdomGenerationReleaseOf(db, gameId)).toBe(compact);
   const context = await resolveLocalPatchBoardsForGame(db, gameId, 13), hides = context.boards.flatMap(board => board.hides);
   expect(context.boards).toHaveLength(9); expect(hides).toHaveLength(27);
   // Simulate the actual older deployment: genuine LOW purchases under the
@@ -715,10 +730,31 @@ it.each([{mode:"clean",interrupted:false,guided:false},{mode:"transport",interru
   const tail = mode === "tail"||body, guidedHideId = tail ? context.boards.find(b=>b.board==="paris")!.hides[0]!.id : hides[0]!.id;
   const prompts = new Map<string, string>(), provider = controlledSol(interrupted, guided, body?[guidedHideId,"giza-detectives-hide-2"]:guidedHideId,
     body || born, born, 13, 2, paced ? 'server_is_overloaded' : 'server_error');
+  if (neighborRecovery) {
+    const originalRetrieve = provider.fake.retrieve.bind(provider.fake);
+    provider.fake.retrieve = async id => {
+      const answer = await originalRetrieve(id);
+      if (answer.status !== 'completed') return answer;
+      const raw = JSON.parse(answer.reading.raw!);
+      const hideId = raw.assessment.assessment.quality.hides[0].hideId;
+      if (hideId === 'nightcarnival-detectives-hide-3' && raw.assessment.sourceNeighbors.version === SOURCE_NEIGHBOR_ANSWER_VERSION) {
+        const n = raw.assessment.sourceNeighbors.neighbors[2];
+        Object.assign(n, { outcome: 'unsure', status: 'unsure', remnants: 'unsure', after: [] });
+        Object.assign(raw.assessment.assessment.quality.hides[0].verdict, { neighborsIntact: 'unsure', verdict: 'unsure' });
+        raw.doubt = true;
+        raw.doubtReason = 'The registered SOURCE rectangle covers a lantern rather than a single person.';
+      }
+      // Six-image compact questions use measured-size mock usage. The general
+      // legacy helper models the larger multi-panel request at the Flex tier.
+      return { ...answer, reading: { ...answer.reading, raw: JSON.stringify(raw),
+        usage: { input_tokens: 12_000, output_tokens: 2_500 } } };
+    };
+  }
   // Record the pixels actually drawn by this synthetic painter, independently
   // of the production tap-geometry measurement and its normalization.
   const paintedFigures = new Map<string, { left: number; top: number; width: number; height: number }>();
   let tailExtended = false, protectedRows: unknown[] = [], nativeDeferred = false, nativePendingChecked = false, bodyBudgetFilled=false, bodyAdopted=false, bodyDeferred=false, bodyPendingChecked=false, bornDeferred=false, bornPendingChecked=false;
+  let neighborAdopted = false;
   const synchronous = vi.fn<NonNullable<Container["visualReview"]>["request"]>(async () => { throw Error("Historical single review forbidden"); });
   const container = { ...c, visualReview: { request: synchronous }, backgroundReview: provider.fake } as Container;
   const deps: LocalPatchHideDeps = { readBoardArt: async (art, sha) => {
@@ -761,7 +797,7 @@ it.each([{mode:"clean",interrupted:false,guided:false},{mode:"transport",interru
         expect(alpha[(y * 512 + x) * 4 + 3]).toBe(0);
         figureRect.height = y + 1 - figureRect.top;
       }
-      const libraryRail = paced && hide.id === 'giantlibrary-detectives-hide-1';
+      const libraryRail = compact && hide.id === 'giantlibrary-detectives-hide-1';
       if (libraryRail) figureRect.height = 510 - figureRect.top;
       const crop = cropOf(hide);
       paintedFigures.set(hide.id, { ...figureRect, left: crop.left + figureRect.left, top: crop.top + figureRect.top });
@@ -796,6 +832,28 @@ it.each([{mode:"clean",interrupted:false,guided:false},{mode:"transport",interru
   let result = { pending: true, attention: null as string | null }, ticks = 0, observedPeak = 0, cooldownChecked = false;
   for (; ticks < 900 && result.pending; ticks++) {
     result = await runLocalPatchWorldSlice(container, deps, gameId, { hardDeadlineAt: Date.now() + 270_000, diagnose, ...(body||mode==="born-clean"?{maxHides:1}:{}) });
+    if (neighborRecovery && result.attention && !neighborAdopted) {
+      const before = await boardWizardBudgetOf(container).audit(boardWizardWorldId(gameId));
+      console.info('kingdom-neighbor-recovery-checkpoint', { reason: result.attention, committed: before.committedMicroUsd,
+        paintings: prompts.size, questions: provider.creates.length });
+      const failed = await db.targetVariantAsset.findMany({ where: { variant: 'A', status: 'FAILED', targetInstance: { gameScene: { gameId } } } });
+      expect(failed).toHaveLength(1);
+      expect(JSON.parse(failed[0]!.judgeJson!).hide).toBe('nightcarnival-detectives-hide-3');
+      protectedRows = await db.targetVariantAsset.findMany({ where: { variant: 'A', status: 'GENERATED', targetInstance: { gameScene: { gameId } } }, orderBy: { id: 'asc' } });
+      expect(protectedRows).toHaveLength(26);
+      fixture.kingdomRelease = 'v5';
+      expect(await resumeKingdomNeighborReview(container, gameId)).toBe(true);
+      expect(await resumeKingdomNeighborReview(container, gameId)).toBe(false);
+      expect(await boardWizardBudgetOf(container).audit(boardWizardWorldId(gameId))).toEqual(before);
+      const adopted = await db.targetVariantAsset.findUniqueOrThrow({ where: { id: failed[0]!.id } });
+      expect(adopted.attempts).toBe(failed[0]!.attempts);
+      expect(adopted.assetId).toBe(failed[0]!.assetId);
+      expect(JSON.parse(adopted.judgeJson!).reviewHistory.at(-1).judgeJson).toBe(failed[0]!.judgeJson);
+      expect(await kingdomNeighborReviewOf(db, gameId)).toMatchObject({ hideId: 'nightcarnival-detectives-hide-3', providerCalls: 0, approvalTransferred: false });
+      neighborAdopted = true;
+      result = { pending: true, attention: null };
+      continue;
+    }
     if (paced) {
       const audit = await boardWizardBudgetOf(container).audit(boardWizardWorldId(gameId));
       observedPeak = Math.max(observedPeak, audit.committedMicroUsd);
@@ -858,15 +916,24 @@ it.each([{mode:"clean",interrupted:false,guided:false},{mode:"transport",interru
   expect(await subjectUpgradeOf(db, gameId)).toMatchObject({ actorType: "SYSTEM", operatorId: SYSTEM_ENROLLMENT_OPERATOR, ageYears: age });
   const rows = await db.targetVariantAsset.findMany({ where: { variant: "A", targetInstance: { gameScene: { gameId } } } });
   expect(rows).toHaveLength(27); expect(rows.every(row => row.status === "GENERATED" && row.attempts === (body ? JSON.parse(row.judgeJson!).hide===guidedHideId?5:JSON.parse(row.judgeJson!).hide==="giza-detectives-hide-2"?4:1 : guided && JSON.parse(row.judgeJson!).hide === guidedHideId ? tail ? 4 : 3 : 1))).toBe(true);
-  expect(prompts.size).toBe(body?34:tail ? 30 : guided ? 29 : 27); expect(provider.creates).toHaveLength(body?32:guided ? 29 : interrupted ? 28 : 27); expect(provider.creates.filter(create => create.quality)).toHaveLength(body?32:guided ? 29 : interrupted ? 28 : 27);
-  expect(provider.creates.filter(create => create.tier === "default")).toHaveLength(interrupted ? 1 : 0);
+  expect(prompts.size).toBe(body?34:tail ? 30 : guided ? 29 : 27); expect(provider.creates).toHaveLength(neighborRecovery ? 28 : body?32:guided ? 29 : interrupted ? 28 : 27); expect(provider.creates.filter(create => create.quality)).toHaveLength(neighborRecovery ? 28 : body?32:guided ? 29 : interrupted ? 28 : 27);
+  expect(provider.creates.filter(create => create.tier === "default")).toHaveLength(neighborRecovery ? 28 : interrupted ? 1 : 0);
+  if (neighborRecovery) {
+    expect(neighborAdopted).toBe(true);
+    expect(await db.targetVariantAsset.findMany({ where: { id: { in: (protectedRows as {id: string}[]).map(r => r.id) } }, orderBy: { id: 'asc' } })).toEqual(protectedRows);
+    expect(provider.creates.filter(q => q.prompt.startsWith(KINGDOM_GAMEPLAY_NEIGHBOR_REVIEW))).toHaveLength(1);
+    expect(provider.creates.at(-1)!.hideId).toBe('nightcarnival-detectives-hide-3');
+  }
   if (kingdom) for (const request of provider.creates) {
     expect(request.reasoning).toEqual({ effort: "medium" });
     expect(request.prompt).toContain('"version":"' + SINGLE_MEDIUM_VISUAL_REVIEW_VERSION + '"');
     expect(request.prompt).toContain("HEAD_RETURN_EVIDENCE: ");
     expect(request.prompt).toContain('"version":"' + TARGET_HEAD_VISIBLE_VERSION + '"');
-    expect(request.labels.at(-2)).toContain(request.hideId + ":native-provider-raw 512x768");
-    expect(request.labels.at(-1)).toContain(request.hideId + ":native-shipping-crown 512x768");
+    if (compact) expect(request.labels).toHaveLength(6);
+    else {
+      expect(request.labels.at(-2)).toContain(request.hideId + ":native-provider-raw 512x768");
+      expect(request.labels.at(-1)).toContain(request.hideId + ":native-shipping-crown 512x768");
+    }
   }
   if(body){expect(bodyAdopted).toBe(true);expect(bodyPendingChecked).toBe(true);expect(await db.targetVariantAsset.findMany({where:{id:{in:(protectedRows as {id:string}[]).map(r=>r.id)}},orderBy:{id:'asc'}})).toEqual(protectedRows);for(const row of rows.filter(r=>sourceBodyMarker(r))){const bound={...publicationBinding(gameId,row),sceneVersion:13},p=await db.auditLog.findUniqueOrThrow({where:{id:sourceBodyRepairId(gameId)}});await db.auditLog.delete({where:{id:p.id}});expect(await allowedDualPublication(db,bound)).toBe(false);await db.auditLog.create({data:p});const bad=JSON.parse(row.judgeJson!);bad.sourceBodyRepair.sourceRowSha256='f'.repeat(64);expect(await allowedDualPublication(db,{...bound,judgeJson:JSON.stringify(bad)})).toBe(false);}}
   if (tail&&!body) {

@@ -4,7 +4,7 @@ import { kingdomGenerationWindows, KINGDOM_GENERATION_WINDOWS_SHA256,
 import { KINGDOM_DETECTIVE_SOURCE_PLACEMENT_RELEASE_SHA256 } from '../../../content/detectives/kingdom/source-placement-release';
 import { sourcePlacementSha256 } from '../../domain/scene/source-placement-release';
 import { env } from '../../lib/env';
-import { KINGDOM_COMPACT_REVIEW, KINGDOM_FLEX_OVERLOAD_COOLDOWN_MS, KINGDOM_PLAYABILITY_REVIEW } from '../../domain/generation/kingdom-generation';
+import { KINGDOM_COMPACT_REVIEW, KINGDOM_FLEX_OVERLOAD_COOLDOWN_MS, KINGDOM_PLAYABILITY_REVIEW, KINGDOM_GAMEPLAY_NEIGHBOR_REVIEW } from '../../domain/generation/kingdom-generation';
 import { LOCAL_PATCH_SUNBURST_PAINTER, localPatchPainterRelease } from './painter-release';
 import type { BoardWizardBudgetCeiling } from './board-wizard-budget';
 
@@ -12,6 +12,7 @@ export const KINGDOM_GENERATION_RELEASE = 'kingdom-generation/v1';
 export const KINGDOM_GENERATION_V2 = 'kingdom-generation/v2';
 const KINGDOM_GENERATION_V3 = 'kingdom-generation/v3';
 const KINGDOM_GENERATION_V4 = 'kingdom-generation/v4';
+const KINGDOM_GENERATION_V5 = 'kingdom-generation/v5';
 const KINGDOM_GENERATION_POLICY = Object.freeze({
   version: KINGDOM_GENERATION_RELEASE, world: 'kingdom', prospectiveOnly: true,
   windowsSha256: KINGDOM_GENERATION_WINDOWS_SHA256,
@@ -29,9 +30,12 @@ const KINGDOM_GENERATION_POLICY_V3 = Object.freeze({
 const KINGDOM_GENERATION_POLICY_V4 = Object.freeze({
   ...KINGDOM_GENERATION_POLICY_V3, version: KINGDOM_GENERATION_V4, reviewEvidence: KINGDOM_PLAYABILITY_REVIEW,
 } as const);
+const KINGDOM_GENERATION_POLICY_V5 = Object.freeze({
+  ...KINGDOM_GENERATION_POLICY_V4, version: KINGDOM_GENERATION_V5, reviewEvidence: KINGDOM_GAMEPLAY_NEIGHBOR_REVIEW,
+} as const);
 const kingdomPolicies = {
   v1: KINGDOM_GENERATION_POLICY, v2: KINGDOM_GENERATION_POLICY_V2,
-  v3: KINGDOM_GENERATION_POLICY_V3, v4: KINGDOM_GENERATION_POLICY_V4,
+  v3: KINGDOM_GENERATION_POLICY_V3, v4: KINGDOM_GENERATION_POLICY_V4, v5: KINGDOM_GENERATION_POLICY_V5,
 };
 export function newKingdomGenerationPolicy() {
   return kingdomPolicies[env().KINGDOM_GENERATION_RELEASE] ?? KINGDOM_GENERATION_POLICY;

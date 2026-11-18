@@ -297,6 +297,24 @@ Synthetic full27 cases cover a clean path, finite redraws after a conclusive fai
 
 ## Engine audit follow-up (24 October 2026)
 
+Kingdom QA `kingdom-generation/v5` uses `kingdom-native-compact/v3` with
+`source-neighbor-read/v2-gameplay`. Whole-scene neighbor quality and AFTER-only
+anatomy determine whether damage is visible in normal play. An unusable non-target
+SOURCE registration is retained as `invalid-registration` with an explicitly
+uncertain mapping. Independent scene, identity, target-head and anatomy roles
+still need positive results. Defects remain repair decisions. The original
+policies retain their exact prompts and readers.
+
+A once-only existing-v4 recovery can re-review one unchanged paid image when
+the other 26 are generated and the settled original answer passes every visual,
+identity and anatomy role except source-neighbor correspondence. It archives
+the full old receipt, pins the selected image/geometry and new question version,
+and preserves the original ledger and four-dollar ceiling. A full 250,000
+micro-USD review allowance must fit before enrollment; dispatch reserves the
+exact question bound. Enrollment calls no provider and transfers no approval.
+The admitted world has no painting route. Ordinary publication revalidates the
+new answer, exact source bytes, ownership, all 27 hides and complete accounting.
+
 The local-patch notification outbox writes `deliveredAt` in the same fenced transaction that records an acknowledged owner notification and changes READY to DELIVERED. Replaying the immutable notice does not send again or change its first delivery timestamp. Fallback, failed and cancelled notices do not mark delivery.
 
 `domain/game/progress-input.ts` owns the existing telemetry contract. The shared pure-domain `boundedArray` contract rejects oversized collections before validating any element, avoiding unbounded issue accumulation in the retained Zod3 parser. It preserves the existing limits: fifty telemetry events, one hundred friend-report acknowledgements, and six passport discovery acknowledgements. The service re-exports the schemas for existing callers; owner and PLAYER capability checks, published-target validation and secret-free persistence remain in the route/service.

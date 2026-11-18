@@ -2,16 +2,21 @@ import { z } from "zod";
 import { readSubjectQualityBundle, SUBJECT_QUALITY_BUNDLE_VERSION } from "./subject-quality-bundle";
 import { readSourceNeighborAnswer, SOURCE_NEIGHBOR_ANSWER_VERSION, SOURCE_NEIGHBOR_BUNDLE_VERSION,
   SOURCE_NEIGHBOR_LIMITS, SOURCE_NEIGHBOR_POLICY, SOURCE_NEIGHBOR_READER,
+  SOURCE_NEIGHBOR_GAMEPLAY_POLICY, SOURCE_NEIGHBOR_GAMEPLAY_READER,
   type SourceNeighborFault, type SourceNeighborReading } from "../scene/local-patch-source-neighbors";
 
 /** A new outer answer, never a change to the historical assessment document.
  * Limits belong to this named wrapper; they do not relax an inner reader. */
 export const SOURCE_NEIGHBOR_QUALITY_BUNDLE_LIMITS = Object.freeze({ raw: 80_000, depth: 32 });
 const sha256 = z.string().regex(/^[a-f0-9]{64}$/);
-export const sourceNeighborQualityBundleBindingSchema = z.object({
+const originalBinding = z.object({
   version: z.literal(SOURCE_NEIGHBOR_BUNDLE_VERSION), policy: z.literal(SOURCE_NEIGHBOR_POLICY),
   reader: z.literal(SOURCE_NEIGHBOR_READER), contractSha256: sha256, candidateSha256: sha256,
 }).strict();
+export const sourceNeighborQualityBundleBindingSchema = z.union([
+  originalBinding,
+  originalBinding.extend({ policy: z.literal(SOURCE_NEIGHBOR_GAMEPLAY_POLICY), reader: z.literal(SOURCE_NEIGHBOR_GAMEPLAY_READER) }),
+]);
 export type SourceNeighborQualityBundleBinding = z.infer<typeof sourceNeighborQualityBundleBindingSchema>;
 const document = z.record(z.string(), z.unknown());
 const shape = z.object({ version: z.literal(SOURCE_NEIGHBOR_BUNDLE_VERSION), assessment: document,
@@ -85,7 +90,7 @@ export function readSourceNeighborQualityBundle(raw: string | null, expected: {
   }
   const sourceNeighbors = readSourceNeighborAnswer(JSON.stringify(parsed.data.sourceNeighbors), {
     contract: expected.contract, contractSha256: binding.data.contractSha256, candidateSha256: binding.data.candidateSha256,
-  });
+  }, binding.data.reader);
   if (!sourceNeighbors.ok) return fail("neighbors", `sourceNeighbors${sourceNeighbors.fault.path ? `.${sourceNeighbors.fault.path}` : ""}`, sourceNeighbors.fault);
   return { ok: true, binding: binding.data, assessment: { kind, raw: assessmentRaw }, sourceNeighbors };
 }

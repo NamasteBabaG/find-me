@@ -9,6 +9,9 @@ export const SOURCE_NEIGHBOR_POLICY_ACTION = "generation:source-neighbor-policy"
 export const SOURCE_NEIGHBOR_CONTRACT_VERSION = "source-neighbor-contract/v1" as const;
 export const SOURCE_NEIGHBOR_ANSWER_VERSION = "source-neighbor-answer/v1" as const;
 export const SOURCE_NEIGHBOR_READER = "source-neighbor-read/v1" as const;
+export const SOURCE_NEIGHBOR_GAMEPLAY_POLICY = "local-patch-source-neighbor/v2-gameplay" as const;
+export const SOURCE_NEIGHBOR_GAMEPLAY_READER = "source-neighbor-read/v2-gameplay" as const;
+export const SOURCE_NEIGHBOR_GAMEPLAY_ANSWER = "source-neighbor-answer/v2-gameplay" as const;
 export const SOURCE_NEIGHBOR_BUNDLE_VERSION = "quality-source-neighbor-answer/v1" as const;
 export const SOURCE_NEIGHBOR_LIMITS = Object.freeze({ neighbors: 8, afterPerNeighbor: 8, ref: 48,
   observation: 300, occluder: 160, raw: 32_768 });
@@ -100,14 +103,23 @@ export const sourceNeighborAnswerSchema = z.object({
   }).strict()).min(1).max(SOURCE_NEIGHBOR_LIMITS.neighbors),
 }).strict();
 export type SourceNeighborAnswer = z.infer<typeof sourceNeighborAnswerSchema>;
+const gameplayNeighborSchema = sourceNeighborAnswerSchema.shape.neighbors.element.extend({
+  outcome: z.enum([...sourceNeighborAnswerSchema.shape.neighbors.element.shape.outcome.options, "invalid-registration"]),
+});
+const gameplayAnswerSchema = sourceNeighborAnswerSchema.extend({
+  version: z.literal(SOURCE_NEIGHBOR_GAMEPLAY_ANSWER),
+  neighbors: z.array(gameplayNeighborSchema).min(1).max(SOURCE_NEIGHBOR_LIMITS.neighbors),
+});
+type SourceNeighborGameplayAnswer = z.infer<typeof gameplayAnswerSchema>;
+type SourceNeighborReader = typeof SOURCE_NEIGHBOR_READER | typeof SOURCE_NEIGHBOR_GAMEPLAY_READER;
 export type SourceNeighborDecisionFault = {
   code: "duplicated" | "fragmented" | "remnants" | "merged" | "explicit-failure" | "unsure" | "mapping-contradiction";
   sourceIds: string[]; afterRefs: string[];
 };
 export type SourceNeighborReading =
-  | { ok: true; reader: typeof SOURCE_NEIGHBOR_READER; answer: SourceNeighborAnswer;
+  | { ok: true; reader: SourceNeighborReader; answer: SourceNeighborAnswer | SourceNeighborGameplayAnswer;
     disposition: "pass" | "repair" | "unresolved"; faults: SourceNeighborDecisionFault[] }
-  | { ok: false; reader: typeof SOURCE_NEIGHBOR_READER; disposition: "unresolved"; fault: SourceNeighborFault };
+  | { ok: false; reader: SourceNeighborReader; disposition: "unresolved"; fault: SourceNeighborFault };
 
 /** One complete named document, optionally in one JSON fence. Never extracts a
  * convenient fragment or reads old quality/continuity prose as a new answer.
@@ -115,9 +127,9 @@ export type SourceNeighborReading =
  * remain unresolved and cannot authorize a new painting. */
 export function readSourceNeighborAnswer(raw: string | null, expected: {
   contract: unknown; contractSha256: string; candidateSha256: string;
-}): SourceNeighborReading {
+}, reader: SourceNeighborReader = SOURCE_NEIGHBOR_READER): SourceNeighborReading {
   const fail = (code: SourceNeighborFault["code"], path = ""): SourceNeighborReading =>
-    ({ ok: false, reader: SOURCE_NEIGHBOR_READER, disposition: "unresolved", fault: { code, path } });
+    ({ ok: false, reader, disposition: "unresolved", fault: { code, path } });
   const prepared = validatedContract(expected.contract);
   if (!prepared.ok) return fail(prepared.fault.code, `expected.${prepared.fault.path}`);
   if (expected.contractSha256 !== prepared.contractSha256 || !sha256.safeParse(expected.candidateSha256).success)
@@ -128,7 +140,7 @@ export function readSourceNeighborAnswer(raw: string | null, expected: {
   const fenced = text.match(/^```(?:json)?[\t ]*\r?\n([\s\S]*?)\r?\n```$/i);
   let value: unknown;
   try { value = JSON.parse(fenced?.[1] ?? text); } catch { return fail("syntax"); }
-  const parsed = sourceNeighborAnswerSchema.safeParse(value);
+  const parsed = (reader === SOURCE_NEIGHBOR_GAMEPLAY_READER ? gameplayAnswerSchema : sourceNeighborAnswerSchema).safeParse(value);
   if (!parsed.success) return fail("shape", parsed.error.issues[0]!.path.join("."));
   const answer = parsed.data;
   if (answer.contractSha256 !== expected.contractSha256 || answer.candidateSha256 !== expected.candidateSha256)
@@ -147,6 +159,14 @@ export function readSourceNeighborAnswer(raw: string | null, expected: {
   for (const n of answer.neighbors) {
     const item = (code: SourceNeighborDecisionFault["code"]): SourceNeighborDecisionFault =>
       ({ code, sourceIds: [n.sourceId], afterRefs: n.after.map(a => a.ref) });
+    // A bad SOURCE annotation reports no visual conclusion about a person.
+    // The independent whole-scene neighborsIntact and anatomy checks must pass.
+    // Any claimed defect, remnant, representation or occluder defeats this case.
+    if (n.outcome === "invalid-registration") {
+      if (n.sourceId === "source-child" || n.status !== "unsure" || n.remnants !== "unsure" || n.after.length || n.occluder !== null)
+        return fail("shape", "neighbors.invalid-registration");
+      continue;
+    }
     if (n.outcome === "duplicated" || n.after.length > 1) defects.push(item("duplicated"));
     if (n.outcome === "fragmented") defects.push(item("fragmented"));
     if (n.remnants === "present") defects.push(item("remnants"));
@@ -173,6 +193,6 @@ export function readSourceNeighborAnswer(raw: string | null, expected: {
     if (sourceIds.length > 1 && afterRefs.length > 1)
       uncertain.push({ code: "mapping-contradiction", sourceIds, afterRefs });
   }
-  return { ok: true, reader: SOURCE_NEIGHBOR_READER, answer,
+  return { ok: true, reader, answer,
     disposition: defects.length ? "repair" : uncertain.length ? "unresolved" : "pass", faults: [...defects, ...uncertain] };
 }

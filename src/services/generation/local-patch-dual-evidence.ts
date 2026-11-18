@@ -32,8 +32,9 @@ import { readQuestionBoundSourceNeighborEnvelope } from "../../domain/generation
 import { BOUND_SOURCE_CONTRACT_READER, boundSourceNeighborReadingMarkerSchema, readQuestionBoundSourceContractEnvelope,
   type BoundSourceNeighborReadingMarker as BoundSourceNeighborReading } from "../../domain/generation/bound-source-contract-envelope";
 import { BOUND_SOURCE_SUBJECT_ECHO_READER, readQuestionBoundSubjectEchoEnvelope } from "../../domain/generation/bound-source-subject-echo-envelope";
-import { SOURCE_NEIGHBOR_BUNDLE_VERSION, SOURCE_NEIGHBOR_POLICY, SOURCE_NEIGHBOR_READER, type SourceNeighborContract } from "../../domain/scene/local-patch-source-neighbors";
-import { resolveLocalPatchBoardsForGame, sourcePlacementForHide, sourcePlacementManifestForHide, type TrustedSourcePlacementContext } from "./source-placement-release";
+import { SOURCE_NEIGHBOR_BUNDLE_VERSION, SOURCE_NEIGHBOR_POLICY, SOURCE_NEIGHBOR_READER, SOURCE_NEIGHBOR_GAMEPLAY_POLICY, SOURCE_NEIGHBOR_GAMEPLAY_READER, type SourceNeighborContract } from "../../domain/scene/local-patch-source-neighbors";
+import { KINGDOM_GAMEPLAY_NEIGHBOR_REVIEW } from '../../domain/generation/kingdom-generation';
+import { resolveLocalPatchBoardsForGame, sourcePlacementForHide, sourcePlacementManifestForHide, kingdomReviewEvidenceForContext, type TrustedSourcePlacementContext } from "./source-placement-release";
 import { authoredLocalPatchSourceNeighborContract, type AuthoredLocalPatchReceipt } from "./local-patch-authored-return";
 
 /** Only the prospectively pinned, annotated appearance carries this envelope.
@@ -46,8 +47,11 @@ export function sourceNeighborQualityEvidence(context: TrustedSourcePlacementCon
   if (!entry?.sourceNeighbors) return undefined;
   const prepared = authoredLocalPatchSourceNeighborContract(entry, receipt);
   if (!prepared || !context.manifestSha256) throw Error("SOURCE_NEIGHBOR: annotated placement has no authoritative contract");
+  const gameplay = kingdomReviewEvidenceForContext(context, hideId) === KINGDOM_GAMEPLAY_NEIGHBOR_REVIEW;
   return { manifestSha256: sourcePlacementManifestForHide(context,hideId)!, contract: prepared.contract,
-    binding: { version: SOURCE_NEIGHBOR_BUNDLE_VERSION, policy: SOURCE_NEIGHBOR_POLICY, reader: SOURCE_NEIGHBOR_READER,
+    binding: { version: SOURCE_NEIGHBOR_BUNDLE_VERSION,
+      ...(gameplay ? { policy: SOURCE_NEIGHBOR_GAMEPLAY_POLICY, reader: SOURCE_NEIGHBOR_GAMEPLAY_READER }
+        : { policy: SOURCE_NEIGHBOR_POLICY, reader: SOURCE_NEIGHBOR_READER }),
       contractSha256: prepared.contractSha256, candidateSha256 } };
 }
 /** One immutable raw document is retained. Unwrap the new envelope explicitly,

@@ -6,6 +6,7 @@ import { boardConditioningHash } from "./board-conditioned-source";
 import { wholeSourceContextExhausted } from "../../domain/generation/whole-source-context-purchase";
 import { wholeSourceContextImagePolicy } from "../../infra/generation/openai-local-patch";
 import { resumeBoundEnvelopeReconciliation } from "./bound-envelope-reconciliation";
+import { resumeKingdomNeighborReview, kingdomNeighborReviewOf } from './kingdom-neighbor-review';
 import { applySourceCrownReturn } from "./source-crown-pixels";
 import { correctSourceFigureReturn, sourceFigureCandidate } from './source-figure-return';
 import { sourceBodyGapCandidate } from '../../domain/generation/source-body-gap';
@@ -388,6 +389,8 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
   // from-birth prop refusal. It grants no picture, opinion or budget.
   if (!finalizingTail && job.currentStep === LOCAL_PATCH_RECOVERY_EXHAUSTED && await resumeBoundEnvelopeReconciliation(c, gameId))
     job = await c.db.generationJob.findUniqueOrThrow({ where: { id: job.id } });
+  if (!finalizingTail && job.currentStep === LOCAL_PATCH_RECOVERY_EXHAUSTED && await resumeKingdomNeighborReview(c, gameId))
+    job = await c.db.generationJob.findUniqueOrThrow({ where: { id: job.id } });
   if (!finalizingTail && job.currentStep === LOCAL_PATCH_RECOVERY_EXHAUSTED && await resumePropJoinRepair(c, gameId))
     job = await c.db.generationJob.findUniqueOrThrow({ where: { id: job.id } });
   if (!finalizingTail && job.currentStep === LOCAL_PATCH_RECOVERY_EXHAUSTED && await resumeQaCompletionRecovery(c, gameId))
@@ -644,6 +647,7 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
   // never permission to buy another image merely to obtain a different judge.
   const extraPlan = await readLocalPatchExtraAttemptPlan(c, gameId);
   const kingdomRelease = !!kingdomPlacement && !extraPlan && await kingdomGenerationReleaseOf(c.db, gameId);
+  const neighborReview = kingdomRelease && await kingdomNeighborReviewOf(c.db, gameId);
   // local-patch-continue-in-slice/v1. A ledger held only by review answers the automatic continuation admits does not
   // park the world: it yields, queued (a candidate of the scheduled selection), and its next slice continues them first.
   // A continuation this slice already tried and could not complete parks the world, never yields it again, and the park
@@ -1082,7 +1086,7 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
   // The review-existing turn reaches the same ordinary readers and free pixel
   // corrections above, then skips BOTH paid diagnosis/repair and render queues.
   // maxHides:0 cannot express this: the historical image limit clamps to one.
-  const limit = workMode === REVIEW_EXISTING_WORK_MODE ? 0
+  const limit = workMode === REVIEW_EXISTING_WORK_MODE || neighborReview ? 0
     : kingdomRelease ? kingdomPaintLimit(rows.some(row => {
       const evidence = localPatchEvidenceRecovery(row);
       return readyReviewOwed(row) || rejudgePending(row) || localPatchContinuityPending(row)
@@ -1386,7 +1390,7 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
         reviewOwed: legacyReviewOwed(row) || !!row && (progress && readyReviewOwed(row) || rejudgePending(row) || playerReviewEnabled() && needsPlayerReview(row)),
         // Legacy worlds still owe their historical end-of-world third attempt:
         // a normal-phase gave-up there must not park them before that pass.
-        noRoute: automatic && gaveUp.has(item.hide.id),
+        noRoute: automatic && (gaveUp.has(item.hide.id) || !!neighborReview && neighborReview.rowId === row?.id && row.status === 'FAILED'),
         repairSpent: !legacyReviewOwed(row) && (journeyExhausted(row) || headExhausted(row) || contextExhausted(row) || progress && !!row && !journeyPainting(row) && !headPainting(row) && !contextPainting(row) && !bodyPainting(row) && !nativeFourthPainting(row) && (bodyExhausted(row) || !!sourceBodyBirthMarker(row) && row.attempts>=LOCAL_PATCH_MAX_ATTEMPTS || guidedFrameExhausted(row) && !completionRepair(row) && !mechanicalRepair(row) || nativeMaskTailExhausted(row) || needsSelfRepair(row) && selfRepairProgress(selfRepairOf(row), row.attempts).exhausted && !mechanicalRepair(row))) });
     });
     const rest = pendingReviews ? null : localPatchRestDecision(rests);
