@@ -929,7 +929,7 @@ it.each([{mode:"clean",interrupted:false,guided:false},{mode:"transport",interru
     expect(request.prompt).toContain('"version":"' + SINGLE_MEDIUM_VISUAL_REVIEW_VERSION + '"');
     expect(request.prompt).toContain("HEAD_RETURN_EVIDENCE: ");
     expect(request.prompt).toContain('"version":"' + TARGET_HEAD_VISIBLE_VERSION + '"');
-    if (compact) expect(request.labels).toHaveLength(6);
+    if (neighborRecovery) expect(request.labels).toHaveLength(6);
     else {
       expect(request.labels.at(-2)).toContain(request.hideId + ":native-provider-raw 512x768");
       expect(request.labels.at(-1)).toContain(request.hideId + ":native-shipping-crown 512x768");
