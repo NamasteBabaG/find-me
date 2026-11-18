@@ -327,7 +327,7 @@ export function sourcePlacementForHide(context: TrustedSourcePlacementContext, h
 export function kingdomReviewEvidenceForContext(context: TrustedSourcePlacementContext, hideId: string) {
   assertTrustedSourcePlacementContext(context);
   const proof = trustedContexts.get(context)!;
-  return proof.neighborReviewHide === hideId ? KINGDOM_GAMEPLAY_NEIGHBOR_REVIEW : proof.kingdomReview;
+  return proof.neighborReviewHide === hideId ? KINGDOM_GAMEPLAY_NEIGHBOR_REVIEW : proof.kingdomReview ?? undefined;
 }
 export async function resolveLocalPatchBoardForGame(db: Reader, gameId: string, boardId: string, sceneVersion: number) {
   const context = await resolveLocalPatchBoardsForGame(db, gameId, sceneVersion);

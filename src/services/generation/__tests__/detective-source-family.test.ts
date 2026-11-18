@@ -4,6 +4,8 @@ import { pinJourneyWindowRelease, journeyWindowReleaseOf, journeyWindowReleaseId
 import { DETECTIVES_OPERATIONAL_RELEASE } from '../../../domain/generation/detectives-operational-policy';
 import { JOURNEY_WINDOW_RELEASE, JOURNEY_WINDOW_MANIFEST, JOURNEY_WINDOW_BODY_SHA256 } from '../../../../content/detectives/journey-window-release-v1';
 import { SOURCE_BODY_REPAIR_MANIFEST_SHA256 } from '../../../../content/detectives/source-body-repair';
+import { RETAINED_WINDOW_AUTHORITIES } from '../../../../content/detectives/retained-window-v1';
+import { retainedWindowReviewPrompt } from '../../../domain/generation/retained-window';
 import { sourceBodyForHide, sourcePlacementManifestForHide } from '../source-placement-release';
 import { crownTabAuthorityFor } from '../../../domain/generation/crown-tab';
 import { cropOf, maskForHide } from '../../../domain/scene/local-patch-hides';
@@ -17,7 +19,7 @@ import { pinVisualReviewRelease, DUAL_VISUAL_REVIEW_V3 } from "../visual-review-
 import { identitySourceAuditId, pinIdentitySourceRelease } from "../identity-source-release";
 import { assertTrustedSourcePlacementContext, localPatchSourceSelectionAllowed, pinLocalPatchSourceFamily,
   pinSourcePlacementRelease, resolveLocalPatchBoardsForGame, sourceFamilyAuditId, sourcePlacementForHide,
-  sourcePlacementReleaseAuditId, sourcePlacementReleaseOf } from "../source-placement-release";
+  sourcePlacementReleaseAuditId, sourcePlacementReleaseOf, kingdomReviewEvidenceForContext } from "../source-placement-release";
 
 const configuration = vi.hoisted(() => ({ APP_ENV: "qa", LOCAL_PATCH_PROMPT_RELEASE: "v19", LOCAL_PATCH_IDENTITY_SOURCE: "full-source-v1" }));
 vi.mock("../../../lib/env", () => ({ env: () => configuration }));
@@ -70,6 +72,15 @@ async function scopedWindows(enabled:boolean,kingdom=false){const f=database();a
   await sealDetectiveSourceFamily(f.tx,f.state.game.id);return f;
 }
 describe('prospective Journey windows preserve old games and ordinary quality',()=>{
+  it.each([false, true])('preserves all16 full retained-window question directions; Journey windows=%s', async enabled => {
+    const f = await scopedWindows(enabled), context = await resolveLocalPatchBoardsForGame(f.tx, f.state.game.id, 13);
+    const journey = RETAINED_WINDOW_AUTHORITIES.filter(a => a.family === 'journey-detectives/v1');
+    expect(journey).toHaveLength(4);
+    for (const a of journey) for (const [x, y] of [[0, 0], [-3, 0], [0, 3], [3, -3]]) {
+      const compact = kingdomReviewEvidenceForContext(context, a.hideId) !== undefined;
+      expect(retainedWindowReviewPrompt(a, x!, y!, compact)).toBe(retainedWindowReviewPrompt(a, x!, y!));
+    }
+  });
   it('does not transfer Journey permissions to a Kingdom selected from the same pre-photo scope',async()=>{
     const a=await scopedWindows(false,true),b=await scopedWindows(true,true);
     const old=await resolveLocalPatchBoardsForGame(a.tx,a.state.game.id,13),fresh=await resolveLocalPatchBoardsForGame(b.tx,b.state.game.id,13);
