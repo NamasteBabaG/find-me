@@ -62,6 +62,8 @@ export function CreatingStatus({ gameId, childName, isAdmin }: { gameId: string;
   const cr = t.create.creating;
   const [s, setS] = useState<Status | null>(null);
   const [failures, setFailures] = useState(0);
+  /** The QA gate's sign-in (a fixed 24 hours) ran out under an open page. */
+  const [signedOut, setSignedOut] = useState(false);
   const [updatedAt, setUpdatedAt] = useState<Date | null>(null);
   const [resend, setResend] = useState<"idle" | "busy" | "sent" | "simulated" | "wait" | "error">("idle");
 
@@ -71,10 +73,20 @@ export function CreatingStatus({ gameId, childName, isAdmin }: { gameId: string;
     const polling = startSerialPoll({
       poll: async (signal) => {
         const res = await fetch(`/api/games/${gameId}/status`, { cache: "no-store", signal });
-        if (!res.ok) throw new Error(`status ${res.status}`);
+        if (!res.ok) {
+          // On QA the gate answers every API call 401 once its sign-in has run out. The page cannot
+          // reconnect by itself, and on QA the game waits for this page, so say what to do at once.
+          // Polling goes on: a sign-in in another tab brings the page straight back.
+          if (res.status === 401) {
+            const body = (await res.json().catch(() => null)) as { code?: string } | null;
+            if (alive && body?.code === "QA_ACCESS_REQUIRED") setSignedOut(true);
+          }
+          throw new Error(`status ${res.status}`);
+        }
         const status = (await res.json()) as Status;
         if (!alive || signal.aborted) return false;
         setS(status);
+        setSignedOut(false);
         setFailures(0);
         setUpdatedAt(new Date());
         // Generating a game takes minutes, more than a serverless request lives.
@@ -106,8 +118,13 @@ export function CreatingStatus({ gameId, childName, isAdmin }: { gameId: string;
     };
   }, [gameId]);
 
-  const offline = failures >= QUIET_FAILURES;
-  const reconnecting = offline ? (
+  const offline = signedOut || failures >= QUIET_FAILURES;
+  const reconnecting = signedOut ? (
+    <Notice kind="warn">
+      {cr.qaSignedOut}{" "}
+      <a className="fm-btn fm-btn--secondary fm-btn--sm" href={`/qa-access?${new URLSearchParams({ next: `/creating/${gameId}` })}`}>{cr.qaSignIn}</a>
+    </Notice>
+  ) : offline ? (
     <Notice kind="warn">
       {tf(cr.reconnecting, { time: updatedAt ? updatedAt.toLocaleTimeString(locale === "he" ? "he-IL" : "en-GB", { hour: "2-digit", minute: "2-digit" }) : "—" })}{" "}
       <Link href="/library">{cr.backToLibrary}</Link>

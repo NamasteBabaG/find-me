@@ -389,6 +389,8 @@ export const en = {
       newPhotoButton: "Choose another photo",
       retrying: "Drawing did not finish on this attempt. We are retrying automatically.",
       reconnecting: "We couldn’t get an update from the server. Last update: {time}. Reconnecting.",
+      qaSignedOut: "Your sign-in to the test site has expired. Sign in again and this screen carries on from where it stopped.",
+      qaSignIn: "Sign in again",
       backToLibrary: "Back to my family area",
       readyOpen: "The game is ready. You can open it right here.",
       mailSent: "The email with the game link has been sent.",
