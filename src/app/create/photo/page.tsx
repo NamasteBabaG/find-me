@@ -12,6 +12,7 @@ import { worldPurchaseDraftHref, worldPurchaseHref, worldPurchaseReturnHref, wor
 import { worldBySlug } from "@/services/world-catalog.service";
 import { pick } from "@/i18n";
 import { LinkButton } from "@/ui/Button";
+import { parsePhotoCrop } from "@/domain/photo-frame";
 
 export async function generateMetadata() {
   const { t } = await getI18n();
@@ -34,7 +35,9 @@ export default async function CreatePhotoPage({ searchParams }: { searchParams: 
   return (
     <CreateFrame step={1} title={tf(t.create.photo.title, { name })} user={user} isAdmin={isAdminEmail(user?.email)}>
       {purchase ? <div className="fm-stack fm-stack--2"><p className="fm-lead fm-center">{tf(t.worldPurchase.photoContext, { name, world: pick(worldBySlug(purchase.worldSlug).name, locale) })}</p><p className="fm-hint fm-center">{t.worldPurchase.photoNeeded}</p></div> : null}
-      <PhotoUploader childName={name} hasPhoto={hasPhoto} rejectedCode={rejectedCode} {...(purchase ? { endpoint: `/api/drafts/photo${suffix}`, nextHref: `/checkout${suffix}` } : { endpoint: `/api/drafts/photo?draft=${encodeURIComponent(draft.id)}`, nextHref: creationDraftHref("package", draft.id) })} />
+      <PhotoUploader childName={name} hasPhoto={hasPhoto} rejectedCode={rejectedCode}
+        saved={hasPhoto ? { src: purchase ? `/api/drafts/photo${suffix}` : `/api/drafts/photo?draft=${encodeURIComponent(draft.id)}`, crop: parsePhotoCrop(draft.childProfile.photoCropJson) } : undefined}
+        {...(purchase ? { endpoint: `/api/drafts/photo${suffix}`, nextHref: `/checkout${suffix}` } : { endpoint: `/api/drafts/photo?draft=${encodeURIComponent(draft.id)}`, nextHref: creationDraftHref("scenes", draft.id) })} />
       {backHref ? <div className="fm-center"><LinkButton href={worldPurchaseReturnHref(purchase!.familyChildId, purchase!.returnGameId)} variant="ghost">{t.worldPurchase.back}</LinkButton></div> : null}
     </CreateFrame>
   );

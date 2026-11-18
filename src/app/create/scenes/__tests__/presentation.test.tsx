@@ -1,11 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import React from "react";
 import { allWorlds } from "../../../../../content/worlds";
-import { boardPresentation, presentationMatchesScene } from "../../../../../content/home/board-presentation";
-import { findScene } from "../../../../../content/scenes";
-import { boardSlugs } from "@/domain/world";
 import { en } from "@/i18n/dictionaries/en";
-import { PACKAGES } from "@/domain/package";
 import CreateScenesPage from "../page";
 import { ScenePicker } from "../ScenePicker";
 
@@ -14,21 +10,19 @@ vi.mock("@/services/create-flow.service", () => ({ worldsForDraft: async () => a
   searchLevelTerms: async () => ({ asked: false, required: false, stale: false, openPayment: false, detectives: false }) }));
 vi.mock("@/lib/server/session", () => ({ currentUser: async () => null, isAdminEmail: () => false }));
 vi.mock("@/i18n/server", () => ({ getI18n: async () => ({ t: en, locale: "en" }) }));
-vi.mock("@/lib/server/current-draft", () => ({ currentDraft: async () => ({ childProfile: {}, packageTier: Object.values(PACKAGES)[0]!.tier, scenes: [] }) }));
+const draft = vi.hoisted(() => ({ current: { id: "draft", childProfile: { originalPhotoAssetId: "photo" }, packageTier: null as string | null, scenes: [] } }));
+vi.mock("@/lib/server/current-draft", () => ({ currentDraft: async () => draft.current }));
 
-describe("creation world artwork", () => {
-  it("uses only artwork bound to the purchased scene, otherwise the actual scene or map", async () => {
+describe("choosing a world", () => {
+  it("offers every world by name and emblem, never a board, and one world when the draft has no package", async () => {
     vi.stubGlobal("React", React);
     try {
       const result = await CreateScenesPage({ searchParams: Promise.resolve({}) });
       const picker = result.props.children;
       expect(picker.type).toBe(ScenePicker);
-      for (const world of allWorlds()) {
-        const slug = boardSlugs(world)[0]!;
-        const scene = findScene(slug, 10);
-        expect(picker.props.scenes.find((option: { slug: string }) => option.slug === world.slug).thumbnail)
-          .toBe(presentationMatchesScene(slug, scene?.art) ? boardPresentation(slug)!.thumbnail : scene?.art.thumbnail ?? world.map.artPortrait ?? world.map.art);
-      }
+      expect(picker.props.want).toBe(1);
+      expect(picker.props.scenes.map((o: { slug: string }) => o.slug)).toEqual(allWorlds().map(w => w.slug));
+      for (const option of picker.props.scenes) expect(Object.keys(option).sort()).toEqual(["name", "slug", "tagline"]);
     } finally { vi.unstubAllGlobals(); }
   });
 });

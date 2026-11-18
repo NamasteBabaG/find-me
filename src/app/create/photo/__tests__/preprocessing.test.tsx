@@ -7,6 +7,9 @@ import { I18nProvider } from "@/i18n/client";
 import { en } from "@/i18n/dictionaries/en";
 import { navigateToSavedStep } from "../../saved-step-navigation";
 vi.mock("../../saved-step-navigation", () => ({ navigateToSavedStep: vi.fn() }));
+// The real finder runs MediaPipe in the browser; here it answers what each test says.
+const finder = vi.hoisted(() => ({ find: vi.fn(async (): Promise<{ x: number; y: number; width: number; height: number } | null> => null) }));
+vi.mock("../face-finder", () => ({ warmFaceFinder: vi.fn(async () => null), findFace: finder.find }));
 const router = vi.hoisted(() => ({ push: vi.fn(), prefetch: vi.fn() }));
 const scrollDescriptor = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "scrollIntoView");
 vi.mock("next/navigation", () => ({ useRouter: () => router }));
@@ -75,6 +78,42 @@ it("resumes a saved paid-game photo through its supplied route, not the new-orde
   expect(fetch).not.toHaveBeenCalled();
 });
 
+
+it("frames a found face by itself: centred, with room for hair, and sends that crop", async () => {
+  finder.find.mockResolvedValueOnce({ x: 300, y: 300, width: 200, height: 200 });
+  vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(320);
+  vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockImplementation(() => ({ drawImage: vi.fn() }) as unknown as CanvasRenderingContext2D);
+  vi.spyOn(HTMLCanvasElement.prototype, "toBlob").mockImplementation(cb => cb(new Blob(["synthetic"], { type: "image/jpeg" })));
+  const view = render(<I18nProvider locale="en" dict={en}><PhotoUploader childName="Example" hasPhoto={false} rejectedCode={null} /></I18nProvider>);
+  fireEvent.change(view.container.querySelector('input[type="file"]')!, { target: { files: [new File(["synthetic"], "sample.png", { type: "image/png" })] } });
+  const img = view.container.querySelector(".cropper img") as HTMLImageElement;
+  Object.defineProperties(img, { naturalWidth: { value: 800 }, naturalHeight: { value: 1000 } });
+  fireEvent.load(img);
+  await waitFor(() => expect(view.container.querySelector(".cropper--found")).toBeTruthy());
+  // No manual controls needed: "Adjust" stays closed.
+  expect((view.container.querySelector("#cropper-zoom") as HTMLElement).hidden).toBe(true);
+  fireEvent.click(view.getByRole("checkbox"));
+  fireEvent.click(view.getByRole("button", { name: new RegExp(en.create.photo.confirm) }));
+  await waitFor(() => expect(fetch).toHaveBeenCalledTimes(1));
+  const crop = JSON.parse(String((vi.mocked(fetch).mock.calls[0]![1]!.body as FormData).get("crop")));
+  expect(crop.x + crop.w / 2).toBeCloseTo(0.5);
+  expect(crop.y + crop.h / 2).toBeCloseTo(0.37);
+  expect(crop.w).toBeCloseTo((200 * 2.5) / 800);
+});
+
+it("opens the adjust controls and says what to do when no face is found", async () => {
+  vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockImplementation(() => ({ drawImage: vi.fn() }) as unknown as CanvasRenderingContext2D);
+  vi.spyOn(HTMLCanvasElement.prototype, "toBlob").mockImplementation(cb => cb(new Blob(["synthetic"], { type: "image/jpeg" })));
+  const view = render(<I18nProvider locale="en" dict={en}><PhotoUploader childName="Example" hasPhoto={false} rejectedCode={null} /></I18nProvider>);
+  fireEvent.change(view.container.querySelector('input[type="file"]')!, { target: { files: [new File(["synthetic"], "sample.png", { type: "image/png" })] } });
+  const img = view.container.querySelector(".cropper img")!;
+  Object.defineProperties(img, { naturalWidth: { value: 100 }, naturalHeight: { value: 100 } });
+  fireEvent.load(img);
+  await waitFor(() => expect(view.container.querySelector(".cropper--missed")).toBeTruthy());
+  expect((view.container.querySelector("#cropper-zoom") as HTMLElement).hidden).toBe(false);
+  expect(view.getByRole("status").textContent).toBe(en.create.photo.missed);
+  expect(view.getByRole("button", { name: new RegExp(en.create.photo.adjust) }).getAttribute("aria-expanded")).toBe("true");
+});
 
 it.each([320, 256])("keeps the %ipx layout crop when the entrance animation scales its painted bounds", async layoutWidth => {
   vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(layoutWidth);

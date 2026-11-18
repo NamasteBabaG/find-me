@@ -9,6 +9,9 @@ import { errorText } from "@/i18n/errors";
 import Link from "next/link";
 import { serviceCopy } from "@/domain/legal";
 import { Icon } from "@/ui/Icon";
+import { FramedPhoto } from "@/ui/FramedPhoto";
+import { faceTooSmall, MAX_ZOOM, MIN_ZOOM, offsetFor, openingFrame, type FaceBox, type PhotoCrop } from "@/domain/photo-frame";
+import { findFace, warmFaceFinder } from "./face-finder";
 
 interface Props {
   childName: string;
@@ -18,14 +21,13 @@ interface Props {
   endpoint?: string;
   /** Where to go once it is accepted. */
   nextHref?: string;
+  /** The photo already saved on this draft, shown as the parent framed it. */
+  saved?: { src: string; crop: PhotoCrop | null };
 }
 
 const BOX_MAX = 320;
+const ACCEPT = "image/jpeg,image/png,image/webp";
 
-/**
- * Pick → crop (drag + zoom inside a circle) → upload.
- * The crop is sent as a normalized box; the server makes the sticker.
- */
 /**
  * The picture that actually goes over the wire.
  *
@@ -60,53 +62,56 @@ async function forUpload(file: File): Promise<Blob> {
   return blob ?? file;
 }
 
-/**
- * Where the face probably is, as a box in the photo's own pixels.
- *
- * A real detector when the browser has one (Chrome behind a flag, mostly), and
- * otherwise nothing — the caller then uses the place a phone portrait almost
- * always puts a face, which is not the dead centre the crop used to open at.
- */
-async function faceBox(image: HTMLImageElement): Promise<{ x: number; y: number; width: number; height: number } | null> {
-  const Detector = (window as unknown as { FaceDetector?: new (options?: unknown) => { detect(source: HTMLImageElement): Promise<Array<{ boundingBox: DOMRectReadOnly }>> } }).FaceDetector;
-  if (!Detector) return null;
-  try {
-    const found = await new Detector({ maxDetectedFaces: 1, fastMode: true }).detect(image);
-    const box = found[0]?.boundingBox;
-    return box && box.width > 0 ? { x: box.x, y: box.y, width: box.width, height: box.height } : null;
-  } catch {
-    return null;
-  }
-}
+/** Looking for the face, found it, or not: the circle and its one line say which. */
+type Look = "looking" | "found" | "missed" | "manual";
 
-export function PhotoUploader({ childName, hasPhoto, rejectedCode, endpoint = "/api/drafts/photo", nextHref = "/create/package" }: Props) {
+/**
+ * Pick → the circle frames the face by itself → confirm.
+ *
+ * Guy (2026-11-18): the parent should not have to drag and zoom; the system
+ * finds the face. The face is found on this device (face-finder.ts) while the
+ * circle already shows the photo where a portrait puts a head; when the face
+ * is found the photo glides to it. Dragging, the arrow keys and the zoom under
+ * "Adjust" still decide, and they open by themselves when no face is found.
+ * The crop is sent as a normalised box; the server makes the sticker.
+ */
+export function PhotoUploader({ childName, hasPhoto, rejectedCode, endpoint = "/api/drafts/photo", nextHref = "/create/scenes", saved }: Props) {
   const { t, tf, locale } = useI18n();
   const p = t.create.photo;
+  const legal = serviceCopy[locale];
   // A guarded future step must not be prefetched before this photo exists.
   // Upload is a Route Handler mutation, not a cache-invalidating Server Action.
   const [file, setFile] = useState<File | null>(null);
   const preparedPhoto = useRef<{ file: File; promise: Promise<Blob | null> } | null>(null);
   useEffect(() => {
-    // Resize/strip metadata while the parent chooses the crop, rather than
+    // Resize/strip metadata while the parent looks at the crop, rather than
     // starting that work only after Continue is pressed. Nothing is uploaded.
     preparedPhoto.current = file ? { file, promise: forUpload(file).catch(() => null) } : null;
   }, [file]);
   const [url, setUrl] = useState<string | null>(null);
   const [natural, setNatural] = useState<{ w: number; h: number } | null>(null);
-  const [zoom, setZoom] = useState(1);
+  const [zoom, setZoom] = useState(MIN_ZOOM);
   const [offset, setOffset] = useState({ x: 0, y: 0 });
   const [busy, setBusy] = useState(false);
   const [consent, setConsent] = useState(false);
   const [error, setError] = useState<string | null>(rejectedCode ? errorText(t, { code: rejectedCode }) : null);
   const [over, setOver] = useState(false);
+  const [look, setLook] = useState<Look>("looking");
+  const [small, setSmall] = useState(false);
+  const [adjusting, setAdjusting] = useState(false);
+  /** The photo glides to the found face; the parent's own moves follow the finger with no delay. */
+  const [glide, setGlide] = useState(false);
   const drag = useRef<{ x: number; y: number; ox: number; oy: number } | null>(null);
+  /** Once the parent moves the photo, a late answer from the face finder never moves it again. */
+  const touched = useRef(false);
   const cropperRef = useRef<HTMLDivElement | null>(null);
   const imageRef = useRef<HTMLImageElement | null>(null);
   const errorRef = useRef<HTMLDivElement | null>(null);
-  /** The opening crop is chosen once per picture, then the parent owns it. */
-  const [aimed, setAimed] = useState(false);
-  // The visible crop box: 320px on desktop, narrower on phones. The crop math must use the real size.
+  // The visible crop box is sized by CSS (--crop). The crop math must use the real size.
   const [BOX, setBox] = useState(BOX_MAX);
+
+  // The detector loads while the parent is still choosing; the photo is never sent for it.
+  useEffect(() => { void warmFaceFinder(); }, []);
 
   useEffect(() => {
     const el = cropperRef.current;
@@ -135,65 +140,81 @@ export function PhotoUploader({ childName, hasPhoto, rejectedCode, endpoint = "/
     setError(null);
     setFile(f);
     setUrl(URL.createObjectURL(f));
-    setZoom(1);
+    setNatural(null);
+    setZoom(MIN_ZOOM);
     setOffset({ x: 0, y: 0 });
-    setAimed(false);
+    setLook("looking");
+    setSmall(false);
+    setAdjusting(false);
+    setGlide(false);
+    touched.current = false;
   };
 
-  // Base scale so the image covers the circle.
-  const base = natural ? Math.max(BOX / natural.w, BOX / natural.h) : 1;
-  const scale = base * zoom;
-  const drawW = natural ? natural.w * scale : 0;
-  const drawH = natural ? natural.h * scale : 0;
+  // The photo covers the circle at zoom 1; `zoom` scales it from there.
+  const cover = natural ? Math.max(BOX / natural.w, BOX / natural.h) : 1;
+  const scale = cover * zoom;
+  const baseW = natural ? natural.w * cover : 0;
+  const baseH = natural ? natural.h * cover : 0;
   const clampOffset = useCallback(
-    (o: { x: number; y: number }) => ({ x: Math.min(0, Math.max(BOX - drawW, o.x)), y: Math.min(0, Math.max(BOX - drawH, o.y)) }),
-    [drawW, drawH],
+    (o: { x: number; y: number }, z = zoom) => natural
+      ? { x: Math.min(0, Math.max(BOX - natural.w * cover * z, o.x)), y: Math.min(0, Math.max(BOX - natural.h * cover * z, o.y)) }
+      : o,
+    [natural, cover, zoom, BOX],
   );
 
-  useEffect(() => {
-    if (natural) setOffset((o) => clampOffset({ x: o.x === 0 && o.y === 0 ? (BOX - drawW) / 2 : o.x, y: o.x === 0 && o.y === 0 ? (BOX - drawH) / 2 : o.y }));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [natural, zoom]);
+  /** The parent takes over: no more automatic moves, no glide. */
+  const takeOver = () => {
+    touched.current = true;
+    setGlide(false);
+    setLook((l) => (l === "looking" ? "manual" : l));
+  };
+
+  /** Zoom about the middle of the circle, so the face stays where the parent put it. */
+  const zoomTo = (next: number) => {
+    const z = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, next));
+    takeOver();
+    setOffset((o) => clampOffset({ x: BOX / 2 - ((BOX / 2 - o.x) / zoom) * z, y: BOX / 2 - ((BOX / 2 - o.y) / zoom) * z }, z));
+    setZoom(z);
+  };
 
   /**
-   * Open the crop on the face, not on the middle of the photograph.
-   *
-   * A picture of a child standing in a field opened on the field: the parent
-   * had to drag and zoom before they could even see who it was. The detector
-   * is used where a browser has one; where it does not, the crop opens a
-   * little above centre, which is where a portrait puts a head. Either way it
-   * is a starting point — the drag, the arrows and the zoom still decide.
+   * Open the circle on the face. First where a portrait puts a head, at once;
+   * then, if the face finder answers before the parent has moved the photo,
+   * the photo glides to the face. No face: the adjust controls open.
    */
   useEffect(() => {
     const image = imageRef.current;
-    if (!natural || aimed || !image) return;
+    if (!natural || !image) return;
     let alive = true;
+    const first = openingFrame(null, natural, BOX);
+    setZoom(first.zoom);
+    setOffset(offsetFor(first, natural, BOX));
     void (async () => {
-      const box = await faceBox(image);
-      if (!alive) return;
-      const cover = Math.max(BOX / natural.w, BOX / natural.h);
-      let nextZoom = 1;
-      // Fractions of the photo: where the middle of the circle should land.
-      let aim = { x: 0.5, y: 0.42 };
-      if (box) {
-        // Room for hair above and chin below, so it is a portrait and not a mask.
-        const wanted = Math.max(box.width, box.height) * 2;
-        nextZoom = Math.min(3, Math.max(1, BOX / (wanted * cover)));
-        aim = { x: (box.x + box.width / 2) / natural.w, y: (box.y + box.height * 0.45) / natural.h };
+      const face: FaceBox | null = await findFace(image);
+      if (!alive || touched.current) return;
+      if (!face) {
+        setLook("missed");
+        setAdjusting(true);
+        return;
       }
-      const drawn = { w: natural.w * cover * nextZoom, h: natural.h * cover * nextZoom };
-      setZoom(nextZoom);
-      setOffset({
-        x: Math.min(0, Math.max(BOX - drawn.w, BOX / 2 - aim.x * drawn.w)),
-        y: Math.min(0, Math.max(BOX - drawn.h, BOX / 2 - aim.y * drawn.h)),
-      });
-      setAimed(true);
+      // Let the first framing paint, so the move to the face is seen as a move.
+      if (typeof requestAnimationFrame === "function") await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+      if (!alive || touched.current) return;
+      const framing = openingFrame(face, natural, BOX);
+      setGlide(true);
+      setZoom(framing.zoom);
+      setOffset(offsetFor(framing, natural, BOX));
+      setSmall(faceTooSmall(face, natural, BOX));
+      setLook("found");
     })();
     return () => { alive = false; };
-  }, [natural, aimed, BOX]);
+    // BOX is measured once per photo; a later resize keeps the parent's framing.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [natural]);
 
   const onPointerDown = (e: React.PointerEvent) => {
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    takeOver();
     drag.current = { x: e.clientX, y: e.clientY, ox: offset.x, oy: offset.y };
   };
   const onPointerMove = (e: React.PointerEvent) => {
@@ -237,31 +258,131 @@ export function PhotoUploader({ childName, hasPhoto, rejectedCode, endpoint = "/
     }
   };
 
-  const consentBox = (
-    // The tick is the product's own: a sun-filled rounded box, not the
-    // operating system's blue square, which was the one foreign thing on the
-    // screen. The whole label is the target.
-    <div className="fm-stack fm-stack--2">
-    <p className="fm-hint">{serviceCopy[locale].photoNotice} <Link href="/privacy">{serviceCopy[locale].privacy}</Link> · <Link href="/support">{serviceCopy[locale].support}</Link></p>
-    <label className="uploader__consent">
-      <input type="checkbox" name="consent" checked={consent} onChange={(e) => setConsent(e.target.checked)} required />
-      <span className="uploader__tick" aria-hidden>
-        ✓
-      </span>
-      <span>{p.consent}</span>
+  /** "Change photo" opens the picker straight away: one tap, not a trip back to an empty box. */
+  const changePhoto = (
+    <label className="fm-btn fm-btn--secondary fm-btn--sm cropper__tool">
+      <Icon name="camera" />
+      {p.another}
+      <input type="file" accept={ACCEPT} className="visually-hidden" onChange={(e) => { pick(e.target.files?.[0]); e.target.value = ""; }} />
     </label>
-    </div>
   );
+  const nextLabel = nextHref.startsWith("/create/scenes") ? p.next : t.common.continue;
+  const status = look === "looking" ? p.looking : look === "missed" ? p.missed : look === "found" ? (small ? p.small : tf(p.found, { name: childName })) : "";
 
   return (
-    <div className="uploader">
+    <div className={`uploader uploader--${url ? "frame" : hasPhoto ? "saved" : "pick"}`}>
       {error ? (
         <div ref={errorRef} className="uploader__error">
           <Notice kind="danger">{error}</Notice>
         </div>
       ) : null}
 
-      {!url ? (
+      {url ? (
+        <>
+          <div className="uploader__stage">
+            <div
+              ref={cropperRef}
+              className={`cropper cropper--${look}${glide ? " cropper--glide" : ""}`}
+              onPointerDown={onPointerDown}
+              onPointerMove={onPointerMove}
+              onPointerUp={onPointerUp}
+              onPointerCancel={onPointerUp}
+              role="img"
+              aria-label={p.cropAria}
+              aria-describedby="cropper-keys"
+              tabIndex={0}
+              // Dragging is not the only way: the arrows nudge the photo, + and − zoom it.
+              onKeyDown={(e) => {
+                const step = 12;
+                const nudge: Record<string, [number, number]> = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step] };
+                if (nudge[e.key]) {
+                  e.preventDefault();
+                  takeOver();
+                  const [dx, dy] = nudge[e.key]!;
+                  setOffset((o) => clampOffset({ x: o.x + dx, y: o.y + dy }));
+                } else if (e.key === "+" || e.key === "=") {
+                  e.preventDefault();
+                  zoomTo(+(zoom + 0.1).toFixed(2));
+                } else if (e.key === "-" || e.key === "_") {
+                  e.preventDefault();
+                  zoomTo(+(zoom - 0.1).toFixed(2));
+                }
+              }}
+            >
+              <span className="cropper__window">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  ref={imageRef}
+                  src={url}
+                  alt=""
+                  onLoad={(e) => setNatural({ w: e.currentTarget.naturalWidth, h: e.currentTarget.naturalHeight })}
+                  onError={() => {
+                    setError(p.unreadable);
+                    setFile(null);
+                    setUrl(null);
+                    setNatural(null);
+                  }}
+                  style={{ width: baseW || undefined, height: baseH || undefined, transform: `translate(${offset.x}px, ${offset.y}px) scale(${zoom})` }}
+                  draggable={false}
+                />
+              </span>
+              <span className="cropper__ring" aria-hidden />
+              <span className="cropper__pill" aria-hidden>{p.looking}</span>
+              <span className="cropper__found" aria-hidden><Icon name="check" strokeWidth={3} /></span>
+            </div>
+            <span id="cropper-keys" className="visually-hidden">{p.cropKeys}</span>
+            {/* Spoken always; shown only when the parent has something to do (no face, or a small one). */}
+            <p className={`cropper__status${look === "missed" || small ? " cropper__status--ask" : " visually-hidden"}`} role="status">
+              {status}
+            </p>
+            <div className="cropper__tools">
+              {changePhoto}
+              <button type="button" className={`fm-btn fm-btn--secondary fm-btn--sm cropper__tool${adjusting ? " cropper__tool--on" : ""}`}
+                aria-expanded={adjusting} aria-controls="cropper-zoom" onClick={() => setAdjusting((a) => !a)}>
+                <Icon name="search" />
+                {p.adjust}
+              </button>
+            </div>
+            <label id="cropper-zoom" className="cropper__zoom-row" hidden={!adjusting}>
+              <span className="visually-hidden">{p.zoom}</span>
+              {/* A small and a large glyph at the ends say which way is "more" without a word. */}
+              <span className="cropper__zoom-glyph" aria-hidden><Icon name="search" /></span>
+              <input type="range" className="cropper__zoom" min={MIN_ZOOM} max={MAX_ZOOM} step={0.01} value={zoom} onChange={(e) => zoomTo(Number(e.target.value))} />
+              <span className="cropper__zoom-glyph cropper__zoom-glyph--big" aria-hidden><Icon name="search" /></span>
+            </label>
+          </div>
+          {/* The notice and the consent sit with the button they unlock. */}
+          <div className="uploader__confirm">
+            <p className="uploader__legal">{legal.photoNotice} <Link href="/privacy">{legal.privacy}</Link> · <Link href="/support">{legal.support}</Link></p>
+            {/* The tick is the product's own: a sun-filled rounded box, not the
+                operating system's blue square. The whole label is the target. */}
+            <label className="uploader__consent">
+              <input type="checkbox" name="consent" checked={consent} onChange={(e) => setConsent(e.target.checked)} required />
+              <span className="uploader__tick" aria-hidden><Icon name="check" strokeWidth={3} /></span>
+              <span>{p.consent}</span>
+            </label>
+            <Button size="lg" block onClick={upload} loading={busy} disabled={!natural || !consent}>
+              {p.confirm}
+              <span className="fm-btn__arrow" aria-hidden />
+            </Button>
+          </div>
+        </>
+      ) : hasPhoto ? (
+        <>
+          <div className="uploader__stage">
+            <span className="cropper cropper--saved">
+              {saved ? <FramedPhoto src={saved.src} crop={saved.crop} size="100%" /> : <Icon name="camera" />}
+            </span>
+            <div className="cropper__tools">{changePhoto}</div>
+          </div>
+          <div className="uploader__confirm">
+            <a className="fm-btn fm-btn--lg fm-btn--block" href={nextHref}>
+              {nextLabel}
+              <span className="fm-btn__arrow" aria-hidden />
+            </a>
+          </div>
+        </>
+      ) : (
         <>
           <label
             className={`dropzone${over ? " dropzone--over" : ""}`}
@@ -276,123 +397,19 @@ export function PhotoUploader({ childName, hasPhoto, rejectedCode, endpoint = "/
               pick(e.dataTransfer.files[0]);
             }}
           >
-            <span className="dropzone__icon" aria-hidden>
+            <span className="dropzone__slot" aria-hidden>
               <Icon name="camera" />
             </span>
-            <span className="fm-label">{tf(p.pick, { name: childName })}</span>
-            <span className="fm-hint">{p.pickHint}</span>
-            <input type="file" accept="image/jpeg,image/png,image/webp" className="visually-hidden" onChange={(e) => pick(e.target.files?.[0])} />
-            <span className="fm-btn fm-btn--secondary">{p.pickButton}</span>
+            <span className="fm-btn fm-btn--lg dropzone__button">{p.pickButton}</span>
+            <input type="file" accept={ACCEPT} className="visually-hidden" onChange={(e) => pick(e.target.files?.[0])} />
           </label>
-          <div className="tips">
-            <p className="tips__title">{p.tipsTitle}</p>
-            <ul className="tips__list">
-              {p.tips.map((tip) => (
-                <li key={tip}><Icon name="check" className="fm-icon tips__mark" strokeWidth={2.6} />{tip}</li>
-              ))}
-            </ul>
-          </div>
-          {consentBox}
-          {hasPhoto ? (
-            <div className="create__actions" style={{ width: "100%" }}>
-              <Notice kind="success">{p.hasPhoto}</Notice>
-              <a className="fm-btn" href={nextHref}>
-                {nextHref === "/create/package" ? p.next : t.common.continue}
-                <span className="fm-btn__arrow" aria-hidden>
-                  ➜
-                </span>
-              </a>
-            </div>
-          ) : null}
-        </>
-      ) : (
-        <>
-          <p className="fm-lead fm-center cropper__lead">{p.cropLead}</p>
-          <div
-            ref={cropperRef}
-            className="cropper"
-            onPointerDown={onPointerDown}
-            onPointerMove={onPointerMove}
-            onPointerUp={onPointerUp}
-            onPointerCancel={onPointerUp}
-            role="img"
-            aria-label={p.cropAria}
-            aria-describedby="cropper-keys"
-            tabIndex={0}
-            // Dragging is not the only way: the arrows nudge the photo, + and − zoom it.
-            onKeyDown={(e) => {
-              const step = 12;
-              const nudge: Record<string, [number, number]> = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step] };
-              if (nudge[e.key]) {
-                e.preventDefault();
-                const [dx, dy] = nudge[e.key]!;
-                setOffset((o) => clampOffset({ x: o.x + dx, y: o.y + dy }));
-              } else if (e.key === "+" || e.key === "=") {
-                e.preventDefault();
-                setZoom((z) => Math.min(3, +(z + 0.1).toFixed(2)));
-              } else if (e.key === "-" || e.key === "_") {
-                e.preventDefault();
-                setZoom((z) => Math.max(1, +(z - 0.1).toFixed(2)));
-              }
-            }}
-          >
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              ref={imageRef}
-              src={url}
-              alt=""
-              onLoad={(e) => setNatural({ w: e.currentTarget.naturalWidth, h: e.currentTarget.naturalHeight })}
-              onError={() => {
-                setError(p.unreadable);
-                setFile(null);
-                setUrl(null);
-                setNatural(null);
-              }}
-              style={{ width: drawW || undefined, height: drawH || undefined, transform: `translate(${offset.x}px, ${offset.y}px)` }}
-              draggable={false}
-            />
-            <div className="cropper__ring" aria-hidden />
-          </div>
-          <label className="fm-field cropper__zoom-field">
-            <span className="fm-hint">{p.zoom}</span>
-            <span id="cropper-keys" className="visually-hidden">
-              {p.cropKeys}
-            </span>
-            {/* A small and a large glyph at the ends say which way is "more" without a word. */}
-            <span className="cropper__zoom-row">
-              <span className="cropper__zoom-glyph" aria-hidden><Icon name="search" /></span>
-              <input type="range" className="cropper__zoom" min={1} max={3} step={0.01} value={zoom} onChange={(e) => setZoom(Number(e.target.value))} />
-              <span className="cropper__zoom-glyph cropper__zoom-glyph--big" aria-hidden><Icon name="search" /></span>
-            </span>
-          </label>
-          {/* The consent sits with the button it unlocks, in one panel that is NOT
-              sticky: stuck to the bottom of a phone it covered the crop circle, and a
-              checkbox left above a stuck bar was hidden under it. The page is short. */}
-          <div className="create__actions create__actions--panel" style={{ width: "100%" }}>
-            {consentBox}
-            <div className="create__actions create__actions--row">
-              <Button
-                variant="ghost"
-                type="button"
-                onClick={() => {
-                  setFile(null);
-                  setUrl(null);
-                  setNatural(null);
-                }}
-              >
-                {p.another}
-              </Button>
-              <Button size="lg" onClick={upload} loading={busy} disabled={!natural || !consent}>
-                {p.confirm}
-                <span className="fm-btn__arrow" aria-hidden>
-                  ➜
-                </span>
-              </Button>
-            </div>
-          </div>
+          <ul className="tips__list" aria-label={p.tipsTitle}>
+            {p.tips.map((tip) => (
+              <li key={tip}><Icon name="check" className="fm-icon tips__mark" strokeWidth={2.6} />{tip}</li>
+            ))}
+          </ul>
         </>
       )}
-      <p className="fm-small fm-center">{p.privacy}</p>
     </div>
   );
 }

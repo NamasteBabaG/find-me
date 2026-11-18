@@ -3,8 +3,7 @@ import { creationDraftHref } from "@/domain/creation-draft";
 import { notFound, redirect } from "next/navigation";
 import { getContainer } from "@/services/container";
 import { getI18n } from "@/i18n/server";
-import { formatMoney, pick, tf } from "@/i18n";
-import { PACKAGES, isPackageTier } from "@/domain/package";
+import { formatMoney, tf } from "@/i18n";
 import { currentUser, draftTokenFromCookie, isAdminEmail } from "@/lib/server/session";
 import { requireQaAccess } from "@/lib/server/qa-access";
 import { familySignInHref } from "@/lib/safe-redirect";
@@ -49,8 +48,7 @@ export default async function MockCheckoutPage({ searchParams }: { searchParams:
   const declinedUrl = accountAuthority ? closeUrl : `${creationDraftHref("checkout", order.gameId)}&declined=1`;
   const m = t.create.mock;
   const amount = formatMoney(order.amountAgorot, order.currency === "USD" ? "USD" : "ILS", locale);
-  const pkgName = isPackageTier(order.packageTier) ? pick(PACKAGES[order.packageTier].name, locale) : order.packageTier;
-  const item = `${tf(t.create.checkout.gameTitle, { name: order.game.childProfile?.displayName ?? "" })} · ${pkgName}`;
+  const item = tf(t.create.checkout.gameTitle, { name: order.game.childProfile?.displayName ?? "" });
   return (
     <main className="fm-container fm-section psp">
       <div className="psp__card">
@@ -61,9 +59,7 @@ export default async function MockCheckoutPage({ searchParams }: { searchParams:
           <span className="fm-badge fm-badge--grape">{m.badge}</span>
         </div>
         <div className="psp__body">
-          <h1 className="fm-display" style={{ fontSize: "var(--fs-500)", lineHeight: "var(--lh-500)" }}>
-            {m.title}
-          </h1>
+          <h1 className="psp__title">{m.title}</h1>
           {order.game.styleVersion === QA_WIZARD_MOCK_STYLE ? <QaWizardSimulationNotice t={t} /> : null}
           <dl className="psp__summary">
             <div>

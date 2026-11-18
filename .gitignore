@@ -31,6 +31,10 @@ assets/*.png
 !assets/random-girl*.png
 !assets/noa-face.beach-original.png
 
+# MediaPipe's face-detector runtime (14 MB), copied from node_modules at install
+# and build time by scripts/vendor-face-detector.mjs. The model is committed.
+/public/vendor/mediapipe/
+
 .env*.local
 # Local review scratch: fixtures, logs and short-lived login capabilities.
 # The passport handoff assumed this was ignored; it was not, and

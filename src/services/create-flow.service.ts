@@ -484,12 +484,20 @@ export async function replacePhotoForPaidGame(c: Container, gameId: string, inpu
   return { ok: true };
 }
 
-/** The parent picks WORLDS; each one brings its nine boards with it. */
+/**
+ * The parent picks WORLDS; each one brings its nine boards with it.
+ *
+ * A new adventure always starts with one world (Guy, 2026-11-18), so the wizard
+ * has no package step: a draft that reaches the worlds without a package takes
+ * the one-world package here, through `selectPackage` and all of its checks,
+ * and then the world the parent chose. A draft that already has a package
+ * keeps it.
+ */
 export async function selectWorlds(c: Container, gameId: string, slugs: string[]): Promise<FlowResult> {
-  const game = await loadDraft(c, gameId);
+  let game = await loadDraft(c, gameId);
   if (!game || game.deletedAt || !isEditableDraft(statusOf(game))) return flowError("DRAFT_LOCKED", "הטיוטה כבר לא ניתנת לעריכה.");
-  if (!game.packageTier || !isPackageTier(game.packageTier)) return flowError("PICK_PACKAGE_FIRST", "קודם בוחרים חבילה.");
-  const want = PACKAGES[game.packageTier].worldCount;
+  const tier = game.packageTier && isPackageTier(game.packageTier) ? game.packageTier : null;
+  const want = PACKAGES[tier ?? "ONE_WORLD"].worldCount;
   const unique = Array.from(new Set(slugs));
   if (unique.length !== want) return flowError("WRONG_SCENE_COUNT", `בחרו בדיוק ${want} עולמות.`, { want });
   const level = storedSearchLevel(game.searchLevel);
@@ -498,6 +506,14 @@ export async function selectWorlds(c: Container, gameId: string, slugs: string[]
   if (level === "detectives" && !offered.length) return levelUnavailable();
   const available = new Set(offered.map((w) => w.slug));
   if (!unique.every((s) => available.has(s))) return flowError("SCENE_UNAVAILABLE", "אחד העולמות אינו זמין.");
+  // Only a choice that can stand takes the package: nothing is written for a refused one.
+  if (!tier) {
+    const started = await selectPackage(c, gameId, "ONE_WORLD");
+    if (!started.ok) return started;
+    // The package write moved the draft's fence; the selection below writes against the new one.
+    game = await loadDraft(c, gameId);
+    if (!game || game.deletedAt || !isEditableDraft(statusOf(game))) return flowError("DRAFT_LOCKED", "הטיוטה כבר לא ניתנת לעריכה.");
+  }
   const purchase = await c.db.childWorldPurchase.findUnique({ where: { activeGameId: gameId } });
   if (purchase) return fencedDraftEdit(c, game, async () => purchase.worldSlug === unique[0] && unique.length === 1 && purchase.ownerId === game.ownerId && purchase.familyChildId === game.familyChildId
     ? { ok: true } : flowError("DRAFT_LOCKED", "העולם נשמר להזמנה הזאת."));
