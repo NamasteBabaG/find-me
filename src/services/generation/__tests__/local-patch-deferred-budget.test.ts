@@ -12,6 +12,7 @@ import { boardWizardBudgetOf, boardWizardWorldId } from "../board-conditioned-wi
 import { LOCAL_PATCH_STYLE, runLocalPatchWorldSlice } from "../local-patch-world";
 import { LOCAL_PATCH_PROVIDER, LOCAL_PATCH_VARIANT } from "../local-patch-hide";
 import { bill, seedApprovedGame } from "./local-patch-fixtures";
+import { WorldBudgetError } from "../world-budget";
 
 // Only the diagnostic/painter checkpoint and visual services are controlled.
 // Job claims, transactions, the world ledger, reservation refusal and scheduler are real.
@@ -116,6 +117,16 @@ describe("deferred budget refusal after committed repair progress",()=>{
     expect(result.pending).toBe(false); expect(result.attention).toContain("authorized world budget");
     expect(await f.budget.readRequest(f.worldId,"saved-plan-paint")).toBeNull();
     expect(await f.budget.audit(f.worldId)).toMatchObject({remainingMicroUsd:119_999,overCapMicroUsd:0});
+    expect(fetch).not.toHaveBeenCalled();
+  },60_000);
+  it("parks a Sunburst repair that no longer fits with its budget reason, never a minute-by-minute claim loop",async()=>{
+    // local-patch-self-repair now raises the ledger's own refusal (review finding P1-4); a plain Error used to
+    // leave the job FAILED at step "local-patch", claimable again every tick, with no budget park or alert.
+    const f=await fixture("checkpoint-sunburst-repair-synthetic",false);
+    controlled.step.mockImplementation(async()=>{throw new WorldBudgetError("cap_exceeded","Sunburst repair requires its full image and ordinary assessment capacity");});
+    const result=await runLocalPatchWorldSlice(c,deps,f.id,{maxHides:2,hardDeadlineAt:Date.now()+270_000});
+    expect(result.pending).toBe(false); expect(result.attention).toContain("authorized world budget");
+    expect(await db.generationJob.findUniqueOrThrow({where:{id:"job_"+f.id}})).toMatchObject({status:"FAILED",currentStep:"local-patch:recovery-exhausted"});
     expect(fetch).not.toHaveBeenCalled();
   },60_000);
   it("parks a genuinely unchanged refusal without an extra waiting loop",async()=>{

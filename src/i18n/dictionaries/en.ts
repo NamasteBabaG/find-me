@@ -845,6 +845,12 @@ export const en = {
       manage: "Go to my family area",
       text: "{name}'s adventure is ready!\nOpen the game and start searching.\n\nGame link — share with family: {play}\nAnyone holding this link can play.\n\nFamily area — for managing the game: {library}\nManagement requires signing in to your account. Don't share personal sign-in links.",
     },
+    refunded: {
+      subject: "We couldn't finish {name}'s adventure, and your payment is refunded",
+      title: "We couldn't finish {name}'s adventure",
+      body: "Some hiding spots didn't come out well enough, so we stopped instead of sending a game that isn't right. Your full payment has been refunded.",
+      text: "We couldn't finish {name}'s adventure.\nSome hiding spots didn't come out well enough, so we stopped instead of sending a game that isn't right.\nYour full payment has been refunded.",
+    },
     footer: "Where Am I? — A personal search game",
   },
 };

@@ -161,7 +161,12 @@ export async function deliverLocalPatchNotifications(c: Container, gameId?: stri
           await finish("cancelled", { error: "player link revoked, expired or changed" }); continue;
         }
       }
-      if (notice.attempts >= MAX_ATTEMPTS || (notice.firstAttemptAt !== null && Date.now() - notice.firstAttemptAt >= RETRY_WINDOW_MS)) { await finish("unknown"); continue; }
+      if (notice.attempts >= MAX_ATTEMPTS || (notice.firstAttemptAt !== null && Date.now() - notice.firstAttemptAt >= RETRY_WINDOW_MS)) {
+        await finish("unknown");
+        // The game is playable at READY, but the parent was never told: a person must know (review P1-7).
+        if (notice.kind === "ready") await import("./admin-alert.service").then(m => m.sendAdminAlert(c, { gameId: game.id, kind: "ready-mail-failed" })).catch(() => undefined);
+        continue;
+      }
       const blob = await c.db.fileBlob.findUnique({ where: { key: notice.key } });
       if (!blob || sha(Buffer.from(blob.data)) !== notice.payloadSha256) { await finish("cancelled", { error: "notification payload unavailable or changed" }); continue; }
       const mail: EmailMessage = JSON.parse(Buffer.from(blob.data).toString());

@@ -4,7 +4,7 @@ export interface EmailMessage {
   html: string;
   text: string;
   /** Free-form tag for the outbox / provider dashboard (never PII). */
-  tag: "magic-link" | "game-ready" | "gift" | "admin-alert";
+  tag: "magic-link" | "game-ready" | "game-refunded" | "gift" | "admin-alert";
   /** Stable logical delivery key; transport retries must reuse the same key and body. */
   idempotencyKey?: string;
 }

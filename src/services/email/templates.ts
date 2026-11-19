@@ -121,9 +121,27 @@ export function gameReadyEmail(input: { to: string; childName: string; playLink:
   };
 }
 
-export type AdminAlertKind = "delivered-with-problems" | "held-for-review" | "generation-failed" | "needs-new-photo" | "generation-stalled";
+/** kingdom-generation/v6: the world reached its hard ceiling and the order was refunded. */
+export function gameRefundedEmail(input: { to: string; childName: string; locale: Locale }): EmailMessage {
+  const r = getDict(input.locale).email.refunded;
+  const vars = { name: input.childName };
+  return {
+    to: input.to,
+    tag: "game-refunded",
+    subject: tf(r.subject, vars),
+    html: layout(input.locale, tf(r.title, vars), paragraph(r.body), { emoji: "💛", preheader: r.body, align: "center" }),
+    text: tf(r.text, vars),
+  };
+}
+
+export type AdminAlertKind = "delivered-with-problems" | "held-for-review" | "generation-failed" | "needs-new-photo" | "generation-stalled"
+  | "cost-above-alert" | "ceiling-refunded" | "ceiling-notice-failed" | "ready-mail-failed";
 
 const ALERT_HEAD: Record<AdminAlertKind, { subject: string; lead: string }> = {
+  "cost-above-alert": { subject: "💸 העולם של {name} עבר $5", lead: "העלות המחויבת של העולם עברה את סף ההתראה של $5. העולם ממשיך לעבוד כרגיל. התקרה הקשיחה היא $7: שם העולם נסגר וההזמנה מוחזרת אוטומטית." },
+  "ceiling-refunded": { subject: "↩️ העולם של {name} הגיע לתקרת $7 והוחזר", lead: "העולם הגיע לתקרה הקשיחה של $7 בלי להשלים את כל המחבואים. הוא נסגר וההזמנה הוחזרה אוטומטית; הודעה להורה נשלחת בנפרד. כדאי לבדוק באדמין מה עצר אותו." },
+  "ceiling-notice-failed": { subject: "📭 הודעת ההחזר להורה של {name} לא נשלחה", lead: "ההחזר בתקרת $7 בוצע, אבל ההודעה להורה לא נשלחה אחרי שלושה ניסיונות. יש ליצור קשר עם ההורה." },
+  "ready-mail-failed": { subject: "📭 מייל ״המשחק מוכן״ של {name} לא נשלח", lead: "המשחק מוכן ואפשר לשחק בו, אבל המייל להורה לא נשלח אחרי שלושה ניסיונות. אפשר לשלוח שוב מדף המשחק באדמין או ליצור קשר עם ההורה." },
   "generation-stalled": { subject: "⏳ ההכנה של {name} מתעכבת", lead: "המשחק שולם אך ההכנה אינה מתקדמת או ממתינה לקיבולת שירות. לפתוח באדמין ולברר את חסימת התפעול. אין לבקש אישור איכות מההורה, לפרסם מחבואים פגומים או לחרוג מתקציב העולם." },
   "delivered-with-problems": { subject: "⚠️ המשחק של {name} נשלח עם בעיות", lead: "המשחק נשלח להורה בכל מקרה. אלה הבעיות שנמצאו לפני השליחה:" },
   "held-for-review": { subject: "🔎 המשחק של {name} ממתין לבדיקה", lead: "המשחק סיים עם בעיות ולא נשלח להורה: הוא מחכה לאדם. לפתוח באדמין, להסתכל על המחבואים, ולאשר או להריץ מחדש." },

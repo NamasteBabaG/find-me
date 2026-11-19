@@ -13,6 +13,13 @@ export const KINGDOM_GENERATION_V2 = 'kingdom-generation/v2';
 const KINGDOM_GENERATION_V3 = 'kingdom-generation/v3';
 const KINGDOM_GENERATION_V4 = 'kingdom-generation/v4';
 const KINGDOM_GENERATION_V5 = 'kingdom-generation/v5';
+export const KINGDOM_GENERATION_V6 = 'kingdom-generation/v6';
+/** kingdom-generation/v6 (Guy, 2026-11-19): about $4 is the target and is never a stop; above $5 the
+ * service is told once and the world keeps going; $7 is the hard ceiling, where the world closes and the
+ * order is refunded. Every UNKNOWN still counts in full; nothing is released on silence. */
+export const KINGDOM_V6_CEILING_MICRO_USD = 7_000_000;
+export const KINGDOM_V6_ALERT_MICRO_USD = 5_000_000;
+export const KINGDOM_V6_TARGET_MICRO_USD = 4_000_000;
 const KINGDOM_GENERATION_POLICY = Object.freeze({
   version: KINGDOM_GENERATION_RELEASE, world: 'kingdom', prospectiveOnly: true,
   windowsSha256: KINGDOM_GENERATION_WINDOWS_SHA256,
@@ -33,9 +40,14 @@ const KINGDOM_GENERATION_POLICY_V4 = Object.freeze({
 const KINGDOM_GENERATION_POLICY_V5 = Object.freeze({
   ...KINGDOM_GENERATION_POLICY_V4, version: KINGDOM_GENERATION_V5, reviewEvidence: KINGDOM_GAMEPLAY_NEIGHBOR_REVIEW,
 } as const);
+const KINGDOM_GENERATION_POLICY_V6 = Object.freeze({
+  ...KINGDOM_GENERATION_POLICY_V5, version: KINGDOM_GENERATION_V6, worldCapMicroUsd: KINGDOM_V6_CEILING_MICRO_USD,
+  alertAboveMicroUsd: KINGDOM_V6_ALERT_MICRO_USD, targetMicroUsd: KINGDOM_V6_TARGET_MICRO_USD, ceilingOutcome: 'refund',
+} as const);
 const kingdomPolicies = {
   v1: KINGDOM_GENERATION_POLICY, v2: KINGDOM_GENERATION_POLICY_V2,
   v3: KINGDOM_GENERATION_POLICY_V3, v4: KINGDOM_GENERATION_POLICY_V4, v5: KINGDOM_GENERATION_POLICY_V5,
+  v6: KINGDOM_GENERATION_POLICY_V6,
 };
 export function newKingdomGenerationPolicy() {
   return kingdomPolicies[env().KINGDOM_GENERATION_RELEASE] ?? KINGDOM_GENERATION_POLICY;
@@ -62,7 +74,25 @@ async function receipt(db: Reader, gameId: string, policy: ReturnType<typeof new
     worldCapMicroUsd: policy.worldCapMicroUsd, automaticBudgetExtension: policy.automaticBudgetExtension,
     ...('stopFlexAfterOverload' in policy ? { stopFlexAfterOverload: policy.stopFlexAfterOverload } : {}),
     ...('reviewEvidence' in policy ? { initialTier: policy.initialTier, reviewEvidence: policy.reviewEvidence } : {}),
+    // v6 only: older receipts keep their exact bytes.
+    ...('alertAboveMicroUsd' in policy ? { alertAboveMicroUsd: policy.alertAboveMicroUsd, targetMicroUsd: policy.targetMicroUsd,
+      ceilingOutcome: policy.ceilingOutcome } : {}),
   };
+}
+
+/** The v6 recoveries (kingdom-unreadable-recovery/v1, kingdom-rate-limit-recovery/v1) apply to v6 pins only;
+ * every older pin keeps its historical park. */
+export async function kingdomV6RecoveryOf(db: Reader, gameId: string): Promise<boolean> {
+  return (await kingdomGenerationReleaseOf(db, gameId))?.version === KINGDOM_GENERATION_V6;
+}
+
+/** The v6 cost thresholds of a pinned world, or null for every older pin. */
+export async function kingdomCostPolicyOf(db: Reader, gameId: string) {
+  const pin = await kingdomGenerationReleaseOf(db, gameId);
+  if (!pin || pin.version !== KINGDOM_GENERATION_V6 || typeof pin.alertAboveMicroUsd !== 'number'
+    || typeof pin.targetMicroUsd !== 'number' || pin.ceilingOutcome !== 'refund') return null;
+  return { ceilingMicroUsd: pin.worldCapMicroUsd, alertAboveMicroUsd: pin.alertAboveMicroUsd, targetMicroUsd: pin.targetMicroUsd,
+    ceilingOutcome: pin.ceilingOutcome };
 }
 
 /** Checkout calls this only within its new family seal, before the order or any paid work. */

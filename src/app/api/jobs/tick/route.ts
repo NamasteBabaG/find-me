@@ -6,6 +6,7 @@ import { nextIdentitySourceRevision } from "@/services/generation/identity-sourc
 import { tickGeneration } from "@/services/generation/queue";
 import { runRetentionIfDue } from "@/services/retention.service";
 import { retryFailedAdminAlerts } from "@/services/admin-alert.service";
+import { resumeKingdomCeilingRefunds } from "@/services/generation/kingdom-ceiling-refund";
 import { alertStalledGeneration } from "@/services/generation-health.service";
 import { sweepQualityBatches } from "@/services/generation/quality-batch";
 import { env } from "@/lib/env";
@@ -160,6 +161,10 @@ export async function POST(req: Request) {
     // Give persisted notification intent a bounded turn before new painting.
     enter("notification-retry");
     if (!gameId) await retryFailedAdminAlerts(c, { deadlineAt: Math.min(hardDeadlineAt, Date.now() + 20_000) });
+    // kingdom-ceiling-refund/v1: owed refunds and their parent notices finish even after a crash or a transient failure.
+    if (!gameId) await resumeKingdomCeilingRefunds(c, { deadlineAt: Math.min(hardDeadlineAt, Date.now() + 20_000) }).catch(() => {
+      console.error("[jobs/tick]", { requestId, event: "ceiling-refund-sweep-failed" });
+    });
     if (!gameId) {
       enter("generation-health");
       await alertStalledGeneration(c, { deadlineAt: Math.min(hardDeadlineAt, Date.now() + 15_000) });

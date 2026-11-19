@@ -23,6 +23,17 @@ import { transitionGame } from "../game-status";
 import { SYSTEM } from "../audit.service";
 import { GENERATION_RETRY_BACKOFF_MS } from "../../domain/generation-health";
 import { isLeanWorld } from "./lean-release";
+import { LOCAL_PATCH_CEILING_CLOSED } from "../../domain/generation/kingdom-ceiling";
+import { noticeKingdomCostAboveAlert } from "./kingdom-cost-policy";
+import { advanceCeilingRefund } from "./kingdom-ceiling-refund";
+import { deliverLocalPatchNotifications } from "../local-patch-notifications";
+
+/** kingdom-generation/v6: after a world's slice, tell the service once if it passed the alert line. Never throws. */
+async function costNotice(c: Container, gameId: string | null, hardDeadlineAt: number) {
+  if (!gameId) return;
+  await noticeKingdomCostAboveAlert(c, gameId, { deadlineAt: Math.min(hardDeadlineAt, Date.now() + 20_000) })
+    .catch(() => console.error("[generation] cost notice unavailable"));
+}
 
 /**
  * Moving generation forward a slice at a time.
@@ -75,7 +86,7 @@ export async function nextPendingGame(c: Container): Promise<string | null> {
     // behind it waited on a decision nobody had made yet. It can still be ticked
     // directly, by an operator who knows what they are looking at.
     where: { status: { in: [...RESUMABLE_STATUSES] }, deletedAt: null,
-      jobs: { none: { currentStep: { in: [LOCAL_PATCH_NEEDS_RELEASE, LOCAL_PATCH_RECOVERY_EXHAUSTED] } } },
+      jobs: { none: { currentStep: { in: [LOCAL_PATCH_NEEDS_RELEASE, LOCAL_PATCH_RECOVERY_EXHAUSTED, LOCAL_PATCH_CEILING_CLOSED] } } },
       // A minute cron must not spend its turn nudging a healthy paid render
       // already held by another worker. Match the world claimant's strict
       // takeover boundary; queued/released jobs remain immediately runnable.
@@ -121,6 +132,11 @@ export async function nextPendingGame(c: Container): Promise<string | null> {
 export async function tickGeneration(c: Container, gameId: string | null, budgetMs: number, hardMs = 270_000,
   control: { readonly workMode?: GenerationWorkMode; readonly publicationOwnerId?: string } = {}): Promise<TickResult> {
   const now = Date.now();
+  // kingdom-ceiling-refund/v1: a named tick also finishes this world's owed refund and notice (no-op for every other world).
+  if (gameId) await advanceCeilingRefund(c, gameId).catch(() => console.error("[generation] ceiling refund unavailable"));
+  // Review P1-7: a READY world's pending parent mail goes out on its own next tick, not only on a cron sweep.
+  if (gameId) await deliverLocalPatchNotifications(c, gameId, { deadlineAt: Math.min(now + hardMs, Date.now() + 20_000) })
+    .catch(() => console.error("[generation] ready mail unavailable"));
   const workMode = generationWorkMode(control.workMode);
   if (control.publicationOwnerId !== undefined && workMode !== REVIEW_EXISTING_WORK_MODE)
     throw Error('GENERATION_WORK_MODE: publication requires review-existing mode');
@@ -142,6 +158,7 @@ export async function tickGeneration(c: Container, gameId: string | null, budget
     if (paused) return { gameId, status: statusOf(before), pending: false, attention: paused };
     const result = await runLocalPatchWorldSlice(c, painter, gameId, { hardDeadlineAt: now + hardMs, workMode,
       ...(control.publicationOwnerId === undefined ? {} : { publicationOwnerId: control.publicationOwnerId }) });
+    await costNotice(c, gameId, now + hardMs);
     const after = await c.db.game.findUnique({ where: { id: gameId }, select: { status: true } });
     return { gameId, status: after ? statusOf(after) : null, pending: result.pending, attention: result.attention };
   }
@@ -202,6 +219,7 @@ export async function tickGeneration(c: Container, gameId: string | null, budget
       if (paused) return { gameId: id, status: statusOf(before), pending: false, attention: paused };
     }
     const result = await runLocalPatchWorldSlice(c, painter, id, { hardDeadlineAt: now + hardMs });
+    await costNotice(c, id, now + hardMs);
     const after = await c.db.game.findUnique({ where: { id }, select: { status: true } });
     return { gameId: id, status: after ? statusOf(after) : null, pending: result.pending, attention: result.attention };
   }

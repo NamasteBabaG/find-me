@@ -19,7 +19,8 @@ import { canonicalChargeEvidence, WorldBudgetError, type BudgetJson } from "./wo
 import { sanitizeProviderError } from "../../domain/generation/background-provider-error";
 import { permanentFailureReason, permanentProviderFailure } from "../../domain/generation/lean-review-recovery";
 import { kingdomFlexCreateAllowed, kingdomFlexOverloaded } from '../../domain/generation/kingdom-generation';
-import { KINGDOM_GENERATION_V2, kingdomGenerationReleaseOf } from './kingdom-generation-release';
+import { KINGDOM_GENERATION_V2, kingdomGenerationReleaseOf, kingdomV6RecoveryOf } from './kingdom-generation-release';
+import { KINGDOM_RATE_LIMIT_STATUS, kingdomRateLimitDecision } from '../../domain/generation/kingdom-rate-limit';
 import { kingdomDefaultTail } from './kingdom-default-tail';
 
 /**
@@ -309,6 +310,9 @@ async function create(ctx: Ctx, transport: BackgroundReviewTransport, body: Reco
       await writeEvent(ctx, round => round.terminal ? null : { kind: "refused", status, errorType, at: Date.now() });
       // Documented as created nothing: zero, from the provider's own refusal. The world still parks for a person.
       await settleRefusal(ctx, transport.namespace, status, errorType);
+      // kingdom-rate-limit-recovery/v1: a v6 world waits out a rate limit and asks a new question; it never parks for it.
+      if (status === KINGDOM_RATE_LIMIT_STATUS && await kingdomV6RecoveryOf(ctx.c.db, ctx.gameId))
+        return waiting(`the create was rate-limited (${status}); nothing was created or billed, and the same pixels are asked again after a backoff`);
       return held(`the create was refused (${status}${errorType ? ` ${errorType}` : ""}); quota, credential and policy refusals are never asked again automatically`);
     }
     await recordLost(ctx, error instanceof Error ? error.message : String(error));
@@ -495,6 +499,15 @@ export async function askContinuityInBackground(c: Container, ask: BackgroundAsk
     if (!transport) return held("the background transport is not configured; nothing was reserved or sent");
     const blocked = await createBlock();
     if (blocked) return blocked;
+    // kingdom-rate-limit-recovery/v1: before a NEW question about pixels the provider rate-limited, wait out the backoff;
+    // past the per-image bound, park for a person with an alert. Nothing is reserved meanwhile.
+    if (await kingdomV6RecoveryOf(c.db, ask.gameId)) {
+      const limited = (await backgroundRoundsOnImage(c.db, ask.gameId, ask.binding))
+        .filter(r => r.terminal?.kind === "refused" && r.terminal.status === KINGDOM_RATE_LIMIT_STATUS).map(r => (r.terminal as { at: number }).at);
+      const decision = kingdomRateLimitDecision(limited, Date.now());
+      if (decision.action === "park") return held(`the provider rate-limited ${decision.refusals} questions about these pixels; a person decides`);
+      if (decision.action === "wait") return waiting(`rate-limited ${decision.refusals} times; the next question waits until ${new Date(decision.retryAt).toISOString()}`);
+    }
     const existing = await boardWizardBudgetOf(c).readRequest(ask.worldId, ask.requestKey);
     if (existing) return held(`${ask.requestKey} is already ${existing.state} outside a background round`);
     await writeIntent(ctx, intent);
@@ -511,6 +524,8 @@ export async function askContinuityInBackground(c: Container, ask: BackgroundAsk
       }
       // A refusal recorded by a create that stopped before its zero settlement is finished here, never left pending.
       await settleRefusal(ctx, transport?.namespace ?? OPENAI_BACKGROUND_NAMESPACE, round.terminal.status, round.terminal.errorType);
+      if (round.terminal.status === KINGDOM_RATE_LIMIT_STATUS && await kingdomV6RecoveryOf(c.db, ask.gameId))
+        return waiting(`the create was rate-limited (${round.terminal.status}); the same pixels are asked again after a backoff`);
       return held(`the create was refused (${round.terminal.status})`);
     }
     if (step.step === "wait") return waiting(step.reason);

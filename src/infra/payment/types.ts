@@ -58,4 +58,12 @@ export interface PaymentProvider {
   closeCheckout?(req: CloseCheckoutRequest): Promise<CloseCheckoutResult>;
   parseWebhook(rawBody: string, headers: Record<string, string | undefined>): Promise<WebhookParseResult>;
   refund(providerPaymentId: string, amountAgorot: number): Promise<{ ok: boolean; providerRefundId?: string }>;
+  /**
+   * Optional: the provider's own statement of whether this payment is already refunded, asked BEFORE any repeated
+   * refund after an uncertain outcome (PayMe has no idempotency key; its transaction_id is not a dedupe key).
+   * "unknown" never authorizes a second refund. An adapter without it leaves an uncertain refund to a person.
+   */
+  refundStatus?(providerPaymentId: string): Promise<RefundStatus>;
 }
+
+export type RefundStatus = "refunded" | "not-refunded" | "unknown";

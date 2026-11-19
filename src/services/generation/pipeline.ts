@@ -35,6 +35,7 @@ import { boardWizardBudget } from "./board-wizard-budget";
 import { CasWorldBudgetRepository } from "../../infra/db/world-budget-repository";
 import { PrismaWorldBudgetStore } from "../../infra/db/prisma-world-budget-store";
 import { LOCAL_PATCH_STYLE, LOCAL_PATCH_QUALITY_FAILED, localPatchPainterForGame, runLocalPatchWorldSlice } from "./local-patch-world";
+import { LOCAL_PATCH_CEILING_CLOSED } from "../../domain/generation/kingdom-ceiling";
 import { finishLocalPatchIdentity, preflightLocalPatchIdentity, requireLocalPatchIdentityTime, LocalPatchIdentityDeferred, type LocalPatchIdentityPreflightProof } from "./local-patch-identity";
 import { worldForBoard } from "../world-catalog.service";
 import type { IdentityArtCache } from "./collection-art";
@@ -102,7 +103,9 @@ export async function runGenerationPipeline(c: Container, gameId: string, option
   if (mockWizard !== (env().QA_WIZARD_MOCK === "on") || (mockWizard && c.avatars.id !== "mock")) return;
   const localPatch = game.styleVersion === LOCAL_PATCH_STYLE;
   if (localPatch && env().APP_ENV !== "qa") return;
-  if (localPatch && (await c.db.generationJob.findUnique({ where: { id: `job_${gameId}` }, select: { currentStep: true } }))?.currentStep === LOCAL_PATCH_QUALITY_FAILED) return;
+  const localPatchStep = localPatch ? (await c.db.generationJob.findUnique({ where: { id: `job_${gameId}` }, select: { currentStep: true } }))?.currentStep : null;
+  // A quality stop, or a v6 world closed at its ceiling, is never re-entered through the identity stage.
+  if (localPatchStep === LOCAL_PATCH_QUALITY_FAILED || localPatchStep === LOCAL_PATCH_CEILING_CLOSED) return;
   if (localPatch && game.status === "TARGETS_GENERATING") {
     const painter = await localPatchPainterForGame(c, gameId, game.scenes[0]?.sceneVersion);
     if (painter) await runLocalPatchWorldSlice(c, painter, gameId, { hardDeadlineAt: options.hardDeadlineAt });

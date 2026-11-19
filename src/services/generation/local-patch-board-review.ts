@@ -56,6 +56,8 @@ import { COLLECTION_VARIETY_EXHAUSTED_VERSION } from "../../domain/generation/co
 import { SUBJECT_REJUDGE_VERSION, subjectRejudgePending } from "./subject-rejudge";
 import { qualityBatchWaiting } from "./quality-batch";
 import { backgroundReviewWaiting } from "./continuity-background";
+import { kingdomV6RecoveryOf } from "./kingdom-generation-release";
+import { KINGDOM_UNREADABLE_FAULT, KINGDOM_UNREADABLE_LOG_CODE, KINGDOM_UNREADABLE_QUESTIONS_PER_IMAGE, KINGDOM_UNREADABLE_RECOVERY } from "../../domain/generation/kingdom-unreadable-recovery";
 
 export const LOCAL_PATCH_BOARD_REVIEW_VERSION = "local-patch-board-five-luna-low/v1";
 export const LOCAL_PATCH_STRICT_BOARD_REVIEW_VERSION = "local-patch-board-five-quality/v3-head-safe";
@@ -491,8 +493,17 @@ export async function reviewLocalPatchBoard(c: Container, input: { gameId: strin
   // A dual answer is routed by the reader its quality stage names; the single judge keeps the v1 decision.
   const readerOf = (e: typeof committedEntries[number]) => evaluated && reviewedIds.has(e.hide.id) && !protectedRows.has(e.row.id)
     ? { reader: qualityStageReader(evaluated.proof.quality) ?? QUALITY_READER_STRICT } : {};
-  const dispositions = committedEntries.map(e => strict ? localPatchQualityDisposition(protectedRows.has(e.row.id)
+  const baseDispositions = committedEntries.map(e => strict ? localPatchQualityDisposition(protectedRows.has(e.row.id)
     ? JSON.parse(e.row.judgeJson!).verdict : verdicts[e.hide.id] ?? null, scene.sceneVersion, { hideId: e.hide.id, ...readerOf(e) }) : { state: "acceptable" as const, faults: [] });
+  // kingdom-unreadable-recovery/v1 (v6 only): a second unreadable answer about the same pixels refuses them, so
+  // they are repainted within their attempts instead of parking the whole world. The first is asked again.
+  const unreadableRecovery = strict && request.reviewScope === "ready-only/v1" && await kingdomV6RecoveryOf(c.db, game.id);
+  const dispositions = baseDispositions.map((d, index) => {
+    const e = committedEntries[index]!;
+    if (!unreadableRecovery || protectedRows.has(e.row.id) || d.state !== "unresolved" || verdicts[e.hide.id]
+      || evidenceReviewAttempt < KINGDOM_UNREADABLE_QUESTIONS_PER_IMAGE) return d;
+    return { state: "retry" as const, faults: [KINGDOM_UNREADABLE_FAULT] };
+  });
   await c.db.$transaction(async tx => {
     await fenceLocalPatchImages(tx, game.id); await deps.fence(tx);
     if (extraPlan) await fenceLocalPatchExtraReview(tx, { gameId: game.id, sceneId: scene.id, authorizationId: extraPlan.authorizationId });
@@ -529,7 +540,14 @@ export async function reviewLocalPatchBoard(c: Container, input: { gameId: strin
           ? singleJudgeEvidence(keep, evidenceReviewAttempt, e.imageSha256, prior, current.updatedAt) : null;
       const logged = (Array.isArray(prior.evidenceAttempts) ? prior.evidenceAttempts : []).filter((a: { attempt?: unknown; imageSha256?: unknown }) =>
         !(evidence?.reread && a.attempt === evidence.attempt.attempt && a.imageSha256 === evidence.attempt.imageSha256));
-      const evidenceAttempts = evidence ? [...logged, evidence.attempt] : logged;
+      // kingdom-unreadable-recovery/v1: an unreadable single answer joins its image's log, so the one re-ask is a NEW
+      // question (its own fingerprint and key) and never a free replay of the answer that could not be read.
+      const singleOf = evaluated?.proof.single;
+      const unreadableLog = unreadableRecovery && !evidence && !verdicts[e.hide.id] && reviewedIds.has(e.hide.id) && typeof singleOf === "string"
+        && !logged.some((a: { single?: unknown; imageSha256?: unknown; attempt?: unknown }) => a.single === singleOf && a.imageSha256 === e.imageSha256 && a.attempt === evidenceReviewAttempt)
+        ? [{ attempt: evidenceReviewAttempt, role: "quality", kind: "unknown", code: KINGDOM_UNREADABLE_LOG_CODE, path: null, strategy: "standard/v1",
+          at: new Date().toISOString(), imageSha256: e.imageSha256, single: singleOf }] : [];
+      const evidenceAttempts = evidence ? [...logged, evidence.attempt] : [...logged, ...unreadableLog];
       const judgeJson = JSON.stringify({ ...prior, reviewState: "board-review-complete", verdict: verdicts[e.hide.id] ?? null,
         ...(evidenceAttempts.length ? { evidenceAttempts } : {}),
         ...((evidence?.diagnosis ?? (evaluated && reviewedIds.has(e.hide.id) ? evaluated.diagnosis : null))
@@ -544,6 +562,7 @@ export async function reviewLocalPatchBoard(c: Container, input: { gameId: strin
               : evaluated!.proof.quality.sourceNeighborReading?.version ?? evaluated!.proof.quality.envelopeReader, lastError: current.lastError } : {}) },
         ] } : {}),
         wireFault: keep.wireFault ?? (verdicts[e.hide.id] ? null : "schema"), judgedSha256: e.imageSha256,
+        ...(unreadableRecovery ? { unreadableRecovery: KINGDOM_UNREADABLE_RECOVERY } : {}),
         ...(strict ? { qualityDisposition: disposition, compositionVersion } : {}),
         boardReview: { version: evaluated ? evaluated.proof.version : reviewVersion,
           fingerprint: evaluated?.proof.quality.fingerprint ?? fingerprint,

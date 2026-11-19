@@ -1,5 +1,6 @@
 import { nativeDetailRepairOf } from "./native-detail-evidence";
 import { sunburstRequiredPaintCapacity } from "./sunburst-review-capacity";
+import { WorldBudgetError } from "./world-budget";
 import { LOCAL_PATCH_SUNBURST_IMAGE_POLICY, localPatchRenderPolicySha256 } from "../../infra/generation/openai-local-patch";
 import { nativeDetailSubjectDirection } from "./native-detail-painter";
 import { hasLocalPatchCapability } from "../../domain/scene/local-patch-family";
@@ -477,8 +478,10 @@ export async function runLocalPatchSelfRepair(c: Container, input: { gameId: str
     } else {
       if (deps.renderPolicySha256 === localPatchRenderPolicySha256(LOCAL_PATCH_SUNBURST_IMAGE_POLICY) && !await budget.readRequest(worldId, key)) {
         const room = await budget.audit(worldId);
+        // A budget refusal, not an engine fault: the world parks with its budget reason (or waits for a pending
+        // reservation) instead of being claimed and failed again every minute (review finding P1-4).
         if (room.held || room.remainingMicroUsd < await sunburstRequiredPaintCapacity(c, gameId, row.id))
-          throw Error("Sunburst repair requires its full image and ordinary assessment capacity");
+          throw new WorldBudgetError("cap_exceeded", "Sunburst repair requires its full image and ordinary assessment capacity");
       }
       await inventorySelfRepairRequest(c, gameId, key, fenced);
       await assertGenerationSpendAllowed(c, game.ownerId);

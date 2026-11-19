@@ -19,7 +19,8 @@ const LEASE_MS = 60_000;
 const RETRY_PAGE_SIZE = 100;
 const RETRY_LIMIT = 20;
 export const ADMIN_ALERT_PENDING_ACTION = "admin-alert:notification-pending";
-const KINDS = ["delivered-with-problems", "held-for-review", "generation-failed", "needs-new-photo", "generation-stalled"] as const;
+const KINDS = ["delivered-with-problems", "held-for-review", "generation-failed", "needs-new-photo", "generation-stalled",
+  "cost-above-alert", "ceiling-refunded", "ceiling-notice-failed", "ready-mail-failed"] as const;
 const SUCCESS_ACTIONS = KINDS.map(kind => `admin-alert:${kind}`);
 const FAILURE_KINDS = new Map<string, AdminAlertKind>(KINDS.map(kind => [`admin-alert:${kind}:failed`, kind]));
 const sha = (value: string | Buffer) => createHash("sha256").update(value).digest("hex");
@@ -55,10 +56,15 @@ async function context(c: Container, input: AdminAlertInput) {
 }
 function relevant(input: AdminAlertInput, current: Awaited<ReturnType<typeof context>>, allowReadyIntent = false): boolean {
   const { game, failedSpots } = current;
+  // kingdom-generation/v6: the one notice that is about a refund the service itself made at the ceiling.
+  if (input.kind === "ceiling-refunded" || input.kind === "ceiling-notice-failed") return !game.deletedAt && game.status === "REFUNDED";
   if (game.deletedAt || ["DELETED", "REFUNDED", "CANCELLED"].includes(game.status)
     || game.orders.some(order => order.paymentStatus === "REFUNDED" || order.refundedAt)) return false;
   if (input.kind === "delivered-with-problems") return (game.status === "DELIVERED" || (allowReadyIntent && game.status === "READY"))
     && (!!game.lastError?.trim() || failedSpots.length > 0);
+  // Above $5 the world keeps going; the notice is information and stays true after it is ready.
+  if (input.kind === "cost-above-alert") return true;
+  if (input.kind === "ready-mail-failed") return game.status === "READY";
   if (["READY", "DELIVERED"].includes(game.status)) return false;
   if (input.kind === "generation-stalled") return generationHealthConcern(game, Date.now()) !== null;
   if (input.kind === "needs-new-photo") return game.status === "NEEDS_NEW_PHOTO";

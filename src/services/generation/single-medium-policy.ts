@@ -6,6 +6,7 @@ import type { Container } from "../container";
 import { boardWizardBudgetOf } from "./board-conditioned-wizard";
 import { singleLowReviewAuthorization } from "./single-low-policy";
 import { fenceLocalPatchImages } from "./local-patch-lifecycle";
+import { KINGDOM_GENERATION_V6, KINGDOM_V6_CEILING_MICRO_USD, kingdomGenerationReleaseOf } from "./kingdom-generation-release";
 
 const VERSION = "single-medium-policy/v1" as const, ACTION = "generation:single-medium-policy";
 const keyOf = (gameId: string) => "aud_single_medium_" + gameId;
@@ -14,15 +15,20 @@ const hex = z.string().regex(/^[a-f0-9]{64}$/);
 const schema = z.object({ version: z.literal(VERSION), gameId: z.string(), worldId: z.string(), sceneVersion: z.union([z.literal(12),z.literal(13)]),
   priorAuthorizationSha256: hex, identitySha256: hex, reviewMode: z.literal(SINGLE_MEDIUM_VISUAL_REVIEW_VERSION),
   model: z.literal("gpt-6.1-sol"), effort: z.literal("medium"), initialTier: z.literal("flex"),
-  oneUsableAssessmentPerImage: z.literal(true), worldCapMicroUsd: z.literal(4000000), automaticBudgetExtension: z.literal(false), authorizationSha256: hex }).strict();
+  oneUsableAssessmentPerImage: z.literal(true), worldCapMicroUsd: z.union([z.literal(4000000), z.literal(KINGDOM_V6_CEILING_MICRO_USD)]),
+  automaticBudgetExtension: z.literal(false), authorizationSha256: hex }).strict();
 type Reader = Pick<Prisma.TransactionClient, "auditLog">;
+/** The world's own pinned ceiling: four dollars, or the kingdom-generation/v6 hard ceiling. Never a grant. */
+async function pinnedCap(db: Reader, gameId: string): Promise<4000000 | typeof KINGDOM_V6_CEILING_MICRO_USD> {
+  return (await kingdomGenerationReleaseOf(db, gameId))?.version === KINGDOM_GENERATION_V6 ? KINGDOM_V6_CEILING_MICRO_USD : 4000000;
+}
 async function expected(db: Reader, gameId: string) {
   const prior = await singleLowReviewAuthorization(db, gameId);
   if (prior?.kind !== "from-birth") throw Error("SINGLE_MEDIUM: exact from-birth four-dollar authority required");
   const body = { version: VERSION, gameId, worldId: gameId + ":board-wizard", sceneVersion: prior.sceneVersion,
     priorAuthorizationSha256: prior.authorizationSha256, identitySha256: prior.identitySha256,
     reviewMode: SINGLE_MEDIUM_VISUAL_REVIEW_VERSION, model: "gpt-6.1-sol", effort: "medium", initialTier: "flex",
-    oneUsableAssessmentPerImage: true, worldCapMicroUsd: 4000000, automaticBudgetExtension: false };
+    oneUsableAssessmentPerImage: true, worldCapMicroUsd: await pinnedCap(db, gameId), automaticBudgetExtension: false };
   return schema.parse({ ...body, authorizationSha256: hash(body) });
 }
 /** Original LOW birth receipts are immutable. The new on-demand SYSTEM pin
@@ -39,7 +45,7 @@ export async function ensureSingleMediumReviewPolicy(c: Container, gameId: strin
   fence: (tx: Prisma.TransactionClient) => Promise<void>) {
   if (await singleMediumReviewPolicyOf(c.db, gameId)) return;
   const budget = await boardWizardBudgetOf(c).audit(gameId + ":board-wizard");
-  if (budget.capMicroUsd !== 4000000 || budget.overCapMicroUsd || budget.conflictRequestKeys.length || budget.overrunRequestKeys.length)
+  if (budget.capMicroUsd !== await pinnedCap(c.db, gameId) || budget.overCapMicroUsd || budget.conflictRequestKeys.length || budget.overrunRequestKeys.length)
     throw Error("SINGLE_MEDIUM: original four-dollar ledger must remain intact");
   await c.db.$transaction(async tx => {
     await fenceLocalPatchImages(tx, gameId); await fence(tx);

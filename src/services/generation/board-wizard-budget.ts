@@ -30,7 +30,9 @@ export interface BoardWizardBudgetGrant { worldId: string; capMicroUsd: 5_000_00
 /** At most this many named images in one finite set. */
 export const IMAGE_ABOVE_BASE_SET_MAX = 3;
 /** A lean world's lower ceiling (local-patch-lean/v1): never a grant. */
-export interface BoardWizardBudgetCeiling { worldId: string; capMicroUsd: typeof LEAN_BOARD_WIZARD_CAP_MICRO_USD; authorizationSha256: string }
+export interface BoardWizardBudgetCeiling { worldId: string;
+  /** Four dollars for every lean/Kingdom pin up to v5; seven for a kingdom-generation/v6 pin (its hard ceiling). */
+  capMicroUsd: typeof LEAN_BOARD_WIZARD_CAP_MICRO_USD | typeof QA_KINGDOM_TAIL_CAP; authorizationSha256: string }
 export type BoardWizardBudgetExtension = BoardWizardBudgetGrant | BoardWizardBudgetCeiling;
 export type BoardWizardBudgetExtensionResolver = (worldId: string) => Promise<BoardWizardBudgetExtension | null>;
 /** Narrower commercial cap, enforced INSIDE the same serializable transaction.

@@ -7,6 +7,8 @@ import { wholeSourceContextExhausted } from "../../domain/generation/whole-sourc
 import { wholeSourceContextImagePolicy } from "../../infra/generation/openai-local-patch";
 import { resumeBoundEnvelopeReconciliation } from "./bound-envelope-reconciliation";
 import { resumeKingdomNeighborReview, kingdomNeighborReviewOf } from './kingdom-neighbor-review';
+import { closeKingdomWorldAtCeiling } from './kingdom-cost-policy';
+import { LOCAL_PATCH_CEILING_CLOSED } from '../../domain/generation/kingdom-ceiling';
 import { applySourceCrownReturn } from "./source-crown-pixels";
 import { correctSourceFigureReturn, sourceFigureCandidate } from './source-figure-return';
 import { sourceBodyGapCandidate } from '../../domain/generation/source-body-gap';
@@ -152,7 +154,7 @@ export const LOCAL_PATCH_EVIDENCE_RETRY_WAIT = "local-patch:evidence-retry-wait"
  * cannot change it. Nothing is deleted, approved or handed to the parent.
  */
 export const LOCAL_PATCH_RECOVERY_EXHAUSTED = "local-patch:recovery-exhausted";
-const PARKED_STEPS = [LOCAL_PATCH_NEEDS_RELEASE, LOCAL_PATCH_RECOVERY_EXHAUSTED];
+const PARKED_STEPS = [LOCAL_PATCH_NEEDS_RELEASE, LOCAL_PATCH_RECOVERY_EXHAUSTED, LOCAL_PATCH_CEILING_CLOSED];
 export const LOCAL_PATCH_CONTINUE_IN_SLICE = "local-patch-continue-in-slice/v1";
 /**
  * The hold the engine itself writes when a review answer's charge cannot be stated (`paid-operation.ts`):
@@ -503,6 +505,12 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
       + `${audit.remainingMicroUsd} of ${audit.capMicroUsd} micro-USD remain with nothing in flight`
       + (unknown ? ` that can settle on its own (${unknown} of unknown outcome await reconciliation)` : "")
       + ". A service decision is required; no parent approval is requested.";
+    // kingdom-generation/v6: the hard ceiling closes the world and refunds its order (Guy, 2026-11-19). The customer
+    // outcome does not wait on supplier accounting (review QAV6-01): every UNKNOWN stays reserved and recorded in full
+    // for reconciliation; nothing paid or pending is released. Free work was already read: a settled answer waiting
+    // yields before this point, and a pending reservation waits above.
+    const closed = await closeKingdomWorldAtCeiling(c, gameId, job.id, reason, fence);
+    if (closed) return { parked: closed.reason };
     await parkExhausted(reason);
     return { parked: reason };
   };

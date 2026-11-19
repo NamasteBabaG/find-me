@@ -299,14 +299,30 @@ describe("advisory notification outbox", () => {
   });
 
   it("does not retry an uncertain delivery beyond the provider deduplication window", async () => {
-    const item = await seed("mail-expired"), send = vi.fn(async () => { throw new Error("No acknowledgement"); });
+    const item = await seed("mail-expired"), send = vi.fn(async (_message: EmailMessage) => { throw new Error("No acknowledgement"); });
     let now = Date.now(); const clock = vi.spyOn(Date, "now").mockImplementation(() => now);
     try {
       await deliverLocalPatchNotifications({ ...c, email: { id: "resend", send } }, item.gameId);
       now += 24 * 60 * 60 * 1000;
       await deliverLocalPatchNotifications({ ...c, email: { id: "resend", send } }, item.gameId);
-      expect(send).toHaveBeenCalledTimes(2);
+      // Two notification sends only; the give-up alert to a person is a separate admin message (review P1-7).
+      expect(send.mock.calls.filter(([m]) => !m.subject.includes("📭"))).toHaveLength(2);
       expect(await db.auditLog.count({ where: { entityId: item.gameId, action: "local-patch:notification-unknown" } })).toBe(2);
+      expect((await db.game.findUniqueOrThrow({ where: { id: item.gameId } })).status).toBe("READY");
+    } finally { clock.mockRestore(); }
+  });
+
+  it("tells a person once when the ready mail is finally given up; the game stays READY and playable", async () => {
+    const item = await seed("mail-given-up"), sent: EmailMessage[] = [];
+    const send = vi.fn(async (message: EmailMessage) => { if (message.tag === "game-ready") throw new Error("No acknowledgement"); sent.push(message); return { id: "admin-" + sent.length }; });
+    let now = Date.now(); const clock = vi.spyOn(Date, "now").mockImplementation(() => now);
+    try {
+      for (let round = 0; round < 4; round++, now += 61_000) await deliverLocalPatchNotifications({ ...c, email: { id: "resend", send } }, item.gameId);
+      expect(send.mock.calls.filter(([m]) => m.tag === "game-ready")).toHaveLength(3);
+      const alerts = sent.filter(m => m.tag === "admin-alert" && m.subject.includes("📭"));
+      expect(alerts).toHaveLength(1); expect(alerts[0]!.to).toBe("admin@example.invalid");
+      await deliverLocalPatchNotifications({ ...c, email: { id: "resend", send } }, item.gameId);
+      expect(sent.filter(m => m.tag === "admin-alert" && m.subject.includes("📭"))).toHaveLength(1);
       expect((await db.game.findUniqueOrThrow({ where: { id: item.gameId } })).status).toBe("READY");
     } finally { clock.mockRestore(); }
   });

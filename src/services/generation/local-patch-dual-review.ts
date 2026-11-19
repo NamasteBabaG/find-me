@@ -1,4 +1,7 @@
 import { nativeDetailQuestion } from "./native-detail-evidence";
+import { KINGDOM_UNREADABLE_DIRECTION, KINGDOM_UNREADABLE_LOG_CODE } from "../../domain/generation/kingdom-unreadable-recovery";
+import { KINGDOM_RATE_LIMIT_STATUS, kingdomRateLimitDirection } from "../../domain/generation/kingdom-rate-limit";
+import { kingdomV6RecoveryOf } from "./kingdom-generation-release";
 import { collectionVarietyApplies } from "../../domain/generation/collection-variety-exhausted";
 import type { NativeDetailEvidence } from "../../domain/generation/native-detail";
 import { BOUND_SUBJECT_QUALITY_ENVELOPE_READER_V2 } from "../../domain/generation/bound-subject-quality-envelope";
@@ -1183,9 +1186,16 @@ async function prepareSingleLowQuestion(c: Pick<Container, "db" | "storage">, pr
     const view = prepared.request.hides[0]!;
     if (!head || !sourceNeighbors || !entry.reviewContextRect || !view.returnedWindow || !view.expectation?.support || anchor)
       throw Error('KINGDOM_REVIEW: fresh ordinary MEDIUM source evidence required');
+    // kingdom-unreadable-recovery/v1: an earlier round on these pixels that was answered but unreadable is not a transport fault.
+    const unreadableAsked = (Array.isArray(receipt.evidenceAttempts) ? receipt.evidenceAttempts : []).some((v: { single?: unknown; imageSha256?: unknown; code?: unknown }) =>
+      v.single === singleVersion && v.imageSha256 === binding.imageSha256 && v.code === KINGDOM_UNREADABLE_LOG_CODE);
+    // kingdom-rate-limit-recovery/v1 (v6): a create the provider rate-limited is asked again as a new question.
+    const rateLimited = await kingdomV6RecoveryOf(c.db, prepared.game.id)
+      ? rounds.filter(r => r.terminal?.kind === 'refused' && r.terminal.status === KINGDOM_RATE_LIMIT_STATUS).length : 0;
     const directions = compositionDirections
       + (receipt.authoredRecovery ? '\nAUTONOMOUS REPAIR: judge the repaired pixels, including all visible limbs and the new join. A diagnosis is not approval.' : '')
-      + (continued ? '\nUNANSWERED TRANSPORT CONTINUATION ' + attempt + ': the earlier request ended without text or usage.' : '');
+      + (continued ? unreadableAsked ? KINGDOM_UNREADABLE_DIRECTION : '\nUNANSWERED TRANSPORT CONTINUATION ' + attempt + ': the earlier request ended without text or usage.' : '')
+      + kingdomRateLimitDirection(rateLimited);
     const { question, evidence } = await kingdomCompactReview({
       reviewEvidence: kingdomReviewEvidence,
       media: { board: prepared.request.boardPng, portrait: prepared.request.identityPng, photo: subject.photoPng,

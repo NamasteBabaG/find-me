@@ -1,5 +1,6 @@
 import { isSingleVisualReviewVersion } from "../../domain/generation/single-visual-review";
 import { singleTransportContinuation } from "../../domain/generation/single-transport-continuation";
+import { KINGDOM_UNREADABLE_QUESTIONS_PER_IMAGE, KINGDOM_UNREADABLE_RECOVERY } from "../../domain/generation/kingdom-unreadable-recovery";
 import {
   LOCAL_PATCH_EVIDENCE_ROUND_CAP, LOCAL_PATCH_EVIDENCE_TRANSPORT_BACKOFF_MS, nextLocalPatchEvidenceStep,
   type EvidenceAttempt, type EvidenceFaultKind, type EvidenceRole, type EvidenceStep, type EvidenceStrategy,
@@ -71,6 +72,11 @@ export function localPatchEvidenceRecovery(row: { status: string; lastError?: st
       const continuation = singleTransportContinuation(receipt);
       if (continuation) return { attempt: continuation.asked, nextAttempt: continuation.asked + 1, retry: true, waiting: false,
         exhausted: false, retryAt: now, role: "quality", strategy: "standard/v1", step: null };
+      // kingdom-unreadable-recovery/v1: a v6 world asks the same pixels once more before treating them as refused.
+      const asked = receipt.boardReview.evidenceReviewAttempt ?? 1;
+      if (receipt.unreadableRecovery === KINGDOM_UNREADABLE_RECOVERY && safeAttempt(asked) && asked < KINGDOM_UNREADABLE_QUESTIONS_PER_IMAGE)
+        return { attempt: asked, nextAttempt: asked + 1, retry: true, waiting: false, exhausted: false, retryAt: now,
+          role: "quality", strategy: "standard/v1", step: null };
       return { attempt: 1, nextAttempt: 2, retry: false, waiting: false, exhausted: true, retryAt: Infinity, role: null, strategy: null, step: null };
     }
     const stored = receipt.boardReview.evidenceReviewAttempt ?? 1;
