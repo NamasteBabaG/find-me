@@ -24,9 +24,10 @@ const REFUND_ACTION = "local-patch:ceiling-refund", NOTICE_ACTION = "local-patch
 export const ceilingRefundId = (gameId: string) => `aud_ceiling_refund_${gameId}`;
 export const ceilingNoticeId = (gameId: string) => `aud_ceiling_notice_${gameId}`;
 /** An attempt's own window: longer than any one function invocation (maxDuration 600 s) plus the adapter's call timeout.
- * While it runs, no other worker touches the attempt, whether or not the first worker's call has returned (QAV6-04). */
+ * While it runs, no other worker touches the attempt, whether or not the first worker's call has returned (QAV6-04).
+ * The window only bounds OUR side; what the provider may still do is answered by its terminal status, never by time. */
 export const CEILING_REFUND_ATTEMPT_WINDOW_MS = 15 * 60_000;
-/** A definitive "not-refunded" authorizes another attempt only once the previous one is at least this old. */
+/** A refund the provider still reports "in-progress" this long after the attempt began is handed to a person. */
 export const CEILING_REFUND_SETTLE_MS = 30 * 60_000;
 export const CEILING_REFUND_MAX_ATTEMPTS = 2;
 /** An uncertain refund keeps looking for positive proof: the provider is asked again on this period, for a day. */
@@ -74,9 +75,11 @@ async function handOff(c: Container, gameId: string, error: string) {
  * - positive proof (the order already REFUNDED by its webhook or a manual refund, or the provider's own "refunded")
  *   finishes ANY undecided record, uncertain, refused and unresolved included, without another refund (QAV6-03);
  * - an attempt inside its window belongs to the worker that started it, even if its call already returned (QAV6-04);
- * - after the window, only a definitive provider "not-refunded" at least CEILING_REFUND_SETTLE_MS after the last attempt
- *   began admits one more attempt (at most CEILING_REFUND_MAX_ATTEMPTS); anything else is uncertain: a person is told
- *   once, and the provider is asked again for positive proof every CEILING_REFUND_RECHECK_MS for a day.
+ * - after the window, only the provider's TERMINAL "no-transfer" admits one more attempt (at most
+ *   CEILING_REFUND_MAX_ATTEMPTS). "in-progress" waits, and is handed to a person once the attempt is
+ *   CEILING_REFUND_SETTLE_MS old. "unknown", a missing status query, or the attempt bound make the refund uncertain:
+ *   a person is told once, and the provider is asked again for positive proof every CEILING_REFUND_RECHECK_MS for a day.
+ *   An uncertain refund is never attempted again automatically.
  */
 export async function advanceCeilingRefund(c: Container, gameId: string, now = Date.now()): Promise<CeilingRefundState> {
   const row = await c.db.auditLog.findUnique({ where: { id: ceilingRefundId(gameId) } });
@@ -97,14 +100,14 @@ export async function advanceCeilingRefund(c: Container, gameId: string, now = D
     return done ? "unresolved" : "uncertain";
   }
   if (refund.state === "sending") {
-    // The attempt's window has passed: no worker of ours can still be executing it. Know its outcome before anything else.
+    // The attempt's window has passed: no worker of ours can still be executing it. What the provider may still do is
+    // answered only by its own terminal status, never by elapsed time.
     const known = await status();
     if (known === "refunded") return confirm(c, gameId, refund, row.metaJson, refund.providerRefundId, now);
-    const settled = now - refund.attemptStartedAt >= CEILING_REFUND_SETTLE_MS;
-    if (known === "not-refunded" && !settled) return "pending";
-    if (known !== "not-refunded" || refund.attempts >= CEILING_REFUND_MAX_ATTEMPTS) {
+    if (known === "in-progress" && now - refund.attemptStartedAt < CEILING_REFUND_SETTLE_MS) return "pending";
+    if (known !== "no-transfer" || refund.attempts >= CEILING_REFUND_MAX_ATTEMPTS) {
       if (await swap(c, row.id, row.metaJson, { ...refund, state: "uncertain", leaseUntil: 0, decidedAt: now, nextCheckAt: now + CEILING_REFUND_RECHECK_MS }))
-        await handOff(c, gameId, "תקרת $7: ניסיון ההחזר האוטומטי הסתיים בלי תשובה ידועה מספק התשלום. יש לבדוק אצל הספק אם ההחזר בוצע, לפני כל החזר ידני.");
+        await handOff(c, gameId, "תקרת $7: ניסיון ההחזר האוטומטי לא קיבל אישור סופי מספק התשלום. יש לבדוק אצל הספק אם ההחזר בוצע או עדיין בטיפול, לפני כל החזר ידני.");
       return "uncertain";
     }
   }
@@ -122,7 +125,14 @@ export async function advanceCeilingRefund(c: Container, gameId: string, now = D
       await handOff(c, gameId, "תקרת $7: ספק התשלום סירב להחזר האוטומטי. יש להחזיר ידנית מהאדמין.");
     return "refused";
   }
-  return confirm(c, gameId, sending, claimed, answer.providerRefundId ?? null, now);
+  const providerRefundId = answer.providerRefundId ?? null;
+  const done = await confirm(c, gameId, sending, claimed, providerRefundId, now);
+  if (done === "confirmed") return done;
+  // A late "ok" (another worker moved the record after this call's window): the provider's answer is positive proof.
+  const current = await c.db.auditLog.findUnique({ where: { id: ceilingRefundId(gameId) } });
+  if (!current?.metaJson) return "pending";
+  const latest = refundSchema.parse(JSON.parse(current.metaJson));
+  return latest.state === "confirmed" ? "confirmed" : confirm(c, gameId, latest, current.metaJson, providerRefundId, now);
 }
 
 async function confirm(c: Container, gameId: string, refund: Refund, before: string, providerRefundId: string | null, now: number): Promise<CeilingRefundState> {

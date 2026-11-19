@@ -57,13 +57,23 @@ export interface PaymentProvider {
   /** Optional: only a confirmed terminal unpaid result permits replacement. */
   closeCheckout?(req: CloseCheckoutRequest): Promise<CloseCheckoutResult>;
   parseWebhook(rawBody: string, headers: Record<string, string | undefined>): Promise<WebhookParseResult>;
+  /** An adapter bounds this call well inside a minute: the ceiling refund's attempt window assumes it (kingdom-ceiling-refund/v1). */
   refund(providerPaymentId: string, amountAgorot: number): Promise<{ ok: boolean; providerRefundId?: string }>;
   /**
-   * Optional: the provider's own statement of whether this payment is already refunded, asked BEFORE any repeated
-   * refund after an uncertain outcome (PayMe has no idempotency key; its transaction_id is not a dedupe key).
-   * "unknown" never authorizes a second refund. An adapter without it leaves an uncertain refund to a person.
+   * Optional: the provider's own statement about refunds of this payment, asked BEFORE any repeated refund after an
+   * uncertain outcome (PayMe has no idempotency key; its transaction_id is not a dedupe key).
+   * Only "no-transfer" can authorize another attempt; "in-progress" and "unknown" never do. An adapter without this
+   * method leaves every uncertain refund to a person.
    */
   refundStatus?(providerPaymentId: string): Promise<RefundStatus>;
 }
 
-export type RefundStatus = "refunded" | "not-refunded" | "unknown";
+/**
+ * - "refunded": positive proof that the money went back.
+ * - "no-transfer": TERMINAL proof that no refund of this payment happened and none can still complete; for example the
+ *   provider records every earlier refund request as failed or rejected. An adapter returns it only where the
+ *   provider's documented semantics make it final. A "not refunded yet" snapshot is NOT this (QAV6-04).
+ * - "in-progress": a refund may be pending, queued or processing, or the provider cannot rule out a later completion.
+ * - "unknown": the question could not be answered.
+ */
+export type RefundStatus = "refunded" | "no-transfer" | "in-progress" | "unknown";

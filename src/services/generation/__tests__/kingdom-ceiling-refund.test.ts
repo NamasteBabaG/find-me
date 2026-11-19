@@ -76,7 +76,7 @@ describe("kingdom-ceiling-refund/v1", () => {
   it("reconciles a lost provider answer from the provider's own status, never sending the refund twice", async () => {
     let refundedAtProvider = false;
     const refund = vi.fn(async () => { refundedAtProvider = true; throw Error("synthetic timeout after the provider moved the money"); });
-    const refundStatus = vi.fn(async (): Promise<RefundStatus> => refundedAtProvider ? "refunded" : "not-refunded");
+    const refundStatus = vi.fn(async (): Promise<RefundStatus> => refundedAtProvider ? "refunded" : "no-transfer");
     const w = await closedWorld("ceiling-refund-lost-answer", { refund, refundStatus }), t0 = Date.now();
     expect(await advanceCeilingRefund(w.c, w.gameId, t0)).toBe("pending");
     // The attempt keeps its window after the call failed: the provider may still be finishing it.
@@ -114,18 +114,54 @@ describe("kingdom-ceiling-refund/v1", () => {
     expect(refund).toHaveBeenCalledTimes(1);
   });
 
-  it("retries a transient failure the provider confirms did not move money", async () => {
+  it("retries a transient failure only on the provider's terminal no-transfer proof, after the attempt's window", async () => {
     let calls = 0;
     const refund = vi.fn(async () => { if (++calls === 1) throw Error("synthetic 503 before acceptance"); return { ok: true, providerRefundId: "rf-3" }; });
-    const refundStatus = vi.fn(async (): Promise<RefundStatus> => "not-refunded");
+    const refundStatus = vi.fn(async (): Promise<RefundStatus> => "no-transfer");
     const w = await closedWorld("ceiling-refund-transient", { refund, refundStatus }), t0 = Date.now();
     expect(await advanceCeilingRefund(w.c, w.gameId, t0)).toBe("pending");
-    // A definitive "not-refunded" is acted on only once the earlier attempt is old enough to have settled.
-    expect(await advanceCeilingRefund(w.c, w.gameId, t0 + CEILING_REFUND_ATTEMPT_WINDOW_MS + 1)).toBe("pending");
-    expect(refund).toHaveBeenCalledTimes(1);
-    expect(await advanceCeilingRefund(w.c, w.gameId, t0 + CEILING_REFUND_SETTLE_MS + 1)).toBe("confirmed");
+    // Even terminal proof is not read inside the window: the first call may still be on its way to the provider.
+    expect(await advanceCeilingRefund(w.c, w.gameId, t0 + CEILING_REFUND_ATTEMPT_WINDOW_MS - 1)).toBe("pending");
+    expect(refund).toHaveBeenCalledTimes(1); expect(refundStatus).not.toHaveBeenCalled();
+    expect(await advanceCeilingRefund(w.c, w.gameId, t0 + CEILING_REFUND_ATTEMPT_WINDOW_MS + 1)).toBe("confirmed");
     expect(refund).toHaveBeenCalledTimes(2);
     expect(await w.refundOf()).toMatchObject({ state: "confirmed", attempts: 2, providerRefundId: "rf-3" });
+  });
+
+  // Codex QAV6-04 follow-up: a "not refunded yet" snapshot is "in-progress", never proof that nothing can still happen.
+  it("never repeats a refund the provider reports in progress; a person is told once it has not settled", async () => {
+    let refundedAtProvider = false;
+    const refund = vi.fn(async (_paymentId: string, _amount: number): Promise<{ ok: boolean }> => { throw Error("synthetic lost response"); });
+    const refundStatus = vi.fn(async (): Promise<RefundStatus> => refundedAtProvider ? "refunded" : "in-progress");
+    const w = await closedWorld("ceiling-refund-in-progress", { refund, refundStatus }), t0 = Date.now();
+    expect(await advanceCeilingRefund(w.c, w.gameId, t0)).toBe("pending");
+    for (const at of [t0 + CEILING_REFUND_ATTEMPT_WINDOW_MS + 1, t0 + CEILING_REFUND_SETTLE_MS - 1])
+      expect(await advanceCeilingRefund(w.c, w.gameId, at)).toBe("pending");
+    expect(w.alerts()).toHaveLength(0);
+    expect(await advanceCeilingRefund(w.c, w.gameId, t0 + CEILING_REFUND_SETTLE_MS + 1)).toBe("uncertain");
+    expect(w.alerts().length).toBeGreaterThan(0);
+    // The provider finishes the first request later: positive proof confirms it, still with one refund call.
+    refundedAtProvider = true;
+    expect(await advanceCeilingRefund(w.c, w.gameId, t0 + CEILING_REFUND_SETTLE_MS + CEILING_REFUND_RECHECK_MS + 2)).toBe("confirmed");
+    expect(refund.mock.calls.filter(([id]) => id === "pay-ceiling-refund-in-progress")).toHaveLength(1);
+    expect(await w.state()).toEqual({ game: "REFUNDED", order: "REFUNDED" }); expect(w.parentMails()).toHaveLength(1);
+  });
+
+  it("a first call that answers ok after another worker marked the refund uncertain still confirms it, once", async () => {
+    let resolveFirst!: (value: { ok: boolean; providerRefundId?: string }) => void;
+    let signalFirst!: () => void;
+    const firstStarted = new Promise<void>(resolve => { signalFirst = resolve; });
+    const refund = vi.fn(async () => { signalFirst(); return await new Promise<{ ok: boolean; providerRefundId?: string }>(resolve => { resolveFirst = resolve; }); });
+    const refundStatus = vi.fn(async (): Promise<RefundStatus> => "unknown");
+    const w = await closedWorld("ceiling-refund-late-ok", { refund, refundStatus }), t0 = Date.now();
+    const firstWorker = advanceCeilingRefund(w.c, w.gameId, t0);
+    await firstStarted;
+    expect(await advanceCeilingRefund(w.c, w.gameId, t0 + CEILING_REFUND_ATTEMPT_WINDOW_MS + 1)).toBe("uncertain");
+    resolveFirst({ ok: true, providerRefundId: "rf-late" });
+    expect(await firstWorker).toBe("confirmed");
+    expect(refund).toHaveBeenCalledTimes(1);
+    expect(await w.refundOf()).toMatchObject({ state: "confirmed", providerRefundId: "rf-late" });
+    expect(await w.state()).toEqual({ game: "REFUNDED", order: "REFUNDED" }); expect(w.parentMails()).toHaveLength(1);
   });
 
   // Codex QAV6-03 (tracked regression; timing adapted: a failed call now keeps its attempt window, per QAV6-04).
@@ -169,7 +205,8 @@ describe("kingdom-ceiling-refund/v1", () => {
     expect(await w.state()).toEqual({ game: "REFUNDED", order: "REFUNDED" }); expect(w.parentMails()).toHaveLength(1);
   });
 
-  // Codex QAV6-04 (tracked regression, verbatim): a not-refunded-YET snapshot never repeats an attempt still in flight.
+  // Codex QAV6-04 (tracked regression, verbatim except the status: Codex's "not-refunded" is now the strongest answer,
+  // the terminal "no-transfer"; even that never repeats an attempt still inside its window).
   it("Codex QAV6-04: an expired worker lease must not repeat a refund while its first call remains in flight", async () => {
     let resolveFirst!: (value: { ok: boolean; providerRefundId?: string }) => void;
     let signalFirst!: () => void;
@@ -179,7 +216,7 @@ describe("kingdom-ceiling-refund/v1", () => {
       if (++invocations === 1) { signalFirst(); return await new Promise<{ ok: boolean; providerRefundId?: string }>(resolve => { resolveFirst = resolve; }); }
       return { ok: true, providerRefundId: "synthetic-second-refund" };
     });
-    const refundStatus = vi.fn(async (): Promise<RefundStatus> => "not-refunded");
+    const refundStatus = vi.fn(async (): Promise<RefundStatus> => "no-transfer");
     const w = await closedWorld("codex-overlapping-refund-workers", { refund, refundStatus });
     const start = Date.now();
     const firstWorker = advanceCeilingRefund(w.c, w.gameId, start);
@@ -193,10 +230,10 @@ describe("kingdom-ceiling-refund/v1", () => {
 
   it("bounds automatic attempts: after the last allowed attempt only positive proof or a person decides", async () => {
     const refund = vi.fn(async () => { throw Error("synthetic 503"); });
-    const refundStatus = vi.fn(async (): Promise<RefundStatus> => "not-refunded");
+    const refundStatus = vi.fn(async (): Promise<RefundStatus> => "no-transfer");
     const w = await closedWorld("ceiling-refund-attempt-bound", { refund, refundStatus });
     let now = Date.now();
-    for (let i = 0; i < 6; i++, now += CEILING_REFUND_SETTLE_MS + 1) await advanceCeilingRefund(w.c, w.gameId, now);
+    for (let i = 0; i < 6; i++, now += CEILING_REFUND_ATTEMPT_WINDOW_MS + 1) await advanceCeilingRefund(w.c, w.gameId, now);
     expect(refund).toHaveBeenCalledTimes(CEILING_REFUND_MAX_ATTEMPTS);
     expect(await w.refundOf()).toMatchObject({ state: "uncertain", attempts: CEILING_REFUND_MAX_ATTEMPTS });
     expect(await w.state()).toEqual({ game: "GENERATION_FAILED", order: "PAID" });
