@@ -33,6 +33,8 @@ export const CEILING_REFUND_MAX_ATTEMPTS = 2;
 /** An uncertain refund keeps looking for positive proof: the provider is asked again on this period, for a day. */
 export const CEILING_REFUND_RECHECK_MS = 10 * 60_000;
 export const CEILING_REFUND_MAX_CHECKS = 144;
+/** A refund the provider reports "in-progress" is asked again on this period (and goes to the back of the sweep). */
+export const CEILING_REFUND_IN_PROGRESS_RECHECK_MS = 60_000;
 const NOTICE_LEASE_MS = 60_000, NOTICE_RETRY_MS = 60_000;
 export const CEILING_NOTICE_MAX_ATTEMPTS = 3;
 
@@ -88,7 +90,7 @@ export async function advanceCeilingRefund(c: Container, gameId: string, now = D
   if (refund.state === "confirmed") { await advanceCeilingNotice(c, gameId, now); return "confirmed"; }
   const order = await c.db.order.findUniqueOrThrow({ where: { id: refund.orderId } });
   if (order.paymentStatus === "REFUNDED") return confirm(c, gameId, refund, row.metaJson, refund.providerRefundId, now);
-  if (refund.state === "sending" && refund.leaseUntil > now) return "pending";
+  if (refund.state === "sending" && (refund.leaseUntil > now || refund.nextCheckAt > now)) return "pending";
   if (refund.state === "refused" || refund.state === "unresolved") return refund.state;
   const status = async (): Promise<RefundStatus> => c.payment.refundStatus
     ? await c.payment.refundStatus(refund.providerPaymentId).catch((): RefundStatus => "unknown") : "unknown";
@@ -104,14 +106,19 @@ export async function advanceCeilingRefund(c: Container, gameId: string, now = D
     // answered only by its own terminal status, never by elapsed time.
     const known = await status();
     if (known === "refunded") return confirm(c, gameId, refund, row.metaJson, refund.providerRefundId, now);
-    if (known === "in-progress" && now - refund.attemptStartedAt < CEILING_REFUND_SETTLE_MS) return "pending";
+    if (known === "in-progress" && now - refund.attemptStartedAt < CEILING_REFUND_SETTLE_MS) {
+      // Paced, but never past the settle limit: the hand-off to a person is not delayed.
+      await swap(c, row.id, row.metaJson, { ...refund,
+        nextCheckAt: Math.min(now + CEILING_REFUND_IN_PROGRESS_RECHECK_MS, refund.attemptStartedAt + CEILING_REFUND_SETTLE_MS) });
+      return "pending";
+    }
     if (known !== "no-transfer" || refund.attempts >= CEILING_REFUND_MAX_ATTEMPTS) {
       if (await swap(c, row.id, row.metaJson, { ...refund, state: "uncertain", leaseUntil: 0, decidedAt: now, nextCheckAt: now + CEILING_REFUND_RECHECK_MS }))
         await handOff(c, gameId, "תקרת $7: ניסיון ההחזר האוטומטי לא קיבל אישור סופי מספק התשלום. יש לבדוק אצל הספק אם ההחזר בוצע או עדיין בטיפול, לפני כל החזר ידני.");
       return "uncertain";
     }
   }
-  const sending: Refund = { ...refund, state: "sending", attempts: refund.attempts + 1, attemptStartedAt: now, leaseUntil: now + CEILING_REFUND_ATTEMPT_WINDOW_MS };
+  const sending: Refund = { ...refund, state: "sending", attempts: refund.attempts + 1, attemptStartedAt: now, leaseUntil: now + CEILING_REFUND_ATTEMPT_WINDOW_MS, nextCheckAt: 0 };
   if (!await swap(c, row.id, row.metaJson, sending)) return "pending";
   const claimed = JSON.stringify(sending);
   let answer: { ok: boolean; providerRefundId?: string };
@@ -184,15 +191,58 @@ export async function advanceCeilingNotice(c: Container, gameId: string, now = D
   }
 }
 
-/** Cron sweep: every owed refund or notice not yet decided, oldest first, within the deadline. */
-export async function resumeKingdomCeilingRefunds(c: Container, options: { deadlineAt?: number; limit?: number } = {}): Promise<number> {
-  const rows = await c.db.auditLog.findMany({ where: { action: { in: [REFUND_ACTION, NOTICE_ACTION] },
-    OR: [{ metaJson: { contains: '"state":"pending"' } }, { metaJson: { contains: '"state":"sending"' } }, { metaJson: { contains: '"state":"uncertain"' } }] },
-    orderBy: { createdAt: "asc" }, take: options.limit ?? 20, select: { entityId: true } });
+/** When an undecided record next has work: 0 = now; Infinity = only positive proof can move it; null = unreadable. */
+function workDueAt(action: string, metaJson: string | null): { at: number; orderId?: string } | null {
+  try {
+    const meta: unknown = JSON.parse(metaJson ?? "");
+    if (action === REFUND_ACTION) {
+      const r = refundSchema.parse(meta);
+      const at = r.state === "pending" ? 0 : r.state === "sending" ? Math.max(r.leaseUntil, r.nextCheckAt)
+        : r.state === "uncertain" ? r.nextCheckAt : r.state === "confirmed" ? Number.NaN : Number.POSITIVE_INFINITY;
+      return { at, orderId: r.orderId };
+    }
+    const n = noticeSchema.parse(meta);
+    return { at: n.state === "pending" ? n.nextAttemptAt : n.state === "sending" ? Math.max(n.leaseUntil, n.nextAttemptAt) : Number.NaN };
+  } catch { return null; }
+}
+
+const SWEEP_PAGE = 200;
+const UNDECIDED = ["pending", "sending", "uncertain", "refused", "unresolved"].map(state => ({ metaJson: { contains: `"state":"${state}"` } }));
+
+/**
+ * Cron sweep (Codex note on P0-3): every owed refund or notice not yet decided is read, and only the ones with work due
+ * NOW are served, earliest-due first, up to the limit. A pile of records waiting on their own timers can never hide a
+ * newer refund. Positive proof is due at once in any state: an order already REFUNDED (a webhook or a manual refund whose
+ * own wake failed) finishes its record here, refused and unresolved included. Unreadable records are served last.
+ */
+export async function resumeKingdomCeilingRefunds(c: Container, options: { deadlineAt?: number; limit?: number; now?: number } = {}): Promise<number> {
+  const now = options.now ?? Date.now(), limit = options.limit ?? 20;
+  const due: { gameId: string; at: number; createdAt: number }[] = [], waiting: { gameId: string; orderId: string; createdAt: number }[] = [];
+  for (let cursor: string | undefined; ;) {
+    const page = await c.db.auditLog.findMany({ where: { action: { in: [REFUND_ACTION, NOTICE_ACTION] }, OR: UNDECIDED },
+      orderBy: { id: "asc" }, take: SWEEP_PAGE, ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+      select: { id: true, action: true, entityId: true, metaJson: true, createdAt: true } });
+    for (const row of page) {
+      const work = workDueAt(row.action, row.metaJson), createdAt = row.createdAt.getTime();
+      if (!work) due.push({ gameId: row.entityId, at: Number.POSITIVE_INFINITY, createdAt });
+      else if (work.at <= now) due.push({ gameId: row.entityId, at: work.at, createdAt });
+      else if (work.orderId && !Number.isNaN(work.at)) waiting.push({ gameId: row.entityId, orderId: work.orderId, createdAt });
+    }
+    if (page.length < SWEEP_PAGE) break;
+    cursor = page[page.length - 1]!.id;
+  }
+  for (let i = 0; i < waiting.length; i += 500) {
+    const chunk = waiting.slice(i, i + 500);
+    const proven = new Set((await c.db.order.findMany({ where: { id: { in: chunk.map(w => w.orderId) }, paymentStatus: "REFUNDED" },
+      select: { id: true } })).map(o => o.id));
+    for (const w of chunk) if (proven.has(w.orderId)) due.push({ gameId: w.gameId, at: 0, createdAt: w.createdAt });
+  }
+  due.sort((a, b) => a.at - b.at || a.createdAt - b.createdAt);
+  const games = [...new Set(due.map(d => d.gameId))].slice(0, limit);
   let advanced = 0;
-  for (const gameId of new Set(rows.map(r => r.entityId))) {
+  for (const gameId of games) {
     if (options.deadlineAt !== undefined && options.deadlineAt - Date.now() < 10_000) break;
-    try { await advanceCeilingRefund(c, gameId); advanced++; } catch { console.error("[ceiling-refund] advance failed", { gameId }); }
+    try { await advanceCeilingRefund(c, gameId, options.now ?? Date.now()); advanced++; } catch { console.error("[ceiling-refund] advance failed", { gameId }); }
   }
   return advanced;
 }

@@ -10,7 +10,7 @@ import type { EmailMessage } from "../../../infra/email/types";
 import type { RefundStatus } from "../../../infra/payment/types";
 import { advanceCeilingRefund, ceilingNoticeId, ceilingRefundId, recordCeilingRefund, resumeKingdomCeilingRefunds,
   CEILING_NOTICE_MAX_ATTEMPTS, CEILING_REFUND_ATTEMPT_WINDOW_MS, CEILING_REFUND_RECHECK_MS, CEILING_REFUND_SETTLE_MS,
-  CEILING_REFUND_MAX_ATTEMPTS } from "../kingdom-ceiling-refund";
+  CEILING_REFUND_MAX_ATTEMPTS, CEILING_REFUND_IN_PROGRESS_RECHECK_MS } from "../kingdom-ceiling-refund";
 import { seedApprovedGame } from "./local-patch-fixtures";
 
 // kingdom-ceiling-refund/v1 (review QAV6-02). The ledger, transactions, order/game transitions and outbox are real;
@@ -273,5 +273,54 @@ describe("kingdom-ceiling-refund/v1", () => {
     for (let i = 0; i <= CEILING_NOTICE_MAX_ATTEMPTS; i++, now += 61_000) await advanceCeilingRefund(v.c, v.gameId, now);
     expect(await v.noticeOf()).toMatchObject({ state: "unknown", attempts: CEILING_NOTICE_MAX_ATTEMPTS });
     expect(v.alerts().some(m => m.subject.includes("📭"))).toBe(true);
+  });
+
+  it("an in-progress refund is asked again only on its own period, so it cannot crowd the sweep", async () => {
+    const refund = vi.fn(async (_paymentId: string, _amount: number): Promise<{ ok: boolean }> => { throw Error("synthetic lost response"); });
+    const refundStatus = vi.fn(async (): Promise<RefundStatus> => "in-progress");
+    const w = await closedWorld("ceiling-refund-in-progress-paced", { refund, refundStatus }), t0 = Date.now(), after = t0 + CEILING_REFUND_ATTEMPT_WINDOW_MS + 1;
+    expect(await advanceCeilingRefund(w.c, w.gameId, t0)).toBe("pending");
+    expect(await advanceCeilingRefund(w.c, w.gameId, after)).toBe("pending");
+    expect(await advanceCeilingRefund(w.c, w.gameId, after + 1_000)).toBe("pending");
+    expect(refundStatus).toHaveBeenCalledTimes(1);
+    expect(await advanceCeilingRefund(w.c, w.gameId, after + CEILING_REFUND_IN_PROGRESS_RECHECK_MS + 1)).toBe("pending");
+    expect(refundStatus).toHaveBeenCalledTimes(2); expect(refund).toHaveBeenCalledTimes(1);
+  });
+
+  // Codex note on P0-3 (2026-11-19): the sweep took the oldest undecided rows BEFORE it looked at their timers.
+  it("the sweep serves due work first: records waiting on their own timers never hide a newer refund", async () => {
+    const blockers: Awaited<ReturnType<typeof closedWorld>>[] = [];
+    for (let i = 0; i < 3; i++) {
+      const b = await closedWorld(`ceiling-refund-fair-blocker-${i}`, { refund: vi.fn(async () => { throw Error("synthetic lost response"); }),
+        refundStatus: vi.fn(async (): Promise<RefundStatus> => "unknown") });
+      const t0 = Date.now();
+      await advanceCeilingRefund(b.c, b.gameId, t0);
+      expect(await advanceCeilingRefund(b.c, b.gameId, t0 + CEILING_REFUND_ATTEMPT_WINDOW_MS + 1)).toBe("uncertain");
+      // Older than every other record: a sweep that limits before it looks at timers serves these first.
+      await db.auditLog.update({ where: { id: ceilingRefundId(b.gameId) }, data: { createdAt: new Date(Date.UTC(2000, 0, 1 + i)) } });
+      blockers.push(b);
+    }
+    const refund = vi.fn(async (_paymentId: string, _amount: number) => ({ ok: true, providerRefundId: "rf-fair" }));
+    const refundStatus = vi.fn(async (_paymentId: string): Promise<RefundStatus> => "unknown");
+    const w = await closedWorld("ceiling-refund-fair-due", { refund, refundStatus });
+    await resumeKingdomCeilingRefunds(w.c, { limit: 2 });
+    expect(await w.refundOf()).toMatchObject({ state: "confirmed" });
+    expect(await w.state()).toEqual({ game: "REFUNDED", order: "REFUNDED" }); expect(w.parentMails()).toHaveLength(1);
+    // The waiting records were not touched: no refund and no status read before their own recheck.
+    const blockerPayments = new Set(blockers.map(b => "pay-" + b.gameId));
+    expect([...refund.mock.calls, ...refundStatus.mock.calls].filter(([id]) => blockerPayments.has(id))).toHaveLength(0);
+    for (const b of blockers) expect(await b.refundOf()).toMatchObject({ state: "uncertain", checks: 0 });
+  });
+
+  it("the sweep is the backstop for positive proof: a refused refund finished by hand closes and tells the parent", async () => {
+    const refund = vi.fn(async (_paymentId: string, _amount: number) => ({ ok: false }));
+    const w = await closedWorld("ceiling-refund-sweep-manual-proof", { refund });
+    expect(await advanceCeilingRefund(w.c, w.gameId)).toBe("refused");
+    // A person refunds by hand and the refund's own wake is lost: only the sweep can finish the record.
+    await db.order.update({ where: { id: "ord-" + w.gameId }, data: { paymentStatus: "REFUNDED", refundedAt: new Date() } });
+    await resumeKingdomCeilingRefunds(w.c);
+    expect(await w.refundOf()).toMatchObject({ state: "confirmed" });
+    expect(refund.mock.calls.filter(([id]) => id === "pay-" + w.gameId)).toHaveLength(1);
+    expect(await w.state()).toEqual({ game: "REFUNDED", order: "REFUNDED" }); expect(w.parentMails()).toHaveLength(1);
   });
 });
