@@ -229,6 +229,9 @@ export async function handlePaymentWebhook(c: Container, rawBody: string, header
       console.warn("[passport] post-payment family reconciliation deferred", { gameId: order.gameId });
     }
   }
+  // kingdom-ceiling-refund/v1 (QAV6-03): the provider's committed refund is positive proof that finishes an owed ceiling
+  // refund (and sends its parent notice) without another refund. A no-op for every other game; the cron sweep is the backstop.
+  if (ev.kind === "REFUNDED" && !applied.rejected) await wakeCeilingRefund(c, order.gameId);
   return { status: applied.rejected ? 400 : 200, body: applied.body };
 }
 
@@ -352,5 +355,13 @@ export async function refundOrder(c: Container, orderId: string, actor: Actor): 
     return true;
   });
   if (!claimed) return { ok: false, reason: "ההזמנה כבר לא במצב ששולם." };
+  // A manual refund of a world closed at its ceiling finishes its owed-refund record and parent notice (QAV6-03).
+  await wakeCeilingRefund(c, order.gameId);
   return { ok: true };
+}
+
+/** Never throws: money already moved and committed; the record catches up now or on the next sweep. */
+async function wakeCeilingRefund(c: Container, gameId: string) {
+  try { await (await import("./generation/kingdom-ceiling-refund")).advanceCeilingRefund(c, gameId); }
+  catch { console.error("[ceiling-refund] wake after refund deferred", { gameId }); }
 }
