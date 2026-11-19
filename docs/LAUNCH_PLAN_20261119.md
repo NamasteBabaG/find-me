@@ -6,6 +6,23 @@ The goal is a state where a parent pays, uploads a photo, closes the browser, an
 - **Engine changes:** these ride a **new Kingdom version (v6)**, so every existing pin, game and Journey world stays byte-identical. Claude implements on `claude/kingdom-v6-launch-20261119` (from `55aa9783`). Codex reviews, runs CI and releases to QA, as usual.
 - **Not repeated here:** the findings themselves are in Codex's `work/qa-claude-engine-finish-review-20261119/CLAUDE-REVIEW.md`.
 
+## Status (end of 2026-11-19)
+
+The branch is pushed with Guy's OK. CI runs the full gate on the head. Nothing is deployed, and no money was spent.
+
+| Item | State |
+|---|---|
+| T1.1 v6 pin, $5 notice, $7 close and refund | Done (`a6fa2477`, refund hardened in `102c3563`, `d5edf9f9`, `e0e8b881`). Codex: scoped PASS on the refund. |
+| T1.2 unreadable answer | Done (`kingdom-unreadable-recovery/v1`, `a6fa2477`) |
+| T1.3 neighbor reader v3 | Not in this branch |
+| T1.4 provider waits | Sol 429: done (`a6fa2477`). Images: done for first attempts on any hide, with backoff (`3231a113`). An interrupted **second** attempt still parks for a person. |
+| T1.5 cron | Fair turns, cron fill, progress-based stall alert, ready mail on the next tick, no duplicate after a resend (`a6fa2477`, `3231a113`). No K-errors park yet. |
+| T1.6 self-repair budget, orphan image | Done (`a6fa2477`, `3231a113`) |
+| T2 PayMe | Adapter written from the docs (`a7717b84`, `docs/PAYME_ADAPTER.md`). The checkout admits it under the hosted-page retry contract. Not run against an account. Sandbox run open. The QA gate blocks callbacks; that needs a reviewed exemption. |
+| T3 production enablement | Mapped, not opened: `docs/PRODUCTION_ENABLEMENT_MAP_20261119.md`. 14 gates on the v6 order path, in order, plus three product questions. |
+| T4 qualification | Not started (needs Guy's spend OK, and the QA cron on) |
+| Site work | The 10 commits from `claude/site-wow-20261116` are on this branch (`b4d4e90b`…`22520a89`, `d8ca91d9`). |
+
 ## Guy's budget decision (2026-11-19)
 
 | Spend for one world | What happens |
@@ -32,13 +49,13 @@ Every change gets a local failure-injection test, with mock providers at no cost
 
 ## T2 — Payments (PayMe)
 
-- `src/infra/payment/payme.ts` is a skeleton today. Implement checkout, webhook signature verification and refund against PayMe's documented API.
+- `src/infra/payment/payme.ts` implements checkout, callback confirmation, refund and refund status against PayMe's documented API (`docs/PAYME_ADAPTER.md`). A seller cannot verify callback signatures, so every callback is confirmed with `get-sales`.
 - **Needs from Guy:** a PayMe merchant account (sandbox first, then live). Guy puts the keys into Vercel himself; Claude never sees them.
 - **Test:** a sandbox payment on QA leads to PAID via the webhook only, and a refund comes back.
 
 ## T3 — Production enablement
 
-- The local-patch/Kingdom engine runs only when `APP_ENV=qa` (64 checks in 43 files). Production needs, at minimum:
+- The local-patch/Kingdom engine runs only when `APP_ENV=qa` (160 checks in 86 non-test files on 2026-11-19, most of them operator tools). Production needs, at minimum:
   - the tester-only spend guard replaced by "any paid order";
   - the daily spend ceiling;
   - the cron on;

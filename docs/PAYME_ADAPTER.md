@@ -14,6 +14,10 @@ Written 2026-11-19 against the public PayMe Payments API docs. Nothing here has 
 ## Money rules that follow from the docs
 
 - **No idempotency key.** PayMe has none, and `transaction_id` is not deduplicated. A repeated `generate-sale` creates a second sale.
+- **Checkout retry contract** (`checkoutRetryLeavesUnreachableSale`, not idempotency). The checkout leases the order and calls `generate-sale`. It stores only the `sale_url` that came back.
+  - If the answer is lost, the order is retried after its lease. That can leave one extra `initial` sale whose address nobody was ever given.
+  - A hosted sale is paid only by a buyer on its page, and the adapter never sends a saved-card `buyer_key`. So such a sale cannot be paid.
+  - Once an address is stored, it is returned again and no new sale is made.
 - **A callback is a notification, not proof.** A seller without a partner key cannot verify `payme_signature`. Each callback is confirmed by `get-sales`:
   - the status must match (`completed` for paid, `refunded` for an order refund);
   - `transaction_id` must equal the order;
