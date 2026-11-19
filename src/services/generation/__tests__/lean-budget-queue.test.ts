@@ -47,6 +47,25 @@ async function world(options: { lean?: "valid" | "invalid"; ageMs?: number; step
   return id;
 }
 
+// Review P0-3: oldest-first alone re-served one world that throws or only waits while every world behind it waited.
+describe("generation-fair-turns/v1", () => {
+  it("offers the turn to the oldest world not served recently; a lone world keeps every turn", async () => {
+    const first = await world({ step: "local-patch", ageMs: 30_000 });
+    const waited = await world({ step: "local-patch", ageMs: 10 * 60_000 });
+    const third = await world({ step: "local-patch", ageMs: 20 * 60_000 });
+    expect(await nextPendingGame(c)).toBe(waited);
+    expect(await nextPendingGame(c, { exclude: [waited] })).toBe(third);
+    // Only the recently served world is left: it keeps its turn.
+    expect(await nextPendingGame(c, { exclude: [waited, third] })).toBe(first);
+    expect(await nextPendingGame(c, { exclude: [first, waited, third] })).toBeNull();
+  });
+  it("keeps oldest-first when no candidate was served recently", async () => {
+    const oldest = await world({ step: "local-patch", ageMs: 10 * 60_000 });
+    await world({ step: "local-patch", ageMs: 20 * 60_000 });
+    expect(await nextPendingGame(c)).toBe(oldest);
+  });
+});
+
 describe("cron selection honors the verified lean budget backoff", () => {
   it("selects the oldest paid lean world after four minutes without releasing or changing its held work", async () => {
     const lean = await world({ lean: "valid" });

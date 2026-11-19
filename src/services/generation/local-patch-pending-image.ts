@@ -9,6 +9,8 @@ import { boardConditioningHash as hash } from "./board-conditioned-source";
 import { LocalPatchRetainedPurchaseStore, fenceLocalPatchImages } from "./local-patch-lifecycle";
 import { singleLowReviewAuthorization } from "./single-low-policy";
 import type { WorldBudgetRequest } from "./world-budget";
+import { KINGDOM_IMAGE_INTERRUPTION_MAX_ATTEMPT } from "../../domain/generation/kingdom-image-interruption";
+import { KINGDOM_V6_CEILING_MICRO_USD, kingdomV6RecoveryOf } from "./kingdom-generation-release";
 
 const observationId = (gameId: string, key: string) => "aud_pending_image_" + hash([gameId, key]);
 const closureId = (gameId: string, key: string) => "aud_abandoned_image_" + hash([gameId, key]);
@@ -43,7 +45,10 @@ export async function abandonedLocalPatchImageProof(c: Pick<Container, "db">, ga
 /** Adopt no dispatch, release no money. A new claim first records an unanswered
  * first-image reservation. Only a later claim, after another full takeover
  * window, can conclude that no worker retained its answer. The existing image
- * interruption policy then decides whether its ONE replacement is allowed. */
+ * interruption policy then decides whether its ONE replacement is allowed.
+ * kingdom-generation/v6 (review P1-5): also a Sunburst first painting (150000)
+ * under the v6 ceiling; kingdom-image-interruption/v1
+ * then decides its replacement. Older worlds keep exactly the checks below. */
 export async function reconcilePendingLocalPatchImages(c: Container, gameId: string, claim: number,
   fence: (tx: Prisma.TransactionClient) => Promise<void>): Promise<number> {
   if (env().APP_ENV !== "qa" || c.storage.id !== "db") return 0;
@@ -56,26 +61,29 @@ export async function reconcilePendingLocalPatchImages(c: Container, gameId: str
     || !game.orders.some(o => o.userId === game.ownerId && o.paymentStatus === "PAID" && o.paidAt && !o.refundedAt)
     || game.orders.some(o => o.refundedAt || o.paymentStatus === "REFUNDED")) return 0;
   const worldId = boardWizardWorldId(gameId), budget = boardWizardBudgetOf(c), audit = await budget.audit(worldId);
-  if (audit.capMicroUsd !== 4000000 || audit.overCapMicroUsd || audit.conflictRequestKeys.length || audit.overrunRequestKeys.length) return 0;
+  const kingdom = await kingdomV6RecoveryOf(c.db, gameId);
+  if (audit.capMicroUsd !== (kingdom ? KINGDOM_V6_CEILING_MICRO_USD : 4000000) || audit.overCapMicroUsd || audit.conflictRequestKeys.length || audit.overrunRequestKeys.length) return 0;
   const store = new LocalPatchRetainedPurchaseStore(c, gameId, budget);
   let closed = 0;
   for (const key of audit.pendingRequestKeys) {
     const authored = interruptedLocalPatchImageRequest(key), request = await budget.readRequest(worldId, key);
-    if (!authored || authored.attempt !== 1 || (authored.sceneVersion ?? 12) !== authority.sceneVersion
+    if (!authored || (kingdom ? authored.attempt < 1 || authored.attempt > KINGDOM_IMAGE_INTERRUPTION_MAX_ATTEMPT : authored.attempt !== 1)
+      || (authored.sceneVersion ?? 12) !== authority.sceneVersion
       || !request || request.state !== "pending" || request.scope !== "image" || request.origin !== "reserved"
-      || request.reserveMicroUsd !== 120000 || request.conflicts.length || request.unknownReasons.length
+      || request.reserveMicroUsd !== (kingdom ? 150000 : 120000) || request.conflicts.length || request.unknownReasons.length
       || await store.get(worldId, key)) continue;
     const scene = game.scenes.find(s => s.sceneSlug === authored.board.board);
     if (!scene) continue;
+    const attempt = authored.attempt;
     const row = await c.db.targetVariantAsset.findFirst({ where: { variant: "A", provider: "local-patch", status: "PENDING",
-      attempts: 1, assetId: null, targetInstance: { gameSceneId: scene.id, targetId: authored.hide.targetId } } });
+      attempts: attempt, assetId: null, targetInstance: { gameSceneId: scene.id, targetId: authored.hide.targetId } } });
     if (!row) continue;
     const id = observationId(gameId, key), observed = await c.db.auditLog.findUnique({ where: { id } });
     if (!observed) {
       await c.db.$transaction(async tx => {
         await fenceLocalPatchImages(tx, gameId); await fence(tx);
         const current = await tx.targetVariantAsset.findUnique({ where: { id: row.id } });
-        if (!current || current.status !== "PENDING" || current.attempts !== 1 || current.assetId) return;
+        if (!current || current.status !== "PENDING" || current.attempts !== attempt || current.assetId) return;
         const body = pendingImageObservationSchema.parse({ version: action, gameId, worldId, sceneVersion: authority.sceneVersion,
           rowId: row.id, requestKey: key, operationFingerprint: request.operationFingerprint, reserveMicroUsd: request.reserveMicroUsd,
           authorizationSha256: authority.authorizationSha256, identitySha256: authority.identitySha256,
@@ -101,7 +109,7 @@ export async function reconcilePendingLocalPatchImages(c: Container, gameId: str
       await fenceLocalPatchImages(tx, gameId); await fence(tx);
       const current = await tx.targetVariantAsset.findUnique({ where: { id: row.id } });
       const live = await tx.game.findUnique({ where: { id: gameId }, include: { orders: true } });
-      if (!current || current.status !== "PENDING" || current.attempts !== 1 || current.assetId
+      if (!current || current.status !== "PENDING" || current.attempts !== attempt || current.assetId
         || !live || live.status !== "TARGETS_GENERATING" || live.deletedAt || live.configJson
         || live.orders.some(o => o.refundedAt || o.paymentStatus === "REFUNDED")) return;
       const proof = abandonedImageProofSchema.parse({ ...observation, closedClaim: claim, closedAt: new Date().toISOString() });
@@ -113,7 +121,7 @@ export async function reconcilePendingLocalPatchImages(c: Container, gameId: str
     if (await store.get(worldId, key)) continue;
     const proof = await abandonedLocalPatchImageProof(c, gameId, request, row.id);
     const current = await c.db.targetVariantAsset.findUnique({ where: { id: row.id } });
-    if (!proof || !current || current.status !== "PENDING" || current.attempts !== 1 || current.assetId) continue;
+    if (!proof || !current || current.status !== "PENDING" || current.attempts !== attempt || current.assetId) continue;
     const result = await budget.markUnknown(worldId, key, abandonedImageReason(proof), { onlyPending: true });
     if (result.request.state === "unknown" && await abandonedLocalPatchImageProof(c, gameId, result.request, row.id)) closed++;
   }

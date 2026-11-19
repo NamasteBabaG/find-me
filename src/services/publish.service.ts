@@ -10,7 +10,7 @@ import { audit, type Actor } from "./audit.service";
 import { fixedStageAssert, isFixedWorldStyle } from "./generation/fixed-world-stage-record";
 import { approveFixedWorldForPublication } from "./generation/fixed-world-staging";
 import { isLocalPatchAdvisoryVersion } from "../domain/scene/local-patch-catalog";
-import { deliverLocalPatchNotifications } from "./local-patch-notifications";
+import { deliverLocalPatchNotifications, supersedePendingReadyNotices } from "./local-patch-notifications";
 import { GameConfigSchema } from "../domain/game/config";
 
 /**
@@ -133,5 +133,8 @@ export async function resendGameMail(c: Container, gameId: string, actor: Actor)
   if (recent) return { ok: false, code: "WAIT" };
   await audit(c, actor, "email:resent", "Game", gameId);
   const result = await deliverGameMail(c, gameId, actor);
+  // Review P1-7: once the parent has the link from this resend, a waiting ready notice must not send it again.
+  if (result.outcome === "sent") await supersedePendingReadyNotices(c, gameId)
+    .catch(() => console.error("[publish] pending ready notice could not be superseded", { gameId }));
   return { ok: true, ...result };
 }

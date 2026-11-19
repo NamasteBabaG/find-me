@@ -10,6 +10,8 @@ import { sha256Bytes } from "./fixed-sprite";
 import { WorldBudgetError, type WorldAutomaticImageRecovery, type WorldBudget, type WorldUnknownContinuationApproval, type WorldAutomaticReviewRecoveryV4, type WorldAutomaticReviewRecoveryV5 } from "./world-budget";
 import type { Prisma } from "@prisma/client";
 import { interruptedLocalPatchImageRequest } from "../../domain/scene/local-patch-image-request";
+import { KINGDOM_IMAGE_INTERRUPTION_MAX_ATTEMPT, KINGDOM_IMAGE_INTERRUPTION_POLICY, kingdomImageInterruptionBackoffMs } from "../../domain/generation/kingdom-image-interruption";
+import { kingdomV6RecoveryOf } from "./kingdom-generation-release";
 
 export const IMAGE_INTERRUPTION_POLICY = "local-patch-image-interruption/v1" as const;
 const hash = (value: unknown) => sha256Bytes(Buffer.from(JSON.stringify(value)));
@@ -47,9 +49,12 @@ export async function localPatchBudgetReadyForPublication(budget: Pick<WorldBudg
 /** One replacement for an interrupted first image, at most two different hides
  * per world. The missing charge stays UNKNOWN and fully reserved forever until
  * authentic evidence arrives. No retry of its key, budget increase or approval
- * of its pixels. Billing conflicts and available unpriced pictures stay held. */
+ * of its pixels. Billing conflicts and available unpriced pictures stay held.
+ * kingdom-generation/v6 (kingdom-image-interruption/v1): an interrupted first
+ * attempt on ANY hide, while the ledger has room, each after its backoff;
+ * a replacement still waiting reports its time through `onWait`. */
 export async function recoverLocalPatchImageInterruptions(c: Container, gameId: string,
-  fence?: (tx: Prisma.TransactionClient) => Promise<void>): Promise<number> {
+  fence?: (tx: Prisma.TransactionClient) => Promise<void>, options: { onWait?: (retryAt: number) => void } = {}): Promise<number> {
   const game = await c.db.game.findUnique({ where: { id: gameId }, include: { scenes: true, orders: true } });
   if (!game || game.styleVersion !== "local-patch-world-v1" || game.status !== "TARGETS_GENERATING" || game.deletedAt
     || game.configJson || !game.ownerId || game.scenes.length !== 9 || new Set(game.scenes.map(s => s.sceneVersion)).size !== 1 || game.scenes.some(s => !hasLocalPatchCapability(s.sceneVersion, "integratedQuality"))
@@ -59,15 +64,19 @@ export async function recoverLocalPatchImageInterruptions(c: Container, gameId: 
   const worldId = boardWizardWorldId(gameId), budget = boardWizardBudgetOf(c), audit = await budget.audit(worldId);
   if (audit.overCapMicroUsd || audit.conflictRequestKeys.length || audit.overrunRequestKeys.length) return 0;
   const store = new LocalPatchRetainedPurchaseStore(c, gameId, budget);
+  const kingdom = await kingdomV6RecoveryOf(c.db, gameId);
+  const policyId = kingdom ? KINGDOM_IMAGE_INTERRUPTION_POLICY : IMAGE_INTERRUPTION_POLICY;
+  // A v6 world records only Kingdom-policy image recoveries, so every one it holds counts toward the backoff.
+  let admitted = kingdom ? (await budget.countContinuationApprovals(worldId))["world-automatic-image-recovery/v1"] ?? 0 : 0;
   let recovered = 0, reconciled = 0;
   for (const requestKey of audit.unknownRequestKeys) {
     const authored = interruptedLocalPatchImageRequest(requestKey);
-    if (!authored || authored.attempt !== 1) continue;
+    if (!authored || (kingdom ? authored.attempt < 1 || authored.attempt > KINGDOM_IMAGE_INTERRUPTION_MAX_ATTEMPT : authored.attempt !== 1)) continue;
     const scene = game.scenes.find(s => s.sceneSlug === authored.board.board);
     const hide = authored.hide;
     if (!scene || !hide || scene.sceneVersion !== (authored.sceneVersion ?? 12)) continue;
     const row = await c.db.targetVariantAsset.findFirst({ where: { variant: "A", targetInstance: { gameSceneId: scene.id, targetId: hide.targetId } } });
-    if (!row || row.attempts !== 1 || row.assetId || row.provider !== "local-patch") continue;
+    if (!row || row.attempts !== authored.attempt || row.assetId || row.provider !== "local-patch") continue;
     const priorReceipt = JSON.parse(row.judgeJson ?? "{}");
     const unfinishedTransition = row.status === "FAILED" && row.lastError?.startsWith("image-interruption:")
       && priorReceipt.imageInterruption?.requestKey === requestKey && !priorReceipt.renderFault;
@@ -106,18 +115,23 @@ export async function recoverLocalPatchImageInterruptions(c: Container, gameId: 
         if (!diagnostic) continue;
       }
     }
-    const proof = { policyId: IMAGE_INTERRUPTION_POLICY, gameId, ownerId: game.ownerId, sceneId: scene.id,
+    const proof = { policyId, gameId, ownerId: game.ownerId, sceneId: scene.id,
       variantId: row.id, requestKey, operationFingerprint: request.operationFingerprint, unknownReasons: request.unknownReasons, diagnostic };
     const proofHash = hash(proof), approvalId = `auto-image-${proofHash}`;
     const prior = await budget.readContinuationApproval(worldId, requestKey);
     if (unfinishedTransition && (prior?.version !== "world-automatic-image-recovery/v1" || prior.approvalId !== priorReceipt.imageInterruption.recoveryId)) continue;
+    const authorizedAt = prior?.version === "world-automatic-image-recovery/v1" ? prior.authorizedAt : row.updatedAt.toISOString();
+    if (kingdom && !prior) {
+      // kingdom-image-interruption/v1: from the third interruption on, the replacement waits out its backoff.
+      const retryAt = Date.parse(authorizedAt) + kingdomImageInterruptionBackoffMs(admitted + 1);
+      if (Date.now() < retryAt) { options.onWait?.(retryAt); continue; }
+    }
     const recovery: WorldAutomaticImageRecovery = { version: "world-automatic-image-recovery/v1", worldId, approvalId,
       requestKey, scope: "image", operationFingerprint: request.operationFingerprint, reserveMicroUsd: request.reserveMicroUsd,
-      unknownReasons: request.unknownReasons, policyId: IMAGE_INTERRUPTION_POLICY, authorizationSha256: proofHash,
-      authorizedAt: prior?.version === "world-automatic-image-recovery/v1" ? prior.authorizedAt : row.updatedAt.toISOString() };
+      unknownReasons: request.unknownReasons, policyId, authorizationSha256: proofHash, authorizedAt };
     const recoveringBudget = boardWizardBudgetOf(c, 1,
       { authorizeAutomaticImageRecovery: async captured => JSON.stringify(captured) === JSON.stringify(recovery) });
-    try { await recoveringBudget.authorizeAutomaticImageRecovery(worldId, recovery); }
+    try { if ((await recoveringBudget.authorizeAutomaticImageRecovery(worldId, recovery)).acquired) admitted++; }
     catch (error) {
       if (error instanceof WorldBudgetError && ["invalid_snapshot", "world_held", "invalid_input"].includes(error.code)) continue;
       throw error;
@@ -128,14 +142,14 @@ export async function recoverLocalPatchImageInterruptions(c: Container, gameId: 
       if (live.status !== "TARGETS_GENERATING" || live.ownerId !== game.ownerId || live.configJson
         || live.orders.some(o => o.paymentStatus === "REFUNDED" || o.refundedAt)
         || scene.sceneVersion === 13 && !await detectiveAutomaticRecoveryQualified(tx, gameId)) throw Error("Interrupted game changed before recovery");
-      const changed = await tx.targetVariantAsset.updateMany({ where: { id: row.id, status: row.status, attempts: 1, assetId: null, judgeJson: row.judgeJson },
+      const changed = await tx.targetVariantAsset.updateMany({ where: { id: row.id, status: row.status, attempts: authored.attempt, assetId: null, judgeJson: row.judgeJson },
         data: { status: "FAILED", lastError: "image-interruption: no image returned; unknown charge remains fully reserved; use the next attempt",
           judgeJson: JSON.stringify({ ...priorReceipt, renderFault: "image-interruption: no image returned; the next image requires a new request key",
             imageInterruption: { ...proof, recoveryId: approvalId, reservedMicroUsd: request.reserveMicroUsd } }) } });
       if (changed.count !== 1) return;
       await tx.targetInstance.update({ where: { id: row.targetInstanceId }, data: { status: "FAILED" } });
       await tx.auditLog.upsert({ where: { id: approvalId }, update: {}, create: { id: approvalId, actorType: "SYSTEM",
-        action: IMAGE_INTERRUPTION_POLICY, entityType: "Game", entityId: gameId, metaJson: JSON.stringify(proof) } });
+        action: policyId, entityType: "Game", entityId: gameId, metaJson: JSON.stringify(proof) } });
       await tx.generationJob.updateMany({ where: { id: `job_${gameId}`, status: "FAILED", currentStep: "local-patch:needs-release" },
         data: { status: "QUEUED", currentStep: "local-patch", lastError: null } });
       recovered++;

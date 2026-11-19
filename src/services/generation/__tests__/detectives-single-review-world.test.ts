@@ -137,6 +137,10 @@ import { bill, paintedOk, seedApprovedGame } from "./local-patch-fixtures";
 import { spendTo } from "./local-patch-dual-fixtures";
 import { noticeKingdomCostAboveAlert } from "../kingdom-cost-policy";
 import { LOCAL_PATCH_CEILING_CLOSED } from "../../../domain/generation/kingdom-ceiling";
+import { LOCAL_PATCH_NEEDS_RELEASE } from "../local-patch-world";
+import { fixedSourceFailureReceipt } from "../../../infra/generation/fixed-source-diagnostics";
+import { reconcilePendingLocalPatchImages } from "../local-patch-pending-image";
+import { recoverLocalPatchImageInterruptions } from "../local-patch-interruption-recovery";
 import type { EmailMessage } from "../../../infra/email/types";
 import { BackgroundReviewRefused } from "../../../infra/generation/types";
 import { kingdomRateLimitBackoffMs } from "../../../domain/generation/kingdom-rate-limit";
@@ -711,14 +715,19 @@ it.each(["newyork-detectives-hide-1", "giza-detectives-hide-2"])("Sunburst refus
   expect(rows).toHaveLength(1); expect(rows[0]).toMatchObject({ attempts: 0, status: "PENDING" });
 });
 
-it.each([{mode:"clean",interrupted:false,guided:false},{mode:"transport",interrupted:true,guided:false},{mode:"guided",interrupted:false,guided:true},{mode:"tail",interrupted:false,guided:true},{mode:"body",interrupted:false,guided:true}].map(v=>({...v,born:false})).concat([{mode:"born-clean",interrupted:false,guided:false,born:true},{mode:"born-guided",interrupted:false,guided:true,born:true},{mode:"born-transport",interrupted:true,guided:false,born:true},{mode:"born-crown",interrupted:false,guided:false,born:true},{mode:"kingdom-clean",interrupted:false,guided:false,born:true},{mode:"kingdom-transport",interrupted:true,guided:false,born:true},{mode:"kingdom-guided",interrupted:false,guided:true,born:true},{mode:"window-clean",interrupted:false,guided:false,born:true},{mode:"sunburst-clean",interrupted:false,guided:false,born:true},{mode:"kingdom-sunburst-paced",interrupted:true,guided:false,born:true}]).concat([{mode:"kingdom-neighbor-recovery",interrupted:false,guided:false,born:true},{mode:"kingdom-v6-unreadable",interrupted:false,guided:false,born:true},{mode:"kingdom-v6-rate-limit",interrupted:false,guided:false,born:true}]).map(testCase => ({ ...testCase, reviewEffort: testCase.born && testCase.mode !== "born-crown" ? "MEDIUM" : "LOW" })))("completes 27 hides with bounded $reviewEffort review and no extra planner; mode=$mode", async ({mode,interrupted,guided,born}) => {
+it.each([{mode:"clean",interrupted:false,guided:false},{mode:"transport",interrupted:true,guided:false},{mode:"guided",interrupted:false,guided:true},{mode:"tail",interrupted:false,guided:true},{mode:"body",interrupted:false,guided:true}].map(v=>({...v,born:false})).concat([{mode:"born-clean",interrupted:false,guided:false,born:true},{mode:"born-guided",interrupted:false,guided:true,born:true},{mode:"born-transport",interrupted:true,guided:false,born:true},{mode:"born-crown",interrupted:false,guided:false,born:true},{mode:"kingdom-clean",interrupted:false,guided:false,born:true},{mode:"kingdom-transport",interrupted:true,guided:false,born:true},{mode:"kingdom-guided",interrupted:false,guided:true,born:true},{mode:"window-clean",interrupted:false,guided:false,born:true},{mode:"sunburst-clean",interrupted:false,guided:false,born:true},{mode:"kingdom-sunburst-paced",interrupted:true,guided:false,born:true}]).concat([{mode:"kingdom-neighbor-recovery",interrupted:false,guided:false,born:true},{mode:"kingdom-v6-unreadable",interrupted:false,guided:false,born:true},{mode:"kingdom-v6-rate-limit",interrupted:false,guided:false,born:true},{mode:"kingdom-v6-image-interruptions",interrupted:false,guided:false,born:true}]).map(testCase => ({ ...testCase, reviewEffort: testCase.born && testCase.mode !== "born-crown" ? "MEDIUM" : "LOW" })))("completes 27 hides with bounded $reviewEffort review and no extra planner; mode=$mode", async ({mode,interrupted,guided,born}) => {
   vi.useFakeTimers({ toFake: ["Date"] });
   const kingdom = mode.startsWith("kingdom-"), crown = mode === "born-crown", body = mode === "body";
   const neighborRecovery = mode === 'kingdom-neighbor-recovery';
   // kingdom-unreadable-recovery/v1: two unreadable answers about one picture, then its repaint; never a park.
   const v6Unreadable = mode === 'kingdom-v6-unreadable', unreadableHide = 'nightcarnival-detectives-hide-3';
   // kingdom-rate-limit-recovery/v1: two 429 refusals at create on one picture, waited out, then a new question; never a park.
-  const v6RateLimit = mode === 'kingdom-v6-rate-limit', rateLimitedHide = 'icepalace-detectives-hide-2', v6 = v6Unreadable || v6RateLimit;
+  const v6RateLimit = mode === 'kingdom-v6-rate-limit', rateLimitedHide = 'icepalace-detectives-hide-2';
+  // kingdom-image-interruption/v1: four first paintings on four hides come back with no image (HTTP 503). The earlier
+  // policy replaced them on at most two hides and parked the third; here every one is replaced and nothing parks.
+  const v6Images = mode === 'kingdom-v6-image-interruptions', interruptedPaintings = new Map([
+    ['castlegate-detectives-hide-2', [1]], ['cloudcity-detectives-hide-3', [1]], ['nightcarnival-detectives-hide-1', [1]], ['underwater-detectives-hide-2', [1]]]);
+  const v6 = v6Unreadable || v6RateLimit || v6Images;
   const compact = mode === 'kingdom-sunburst-paced' || neighborRecovery || v6;
   const paced = mode === 'kingdom-sunburst-paced', sunburst = mode === 'sunburst-clean' || compact;
   const age = compact || !body && !born ? 8 : 7;
@@ -731,6 +740,7 @@ it.each([{mode:"clean",interrupted:false,guided:false},{mode:"transport",interru
   expect(!!await kingdomGenerationReleaseOf(db, gameId)).toBe(compact);
   const context = await resolveLocalPatchBoardsForGame(db, gameId, 13), hides = context.boards.flatMap(board => board.hides);
   expect(context.boards).toHaveLength(9); expect(hides).toHaveLength(27);
+  if (v6Images) for (const hideId of interruptedPaintings.keys()) expect(hides.map(h => h.id)).toContain(hideId);
   // Simulate the actual older deployment: genuine LOW purchases under the
   // same immutable four-dollar birth grant. The restored policy then decides
   // fresh correction pixels in MEDIUM; no runtime downgrade switch exists.
@@ -776,7 +786,8 @@ it.each([{mode:"clean",interrupted:false,guided:false},{mode:"transport",interru
       return { ...answer, reading: { ...answer.reading, raw: JSON.stringify(raw), usage: { input_tokens: 12_000, output_tokens: 2_500 } } };
     };
   }
-  let rateLimited = 0, waitedOut = 0;
+  let rateLimited = 0, waitedOut = 0, imageWaitsSeen = 0;
+  const imageInterruptions: string[] = [];
   if (v6RateLimit) {
     const originalCreate = provider.fake.create.bind(provider.fake), originalRetrieve = provider.fake.retrieve.bind(provider.fake);
     provider.fake.create = async body => {
@@ -807,9 +818,18 @@ it.each([{mode:"clean",interrupted:false,guided:false},{mode:"transport",interru
     return bytes;
   }, renderPolicySha256: localPatchRenderPolicySha256(sunburst ? LOCAL_PATCH_SUNBURST_IMAGE_POLICY : LOCAL_PATCH_IMAGE_POLICY),
     judge: async () => { throw Error("Historical per-hide judge forbidden"); },
-    render: async ({ requestKey, stylePng, prompt, subjectQuality, placementGuidePng, maskPng }) => {
+    render: async ({ requestKey, stylePng, prompt, subjectQuality, placementGuidePng, maskPng, worldId }) => {
       expect(subjectQuality).toBe(sunburst ? "high" : "medium");
       const hide = hides.find(hide => requestKey.startsWith(hide.id + ":")); if (!hide) throw Error("Unregistered Detective painter request");
+      if (v6Images && interruptedPaintings.get(hide.id)?.includes(Number(requestKey.split(":").at(-1)))) {
+        prompts.set(requestKey, prompt); imageInterruptions.push(requestKey);
+        // Dispatched, no image back: the charge is unknown and stays reserved in full.
+        return { png: null, quarantined: null, rejected: 'synthetic provider 503 with no image', evidence: null,
+          unknownReason: 'image-charge-evidence-incomplete-or-model-unexpected',
+          failureReceipt: fixedSourceFailureReceipt({ worldId, requestKey, fingerprint: '8'.repeat(64), model: 'gpt-image-2.6-sunburst',
+            quality: 'high', reason: 'charge-evidence', billing: 'unknown', jsonStatus: 'parsed', json: { error: { type: 'server_error' } },
+            response: { status: 503, headers: new Headers({ 'x-request-id': 'req_synthetic_503_' + requestKey }) } }) };
+      }
       if (paced) {
         const profile = KINGDOM_GENERATION_WINDOWS.find(entry => entry.authority.hideId === hide.id);
         if (profile) expect(prompt).toContain(profile.direction);
@@ -824,7 +844,8 @@ it.each([{mode:"clean",interrupted:false,guided:false},{mode:"transport",interru
       if (guided && (hide.id === guidedHideId || body&&hide.id==="giza-detectives-hide-2")) {
         expect(body?[1,2,3,4,5]:tail ? [1,2,3,4] : [1,2,3]).toContain(Number(requestKey.split(":").at(-1)));
         if (requestKey.endsWith(":render:3")) expect(placementGuidePng).toBeDefined();
-      } else expect(requestKey.endsWith(":render:1") || v6Unreadable && hide.id === unreadableHide && requestKey.endsWith(":render:2"), requestKey).toBe(true);
+      } else expect(requestKey.endsWith(":render:1") || v6Unreadable && hide.id === unreadableHide && requestKey.endsWith(":render:2")
+        || v6Images && Number(requestKey.split(":").at(-1)) === (interruptedPaintings.get(hide.id)?.length ?? 0) + 1, requestKey).toBe(true);
       expect(prompt).toContain("local-patch-authored-paint/v1"); prompts.set(requestKey, prompt);
       const mask = placementGuidePng ? guidedFrameGeometry(maskForHide(hide), localPatchReturnRegion(cropOf(hide), maskForHide(hide), hide.returnRect).local).target : maskForHide(hide);
       const figureRect = { left: mask.left + Math.round(mask.width * 0.2), top: mask.top + Math.round(mask.height * 0.2), width: Math.round(mask.width * 0.6), height: Math.round(mask.height * 0.8) };
@@ -928,6 +949,16 @@ it.each([{mode:"clean",interrupted:false,guided:false},{mode:"transport",interru
       await authorizeDetectivesCompletionTail(container,{gameId,operatorId:owner!,expectedPlanSha256:plan.planSha256,ownerAuthorizationSha256:"d".repeat(64)});
       expect(await resumeDetectivesCompletionTail(container,gameId)).toBe(true);tailExtended=true;result={pending:true,attention:null};continue;
     }
+    if (v6Images) {
+      const job = await db.generationJob.findUniqueOrThrow({ where: { id: "job_" + gameId } });
+      // Never parked for a person: the slice with an interrupted painting may report it, but its job is queued again.
+      expect(job.currentStep, job.lastError ?? '').not.toBe('local-patch:needs-release');
+      if (result.attention && job.status === 'QUEUED') result = { pending: true, attention: null };
+      // A replacement waiting out its backoff holds the ledger; only that wait is advanced here.
+      if (result.pending && (await boardWizardBudgetOf(container).audit(boardWizardWorldId(gameId))).held) {
+        imageWaitsSeen++; await vi.advanceTimersByTimeAsync(30 * 60_000 + 1);
+      }
+    }
     expect(result.attention).toBeNull();
     // The world waits out each rate limit (1, then 2 minutes) instead of parking; only that wait is advanced here.
     if (v6RateLimit && rateLimited > waitedOut) { waitedOut = rateLimited; await vi.advanceTimersByTimeAsync(kingdomRateLimitBackoffMs(rateLimited) + 1); }
@@ -958,10 +989,23 @@ it.each([{mode:"clean",interrupted:false,guided:false},{mode:"transport",interru
   expect(await subjectUpgradeOf(db, gameId)).toMatchObject({ actorType: "SYSTEM", operatorId: SYSTEM_ENROLLMENT_OPERATOR, ageYears: age });
   const rows = await db.targetVariantAsset.findMany({ where: { variant: "A", targetInstance: { gameScene: { gameId } } } });
   expect(rows).toHaveLength(27); expect(rows.every(row => row.status === "GENERATED" && row.attempts === (body ? JSON.parse(row.judgeJson!).hide===guidedHideId?5:JSON.parse(row.judgeJson!).hide==="giza-detectives-hide-2"?4:1 : guided && JSON.parse(row.judgeJson!).hide === guidedHideId ? tail ? 4 : 3
-    : v6Unreadable && JSON.parse(row.judgeJson!).hide === unreadableHide ? 2 : 1))).toBe(true);
+    : v6Unreadable && JSON.parse(row.judgeJson!).hide === unreadableHide ? 2
+    : v6Images ? (interruptedPaintings.get(JSON.parse(row.judgeJson!).hide)?.length ?? 0) + 1 : 1))).toBe(true);
+  if (v6Images) {
+    expect(imageInterruptions).toHaveLength(4);
+    // The third and fourth interruptions waited out their backoff (1, then 2 minutes) instead of parking.
+    expect(imageWaitsSeen).toBeGreaterThan(0);
+    const ledger = boardWizardBudgetOf(container), world = boardWizardWorldId(gameId), audit = await ledger.audit(world);
+    // Every interrupted charge stays UNKNOWN and reserved in full: nothing released, settled or forgiven.
+    expect([...audit.unknownRequestKeys].sort()).toEqual([...imageInterruptions].sort());
+    for (const key of imageInterruptions) expect(await ledger.readRequest(world, key)).toMatchObject({ state: 'unknown', scope: 'image' });
+    expect((await ledger.countContinuationApprovals(world))['world-automatic-image-recovery/v1']).toBe(4);
+    expect(await db.auditLog.count({ where: { entityId: gameId, action: 'kingdom-image-interruption/v1' } })).toBe(4);
+    expect(await db.auditLog.count({ where: { entityId: gameId, action: 'local-patch-image-interruption/v1' } })).toBe(0);
+  }
   // v6: 27 paintings + 1 repaint; 27 first questions + 1 same-pixel re-ask + 1 question about the repaint.
-  expect(prompts.size).toBe(body?34:tail ? 30 : guided ? 29 : v6Unreadable ? 28 : 27); expect(provider.creates).toHaveLength(neighborRecovery ? 28 : body?32:guided ? 29 : interrupted ? 28 : v6Unreadable ? 29 : 27); expect(provider.creates.filter(create => create.quality)).toHaveLength(neighborRecovery ? 28 : body?32:guided ? 29 : interrupted ? 28 : v6Unreadable ? 29 : 27);
-  expect(provider.creates.filter(create => create.tier === "default")).toHaveLength(neighborRecovery ? 28 : v6Unreadable ? 29 : v6RateLimit ? 27 : interrupted ? 1 : 0);
+  expect(prompts.size).toBe(body?34:tail ? 30 : guided ? 29 : v6Unreadable ? 28 : v6Images ? 31 : 27); expect(provider.creates).toHaveLength(neighborRecovery ? 28 : body?32:guided ? 29 : interrupted ? 28 : v6Unreadable ? 29 : 27); expect(provider.creates.filter(create => create.quality)).toHaveLength(neighborRecovery ? 28 : body?32:guided ? 29 : interrupted ? 28 : v6Unreadable ? 29 : 27);
+  expect(provider.creates.filter(create => create.tier === "default")).toHaveLength(neighborRecovery ? 28 : v6Unreadable ? 29 : v6RateLimit || v6Images ? 27 : interrupted ? 1 : 0);
   if (v6RateLimit) {
     expect(rateLimited).toBe(2);
     // Answered by a NEW question that says why it is asked again; the two zero-settled keys stay closed.
@@ -1133,8 +1177,11 @@ shippingSha256: proof.imageSha256, geometrySha256: proof.geometrySha256,
       operationFingerprint: 'f'.repeat(64), reserveMicroUsd: audit.remainingMicroUsd + 1 })).rejects.toMatchObject({ code: 'cap_exceeded' });
     expect(await boardWizardBudgetOf(c).audit(worldId)).toEqual(audit);
   }
-  expect(audit.unknownRequestKeys).toHaveLength(interrupted ? 1 : 0);
-  if (interrupted) {
+  expect(audit.unknownRequestKeys).toHaveLength(interrupted ? 1 : v6Images ? 4 : 0);
+  // kingdom-image-interruption/v1: the four interrupted paintings stay reserved in full (checked above, per key).
+  if (v6Images) expect(audit.reservedMicroUsd).toBe((await Promise.all(imageInterruptions.map(key => boardWizardBudgetOf(c).readRequest(worldId, key))))
+    .reduce((sum, request) => sum + request!.reserveMicroUsd, 0));
+  else if (interrupted) {
     const unknown = await boardWizardBudgetOf(c).readRequest(worldId, audit.unknownRequestKeys[0]!);
     expect(unknown).toMatchObject({ state: "unknown", scope: "judge" });
     expect(audit.reservedMicroUsd).toBe(unknown!.reserveMicroUsd);
@@ -5211,4 +5258,73 @@ it('kingdom-generation/v6 closes and refunds at the ceiling while an UNKNOWN cha
     expect(await budget.readRequest(worldId, interrupted.requestKey)).toEqual(unknownBefore);
     expect(await budget.audit(worldId)).toMatchObject({ committedMicroUsd: before.committedMicroUsd, unknownRequestKeys: [interrupted.requestKey] });
   } finally { c.email.send = send; }
+}, 600_000);
+
+// A held ledger is not a full one. The Sunburst capacity check refuses a held ledger as "cap_exceeded"; under a6fa2477
+// that reached the v6 ceiling close, which closed and refunded a world with dollars of room left.
+it('kingdom-generation/v6 never closes or refunds a world whose ledger is only held; a person decides with the money intact', async () => {
+  fixture.kingdomRelease = 'v6';
+  const gameId = 'kingdom-v6-held-not-full-synthetic';
+  await newDetectiveWorld(gameId, 8, true, false, true, false, true);
+  fixture.kingdomRelease = 'v1';
+  const worldId = boardWizardWorldId(gameId), budget = boardWizardBudgetOf(c);
+  await spendTo(c, gameId, 2_000_000);
+  // An unknown charge no automatic policy admits (not a transport interruption of a painting): the ledger is held.
+  const held = { requestKey: 'synthetic-held-unknown', scope: 'judge' as const, operationFingerprint: 'f'.repeat(64), reserveMicroUsd: 143_000 };
+  await budget.reserve(worldId, held);
+  await budget.markUnknown(worldId, held.requestKey, 'synthetic-unknown-without-policy');
+  const before = await budget.audit(worldId);
+  expect(before).toMatchObject({ held: true, overCapMicroUsd: 0 });
+  expect(before.remainingMicroUsd).toBeGreaterThan(4_000_000);
+  const forbidden = vi.fn(async () => { throw Error('Unexpected provider dispatch while the ledger is held'); });
+  const refund = vi.fn(async () => ({ ok: true, providerRefundId: 'synthetic-refund-held' }));
+  const container = { ...c, visualReview: { request: forbidden }, backgroundReview: {}, payment: { id: 'mock', refund } } as unknown as Container;
+  const deps = { render: forbidden, judge: forbidden, readBoardArt: readArt, renderPolicySha256: localPatchRenderPolicySha256(LOCAL_PATCH_SUNBURST_IMAGE_POLICY) } as unknown as LocalPatchHideDeps;
+  let result = await runLocalPatchWorldSlice(container, deps, gameId, { hardDeadlineAt: Date.now() + 270_000, diagnose: forbidden });
+  for (let tick = 0; tick < 4 && result.pending; tick++)
+    result = await runLocalPatchWorldSlice(container, deps, gameId, { hardDeadlineAt: Date.now() + 270_000, diagnose: forbidden });
+  expect(result.pending).toBe(false);
+  expect(result.attention).not.toContain('ceiling');
+  expect(forbidden).not.toHaveBeenCalled(); expect(refund).not.toHaveBeenCalled();
+  const game = await db.game.findUniqueOrThrow({ where: { id: gameId }, include: { orders: true } });
+  expect(game.status).not.toBe('REFUNDED'); expect(game.orders.map(o => o.paymentStatus)).toEqual(['PAID']);
+  expect(await db.generationJob.findUniqueOrThrow({ where: { id: 'job_' + gameId } })).toMatchObject({ status: 'FAILED', currentStep: LOCAL_PATCH_NEEDS_RELEASE });
+  expect(await db.auditLog.count({ where: { id: `aud_ceiling_closed_${gameId}` } })).toBe(0);
+  expect(await budget.audit(worldId)).toEqual(before);
+}, 600_000);
+
+// Review P1-5: a Sunburst painting reserved and started whose worker died before it kept any answer. Earlier pins could
+// close only a 120000 first image under a $4 cap, so such a v6 world spun "in progress" forever.
+it('kingdom-generation/v6 closes an orphaned Sunburst painting as UNKNOWN in full after a takeover window and admits its replacement (P1-5)', async () => {
+  fixture.kingdomRelease = 'v6';
+  const gameId = 'kingdom-v6-orphan-image-synthetic';
+  await newDetectiveWorld(gameId, 8, true, false, true, false, true);
+  fixture.kingdomRelease = 'v1';
+  const worldId = boardWizardWorldId(gameId), budget = boardWizardBudgetOf(c), fence = async () => {};
+  const placement = await resolveLocalPatchBoardsForGame(db, gameId, 13);
+  const board = placement.boards.find(b => b.board === 'cloudcity')!, hide = board.hides[0]!;
+  const scene = await db.gameScene.findFirstOrThrow({ where: { gameId, sceneSlug: board.board } }), target = sceneBySlug(board.board, 13).targets.find(t => t.id === hide.targetId)!;
+  const instance = await db.targetInstance.create({ data: { id: 'orphan-tgt-' + gameId, gameSceneId: scene.id, targetId: target.id, targetType: target.targetType,
+    spriteKind: 'image', slotAId: target.slots[0]!.id, slotBId: target.slots[1]!.id } });
+  // What the painter writes before it dispatches: the attempt claimed and its reservation pending. Then the process dies.
+  const row = await db.targetVariantAsset.create({ data: { id: 'orphan-tva-' + gameId, targetInstanceId: instance.id, variant: 'A', slotId: target.slots[0]!.id,
+    status: 'PENDING', provider: 'local-patch', attempts: 1 } });
+  const key = `${hide.id}:${hide.pose}:render:1`;
+  await budget.reserve(worldId, { requestKey: key, scope: 'image', operationFingerprint: '9'.repeat(64), reserveMicroUsd: 150_000 });
+  vi.useFakeTimers({ toFake: ['Date'] });
+  try {
+    // One claim only records what it saw: nothing closes inside a single takeover window.
+    expect(await reconcilePendingLocalPatchImages(c, gameId, 1, fence)).toBe(0);
+    expect(await budget.readRequest(worldId, key)).toMatchObject({ state: 'pending' });
+    await vi.advanceTimersByTimeAsync(PENDING_IMAGE_LEASE_MS + 1);
+    expect(await reconcilePendingLocalPatchImages(c, gameId, 2, fence)).toBe(1);
+    expect(await budget.readRequest(worldId, key)).toMatchObject({ state: 'unknown', reserveMicroUsd: 150_000 });
+    expect(await recoverLocalPatchImageInterruptions(c, gameId, fence)).toBe(1);
+  } finally { vi.useRealTimers(); }
+  // The charge is kept in full and never released; the appearance moves on to its next attempt.
+  const audit = await budget.audit(worldId);
+  expect(audit).toMatchObject({ held: false, unknownRequestKeys: [key], pendingRequestKeys: [], reservedMicroUsd: 150_000 });
+  const after = await db.targetVariantAsset.findUniqueOrThrow({ where: { id: row.id } });
+  expect(after).toMatchObject({ status: 'FAILED', attempts: 1 }); expect(after.lastError).toMatch(/^image-interruption:/);
+  expect(await db.auditLog.count({ where: { entityId: gameId, action: 'kingdom-image-interruption/v1' } })).toBe(1);
 }, 600_000);

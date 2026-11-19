@@ -133,6 +133,22 @@ export async function enqueueLocalPatchNotifications(c: Container, tx: Prisma.Tr
 }
 
 /** Two independent deliveries. Failure of either never changes the playable config. */
+/** Review P1-7: the owner's own resend reached the parent with the current link; a ready notice still waiting in the
+ * outbox would otherwise send a second copy later. Waiting ones are cancelled; one a sender holds right now keeps its claim. */
+export async function supersedePendingReadyNotices(c: Pick<Container, "db">, gameId: string): Promise<number> {
+  const events = await c.db.auditLog.findMany({ where: { action: ACTION, entityType: "Game", entityId: gameId } });
+  let cancelled = 0;
+  for (const event of events) {
+    let notice: Notice;
+    try { notice = JSON.parse(event.metaJson ?? "null"); } catch { continue; }
+    if (!notice || notice.kind !== "ready" || notice.leaseUntil > Date.now()) continue;
+    cancelled += (await c.db.auditLog.updateMany({ where: { id: event.id, action: ACTION, metaJson: event.metaJson }, data: {
+      action: "local-patch:notification-cancelled",
+      metaJson: JSON.stringify({ ...notice, state: "cancelled", leaseUntil: 0, error: "superseded by the owner's resend" }) } })).count;
+  }
+  return cancelled;
+}
+
 export async function deliverLocalPatchNotifications(c: Container, gameId?: string, options: { deadlineAt?: number } = {}): Promise<{ sent: number; failed: number }> {
   const outcome = { sent: 0, failed: 0 };
   const deadlineAt = Math.min(options.deadlineAt ?? Infinity, Date.now() + 20_000);

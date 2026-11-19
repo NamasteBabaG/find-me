@@ -8,6 +8,7 @@
 import { interruptedLocalPatchImageRequest } from "../scene/local-patch-image-request";
 import { interruptedLocalPatchReviewRequest } from "../scene/local-patch-review-request";
 import { DUAL_REVIEW_RESERVES_MICRO_USD } from "./dual-review-reserve";
+import { KINGDOM_IMAGE_INTERRUPTION_LIMIT, KINGDOM_IMAGE_INTERRUPTION_MAX_ATTEMPT, KINGDOM_IMAGE_INTERRUPTION_POLICY } from "./kingdom-image-interruption";
 export const WORLD_BUDGET_CAP_MICRO_USD = 5_000_000;
 /** Six dollars requires a trusted per-world QA authorization resolver; default remains five. */
 /** 12_000_000: the named QA pilot completion ceiling (qa-world-budget-policy.ts), one world only. */
@@ -73,7 +74,8 @@ export type WorldUnknownContinuationInput = Omit<WorldUnknownContinuationApprova
 export interface WorldAutomaticImageRecovery extends WorldReservationInput {
   version: "world-automatic-image-recovery/v1";
   worldId: string; approvalId: string; unknownReasons: readonly string[];
-  policyId: "local-patch-image-interruption/v1";
+  /** kingdom-image-interruption/v1 is the kingdom-generation/v6 policy: no hide count, attempts 1-2, the ceiling binds. */
+  policyId: "local-patch-image-interruption/v1" | typeof KINGDOM_IMAGE_INTERRUPTION_POLICY;
   authorizationSha256: string; authorizedAt: string;
 }
 export interface WorldAutomaticReviewRecovery extends WorldReservationInput {
@@ -323,9 +325,10 @@ export function validateUnknownContinuationApproval(value: WorldContinuationReco
       ...(value.completionGrantSha256===undefined ? [] : ["completionGrantSha256"])] : [])].sort();
   if (JSON.stringify(Object.keys(value).sort()) !== JSON.stringify(expected) || Object.values(Object.getOwnPropertyDescriptors(value)).some(p => !Object.hasOwn(p, "value"))) fail("invalid_input", "Continuation approval has unexpected fields");
   if (!automatic && value.version !== "world-unknown-continuation/v1") fail("invalid_input", "Unknown continuation approval version");
-  if (value.version === "world-automatic-image-recovery/v1" && (value.policyId !== "local-patch-image-interruption/v1" || value.scope !== "image"
-    || value.reserveMicroUsd < 120_000 || value.reserveMicroUsd > 150_000
-    || !interruptedLocalPatchImageRequest(value.requestKey)))
+  if (value.version === "world-automatic-image-recovery/v1" && (value.policyId !== "local-patch-image-interruption/v1" && value.policyId !== KINGDOM_IMAGE_INTERRUPTION_POLICY
+    || value.scope !== "image" || value.reserveMicroUsd < 120_000 || value.reserveMicroUsd > 150_000
+    || !interruptedLocalPatchImageRequest(value.requestKey)
+    || value.policyId === KINGDOM_IMAGE_INTERRUPTION_POLICY && interruptedLocalPatchImageRequest(value.requestKey)!.attempt > KINGDOM_IMAGE_INTERRUPTION_MAX_ATTEMPT))
     fail("invalid_input", "Automatic recovery is limited to a bounded collection image interruption");
   if (value.version === "world-automatic-review-recovery/v1" && (value.policyId !== "local-patch-review-interruption/v1"
     || value.scope !== "judge" || !DUAL_REVIEW_RESERVES_MICRO_USD.includes(value.reserveMicroUsd)
@@ -373,6 +376,7 @@ export function validateWorldUnknownContinuationApprovals(snapshot: WorldBudgetS
   if (!Array.isArray(snapshot.unknownContinuationApprovals) || snapshot.unknownContinuationApprovals.length > 128) fail("invalid_snapshot", "Invalid continuation approval history");
   const ids = new Set<string>();
   const automaticHides = new Set<string>();
+  const kingdomImages = new Set<string>();
   const automaticReviews = new Set<string>();
   const enrolledReviews = new Set<string>();
   const leanReviews = new Set<string>();
@@ -406,7 +410,12 @@ export function validateWorldUnknownContinuationApprovals(snapshot: WorldBudgetS
       additionalSingleReview = additional;
     }
     validateUnknownContinuationApproval(approval);
-    if (approval.version === "world-automatic-image-recovery/v1") {
+    if (approval.version === "world-automatic-image-recovery/v1" && approval.policyId === KINGDOM_IMAGE_INTERRUPTION_POLICY) {
+      // kingdom-image-interruption/v1: each interrupted request at most once; the ceiling, not a hide count, binds.
+      if (kingdomImages.has(approval.requestKey) || kingdomImages.size >= KINGDOM_IMAGE_INTERRUPTION_LIMIT)
+        fail("invalid_snapshot", "An interrupted Kingdom image recovers at most once, within the structural world bound");
+      kingdomImages.add(approval.requestKey);
+    } else if (approval.version === "world-automatic-image-recovery/v1") {
       const hide = approval.requestKey.split(":")[0]!;
       if (automaticHides.has(hide) || automaticHides.size >= 2) fail("invalid_snapshot", "At most two distinct interrupted hides may recover automatically per world");
       automaticHides.add(hide);

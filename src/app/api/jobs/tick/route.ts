@@ -40,6 +40,9 @@ const SLICE_MS = 30_000;
 /** The request's hard limit for generation work: the host's 300s less room for I/O and the answer. */
 const HARD_MS = 270_000;
 const SUNBURST_PUBLICATION_MS = 540_000;
+/** A cron request serves at most this many worlds, and starts another only with this much of its budget left. */
+const CRON_MAX_TURNS = 4;
+const CRON_NEXT_TURN_MIN_MS = 150_000;
 
 /**
  * Move generation forward.
@@ -183,6 +186,18 @@ export async function POST(req: Request) {
     const remainingMs = Math.max(0, hardDeadlineAt - Date.now());
     const result = workMode === undefined ? await tickGeneration(c, gameId, SLICE_MS, remainingMs)
       : await tickGeneration(c, gameId, SLICE_MS, remainingMs, { workMode });
+    // generation-fair-turns/v1 (review P0-3): one cron request keeps serving other worlds while a full turn still fits.
+    // A world that only waits returns in seconds, so it no longer spends the whole minute's turn. Each slice still keeps
+    // its own claim, spend gates and hard deadline; the served worlds are not offered again in this request.
+    if (!gameId && workMode === undefined && result?.gameId) {
+      const served = [result.gameId];
+      for (let turn = 1; turn < CRON_MAX_TURNS && hardDeadlineAt - Date.now() >= CRON_NEXT_TURN_MIN_MS; turn++) {
+        enter("generation-turn-" + turn);
+        const next = await tickGeneration(c, null, SLICE_MS, Math.max(0, hardDeadlineAt - Date.now()), { exclude: [...served] });
+        if (!next?.gameId || served.includes(next.gameId)) break;
+        served.push(next.gameId);
+      }
+    }
     // Retention rides only the cron, with room for its database operations.
     enter("retention");
     const retention = gameId || hardDeadlineAt - Date.now() < 30_000 ? null : await runRetentionIfDue(c).catch(() => {

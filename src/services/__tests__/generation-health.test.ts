@@ -38,6 +38,16 @@ async function seed(id: string, options: { status?: string; step?: string; refun
     updatedAt: options.stale === false ? new Date() : paidAt } });
 }
 
+describe("review P0-3: a local-patch world is judged by its real progress", () => {
+  it("alerts for a world claimed every minute with nothing new for 30 minutes, and not for one whose ledger moved", async () => {
+    await seed("looping-world", { stale: false }); await seed("progressing-world", { stale: false });
+    await db.game.updateMany({ where: { id: { in: ["looping-world", "progressing-world"] } }, data: { styleVersion: "local-patch-world-v1" } });
+    await db.worldBudgetLedger.create({ data: { worldId: "progressing-world:board-wizard", snapshotJson: "{}" } });
+    expect(await alertStalledGeneration(c)).toEqual({ attempted: 1 });
+    expect(send.mock.calls.map(([, notice]) => notice.gameId)).toEqual(["looping-world"]);
+  });
+});
+
 describe("bounded discovery of stalled paid games", () => {
   it("finds a stale game and an immediate budget hold; ignores healthy, unpaid, refunded and delivered games", async () => {
     await seed("stale"); await seed("held", { step: "local-patch:recovery-budget-wait", stale: false });
@@ -153,6 +163,14 @@ describe("bounded discovery of stalled paid games", () => {
     expect(generationConcern({ id: "recent", status: "TARGETS_GENERATING", paidAt: new Date(now - 31 * 60_000), updatedAt: new Date(),
       jobs: [{ status: "RUNNING", currentStep: "local-patch", updatedAt: new Date(now) }] }, now)).toBeNull();
     expect(generationConcern({ id: "nojob", status: "PAID", paidAt: new Date(now - 31 * 60_000), updatedAt: new Date(), jobs: [] }, now)).toContain("30 minutes");
+  });
+  it("review P0-3: a world claimed every minute without real progress for 30 minutes is stale; progress clears it", () => {
+    const now = Date.now(), looping = { id: "looping", status: "TARGETS_GENERATING", paidAt: new Date(now - 60 * 60_000), updatedAt: new Date(now),
+      jobs: [{ status: "FAILED", currentStep: "local-patch", updatedAt: new Date(now - 30_000) }] };
+    expect(generationConcern({ ...looping, progressAt: new Date(now - 31 * 60_000) }, now)).toContain("30 minutes");
+    expect(generationConcern({ ...looping, progressAt: new Date(now - 60_000) }, now)).toBeNull();
+    // Unreadable progress falls back to the job's own time, as before.
+    expect(generationConcern({ ...looping, progressAt: null }, now)).toBeNull();
   });
   it("revalidates current payment, lifecycle and heartbeat before sending a delayed stalled alert", () => {
     const now = Date.now(), paidAt = new Date(now - 31 * 60_000);

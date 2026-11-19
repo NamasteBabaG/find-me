@@ -1314,11 +1314,18 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
   // A world the ledger is holding cannot authorise anything, so another tick
   // would read the same rows, buy nothing and ask again forever. Held is a
   // state for a person, not a state to poll.
-  if (automatic) await recoverLocalPatchImageInterruptions(c, gameId, fence);
+  let imageReplacementWaits = false;
+  if (automatic) await recoverLocalPatchImageInterruptions(c, gameId, fence, { onWait: () => { imageReplacementWaits = true; } });
   const currentBudget = await boardWizardBudgetOf(c).audit(boardWizardWorldId(gameId));
   const held = currentBudget.held;
   // Held only by interruptions the automatic continuation admits: queued for the next slice, never parked.
   if (held && !attention && await continuable()) return { ...await yieldToContinue(), outcomes, blocked };
+  // kingdom-image-interruption/v1 (v6): an interrupted painting whose replacement is waiting out its backoff is a wait,
+  // not a state for a person. The interrupted painting's own "held" outcome wrote needs-release, which no cron serves;
+  // the job is queued again instead. Any other stop keeps its park. If something else also holds the ledger, the world
+  // parks once the wait has passed and the replacement is admitted.
+  if (held && imageReplacementWaits && (!attention || outcomes.some(outcome => outcome.state === "held" && outcome.reason === attention)))
+    return { ...await yieldToContinue(), outcomes, blocked };
   if (held && !attention) {
     attention = parkReason("local-patch: the world ledger is held; reconcile its unresolved charge before continuing");
     await c.db.$transaction(async tx => {

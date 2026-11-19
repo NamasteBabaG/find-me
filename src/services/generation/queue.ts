@@ -55,8 +55,34 @@ export interface TickResult {
   attention?: string | null;
 }
 
-/** The oldest game that still has work to do. */
-export async function nextPendingGame(c: Container): Promise<string | null> {
+/** generation-fair-turns/v1 (review P0-3): a world whose job moved this recently already had its turn (or is being
+ * ticked by its page); the cron offers the turn to the oldest world that did not. A lone world keeps every turn. */
+export const CRON_FAIR_TURN_MS = 5 * 60_000;
+
+/**
+ * The oldest game that still has work to do, then a fair turn (review P0-3): oldest-first alone kept re-serving one
+ * world that throws or only waits while every world behind it waited. If the oldest candidate was served within
+ * CRON_FAIR_TURN_MS (or already in this cron request: `exclude`), the oldest candidate that was not served gets the turn.
+ * The selection query itself is unchanged; this only chooses among its answers.
+ */
+export async function nextPendingGame(c: Container, options: { readonly exclude?: readonly string[] } = {}): Promise<string | null> {
+  const first = await oldestPendingGame(c);
+  if (!first) return null;
+  const exclude = new Set(options.exclude ?? []);
+  try {
+    const now = Date.now();
+    const served = await c.db.generationJob.findMany({ where: { updatedAt: { gt: new Date(now - CRON_FAIR_TURN_MS) } }, select: { gameId: true } });
+    const skip = new Set([...exclude, ...served.map(job => job.gameId)]);
+    if (!skip.has(first)) return first;
+    const other = await oldestPendingGame(c, [...skip]);
+    return other ?? (exclude.has(first) ? null : first);
+  } catch {
+    // Fairness is an optimisation of the turn order, never a reason to stop the cron.
+    return exclude.has(first) ? null : first;
+  }
+}
+
+async function oldestPendingGame(c: Container, notIn: readonly string[] = []): Promise<string | null> {
   const now = Date.now();
   // The slice already uses three minutes for verified lean worlds. Cron must
   // admit those same worlds after that pause, including when their page is closed.
@@ -85,7 +111,7 @@ export async function nextPendingGame(c: Container): Promise<string | null> {
     // kept being chosen, its slice kept declining, and every runnable game
     // behind it waited on a decision nobody had made yet. It can still be ticked
     // directly, by an operator who knows what they are looking at.
-    where: { status: { in: [...RESUMABLE_STATUSES] }, deletedAt: null,
+    where: { status: { in: [...RESUMABLE_STATUSES] }, deletedAt: null, ...(notIn.length ? { id: { notIn: [...notIn] } } : {}),
       jobs: { none: { currentStep: { in: [LOCAL_PATCH_NEEDS_RELEASE, LOCAL_PATCH_RECOVERY_EXHAUSTED, LOCAL_PATCH_CEILING_CLOSED] } } },
       // A minute cron must not spend its turn nudging a healthy paid render
       // already held by another worker. Match the world claimant's strict
@@ -130,7 +156,7 @@ export async function nextPendingGame(c: Container): Promise<string | null> {
  * concurrently: every step is idempotent and a finished hiding spot is skipped.
  */
 export async function tickGeneration(c: Container, gameId: string | null, budgetMs: number, hardMs = 270_000,
-  control: { readonly workMode?: GenerationWorkMode; readonly publicationOwnerId?: string } = {}): Promise<TickResult> {
+  control: { readonly workMode?: GenerationWorkMode; readonly publicationOwnerId?: string; readonly exclude?: readonly string[] } = {}): Promise<TickResult> {
   const now = Date.now();
   // kingdom-ceiling-refund/v1: a named tick also finishes this world's owed refund and notice (no-op for every other world).
   if (gameId) await advanceCeilingRefund(c, gameId).catch(() => console.error("[generation] ceiling refund unavailable"));
@@ -181,7 +207,7 @@ export async function tickGeneration(c: Container, gameId: string | null, budget
   const completionWake = completionCandidate && await resumeQaCompletionRecovery(c, completionCandidate) ? completionCandidate : null;
   const contextCandidate = gameId ? null : await nextWholeSourceContextWake(c);
   const contextWake = contextCandidate && await resumeWholeSourceContextRepair(c,contextCandidate) ? contextCandidate : null;
-  const id = gameId ?? reconciled ?? envelopeWake ?? completionWake ?? contextWake ?? capacityWake ?? propWake ?? (wake && await claimParkedWake(c, wake) ? wake.gameId : null) ?? (await nextPendingGame(c));
+  const id = gameId ?? reconciled ?? envelopeWake ?? completionWake ?? contextWake ?? capacityWake ?? propWake ?? (wake && await claimParkedWake(c, wake) ? wake.gameId : null) ?? (await nextPendingGame(c, control.exclude ? { exclude: control.exclude } : {}));
   if (!id) return { gameId: null, status: null, pending: false };
   const before = await c.db.game.findUnique({ where: { id }, select: { status: true, styleVersion: true, scenes: { select: { sceneVersion: true } } } });
   if (!before) return { gameId: id, status: null, pending: false };

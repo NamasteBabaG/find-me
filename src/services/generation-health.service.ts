@@ -13,7 +13,10 @@ const ACTIVE_STATUSES = ["PAID", "AVATAR_GENERATING", "TARGETS_GENERATING", "SCE
 export const GENERATION_ALERT_FRESH_MS = 24 * 60 * 60_000;
 type Claim = { state: "sending" | "pending" | "done"; leaseUntil: number; nextAttemptAt: number };
 type Candidate = { id: string; status: string; updatedAt: Date; paidAt: Date | null;
-  jobs: Array<{ status: string; currentStep: string | null; updatedAt: Date }> };
+  jobs: Array<{ status: string; currentStep: string | null; updatedAt: Date }>;
+  /** Review P0-3: the last real progress of a local-patch world (its ledger or its pictures). Every claim refreshes
+   * the job row, so a world that throws or only waits each minute never looked stale by `job.updatedAt`. */
+  progressAt?: Date | null };
 type HealthCandidate = Candidate & { deletedAt: Date | null;
   orders: Array<{ paymentStatus: string; paidAt: Date | null; refundedAt: Date | null }> };
 
@@ -24,7 +27,7 @@ export function generationConcern(game: Candidate, now: number): string | null {
   if (job?.currentStep === "local-patch:recovery-budget-wait") return "Automatic generation is waiting for authorized service budget capacity.";
   if (job?.currentStep === "local-patch:recovery-exhausted") return "Automatic recovery has no action left within policy; a service decision is required, not a parent approval.";
   if (game.status === "MANUAL_REVIEW") return "Paid generation needs a service investigation; it is not a parent approval request.";
-  const lastActivity = job?.updatedAt ?? game.paidAt ?? game.updatedAt;
+  const lastActivity = game.progressAt ?? job?.updatedAt ?? game.paidAt ?? game.updatedAt;
   return now - lastActivity.getTime() >= GENERATION_STALE_MS ? "Paid preparation has recorded no generation activity for at least 30 minutes." : null;
 }
 
@@ -36,6 +39,20 @@ export function generationHealthConcern(game: HealthCandidate, now: number): str
     || !game.orders.some(order => order.paymentStatus === "PAID" && order.paidAt
       && order.paidAt.getTime() >= now - GENERATION_ALERT_FRESH_MS && order.paidAt.getTime() <= now)) return null;
   return generationConcern(game, now);
+}
+
+const LOCAL_PATCH_WORLD_STYLE = "local-patch-world-v1";
+
+/** The latest change to the world's ledger or to any of its pictures, never earlier than its payment. */
+async function localPatchProgressAt(c: Container, gameId: string, paidAt: Date | null): Promise<Date | null> {
+  try {
+    const [ledger, picture] = await Promise.all([
+      c.db.worldBudgetLedger.findUnique({ where: { worldId: gameId + ":board-wizard" }, select: { updatedAt: true } }),
+      c.db.targetVariantAsset.findFirst({ where: { targetInstance: { gameScene: { gameId } } }, orderBy: { updatedAt: "desc" }, select: { updatedAt: true } }),
+    ]);
+    const times = [ledger?.updatedAt, picture?.updatedAt, paidAt].filter((t): t is Date => !!t).map(t => t.getTime());
+    return times.length ? new Date(Math.max(...times)) : null;
+  } catch { return null; } // unreadable progress: the job's own time decides, as before
 }
 
 function claimId(gameId: string): string {
@@ -102,10 +119,12 @@ export async function alertStalledGeneration(c: Container, options: { deadlineAt
             none: { OR: [{ paymentStatus: "REFUNDED" }, { refundedAt: { not: null } }] } }, createdAt: { lte: passAt } },
         orderBy: [{ createdAt: "asc" }, { id: "asc" }], take: PAGE_SIZE,
         ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
-        select: { id: true, status: true, updatedAt: true, paidAt: true, deletedAt: true,
+        select: { id: true, status: true, updatedAt: true, paidAt: true, deletedAt: true, styleVersion: true,
           orders: { select: { paymentStatus: true, paidAt: true, refundedAt: true } },
           jobs: { select: { status: true, currentStep: true, updatedAt: true }, orderBy: { updatedAt: "desc" }, take: 1 } },
       });
+      for (const game of rows) if (game.styleVersion === LOCAL_PATCH_WORLD_STYLE)
+        (game as Candidate).progressAt = await localPatchProgressAt(c, game.id, game.paidAt);
       const concerns = rows.flatMap(game => {
         const reason = generationHealthConcern(game, passAt.getTime());
         return reason ? [{ game, reason }] : [];

@@ -105,6 +105,20 @@ describe("tick diagnostics and remaining budget", () => {
     expect(JSON.stringify(logs)).not.toContain("synthetic-cron"); expect(vi.getTimerCount()).toBe(0);
     expect(f.health).toHaveBeenCalledOnce();
   });
+  it("generation-fair-turns/v1: one cron request serves further worlds while a full turn fits, never one world twice", async () => {
+    f.tick.mockResolvedValueOnce({ gameId: "world-waiting", status: "TARGETS_GENERATING", pending: true })
+      .mockResolvedValueOnce({ gameId: "world-next", status: "TARGETS_GENERATING", pending: true })
+      .mockResolvedValueOnce({ gameId: null, status: null, pending: false });
+    expect((await POST(request())).status).toBe(200);
+    expect(f.tick).toHaveBeenCalledTimes(3);
+    expect(f.tick.mock.calls[1]?.[1]).toBeNull(); expect(f.tick.mock.calls[1]?.[4]).toEqual({ exclude: ["world-waiting"] });
+    expect(f.tick.mock.calls[2]?.[4]).toEqual({ exclude: ["world-waiting", "world-next"] });
+  });
+  it("generation-fair-turns/v1: no further turn starts without room for a full one", async () => {
+    f.tick.mockImplementationOnce(async () => { vi.setSystemTime(Date.now() + 150_000); return { gameId: "world-slow", status: "TARGETS_GENERATING", pending: true }; });
+    expect((await POST(request())).status).toBe(200);
+    expect(f.tick).toHaveBeenCalledOnce();
+  });
   it("defers instead of starting a painter after the available window is exhausted", async () => {
     f.notify.mockImplementation(async () => { vi.setSystemTime(Date.now() + 250_000); });
     const response = await POST(request());

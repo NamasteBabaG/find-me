@@ -8,7 +8,8 @@ const id = z.string().min(1).max(240), digest = z.string().regex(/^[a-f0-9]{64}$
 export const pendingImageObservationSchema = z.object({
   version: z.literal(PENDING_IMAGE_LEASE_VERSION), gameId: id, worldId: id,
   sceneVersion: z.union([z.literal(12), z.literal(13)]), rowId: id, requestKey: id,
-  operationFingerprint: digest, reserveMicroUsd: z.literal(120000),
+  // 150000 is a Sunburst painting's reserve (kingdom-generation/v6 only; the closer decides who may use it).
+  operationFingerprint: digest, reserveMicroUsd: z.union([z.literal(120000), z.literal(150000)]),
   authorizationSha256: digest, identitySha256: digest,
   observedClaim: z.number().int().positive(), observedAt: z.string().datetime(),
 }).strict();

@@ -12,7 +12,7 @@ import { GameConfigSchema } from "../../domain/game/config";
 import { localPatchBoardsForVersion } from "../../domain/scene/local-patch-catalog";
 import { sceneBySlug } from "../scene-catalog.service";
 import { seedApprovedGame } from "../generation/__tests__/local-patch-fixtures";
-import { enqueueLocalPatchNotifications, deliverLocalPatchNotifications, localPatchConcerns, localPatchNotificationPrefix } from "../local-patch-notifications";
+import { enqueueLocalPatchNotifications, deliverLocalPatchNotifications, localPatchConcerns, localPatchNotificationPrefix, supersedePendingReadyNotices } from "../local-patch-notifications";
 import { deleteLocalPatchGame } from "../generation/local-patch-deletion";
 import { hasLocalPatchPublicationPolicy, recordLocalPatchPublicationPolicy, type LocalPatchPublicationBinding } from "../generation/local-patch-publication-policy";
 import { ResendEmailProvider } from "../../infra/email/resend";
@@ -324,6 +324,25 @@ describe("advisory notification outbox", () => {
       await deliverLocalPatchNotifications({ ...c, email: { id: "resend", send } }, item.gameId);
       expect(sent.filter(m => m.tag === "admin-alert" && m.subject.includes("📭"))).toHaveLength(1);
       expect((await db.game.findUniqueOrThrow({ where: { id: item.gameId } })).status).toBe("READY");
+    } finally { clock.mockRestore(); }
+  });
+
+  it("review P1-7: the owner's resend supersedes a waiting ready notice, so the parent never gets a second copy later", async () => {
+    const item = await seed("mail-resent-by-owner"), sent: EmailMessage[] = [];
+    const send = vi.fn(async (message: EmailMessage) => { if (message.tag === "game-ready") throw new Error("No acknowledgement"); sent.push(message); return { id: "report-" + sent.length }; });
+    let now = Date.now(); const clock = vi.spyOn(Date, "now").mockImplementation(() => now);
+    try {
+      // The outbox tried once and is waiting for its retry; the report went out.
+      await deliverLocalPatchNotifications({ ...c, email: { id: "resend", send } }, item.gameId);
+      expect(send.mock.calls.filter(([m]) => m.tag === "game-ready")).toHaveLength(1);
+      // The owner pressed "email me the link" and it was sent: the waiting notice is superseded, the report untouched.
+      expect(await supersedePendingReadyNotices(c, item.gameId)).toBe(1);
+      now += 61_000;
+      const later = vi.fn(async () => ({ id: "must-not-send-twice" }));
+      await deliverLocalPatchNotifications({ ...c, email: { id: "resend", send: later } }, item.gameId);
+      expect(later).not.toHaveBeenCalled();
+      expect(await db.auditLog.count({ where: { entityId: item.gameId, action: "local-patch:notification-cancelled" } })).toBe(1);
+      expect(await supersedePendingReadyNotices(c, item.gameId)).toBe(0);
     } finally { clock.mockRestore(); }
   });
 
