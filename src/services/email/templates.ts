@@ -121,7 +121,7 @@ export function gameRefundedEmail(input: { to: string; childName: string; locale
     to: input.to,
     tag: "game-refunded",
     subject: tf(r.subject, vars),
-    html: layout(input.locale, tf(r.title, vars), paragraph(r.body), { emoji: "💛", preheader: r.body, align: "center" }),
+    html: layout(input.locale, tf(r.title, vars), paragraph(r.body), { preheader: r.body, align: "center" }),
     text: tf(r.text, vars),
   };
 }
