@@ -123,8 +123,9 @@ async function startClaimedCheckout(c: Container, input: CheckoutClaimInput, req
       const closing = order ? await tx.auditLog.findUnique({ where: { id: checkoutCloseReceiptId(order.id) }, select: { metaJson: true } }) : null;
       if (closing && closeReceiptState(closing.metaJson) !== "closed_unpaid") return { state: "busy" as const };
       if (order?.checkoutUrl) return { state: "ready" as const, order };
-      // A real PSP must advertise an actual idempotency contract, not just accept a field.
-      if (!c.payment.supportsCheckoutIdempotency) return { state: "unsupported" as const };
+      // A real PSP must advertise an actual idempotency contract, not just accept a field, or the hosted-page
+      // contract under which a retried create can only leave an unreachable, unpayable sale.
+      if (!c.payment.supportsCheckoutIdempotency && !c.payment.checkoutRetryLeavesUnreachableSale) return { state: "unsupported" as const };
       if (!order) {
         const legacy = await tx.order.findFirst({ where: { gameId: input.gameId, paymentStatus: "PENDING" }, orderBy: { createdAt: "desc" } });
         const unsafePrevious = await tx.order.findMany({ where: { gameId: input.gameId, paymentStatus: { in: ["FAILED", "CANCELLED"] } } });

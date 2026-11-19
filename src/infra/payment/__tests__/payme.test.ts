@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { PayMeProvider, PayMeUnknownOutcome } from "../payme";
+import type { PaymentProvider } from "../types";
 
 // PayMe Payments API shapes as documented at docs.payme.io (generate-sale, refund-sale, get-sales, callbacks).
 // No network: every call goes to a controlled fetch.
@@ -33,6 +34,9 @@ describe("PayMe adapter", () => {
       sale_callback_url: "https://shop.example/api/webhooks/payment", sale_return_url: "https://shop.example/done" });
     // The legacy major-unit field is never sent: it would override sale_price.
     expect(calls[0]!.body).not.toHaveProperty("price");
+    // Hosted page only: never a saved-card token, which would charge without the buyer (and void the retry contract).
+    expect(calls[0]!.body).not.toHaveProperty("buyer_key"); expect(calls[0]!.body).not.toHaveProperty("capture_buyer");
+    expect(payme.checkoutRetryLeavesUnreachableSale).toBe(true); expect((payme as PaymentProvider).supportsCheckoutIdempotency).toBeUndefined();
   });
 
   it("refuses a checkout PayMe declined, naming only its code", async () => {

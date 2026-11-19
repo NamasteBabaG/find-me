@@ -53,6 +53,13 @@ export interface PaymentProvider {
   readonly id: PaymentProviderId;
   /** Explicit contract needed before retrying an uncertain checkout response. */
   readonly supportsCheckoutIdempotency?: boolean;
+  /**
+   * The other contract that admits that retry, for a hosted payment page without idempotency (PayMe): a sale can be
+   * paid only by someone holding its address, and the order stores only the address a create returned. A create
+   * retried after an unknown answer can therefore leave at most a sale nobody was given, which cannot be paid. It is
+   * NOT idempotency: an adapter that can charge without the buyer (a saved token) must never declare it.
+   */
+  readonly checkoutRetryLeavesUnreachableSale?: boolean;
   createCheckout(req: CheckoutRequest): Promise<CheckoutSession>;
   /** Optional: only a confirmed terminal unpaid result permits replacement. */
   closeCheckout?(req: CloseCheckoutRequest): Promise<CloseCheckoutResult>;

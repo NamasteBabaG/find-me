@@ -46,6 +46,9 @@ export class PayMeUnknownOutcome extends Error {
 
 export class PayMeProvider implements PaymentProvider {
   readonly id = "payme" as const;
+  /** Hosted page only: no `buyer_key` token charge is ever sent, so a sale is payable only through the `sale_url` the
+   * order stored. A create retried after a lost answer leaves at most an unreachable `initial` sale. */
+  readonly checkoutRetryLeavesUnreachableSale = true;
   private readonly base: string;
   private readonly timeoutMs: number;
   private readonly fetcher: typeof fetch;

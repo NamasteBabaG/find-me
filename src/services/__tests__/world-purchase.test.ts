@@ -141,6 +141,23 @@ describe("server-owned same-child world continuation", () => {
     expect(await startCheckout(unsafe, checkoutInput)).toMatchObject({ ok: false, code: "SERVICE_UNAVAILABLE" });
     expect(f.checkout).not.toHaveBeenCalled(); expect(await db.order.count({ where: { gameId: result.gameId } })).toBe(0);
   });
+  it("admits a hosted page without idempotency only under its own contract: a lost create is retried, and only the stored address can be paid", async () => {
+    const f = await fixture(), { result, checkoutInput } = await prepared(f);
+    let calls = 0;
+    const create = vi.fn(async () => { if (++calls === 1) throw Error("synthetic lost answer"); return { checkoutUrl: "https://sandbox.payme.io/sale/generate/SYNTH-2", providerPaymentId: "SYNTH-2" }; });
+    const hosted = { ...f.c, payment: { ...f.c.payment, supportsCheckoutIdempotency: undefined, checkoutRetryLeavesUnreachableSale: true, createCheckout: create } } as unknown as Container;
+    expect(await startCheckout(hosted, checkoutInput)).toMatchObject({ ok: false });
+    const order = await db.order.findFirstOrThrow({ where: { gameId: result.gameId } });
+    expect(order).toMatchObject({ checkoutUrl: null, providerPaymentId: null });
+    await db.order.update({ where: { id: order.id }, data: { checkoutClaimUntil: new Date(0) } });
+    expect(await startCheckout(hosted, checkoutInput)).toMatchObject({ ok: true, checkoutUrl: "https://sandbox.payme.io/sale/generate/SYNTH-2" });
+    // One order; the address it keeps is the second sale's. The first sale's address was never returned to anyone.
+    expect(await db.order.count({ where: { gameId: result.gameId } })).toBe(1);
+    expect(await db.order.findUniqueOrThrow({ where: { id: order.id } })).toMatchObject({ checkoutUrl: "https://sandbox.payme.io/sale/generate/SYNTH-2", providerPaymentId: "SYNTH-2" });
+    // Asked again, the stored address is returned; no third sale is created.
+    expect(await startCheckout(hosted, checkoutInput)).toMatchObject({ ok: true, checkoutUrl: "https://sandbox.payme.io/sale/generate/SYNTH-2" });
+    expect(create).toHaveBeenCalledTimes(2);
+  });
   it("returns an owned world without another order or photo, including incomplete play", async () => {
     const f = await fixture(), returned = await beginWorldPurchase(f.c, { ...f.input, worldSlug: "journey" });
     expect(returned).toMatchObject({ ok: true, gameId: f.sourceId, reused: true, draftToken: null, href: `/family/${f.childId}/play/${f.sourceId}` });
