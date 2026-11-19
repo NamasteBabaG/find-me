@@ -118,7 +118,11 @@ function build(): Container {
   if (e.ANALYTICS_PROVIDER === "posthog") notBuilt("ANALYTICS_PROVIDER", e.ANALYTICS_PROVIDER, '"console" or "none"');
   const storage: StorageProvider = e.STORAGE_PROVIDER === "db" ? new DbStorage(prisma) : new LocalDiskStorage(storageRoot);
 
-  const payment: PaymentProvider = e.PAYMENT_PROVIDER === "payme" ? new PayMeProvider(e.PAYME_SELLER_ID ?? "", e.PAYME_WEBHOOK_SECRET ?? "") : new MockPaymentProvider(e.APP_URL, e.SESSION_SECRET);
+  // PayMe callbacks are confirmed by querying the sale (a seller without a partner key cannot check their signature).
+  const payment: PaymentProvider = e.PAYMENT_PROVIDER === "payme"
+    ? new PayMeProvider({ sellerId: e.PAYME_SELLER_ID ?? "", environment: e.PAYME_ENVIRONMENT ?? "sandbox",
+      callbackUrl: new URL("/api/webhooks/payment", e.APP_URL).toString() })
+    : new MockPaymentProvider(e.APP_URL, e.SESSION_SECRET);
 
   const email: EmailProvider = e.QA_WIZARD_MOCK === "on"
     ? { id: "console", async send() { return { id: "qa-wizard-mock" }; } }

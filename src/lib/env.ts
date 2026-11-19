@@ -81,6 +81,10 @@ const EnvSchema = z.object({
   STORAGE_LOCAL_DIR: z.string().prefault("storage"),
 
   PAYME_SELLER_ID: z.string().optional(),
+  /** PayMe's sandbox and live are separate accounts with separate keys; nothing defaults to live. */
+  PAYME_ENVIRONMENT: z.enum(["sandbox", "live"]).optional(),
+  /** Unused by the seller adapter: a non-partner seller cannot verify callback signatures, so every callback is
+   * confirmed with get-sales instead. Kept so an existing deployment's variable stays valid. */
   PAYME_WEBHOOK_SECRET: z.string().optional(),
   RESEND_API_KEY: z.string().optional(),
   OPENAI_API_KEY: z.string().optional(),

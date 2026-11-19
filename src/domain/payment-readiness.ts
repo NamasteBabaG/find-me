@@ -1,7 +1,9 @@
 /** Source qualification only. Credentials and redirect success are not payment proof. */
 export const PAYMENT_READINESS_VERSION = "payment-source-readiness/v1" as const;
+/** The source adapter (checkout, get-sales-confirmed callbacks, refund, refund status) exists since 2026-11-19; nothing
+ * about it is verified against a merchant account, so every remaining gap still blocks real payments. */
 export const PAYME_QUALIFICATION_GAPS = Object.freeze([
-  "checkout-and-verified-webhook-unimplemented", "refund-adapter-unimplemented", "provider-idempotency-and-terminal-close-unverified",
+  "provider-idempotency-and-terminal-close-unverified",
   "duplicate-refund-entitlement-unqualified", "durable-refund-claim-unqualified", "late-paid-reconciliation-unqualified",
   "historical-checkout-reconciliation-unqualified", "postgres-concurrency-unverified", "merchant-sandbox-unverified",
 ] as const);
