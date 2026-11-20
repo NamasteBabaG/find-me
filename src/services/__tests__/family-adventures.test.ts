@@ -44,7 +44,9 @@ describe("a world as the family area shows it", () => {
     expect(world).toMatchObject({ slug: "journey", places: 9, stamped: 3, stars: 11, starsTotal: 27 });
     expect(world!.here).toEqual({ boardSlug: route[3]!.boardSlug, name: "Place 4", x: route[3]!.x, y: route[3]!.y });
     expect(world!.route).toEqual(["stamped", "stamped", "stamped", "here", "ahead", "ahead", "ahead", "ahead", "ahead"]);
-    expect(world!.map.art).toBe(config.worlds![0]!.map.artPortrait ?? config.worlds![0]!.map.art);
+    // The family area draws the game's icon map: the world's colours and its places in route order, no painting.
+    expect(world!.colors).toEqual({ sky: config.worlds![0]!.map.palette.sky, ground: config.worlds![0]!.map.palette.ground });
+    expect(world!.boards).toEqual(route.map(node => node.boardSlug));
   });
 
   it("starts at the first place, and stays on the last once every place is stamped", () => {

@@ -18,7 +18,8 @@ import { AdventureCard, ChildCard, FamilyCompanion } from "../FamilyCards";
 
 function world(overrides: Partial<WorldSummary> = {}): WorldSummary {
   return {
-    slug: "synthetic-world", name: "Synthetic world", map: { art: "/synthetic/map.svg", width: 600, height: 400 },
+    slug: "synthetic-world", name: "Synthetic world", colors: { sky: "#C9B6F5", ground: "#6B4FA8" },
+    boards: ["p1", "p2", "synthetic-place", "p4", "p5", "p6", "p7", "p8", "p9"],
     places: 9, stamped: 2, stars: 7, starsTotal: 27,
     here: { boardSlug: "synthetic-place", name: "Synthetic place", x: 0.5, y: 0.5 },
     route: ["stamped", "stamped", "here", "ahead", "ahead", "ahead", "ahead", "ahead", "ahead"],

@@ -200,7 +200,7 @@ describe("a finished world's map", () => {
     expect(view.container.querySelector(".wmap__go")?.textContent).toContain(config.scenes[done]!.name);
   });
 
-  it("counts the stars already found at the next place instead of calling all of them waiting", () => {
+  it("shows the stars already found at the next place on its medal, and keeps the go button to where and which place", () => {
     // Only a find-any board can be part-found; the demo boards are sequential, so the first one is made find-any.
     const base = fixture(); const first = base.scenes[0]!; const g = getDict(base.locale).game;
     expect(first.targets).toHaveLength(3);
@@ -208,9 +208,12 @@ describe("a finished world's map", () => {
     const config: GameConfig = { ...base, scenes: [scene, ...base.scenes.slice(1)] };
     const two = scene.targets.slice(0, 2).map(t => ({ boardSlug: scene.slug, targetId: t.id, variant: "A" as const }));
     const view = mount(config, adoptFinds(emptyProgress(config.gameId), config, two).progress);
-    const go = view.container.querySelector(".wmap__go")!.textContent!;
-    expect(go).toContain(tf(g.stars.tray, { earned: 2, total: scene.targets.length }));
-    expect(go).not.toContain(tf(g.stars.here, { total: scene.targets.length }));
+    // Guy (2026-11-20): the yellow button says where the child is and the place's name, nothing more.
+    const go = view.container.querySelector(".wmap__go")!;
+    expect(go.textContent).toBe(`${g.map.here}${scene.name}➜`);
+    expect(go.textContent).not.toContain(tf(g.stars.tray, { earned: 2, total: scene.targets.length }));
+    // The part-found count is on the place itself, on its medal.
+    expect(view.container.querySelector(`[data-board="${scene.slug}"] .wmap__medal .wmap__place-stars`)).toBeTruthy();
   });
 
   it("does not mistake nine completions elsewhere, or a global timestamp, for this world's completion", () => {

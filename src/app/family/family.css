@@ -96,22 +96,31 @@ img.family-sticker { border-radius: var(--radius-2); object-fit: contain; }
   .adventure__actions { flex-direction: column; align-items: stretch; }
 }
 
-/* ─── The map, with the child on it ─────────────────────────────────────── */
-.glimpse { position: relative; aspect-ratio: 3 / 2; overflow: hidden; background: var(--sea-soft); }
-.glimpse__map { display: block; width: 100%; height: 100%; object-fit: cover; }
-/* Anchored by the place label's middle, like the game's marker. Kept clear of the edges so a place near the
-   rim of the map still shows its child whole. */
-.glimpse__here {
-  position: absolute; display: flex; flex-direction: column; align-items: center; gap: var(--space-0-5);
-  left: clamp(var(--space-8), var(--x), calc(100% - var(--space-8)));
-  top: clamp(var(--space-10), var(--y), calc(100% - var(--space-2)));
-  transform: translate(-50%, calc(-100% + var(--space-2)));
-  pointer-events: none;
+/* ─── The map, with the child on it ─────────────────────────────────────────
+   A piece of the game's icon map: the world's colour, its trail, three places as their emblems and the child
+   above the one they are at. */
+.glimpse { --flip: 0; --medal: var(--space-8); position: relative; aspect-ratio: 3 / 2; overflow: hidden;
+  background: radial-gradient(120% 90% at 50% 0%, color-mix(in srgb, var(--glimpse-sky, var(--sea-soft)) 55%, var(--white)) 0%, var(--glimpse-sky, var(--sea-soft)) 75%); }
+.glimpse:dir(rtl) { --flip: 1; }
+.glimpse::after { content: ""; position: absolute; inset: auto 0 0; height: 22%; background: var(--glimpse-ground, var(--sea)); opacity: 0.14; border-radius: 50% 50% 0 0 / 40% 40% 0 0; }
+.glimpse__trail { position: absolute; inset: 0; width: 100%; height: 100%; }
+.glimpse__trail path { fill: none; stroke: rgba(255, 255, 255, 0.75); stroke-width: 16px; stroke-linecap: round; vector-effect: non-scaling-stroke; }
+.glimpse__stop {
+  position: absolute; z-index: 1; display: flex; flex-direction: column; align-items: center; gap: var(--space-0-5);
+  left: calc((var(--flip) * (1 - 2 * var(--x)) + var(--x)) * 100%); top: calc(var(--y) * 100%);
+  transform: translate(-50%, calc(-100% + var(--medal) / 2)); pointer-events: none;
 }
-.glimpse__sticker { width: var(--space-8); height: var(--space-8); animation: family-here 2400ms var(--ease-out) 600ms 3 both; }
+.glimpse__stop:has(.glimpse__place) { transform: translate(-50%, calc(-100% + var(--medal) / 2 + var(--space-4))); }
+.glimpse__medal { position: relative; display: grid; place-items: center; width: var(--medal); height: var(--medal); border-radius: 50%; background: var(--paper); border: 3px solid var(--ink); }
+.glimpse__medal .place-emblem { width: 118%; height: auto; margin-top: 4%; }
+.glimpse__stop--here .glimpse__medal { box-shadow: 0 0 0 4px var(--sun), 0 0 0 7px var(--white); }
+.glimpse__stop--ahead .glimpse__medal { border-color: color-mix(in srgb, var(--ink) 35%, transparent); background: color-mix(in srgb, var(--paper) 70%, var(--glimpse-sky, var(--sea-soft))); }
+.glimpse__stop--ahead .glimpse__medal .place-emblem { opacity: 0.42; filter: saturate(0.3); }
+.glimpse__done { position: absolute; top: -6px; inset-inline-end: -6px; display: grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; background: var(--sun); border: 2px solid var(--ink); font-size: var(--fs-50); font-weight: 800; }
+.glimpse__sticker { width: var(--space-6); height: var(--space-6); animation: family-here 2400ms var(--ease-out) 600ms 3 both; }
 .glimpse__place {
   padding: var(--space-0-5) var(--space-2); border-radius: var(--radius-pill);
-  background: var(--sun); color: var(--ink); font-weight: 800; font-size: var(--fs-100); line-height: var(--lh-100); white-space: nowrap; max-inline-size: var(--space-16); overflow: hidden; text-overflow: ellipsis;
+  background: var(--sun); color: var(--ink); font-weight: 800; font-size: var(--fs-100); line-height: 1.25; text-align: center; max-inline-size: var(--space-16); overflow-wrap: anywhere;
   box-shadow: 0 0 0 2px var(--white), var(--shadow-sticker);
 }
 /* "Here": a slow ring that leaves the sticker, three times, and then is still. */
@@ -248,9 +257,9 @@ img.family-sticker { border-radius: var(--radius-2); object-fit: contain; }
   .family-hero__sticker.family-sticker--initial { font-size: var(--fs-500); }
   .adventure__body, .kid__body { padding: var(--space-2) var(--space-3) var(--space-3); }
   .adventure__actions .fm-btn { flex: 1 1 100%; }
-  .glimpse__here { left: clamp(var(--space-6), var(--x), calc(100% - var(--space-6))); top: clamp(var(--space-8), var(--y), calc(100% - var(--space-2))); }
-  .glimpse__sticker { width: var(--space-6); height: var(--space-6); }
-  .glimpse__place { max-inline-size: var(--space-12); font-size: var(--fs-50); line-height: var(--lh-50); }
+  .glimpse { --medal: var(--space-6); }
+  .glimpse__sticker { width: var(--space-5); height: var(--space-5); }
+  .glimpse__place { font-size: var(--fs-50); }
   .family-desk__side { gap: var(--space-3); }
   .family-passport { display: grid; grid-template-columns: var(--space-6) minmax(0, 1fr); align-items: center; column-gap: var(--space-2); padding: var(--space-3); text-align: start; }
   .family-passport__crest { grid-column: 1; grid-row: 1 / span 2; margin: 0; }
