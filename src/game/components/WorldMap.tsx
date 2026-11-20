@@ -8,10 +8,9 @@ import { useGameText } from "../i18n";
 import { sounds } from "../audio/sounds";
 import { IslandGrid } from "./IslandGrid";
 import { StarCounter } from "./StarCounter";
-import { StarTray } from "./StarTray";
-import { PlaceEmblem } from "@/app/home/PlaceEmblem";
 import { useMapLabels } from "../engine/useMapLabels";
 import { GameExit, type GameExitTarget } from "./GameExit";
+import { Button } from "@/ui/Button";
 import { Icon } from "@/ui/Icon";
 
 interface Props {
@@ -154,7 +153,7 @@ function WorldMapView({ config, world, progress, onOpen, onPassport, onWorlds, w
   const displayPosition = (node: typeof marker) => positions[node.boardSlug] ?? node;
 
   return (
-    <div className="wmap" style={{ ["--wmap-sky" as string]: world.map.palette.sky, ["--wmap-accent" as string]: world.map.palette.accent }}>
+    <div className="wmap" data-world={world.slug} style={{ ["--wmap-sky" as string]: world.map.palette.sky, ["--wmap-accent" as string]: world.map.palette.accent }}>
       <header className="wmap__bar">
         {/* No portrait here: the marker on the painting is the child on this screen, and two faces read as two children. */}
         <div className="wmap__who">
@@ -199,7 +198,7 @@ function WorldMapView({ config, world, progress, onOpen, onPassport, onWorlds, w
       <div className="wmap__frame">
         <div ref={mapRef} className="wmap__art" style={{ aspectRatio: `${world.map.width} / ${world.map.height}`, ["--wmap-labels-height" as string]: `${labelsMinHeight}px` }}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={world.map.art} alt="" className="wmap__img" width={world.map.width} height={world.map.height} draggable={false} />
+          <img src={world.map.art} alt="" className="wmap__img" width={world.map.width} height={world.map.height} draggable={false} fetchPriority="high" />
 
           {/* Nine places, in route order: each is its name, and the name is the button. No board
               thumbnails and no drawn route on top of the painting: only the child marks a place.
@@ -263,35 +262,16 @@ function WorldMapView({ config, world, progress, onOpen, onPassport, onWorlds, w
         </div>
       </div>
 
-      {/* One obvious action.
-          A landscape map on a portrait phone is letterboxed by its own shape, and
-          a 48px dot is a small target for a four-year-old. This is the same tap,
-          made unmissable — and it fills space that would otherwise be empty. */}
+      {/* The current place is also available as a full child-sized action below the map. */}
       {complete ? null : travelling ? (
         <button type="button" className="wmap__skip" onClick={() => setTravelling(false)}>
           {g.map.skip}
         </button>
       ) : currentBoard ? (
-        <button type="button" className="wmap__go" onClick={() => onOpen(currentBoard.slug)}>
-          <span className="wmap__go-thumb" aria-hidden>
-            <PlaceEmblem place={currentBoard.slug} />
-          </span>
-          <span className="wmap__go-text">
-            <span className="wmap__go-kicker">{done === 0 ? g.map.here : g.map.soon}</span>
-            <span className="wmap__go-name">{currentBoard.name}</span>
-            {/* What this place is worth, before a single tap: its empty slots, or the stars it already holds. */}
-            <span className="wmap__go-stars">
-              <StarTray lit={sceneFoundIds(progress, currentBoard).length} total={currentBoard.targets.length} size="xs" />
-              {/* Once some are found, say how many: "3 are waiting here" beside two lit stars read as a mistake. */}
-              <span>{sceneFoundIds(progress, currentBoard).length > 0
-                ? tf(g.stars.tray, { earned: sceneFoundIds(progress, currentBoard).length, total: currentBoard.targets.length })
-                : tf(g.stars.here, { total: currentBoard.targets.length })}</span>
-            </span>
-          </span>
-          <span className="wmap__go-arrow" aria-hidden>
-            ➜
-          </span>
-        </button>
+        <Button type="button" size="kid" className="wmap__go" onClick={() => onOpen(currentBoard.slug)}>
+          <span className="wmap__go-name">{currentBoard.name}</span>
+          <span className="fm-btn__arrow" aria-hidden />
+        </Button>
       ) : null}
       {!complete && !travelling && currentBoard && onStartOver ? (
         <button type="button" className="fm-btn fm-btn--ghost wmap__again" onClick={onStartOver}>{g.replay.startOver}</button>

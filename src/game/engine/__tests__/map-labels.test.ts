@@ -100,6 +100,8 @@ describe("64px map controls", () => {
     expect(markerRules.filter(rule => rule[1]?.includes("transform:"))).toHaveLength(1);
     expect(css).toContain("calc(-100% - var(--wmap-marker-clearance, var(--space-4)))");
     expect(css).not.toContain("(var(--touch-min) - var(--space-3))");
-    expect(css).toContain('[dir="rtl"] .wmap__go-arrow { transform: scaleX(-1); }');
+    const buttons = readFileSync("src/styles/ui.css", "utf8");
+    expect(buttons).toContain('[dir="rtl"] .fm-btn__arrow { transform: scaleX(-1); }');
+    expect(buttons).toContain(".fm-btn__arrow:dir(ltr) { transform: none; }");
   });
 });

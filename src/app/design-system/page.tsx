@@ -102,15 +102,15 @@ export default async function DesignSystemPage() {
             <button className="fm-btn fm-btn--danger">Delete</button>
           </div>
           <div className="fm-row">
-            <button className="fm-btn fm-btn--sm">Small 40</button>
+            <button className="fm-btn fm-btn--sm">Small 48</button>
             <button className="fm-btn">Regular 56</button>
-            <button className="fm-btn fm-btn--lg">Large 64</button>
+            <button className="fm-btn fm-btn--lg">Large text 56</button>
             <button className="fm-btn fm-btn--xl">XL 80</button>
             <button className="fm-btn fm-btn--secondary fm-btn--kid" aria-label="kid">
               <Icon name="bulb" />
             </button>
           </div>
-          <p className="fm-small">Minimum 48px for adults, 64px for anything a child taps. Primary glows on hover; nothing has hard offset shadows anymore.</p>
+          <p className="fm-small">Text buttons use 16px corners. Adult targets are at least 48px and child targets are at least 64px.</p>
         </section>
 
         <section className="fm-stack fm-stack--2">

@@ -135,8 +135,10 @@ describe("a finished world's map", () => {
       const progress = { ...emptyProgress(config.gameId), lastScene: boardSlugs(world)[0] };
       const view = mount(config, progress, world);
       const go = view.container.querySelector<HTMLButtonElement>(".wmap__go")!;
-      expect(go.querySelector(".place-emblem")).toBeTruthy();
-      expect(go.querySelector("img")).toBeNull();
+      expect(go.textContent).toBe(config.scenes.find(scene => scene.slug === boardSlugs(world)[0])!.name);
+      expect(go.classList.contains("fm-btn--kid")).toBe(true);
+      expect(go.querySelector(".fm-btn__arrow")?.getAttribute("aria-hidden")).toBe("true");
+      expect(go.querySelector("img, .place-emblem")).toBeNull();
       const sources = [...view.container.querySelectorAll("img")].map(img => img.getAttribute("src"));
       for (const scene of config.scenes) {
         expect(sources).not.toContain(scene.art.base);
@@ -149,20 +151,16 @@ describe("a finished world's map", () => {
     expect(JSON.stringify(config)).toBe(saved);
   });
 
-  it("keeps place emblems after a partial find and on the newly unlocked next board", () => {
+  it("shows the current destination after a partial find and advances to the newly unlocked board", () => {
     const base = fixture(); const first = base.scenes[0]!;
     const scene: SceneConfig = { ...first, playMode: "find-any", appearancesPerBoard: 3, findsRequiredToAdvance: 3 };
     const config: GameConfig = { ...base, scenes: [scene, ...base.scenes.slice(1)] };
     const partial = adoptFinds(emptyProgress(config.gameId), config, [{ boardSlug: scene.slug, targetId: scene.targets[0]!.id, variant: "A" }]).progress;
     const view = mount(config, partial);
-    expect(view.container.querySelector(".wmap__go-name")?.textContent).toBe(scene.name);
-    expect(view.container.querySelector(".wmap__go-thumb .place-emblem")).toBeTruthy();
-    expect(view.container.querySelector(".wmap__go-thumb img")).toBeNull();
+    expect(view.container.querySelector(".wmap__go")?.textContent).toBe(scene.name);
     const complete = adoptFinds(partial, config, scene.targets.map(target => ({ boardSlug: scene.slug, targetId: target.id, variant: "A" as const }))).progress;
     view.rerender(<GameI18nProvider locale={config.locale}><WorldMap config={config} progress={complete} onOpen={view.onOpen} onPassport={view.onPassport} /></GameI18nProvider>);
-    expect(view.container.querySelector(".wmap__go-name")?.textContent).toBe(config.scenes[1]!.name);
-    expect(view.container.querySelector(".wmap__go-thumb .place-emblem")).toBeTruthy();
-    expect(view.container.querySelector(".wmap__go-thumb img")).toBeNull();
+    expect(view.container.querySelector(".wmap__go")?.textContent).toBe(config.scenes[1]!.name);
     fireEvent.click(view.container.querySelector(".wmap__go")!);
     expect(view.onOpen).toHaveBeenCalledExactlyOnceWith(config.scenes[1]!.slug);
   });
@@ -200,7 +198,7 @@ describe("a finished world's map", () => {
     expect(view.container.querySelector(".wmap__go")?.textContent).toContain(config.scenes[done]!.name);
   });
 
-  it("counts the stars already found at the next place instead of calling all of them waiting", () => {
+  it("keeps the earned star count on the map stop and the destination action compact", () => {
     // Only a find-any board can be part-found; the demo boards are sequential, so the first one is made find-any.
     const base = fixture(); const first = base.scenes[0]!; const g = getDict(base.locale).game;
     expect(first.targets).toHaveLength(3);
@@ -208,9 +206,10 @@ describe("a finished world's map", () => {
     const config: GameConfig = { ...base, scenes: [scene, ...base.scenes.slice(1)] };
     const two = scene.targets.slice(0, 2).map(t => ({ boardSlug: scene.slug, targetId: t.id, variant: "A" as const }));
     const view = mount(config, adoptFinds(emptyProgress(config.gameId), config, two).progress);
-    const go = view.container.querySelector(".wmap__go")!.textContent!;
-    expect(go).toContain(tf(g.stars.tray, { earned: 2, total: scene.targets.length }));
-    expect(go).not.toContain(tf(g.stars.here, { total: scene.targets.length }));
+    const stop = view.container.querySelector<HTMLButtonElement>(`[data-board="${scene.slug}"]`)!;
+    expect(stop.getAttribute("aria-label")).toContain(tf(g.scene.boardStars, { found: 2, total: scene.targets.length }));
+    expect(stop.querySelector(".wmap__place-stars")?.textContent?.replace(/\s/g, "")).toBe(`2/${scene.targets.length}`);
+    expect(view.container.querySelector(".wmap__go")?.textContent).toBe(scene.name);
   });
 
   it("does not mistake nine completions elsewhere, or a global timestamp, for this world's completion", () => {
