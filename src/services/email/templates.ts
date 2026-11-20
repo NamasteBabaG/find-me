@@ -150,10 +150,12 @@ export function gameRefundedEmail(input: { to: string; childName: string; locale
 }
 
 export type AdminAlertKind = "delivered-with-problems" | "held-for-review" | "generation-failed" | "needs-new-photo" | "generation-stalled"
-  | "cost-above-alert" | "ceiling-refunded" | "ceiling-notice-failed" | "ready-mail-failed";
+  | "cost-above-alert" | "ceiling-refunded" | "ceiling-notice-failed" | "ready-mail-failed" | "ceiling-held";
 
 const ALERT_HEAD: Record<AdminAlertKind, { subject: string; lead: string }> = {
-  "cost-above-alert": { subject: "💸 העולם של {name} עבר $5", lead: "העלות המחויבת של העולם עברה את סף ההתראה של $5. העולם ממשיך לעבוד כרגיל. התקרה הקשיחה היא $7: שם העולם נסגר וההזמנה מוחזרת אוטומטית." },
+  "cost-above-alert": { subject: "💸 העולם של {name} עבר $5", lead: "העלות המחויבת של העולם עברה את סף ההתראה של $5. העולם ממשיך לעבוד כרגיל. מה קורה בתקרה, כתוב בפרטים." },
+  // kingdom-generation/v7 (Guy, 2026-11-20): stopped at the ceiling and held for him; no refund, no parent mail.
+  "ceiling-held": { subject: "🛑 העולם של {name} נעצר בתקרה", lead: "העולם הגיע לתקרה בלי להשלים את כל המחבואים ונעצר: לא נקנה בשבילו שום דבר נוסף. לא בוצע החזר ולא נשלחה הודעה להורה. אפשר לנסות להציל אותו מהאדמין, או להחזיר משם את הכסף." },
   "ceiling-refunded": { subject: "↩️ העולם של {name} הגיע לתקרת $7 והוחזר", lead: "העולם הגיע לתקרה הקשיחה של $7 בלי להשלים את כל המחבואים. הוא נסגר וההזמנה הוחזרה אוטומטית; הודעה להורה נשלחת בנפרד. כדאי לבדוק באדמין מה עצר אותו." },
   "ceiling-notice-failed": { subject: "📭 הודעת ההחזר להורה של {name} לא נשלחה", lead: "ההחזר בתקרת $7 בוצע, אבל ההודעה להורה לא נשלחה אחרי שלושה ניסיונות. יש ליצור קשר עם ההורה." },
   "ready-mail-failed": { subject: "📭 מייל ״המשחק מוכן״ של {name} לא נשלח", lead: "המשחק מוכן ואפשר לשחק בו, אבל המייל להורה לא נשלח אחרי שלושה ניסיונות. אפשר לשלוח שוב מדף המשחק באדמין או ליצור קשר עם ההורה." },

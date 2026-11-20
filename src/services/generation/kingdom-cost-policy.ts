@@ -22,6 +22,7 @@ export async function noticeKingdomCostAboveAlert(c: Container, gameId: string, 
   if (budget.committedMicroUsd <= policy.alertAboveMicroUsd) return false;
   await sendAdminAlert(c, { gameId, kind: "cost-above-alert", problems: [
     `מחויב עד עכשיו: ${usd(budget.committedMicroUsd)} (כולל רזרבות פתוחות), סף התראה ${usd(policy.alertAboveMicroUsd)}, תקרה ${usd(policy.ceilingMicroUsd)}.`,
+    policy.ceilingOutcome === "hold" ? `בתקרה העולם נעצר ומחכה לך, בלי החזר אוטומטי.` : `בתקרה העולם נסגר וההזמנה מוחזרת אוטומטית.`,
   ] }, options);
   return true;
 }
@@ -29,10 +30,13 @@ export async function noticeKingdomCostAboveAlert(c: Container, gameId: string, 
 export type KingdomCeilingOutcome = { readonly closed: true; readonly refunded: boolean; readonly reason: string };
 
 /**
- * The v6 hard ceiling: nothing in flight can return capacity and the next required purchase does not fit.
- * The world closes (GENERATION_FAILED, job local-patch:ceiling-closed) and, in the SAME transaction, the refund it owes
- * is recorded (kingdom-ceiling-refund/v1); that record is then advanced here and by any later worker until the provider
- * decides it, and the parent notice follows through its own durable outbox (review QAV6-02).
+ * The hard ceiling: nothing in flight can return capacity and the next required purchase does not fit. The world closes
+ * (GENERATION_FAILED, job local-patch:ceiling-closed); nothing more is bought for it.
+ * - v6 ($7, `refund`): in the SAME transaction the refund it owes is recorded (kingdom-ceiling-refund/v1); that record is
+ *   then advanced here and by any later worker until the provider decides it, and the parent notice follows through its
+ *   own durable outbox (review QAV6-02).
+ * - v7 ($6, `hold`, Guy 2026-11-20): stopped and held for a person. No refund is recorded and the parent is not written
+ *   to; the service is told at once, so a person can try to save the world or refund it from the admin.
  *
  * The customer outcome is separate from supplier accounting (review QAV6-01): every UNKNOWN reservation and receipt stays
  * exactly as it is, counted in full, for reconciliation with the image/review provider; closing never releases it.
@@ -41,22 +45,31 @@ export type KingdomCeilingOutcome = { readonly closed: true; readonly refunded: 
 export async function closeKingdomWorldAtCeiling(c: Container, gameId: string, jobId: string, reason: string,
   fence: (tx: Prisma.TransactionClient) => Promise<void>): Promise<KingdomCeilingOutcome | null> {
   const policy = await kingdomCostPolicyOf(c.db, gameId);
-  if (!policy || policy.ceilingOutcome !== "refund") return null;
+  if (!policy) return null;
   const budget = await boardWizardBudgetOf(c).audit(boardWizardWorldId(gameId));
   const unknown = budget.unknownRequestKeys.length;
-  const closing = `${reason} kingdom-generation/v6: the world closed at its ${usd(policy.ceilingMicroUsd)} ceiling `
+  const hold = policy.ceilingOutcome === "hold";
+  const closing = `${reason} ${policy.version}: the world ${hold ? "stopped" : "closed"} at its ${usd(policy.ceilingMicroUsd)} ceiling `
     + `(${usd(budget.committedMicroUsd)} committed${unknown ? `, ${unknown} of unknown outcome kept in full for supplier reconciliation` : ""}); `
-    + "the order is refunded automatically.";
+    + (hold ? "held for a person: no automatic refund." : "the order is refunded automatically.");
   const owed = await c.db.$transaction(async tx => {
     await fence(tx);
     await transitionGame({ ...c, db: tx as Container["db"] }, gameId, "GENERATION_FAILED", SYSTEM, { reason: closing });
-    await tx.game.update({ where: { id: gameId }, data: { lastError: closing.slice(0, 500), configJson: null } });
+    // A held world keeps whatever it has, so a person can still save it; a refunded one is gone.
+    await tx.game.update({ where: { id: gameId }, data: { lastError: closing.slice(0, 500), ...(hold ? {} : { configJson: null }) } });
     await tx.generationJob.update({ where: { id: jobId }, data: { status: "FAILED", currentStep: LOCAL_PATCH_CEILING_CLOSED, lastError: closing.slice(0, 500) } });
     await tx.auditLog.create({ data: { id: `aud_ceiling_closed_${gameId}`, actorType: "SYSTEM", action: "local-patch:ceiling-closed/v1", entityType: "Game", entityId: gameId,
       metaJson: JSON.stringify({ version: "kingdom-ceiling-close/v1", committedMicroUsd: budget.committedMicroUsd,
-        settledMicroUsd: budget.settledMicroUsd, ceilingMicroUsd: policy.ceilingMicroUsd, unknownRequestKeys: budget.unknownRequestKeys, providerCalls: 0 }) } });
-    return recordCeilingRefund(tx, gameId);
+        settledMicroUsd: budget.settledMicroUsd, ceilingMicroUsd: policy.ceilingMicroUsd, unknownRequestKeys: budget.unknownRequestKeys, providerCalls: 0,
+        ...(hold ? { outcome: "hold" } : {}) }) } });
+    return hold ? false : recordCeilingRefund(tx, gameId);
   });
+  if (hold) {
+    await sendAdminAlert(c, { gameId, kind: "ceiling-held", problems: [
+      `מחויב: ${usd(budget.committedMicroUsd)} (כולל רזרבות פתוחות${unknown ? `, ${unknown} בתוצאה לא ידועה` : ""}), תקרה ${usd(policy.ceilingMicroUsd)}.`,
+    ] }).catch(() => undefined);
+    return { closed: true, refunded: false, reason: closing };
+  }
   if (!owed) {
     await sendAdminAlert(c, { gameId, kind: "generation-failed", error: "הגיע לתקרת $7 ונסגר, אבל אין הזמנה ששולמה להחזיר. יש לבדוק באדמין." }).catch(() => undefined);
     return { closed: true, refunded: false, reason: closing };

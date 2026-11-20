@@ -15,7 +15,8 @@ import { KINGDOM_DETECTIVE_PATCH_BOARDS } from "../../../../content/detectives/k
 import { KINGDOM_GENERATION_WINDOWS, KINGDOM_GENERATION_WINDOWS_V2_SHA256 } from '../../../../content/detectives/retained-window-v1';
 import { retainedWindowRegion } from '../../../domain/generation/retained-window';
 import { KINGDOM_COMPACT_REVIEW, KINGDOM_FLEX_OVERLOAD_COOLDOWN_MS, KINGDOM_PLAYABILITY_REVIEW, KINGDOM_GAMEPLAY_NEIGHBOR_REVIEW } from '../../../domain/generation/kingdom-generation';
-import { kingdomGenerationReleaseOf } from '../kingdom-generation-release';
+import { kingdomGenerationReleaseOf, kingdomV6RecoveryOf } from '../kingdom-generation-release';
+import { resumeKingdomCeilingRefunds } from '../kingdom-ceiling-refund';
 import { resumeKingdomNeighborReview, kingdomNeighborReviewOf } from '../kingdom-neighbor-review';
 import { pinDetectiveSourceScope, sealDetectiveSourceFamily } from "../source-family-scope";
 import { planWholeSourceContextRepair, stageWholeSourceContextRepair, nextWholeSourceContextWake, resumeWholeSourceContextRepair } from "../whole-source-context-repair";
@@ -5220,6 +5221,61 @@ it('kingdom-generation/v6: one notice above five dollars never stops the world, 
     expect(forbidden).not.toHaveBeenCalled();
     expect(refund).toHaveBeenCalledTimes(1);
     expect((await budget.audit(worldId)).committedMicroUsd).toBe(6_750_000);
+  } finally { c.email.send = send; }
+}, 600_000);
+
+it('kingdom-generation/v7: above five dollars the world keeps going; at six it stops and is held for a person, with no refund and no parent mail', async () => {
+  fixture.kingdomRelease = 'v7';
+  const gameId = 'kingdom-v7-ceiling-synthetic';
+  await newDetectiveWorld(gameId, 8, true, false, true, false, true);
+  fixture.kingdomRelease = 'v1';
+  expect(await kingdomGenerationReleaseOf(db, gameId)).toMatchObject({ version: 'kingdom-generation/v7', worldCapMicroUsd: 6_000_000,
+    alertAboveMicroUsd: 5_000_000, targetMicroUsd: 4_000_000, ceilingOutcome: 'hold', automaticBudgetExtension: false });
+  // Every v6 recovery applies to v7.
+  expect(await kingdomV6RecoveryOf(db, gameId)).toBe(true);
+  const budget = boardWizardBudgetOf(c), worldId = boardWizardWorldId(gameId);
+  expect((await budget.audit(worldId)).capMicroUsd).toBe(6_000_000);
+  const mails: EmailMessage[] = [], send = c.email.send;
+  c.email.send = async (message: EmailMessage) => { mails.push(message); return { id: 'synthetic-mail-' + mails.length }; };
+  try {
+    // Four dollars is not a stop; above five the service is told once and the world still buys.
+    await spendTo(c, gameId, 5_100_000);
+    expect(await noticeKingdomCostAboveAlert(c, gameId)).toBe(true);
+    const above = mails.filter(m => m.tag === 'admin-alert' && m.subject.includes('$5'));
+    expect(above.length).toBeGreaterThan(0);
+    expect(above[0]!.text).toContain('$6.00');
+    await budget.reserve(worldId, { requestKey: 'synthetic-v7-above-five-paint', scope: 'image', operationFingerprint: 'c'.repeat(64), reserveMicroUsd: 150_000 });
+    await budget.settle(worldId, 'synthetic-v7-above-five-paint', bill('synthetic-v7-above-five-' + gameId, 63_500));
+    // At six: nothing in flight, the next painting does not fit. The world stops; nothing is bought, nothing refunded.
+    await spendTo(c, gameId, 5_750_000);
+    const forbidden = vi.fn(async () => { throw Error('Unexpected provider dispatch at the ceiling'); });
+    const refund = vi.fn(async () => ({ ok: true, providerRefundId: 'synthetic-refund' }));
+    const container = { ...c, visualReview: { request: forbidden }, backgroundReview: {}, payment: { id: 'mock', refund } } as unknown as Container;
+    const deps = { render: forbidden, judge: forbidden, readBoardArt: readArt, renderPolicySha256: localPatchRenderPolicySha256(LOCAL_PATCH_SUNBURST_IMAGE_POLICY) } as unknown as LocalPatchHideDeps;
+    let result = await runLocalPatchWorldSlice(container, deps, gameId, { hardDeadlineAt: Date.now() + 270_000, diagnose: forbidden });
+    for (let tick = 0; tick < 4 && result.pending; tick++)
+      result = await runLocalPatchWorldSlice(container, deps, gameId, { hardDeadlineAt: Date.now() + 270_000, diagnose: forbidden });
+    expect(result.pending).toBe(false);
+    expect(result.attention).toContain('stopped at its $6.00 ceiling');
+    expect(result.attention).toContain('no automatic refund');
+    expect(forbidden).not.toHaveBeenCalled();
+    expect(refund).not.toHaveBeenCalled();
+    const game = await db.game.findUniqueOrThrow({ where: { id: gameId }, include: { orders: true } });
+    expect(game.status).toBe('GENERATION_FAILED');
+    expect(game.orders.map(o => o.paymentStatus)).toEqual(['PAID']);
+    expect(await db.auditLog.count({ where: { id: `aud_ceiling_refund_${gameId}` } })).toBe(0);
+    expect(await db.generationJob.findUniqueOrThrow({ where: { id: 'job_' + gameId } })).toMatchObject({ status: 'FAILED', currentStep: LOCAL_PATCH_CEILING_CLOSED });
+    // The service is told; the parent is not written to.
+    expect(mails.filter(m => m.tag === 'game-refunded')).toHaveLength(0);
+    const held = mails.filter(m => m.tag === 'admin-alert' && m.subject.includes('נעצר בתקרה'));
+    expect(held.length).toBeGreaterThan(0);
+    expect(held[0]!.text).toContain('$6.00');
+    // Never claimed, re-entered or refunded later either.
+    expect(await tickGeneration(container, gameId, 1_000)).toMatchObject({ pending: false });
+    expect(await resumeKingdomCeilingRefunds(container)).toBe(0);
+    expect(forbidden).not.toHaveBeenCalled();
+    expect(refund).not.toHaveBeenCalled();
+    expect((await budget.audit(worldId)).committedMicroUsd).toBe(5_750_000);
   } finally { c.email.send = send; }
 }, 600_000);
 

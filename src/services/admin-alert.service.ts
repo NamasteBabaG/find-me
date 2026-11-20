@@ -20,7 +20,7 @@ const RETRY_PAGE_SIZE = 100;
 const RETRY_LIMIT = 20;
 export const ADMIN_ALERT_PENDING_ACTION = "admin-alert:notification-pending";
 const KINDS = ["delivered-with-problems", "held-for-review", "generation-failed", "needs-new-photo", "generation-stalled",
-  "cost-above-alert", "ceiling-refunded", "ceiling-notice-failed", "ready-mail-failed"] as const;
+  "cost-above-alert", "ceiling-refunded", "ceiling-notice-failed", "ready-mail-failed", "ceiling-held"] as const;
 const SUCCESS_ACTIONS = KINDS.map(kind => `admin-alert:${kind}`);
 const FAILURE_KINDS = new Map<string, AdminAlertKind>(KINDS.map(kind => [`admin-alert:${kind}:failed`, kind]));
 const sha = (value: string | Buffer) => createHash("sha256").update(value).digest("hex");
