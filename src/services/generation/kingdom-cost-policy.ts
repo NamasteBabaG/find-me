@@ -4,7 +4,7 @@ import { SYSTEM } from "../audit.service";
 import { sendAdminAlert } from "../admin-alert.service";
 import { transitionGame } from "../game-status";
 import { boardWizardBudgetOf, boardWizardWorldId } from "./board-conditioned-wizard";
-import { kingdomCostPolicyOf } from "./kingdom-generation-release";
+import { worldCostPolicyOf } from "./world-cost-rule";
 import { advanceCeilingRefund, recordCeilingRefund, type CeilingRefundState } from "./kingdom-ceiling-refund";
 import { LOCAL_PATCH_CEILING_CLOSED } from "../../domain/generation/kingdom-ceiling";
 export { LOCAL_PATCH_CEILING_CLOSED };
@@ -16,7 +16,7 @@ const usd = (micro: number) => `$${(micro / 1_000_000).toFixed(2)}`;
  * True when the line is passed (whether or not this call was the one that sent the notice).
  */
 export async function noticeKingdomCostAboveAlert(c: Container, gameId: string, options: { deadlineAt?: number } = {}): Promise<boolean> {
-  const policy = await kingdomCostPolicyOf(c.db, gameId);
+  const policy = await worldCostPolicyOf(c.db, gameId);
   if (!policy) return false;
   const budget = await boardWizardBudgetOf(c).audit(boardWizardWorldId(gameId));
   if (budget.committedMicroUsd <= policy.alertAboveMicroUsd) return false;
@@ -37,6 +37,7 @@ export type KingdomCeilingOutcome = { readonly closed: true; readonly refunded: 
  *   own durable outbox (review QAV6-02).
  * - v7 ($6, `hold`, Guy 2026-11-20): stopped and held for a person. No refund is recorded and the parent is not written
  *   to; the service is told at once, so a person can try to save the world or refund it from the admin.
+ * - world-cost-rule/v1 (a new Explorer or Journey Detective world): exactly the v7 hold at $6.
  *
  * The customer outcome is separate from supplier accounting (review QAV6-01): every UNKNOWN reservation and receipt stays
  * exactly as it is, counted in full, for reconciliation with the image/review provider; closing never releases it.
@@ -44,7 +45,7 @@ export type KingdomCeilingOutcome = { readonly closed: true; readonly refunded: 
  */
 export async function closeKingdomWorldAtCeiling(c: Container, gameId: string, jobId: string, reason: string,
   fence: (tx: Prisma.TransactionClient) => Promise<void>): Promise<KingdomCeilingOutcome | null> {
-  const policy = await kingdomCostPolicyOf(c.db, gameId);
+  const policy = await worldCostPolicyOf(c.db, gameId);
   if (!policy) return null;
   const budget = await boardWizardBudgetOf(c).audit(boardWizardWorldId(gameId));
   const unknown = budget.unknownRequestKeys.length;

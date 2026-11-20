@@ -16,6 +16,12 @@ import { lowPainterQualified, sunburstPainterConfigured } from "@/services/gener
 import { qualityBatchQualified } from "@/services/generation/quality-channel";
 import { LEAN_WORLD_CAP_MICRO_USD, leanReleaseQualified } from "@/services/generation/lean-release";
 import { newKingdomGenerationPolicy } from "@/services/generation/kingdom-generation-release";
+import { WORLD_COST_RULE, WORLD_COST_RULE_ALERT_MICRO_USD, WORLD_COST_RULE_CEILING_MICRO_USD, WORLD_COST_RULE_TARGET_MICRO_USD } from "@/services/generation/world-cost-rule";
+
+/** world-cost-rule/v1: what NEW Explorer and Detective drafts take beside their operational pin (which keeps its own
+ * historical four-dollar field). A Kingdom Detectives world takes kingdomGenerationRelease instead. */
+const WORLD_COST_RULE_HEALTH = { version: WORLD_COST_RULE, targetMicroUsd: WORLD_COST_RULE_TARGET_MICRO_USD,
+  alertAboveMicroUsd: WORLD_COST_RULE_ALERT_MICRO_USD, ceilingMicroUsd: WORLD_COST_RULE_CEILING_MICRO_USD, ceilingOutcome: "hold" } as const;
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -76,8 +82,8 @@ export async function GET(req: Request) {
       configured: dualConfigured,
       quality: { model: visualReviewPolicy("scene-quality").model, effort: "high" },
       continuity: { model: visualReviewPolicy("head-continuity").model, effort: "high" },
-      explorersNewGames: detectivesNewPolicy ? {version:EXPLORERS_OPERATIONAL_RELEASE,reviewMode:"single-sol-medium/v1",model:"gpt-6.1-sol",effort:"medium",birthReviewMode:"single-sol-low/v1",birthEffort:"low",nativeHeadReturnEvidence:true,initialTier:"flex",oneUsableAssessmentPerImage:true,normalImageAttemptLimit:3,worldCapMicroUsd:4000000,automaticBudgetExtension:false} : null,
-      detectivesNewGames: detectivesNewPolicy ? {version:DETECTIVES_OPERATIONAL_RELEASE,reviewMode:"single-sol-medium/v1",model:"gpt-6.1-sol",effort:"medium",birthReviewMode:"single-sol-low/v1",birthEffort:"low",nativeHeadReturnEvidence:true,initialTier:"flex",oneUsableAssessmentPerImage:true,normalImageAttemptLimit:3,worldCapMicroUsd:4000000,automaticBudgetExtension:false,
+      explorersNewGames: detectivesNewPolicy ? {version:EXPLORERS_OPERATIONAL_RELEASE,reviewMode:"single-sol-medium/v1",model:"gpt-6.1-sol",effort:"medium",birthReviewMode:"single-sol-low/v1",birthEffort:"low",nativeHeadReturnEvidence:true,initialTier:"flex",oneUsableAssessmentPerImage:true,normalImageAttemptLimit:3,worldCapMicroUsd:4000000,automaticBudgetExtension:false,worldCostRule:WORLD_COST_RULE_HEALTH} : null,
+      detectivesNewGames: detectivesNewPolicy ? {version:DETECTIVES_OPERATIONAL_RELEASE,reviewMode:"single-sol-medium/v1",model:"gpt-6.1-sol",effort:"medium",birthReviewMode:"single-sol-low/v1",birthEffort:"low",nativeHeadReturnEvidence:true,initialTier:"flex",oneUsableAssessmentPerImage:true,normalImageAttemptLimit:3,worldCapMicroUsd:4000000,automaticBudgetExtension:false,worldCostRule:WORLD_COST_RULE_HEALTH,
         sourceBodyManifestSha256:windowsEnabled?JOURNEY_WINDOW_BODY_SHA256:SOURCE_BODY_REPAIR_MANIFEST_SHA256,
         ...(kingdomGeneration ? { kingdomGenerationRelease: newKingdomGenerationPolicy() } : {}),
         ...(windowsEnabled?{journeyWindowRelease:{version:JOURNEY_WINDOW_RELEASE,manifestSha256:JOURNEY_WINDOW_MANIFEST_SHA256,prospectiveOnly:true,repeatWindowStop:'repeat-window-stop/v1'}}:{})} : null },

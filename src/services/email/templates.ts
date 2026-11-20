@@ -154,7 +154,7 @@ export type AdminAlertKind = "delivered-with-problems" | "held-for-review" | "ge
 
 const ALERT_HEAD: Record<AdminAlertKind, { subject: string; lead: string }> = {
   "cost-above-alert": { subject: "💸 העולם של {name} עבר $5", lead: "העלות המחויבת של העולם עברה את סף ההתראה של $5. העולם ממשיך לעבוד כרגיל. מה קורה בתקרה, כתוב בפרטים." },
-  // kingdom-generation/v7 (Guy, 2026-11-20): stopped at the ceiling and held for him; no refund, no parent mail.
+  // kingdom-generation/v7 and world-cost-rule/v1 (Guy, 2026-11-20): stopped at the ceiling and held for him; no refund, no parent mail.
   "ceiling-held": { subject: "🛑 העולם של {name} נעצר בתקרה", lead: "העולם הגיע לתקרה בלי להשלים את כל המחבואים ונעצר: לא נקנה בשבילו שום דבר נוסף. לא בוצע החזר ולא נשלחה הודעה להורה. אפשר לנסות להציל אותו מהאדמין, או להחזיר משם את הכסף." },
   "ceiling-refunded": { subject: "↩️ העולם של {name} הגיע לתקרת $7 והוחזר", lead: "העולם הגיע לתקרה הקשיחה של $7 בלי להשלים את כל המחבואים. הוא נסגר וההזמנה הוחזרה אוטומטית; הודעה להורה נשלחת בנפרד. כדאי לבדוק באדמין מה עצר אותו." },
   "ceiling-notice-failed": { subject: "📭 הודעת ההחזר להורה של {name} לא נשלחה", lead: "ההחזר בתקרת $7 בוצע, אבל ההודעה להורה לא נשלחה אחרי שלושה ניסיונות. יש ליצור קשר עם ההורה." },

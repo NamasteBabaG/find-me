@@ -6,7 +6,8 @@ import type { Container } from "../container";
 import { boardWizardBudgetOf } from "./board-conditioned-wizard";
 import { singleLowReviewAuthorization } from "./single-low-policy";
 import { fenceLocalPatchImages } from "./local-patch-lifecycle";
-import { KINGDOM_V6_CEILING_MICRO_USD, KINGDOM_V7_CEILING_MICRO_USD, kingdomCeilingMicroUsdOf } from "./kingdom-generation-release";
+import { KINGDOM_V6_CEILING_MICRO_USD, KINGDOM_V7_CEILING_MICRO_USD } from "./kingdom-generation-release";
+import { worldCeilingMicroUsdOf } from "./world-cost-rule";
 
 const VERSION = "single-medium-policy/v1" as const, ACTION = "generation:single-medium-policy";
 const keyOf = (gameId: string) => "aud_single_medium_" + gameId;
@@ -19,9 +20,10 @@ const schema = z.object({ version: z.literal(VERSION), gameId: z.string(), world
   worldCapMicroUsd: z.union([z.literal(4000000), z.literal(KINGDOM_V6_CEILING_MICRO_USD), z.literal(KINGDOM_V7_CEILING_MICRO_USD)]),
   automaticBudgetExtension: z.literal(false), authorizationSha256: hex }).strict();
 type Reader = Pick<Prisma.TransactionClient, "auditLog">;
-/** The world's own pinned ceiling: four dollars, or the kingdom-generation/v6 or v7 hard ceiling. Never a grant. */
+/** The world's own pinned ceiling: four dollars, or the hard ceiling of a kingdom-generation/v6 or v7 pin or of
+ * world-cost-rule/v1 (six dollars, the same literal as v7). Never a grant. */
 async function pinnedCap(db: Reader, gameId: string): Promise<number> {
-  return await kingdomCeilingMicroUsdOf(db, gameId) ?? 4000000;
+  return await worldCeilingMicroUsdOf(db, gameId) ?? 4000000;
 }
 async function expected(db: Reader, gameId: string) {
   const prior = await singleLowReviewAuthorization(db, gameId);

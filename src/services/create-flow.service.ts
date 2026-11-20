@@ -1,6 +1,7 @@
 import { pinDetectiveSourceScope } from "./generation/source-family-scope";
 import { pinExplorersOperationalPolicy } from "./generation/explorers-operational-policy";
 import { pinDetectivesOperationalPolicy } from "./generation/detectives-operational-policy";
+import { pinWorldCostRule } from "./generation/world-cost-rule";
 import { Prisma } from "@prisma/client";
 import { newDraftToken, newId } from "@/lib/ids";
 import { normalizeChildName } from "@/lib/copy";
@@ -91,6 +92,9 @@ export async function createDraft(c: Container, ownerId: string | null, locale: 
         if (!scoped) await pinLocalPatchSourceFamily(tx, created.id, { sceneVersion: selectedVersion, searchLevel: selectedLevel });
         if(selectedVersion===13 && !scoped)await pinDetectivesOperationalPolicy(tx,created.id,c.detectivesOperationalRelease,c.storage.id);
         if(selectedVersion===12)await pinExplorersOperationalPolicy(tx,created.id,c.explorersOperationalRelease,c.storage.id);
+        // world-cost-rule/v1 beside the operational pin: alert above $5, stop and hold at $6. Kingdom's own pin wins at checkout.
+        if(lean&&(selectedVersion===12?c.explorersOperationalRelease:selectedVersion===13?c.detectivesOperationalRelease:undefined))
+          await pinWorldCostRule(tx,created.id,c.worldCostRule);
       }
       if (lean && c.localPatchPainter === LOCAL_PATCH_SUNBURST_PAINTER) await pinLocalPatchPainter(tx, created.id, c.localPatchPainter);
     }
