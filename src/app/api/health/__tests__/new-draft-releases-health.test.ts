@@ -64,6 +64,10 @@ describe('health reports the prospective Detective judge separately from histori
  it('identifies one combined SOL LOW answer and the ordinary 4m cap for qualified new Detectives',async()=>{
   Object.assign(f.environment,{LOCAL_PATCH_LEAN:'lean-v1',LOCAL_PATCH_IDENTITY_SOURCE:'full-source-v1'});
   expect((await health()).body.visualReview.detectivesNewGames).toMatchObject({version:'detectives-operational/v1',reviewMode:'single-sol-medium/v1',model:'gpt-6.1-sol',effort:'medium',birthReviewMode:'single-sol-low/v1',birthEffort:'low',nativeHeadReturnEvidence:true,oneUsableAssessmentPerImage:true,normalImageAttemptLimit:3,worldCapMicroUsd:4000000,automaticBudgetExtension:false});
+  // world-cost-rule/v1 beside it: new Explorer and Detective drafts stop and hold at six dollars.
+  const rule={version:'world-cost-rule/v1',targetMicroUsd:4000000,alertAboveMicroUsd:5000000,ceilingMicroUsd:6000000,ceilingOutcome:'hold'};
+  const body=(await health()).body.visualReview;
+  expect(body.detectivesNewGames.worldCostRule).toEqual(rule);expect(body.explorersNewGames.worldCostRule).toEqual(rule);
  });
  it('advertises the inclusive Kingdom ceiling only for qualified real Sunburst drafts', async () => {
   Object.assign(f.environment, { LOCAL_PATCH_PAINTER: 'sunburst-v1', LOCAL_PATCH_QUALITY_CHANNEL: 'sync',

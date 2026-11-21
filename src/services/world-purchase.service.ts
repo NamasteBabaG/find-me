@@ -1,6 +1,7 @@
 import { pinDetectiveSourceScope } from "./generation/source-family-scope";
 import { pinExplorersOperationalPolicy } from "./generation/explorers-operational-policy";
 import { pinDetectivesOperationalPolicy } from "./generation/detectives-operational-policy";
+import { pinWorldCostRule } from "./generation/world-cost-rule";
 import { Prisma } from "@prisma/client";
 import { pinVisualReviewRelease } from "./generation/visual-review-release";
 import { pinNewQaWorldBudget } from "./generation/local-patch-qa-budget";
@@ -151,6 +152,9 @@ export async function beginWorldPurchase(c: Container, input: WorldPurchaseInput
             if (!scoped) await pinLocalPatchSourceFamily(tx, gameId, { sceneVersion: version, searchLevel: requested ?? "explorers" });
             if(version===13 && !scoped)await pinDetectivesOperationalPolicy(tx,gameId,c.detectivesOperationalRelease,c.storage.id);
             if(version===12)await pinExplorersOperationalPolicy(tx,gameId,c.explorersOperationalRelease,c.storage.id);
+            // world-cost-rule/v1 beside the operational pin: alert above $5, stop and hold at $6. Kingdom's own pin wins at checkout.
+            if(lean&&(version===12?c.explorersOperationalRelease:version===13?c.detectivesOperationalRelease:undefined))
+              await pinWorldCostRule(tx,gameId,c.worldCostRule);
           }
           if (lean && c.localPatchPainter === LOCAL_PATCH_SUNBURST_PAINTER) await pinLocalPatchPainter(tx, gameId, c.localPatchPainter);
         }

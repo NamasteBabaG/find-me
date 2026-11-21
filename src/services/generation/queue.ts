@@ -213,6 +213,11 @@ export async function tickGeneration(c: Container, gameId: string | null, budget
   if (!before) return { gameId: id, status: null, pending: false };
   if (before.styleVersion === LOCAL_PATCH_STYLE) {
     const terminal = await c.db.generationJob.findUnique({ where: { id: `job_${id}` }, select: { currentStep: true, lastError: true } });
+    // A world closed at its hard ceiling (kingdom-generation/v6 refunding, v7 held for a person) is never resumed by a
+    // tick: its GENERATION_FAILED is final, not a failure to retry. Cron already skips it; this covers a named tick
+    // (the parent's waiting page, an admin link). Only a person's explicit action may continue it.
+    if (terminal?.currentStep === LOCAL_PATCH_CEILING_CLOSED)
+      return { gameId: id, status: statusOf(before), pending: false, attention: terminal.lastError };
     if(before.status==='TARGETS_GENERATING'&&terminal?.currentStep===LOCAL_PATCH_RECOVERY_EXHAUSTED&&await resumeSourceHeadJoinRecovery(c,id))
       return {gameId:id,status:statusOf(before),pending:true,attention:null};
     if(before.status==='TARGETS_GENERATING'&&terminal?.currentStep===LOCAL_PATCH_RECOVERY_EXHAUSTED&&await resumeSourceHeadRecovery(c,id))

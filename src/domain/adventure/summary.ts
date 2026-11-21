@@ -12,7 +12,10 @@ export type FoundSoFar = Pick<AdventureProgress, "finds"> & { book: { boards: Re
 export type WorldSummary = {
   slug: string;
   name: string;
-  map: { art: string; width: number; height: number };
+  /** The world's map colours; the family area draws the same icon map as the game (no painted map). */
+  colors: { sky: string; ground: string };
+  /** Its places in route order, by board. */
+  boards: string[];
   places: number;
   stamped: number;
   stars: number;
@@ -42,8 +45,8 @@ export function summarizeWorlds(config: GameConfig, progress: FoundSoFar | null)
     return [{
       slug: world.slug,
       name: world.name,
-      // The smaller map, where a world ships one: the same picture at the same proportions.
-      map: { art: world.map.artPortrait ?? world.map.art, width: world.map.width, height: world.map.height },
+      colors: { sky: world.map.palette.sky, ground: world.map.palette.ground },
+      boards: route.map(node => node.boardSlug),
       places: places.length,
       stamped: places.filter(place => place.stamped).length,
       stars: places.reduce((n, place) => n + place.found, 0),

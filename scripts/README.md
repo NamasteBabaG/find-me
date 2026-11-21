@@ -17,6 +17,7 @@ private input pictures exist. scripts/ is never imported by production src/.
 | Product diagnostics | game-status.ts, inspect-five-hide-layout.ts | DB reads / local previews; require the correct owned QA inputs |
 | Subject/review upgrade | subject-upgrade.ts | `plan` reads one supplied owned world; `apply` writes a fenced immutable enrollment for that exact plan and admits only eligible interrupted-review continuation. No provider dispatch in the command. The normal engine performs subsequent purchases within the same cap. See docs/CLAUDE_SUBJECT_RECOVERY_20261018.md. |
 | Marketing | refresh-hero-found.ts, prepare-transformation-preview.ts, build-demo-assets.ts | Public demo assets, explicit apply where supported; never customer images |
+| Ready mail pictures | email-heroes.ts | Cuts public/email/*.jpg (1040x520) from the child-free board art listed in src/services/email/ready-hero.ts; no photo, provider or database |
 | Paid local-patch pilot/recovery | local-patch-style-pilot.ts, resume-local-patch-repairs.ts | Real spend/writes when enabled; explicit scope and budget required |
 | Environment/deployment | qa-secrets.mjs, qa-env-preflight.mjs | Preflight inspects; secrets script changes real settings |
 | Historical authoring | fixed-*, board-conditioned-*, author-*, slot-patch.ts, prepare-boards.ts, rejudge.ts, character.ts | Different generations of contracts; may call providers or rewrite assets |

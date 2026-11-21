@@ -2,6 +2,7 @@ import path from "node:path";
 import { JOURNEY_WINDOW_RELEASE } from '../../content/detectives/journey-window-release-v1';
 import { EXPLORERS_OPERATIONAL_RELEASE, type ExplorersOperationalRelease } from "../domain/generation/explorers-operational-policy";
 import { DETECTIVES_OPERATIONAL_RELEASE, detectivesOperationalQualified, type DetectivesOperationalRelease } from "../domain/generation/detectives-operational-policy";
+import { WORLD_COST_RULE, type WorldCostRule } from "./generation/world-cost-rule";
 import { adminEmails, env, flag } from "@/lib/env";
 import { prisma, type Db } from "@/infra/db/prisma";
 import type { StorageProvider } from "@/infra/storage/types";
@@ -84,6 +85,9 @@ export interface Container {
   detectivesWindowRelease?: typeof JOURNEY_WINDOW_RELEASE;
   /** Prospective Explorers use the same single LOW judge, with their own source binding. */
   explorersOperationalRelease?: ExplorersOperationalRelease;
+  /** world-cost-rule/v1 for new operational drafts: alert above $5, stop and hold at $6 (Guy, 2026-11-20).
+   * Kingdom Detectives worlds take their kingdom-generation pin at checkout instead. */
+  worldCostRule?: WorldCostRule;
   /** Message Batches, for games pinned to it. Kept whenever credentials exist, so a
    * pinned game is never stranded by a later change to new-draft enrollment. */
   qualityBatch?: QualityBatchTransport;
@@ -166,7 +170,7 @@ function build(): Container {
     ...(e.APP_ENV === "qa" && e.LOCAL_PATCH_PAINTER === "sunburst-v1" ? { localPatchPainter: LOCAL_PATCH_SUNBURST_PAINTER } : {}),
     ...(e.LOCAL_PATCH_QUALITY_CHANNEL === "anthropic-batch-v1" ? { qualityChannel: QUALITY_BATCH_CHANNEL } : {}),
     ...(e.LOCAL_PATCH_LEAN === "lean-v1" ? { leanRelease: LOCAL_PATCH_LEAN_RELEASE } : {}),
-    ...(qualifiedDetectives ? {detectivesOperationalRelease:DETECTIVES_OPERATIONAL_RELEASE,explorersOperationalRelease:EXPLORERS_OPERATIONAL_RELEASE,
+    ...(qualifiedDetectives ? {detectivesOperationalRelease:DETECTIVES_OPERATIONAL_RELEASE,explorersOperationalRelease:EXPLORERS_OPERATIONAL_RELEASE,worldCostRule:WORLD_COST_RULE,
       ...(e.DETECTIVES_WINDOW_RELEASE==='v1'?{detectivesWindowRelease:JOURNEY_WINDOW_RELEASE}:{})}:{}),
     ...(e.GENERATION_PROVIDER === "openai" && e.ANTHROPIC_API_KEY?.trim() ? { qualityBatch: new AnthropicMessageBatches(e.ANTHROPIC_API_KEY) } : {}),
     // Kept whenever the credential exists, so an enrolled world is never stranded mid-poll.

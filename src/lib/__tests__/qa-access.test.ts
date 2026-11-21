@@ -88,6 +88,23 @@ describe("QA middleware and cron boundary", () => {
     expect(new URL(res.headers.get("location")!).pathname).toBe("/qa-access");
     expect(res.headers.get("cache-control")).toContain("no-store");
   });
+  it("lets a mail client fetch only the ready mail's flat JPEG pictures without a QA session", async () => {
+    setQaEnv();
+    for (const method of ["GET", "HEAD"]) {
+      const res = await middleware(new NextRequest("https://qa.findmeworlds.com/email/kingdom-castlegate-detectives-v1.jpg", { method }));
+      expect(res.headers.get("x-middleware-next")).toBe("1");
+      expect(res.headers.get("cache-control")).toBe("public, max-age=86400");
+      expect(res.headers.get("x-robots-tag")).toContain("noindex");
+    }
+    for (const path of ["/email/kingdom.png", "/email/kingdom.webp", "/email/sub/kingdom.jpg", "/email/Kingdom.jpg", "/email/kingdom.jpg.html",
+      "/email/", "/email", "/emails/kingdom.jpg", "/x/email/kingdom.jpg", "/scenes/kingdom-castlegate-detectives-v1/base.webp"]) {
+      const res = await middleware(new NextRequest(`https://qa.findmeworlds.com${path}`));
+      expect(res.status, path).toBe(307);
+      expect(new URL(res.headers.get("location")!).pathname, path).toMatch(/^\/qa-access\/?$/);
+    }
+    const post = await middleware(new NextRequest("https://qa.findmeworlds.com/email/kingdom-castlegate-detectives-v1.jpg", { method: "POST" }));
+    expect(post.status).toBe(401);
+  });
   it.each(["/api/dev/mock-pay", "/api/drafts/photo", "/api/webhooks/payment", "/api/jobs/tick", "/create", "/qa-access", "/_next/static/fake.js"])("blocks direct unauthenticated POST %s", async (path) => {
     setQaEnv();
     const res = await middleware(new NextRequest(`https://qa.findmeworlds.com${path}`, { method: "POST", headers: { "x-middleware-subrequest": "middleware:middleware:middleware:middleware:middleware", "x-vercel-protection-bypass": "fake", "cookie": "__Host-findme_qa=true" } }));

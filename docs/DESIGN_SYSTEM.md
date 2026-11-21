@@ -10,7 +10,7 @@ v1 ("cream paper + Fredoka + hard 4px shadows") was rejected as dated. v2 aims a
 2. **8px grid.** Every spacing, height, radius and line-height is a multiple of 8. `--space-0-5` (4px) only for icon/text nudges.
 3. **Tokens only.** No magic numbers in component CSS. A new colour is a new token.
 4. **Colour as structure.** Sections are full-width rounded "sheets" (`fm-sheet--night/sun/lavender/aqua/coral/lime`, radius 48) instead of borders and dividers. The site stays colourful on purpose (Guy, 2026-11-16: a neutral pass was "sad" and was reverted); what keeps it from being noise is the colour grammar below: every colour has a job and repeats it the same way everywhere.
-5. **Depth is soft.** Layered shadows (`--shadow-1..3`), glow on primary hover (`--shadow-glow-sun`), sticker outlines for anything that is "the child".
+5. **Depth is soft.** Layered shadows (`--shadow-1..3`), a fine edge on primary buttons (`--btn-sun-depth`), and sticker outlines for the child's portrait.
 6. **Motion with intent.** Scroll reveal (`.rv`), floating stickers, marquee, peeking demo child, 150/300/600/1200ms durations, `--ease-pop` for playful, `--ease-out` for UI. `prefers-reduced-motion` respected everywhere.
 7. **The kid never fails.** No red X, no hearts, no "try again". Wrong tap = ripple + pop.
 
@@ -76,7 +76,7 @@ Sits immediately after the hero, before the live demo. Three cards: the prepared
 - **Loading never reflows.** A busy button keeps its width: the label goes invisible under a centred spinner (`.fm-btn__label`, `aria-busy`). A disabled button explains itself with `cursor: not-allowed` and no lift; only a disabled link loses pointer events.
 - **Notes float, they do not push.** The turn tip is one dark pill over the board, above the collection button, gone on its own after seven seconds. Phones play upright (Guy, 2026-10-05): a phone held sideways is told to stand it up; a phone upright, and a tablet held either way, hear nothing (`src/game/engine/useTurnTip.ts`). Nothing in the game reflows the board to say something.
 - **Irreversible asks in our own dialog.** `ConfirmDialog` (`src/ui/ConfirmDialog.tsx`) is a native `<dialog>` dressed as `.fm-dialog`: title, one sentence, cancel and the destructive action; the form submits only after it, once.
-- **Phones keep the floors.** Every control a child presses reaches `--touch-kid` (64px) at every width: a live board raises `--touch-min` to 64px, so its tools, the HUD hint and Continue are drawn at 64px; the round strip and the "next place is open" toast use 64px buttons; the map's place names draw smaller with a transparent ring to the 64px target. Outside the child's screens `--touch-min` (48px) is the adult floor. The map, the bag, the finish card and the tip respect `env(safe-area-inset-*)`.
+- **Phones keep the floors.** Every control a child presses reaches `--touch-kid` (64px) at every width. This includes board tools, hints, Continue, the round strip, the next-place toast, and each map medal. Outside the child's screens `--touch-min` (48px) is the adult floor. The map, the bag, the finish card and the tip respect `env(safe-area-inset-*)`.
 - **Reduced motion is honoured everywhere.** Every loop added here (gift float and glow, breathing map dot, marching road, marketing Ken Burns and nudges) and every entrance is switched off under `prefers-reduced-motion`.
 
 ## Consistency rules (design pass, 2026-09-15)
@@ -109,7 +109,7 @@ Sits immediately after the hero, before the live demo. Three cards: the prepared
 - **The worlds step is a confirmation.** The worlds are a ladder (`outOfOrderWorlds`), so the only selection the server accepts is the first `want` of them: the step shows what the package includes and marks the rest "opens with a bigger package", with the package step one tap away. It used to offer a choice it could not deliver.
 - **A shelf is read at a glance.** A library card is a cover with the child lit in the tone of its state (`--sun-soft` ready, `--sea-soft` being made, `--paper-3` unfinished), a state pill with a dot on the corner, and one clear action. Every lifecycle status has parent-facing copy; a raw `PACKAGE_SELECTED` used to be printed as-is.
 - **The child's tools are buttons on a painting.** `.scene__btn` is a white glass circle with a white rim and an ink glyph, lit gold under a finger and squashed to `.88` on press; the icons are one chunky stroke family (map, magnifiers, frame, speaker), not a video player's hairlines.
-- **A screen fits its screen.** The map budgets its chrome (`--wmap-chrome`, larger when the parents' link is there) so the picture shrinks and the one obvious action is never under the fold.
+- **The map adapts to its frame.** The place medals follow three rows on upright maps and one trail on wide maps. The label and emblem identify the destination in the shared primary button below the trail.
 
 ## Reachable without a finger (audit A06/A07, 2026-09-15)
 

@@ -15,7 +15,8 @@ import { KINGDOM_DETECTIVE_PATCH_BOARDS } from "../../../../content/detectives/k
 import { KINGDOM_GENERATION_WINDOWS, KINGDOM_GENERATION_WINDOWS_V2_SHA256 } from '../../../../content/detectives/retained-window-v1';
 import { retainedWindowRegion } from '../../../domain/generation/retained-window';
 import { KINGDOM_COMPACT_REVIEW, KINGDOM_FLEX_OVERLOAD_COOLDOWN_MS, KINGDOM_PLAYABILITY_REVIEW, KINGDOM_GAMEPLAY_NEIGHBOR_REVIEW } from '../../../domain/generation/kingdom-generation';
-import { kingdomGenerationReleaseOf } from '../kingdom-generation-release';
+import { kingdomGenerationReleaseOf, kingdomV6RecoveryOf } from '../kingdom-generation-release';
+import { resumeKingdomCeilingRefunds } from '../kingdom-ceiling-refund';
 import { resumeKingdomNeighborReview, kingdomNeighborReviewOf } from '../kingdom-neighbor-review';
 import { pinDetectiveSourceScope, sealDetectiveSourceFamily } from "../source-family-scope";
 import { planWholeSourceContextRepair, stageWholeSourceContextRepair, nextWholeSourceContextWake, resumeWholeSourceContextRepair } from "../whole-source-context-repair";
@@ -51,7 +52,8 @@ import { SOURCE_FIGURE_ACTION, SOURCE_FIGURE_RETURN_VERSION, sourceFigureAuditId
 import { KINGDOM_FIGURE_RETURNS } from '../../../../content/detectives/kingdom/figure-return-v1';
 import { PLACEMENT_GUIDE_VERSION, PLACEMENT_GUIDE_V2_VERSION, placementGuideEditableRect } from "../../../domain/generation/placement-guide";
 import { PENDING_IMAGE_LEASE_MS } from "../../../domain/generation/pending-image-lease";
-import { ensureSingleMediumReviewPolicy } from "../single-medium-policy";
+import { ensureSingleMediumReviewPolicy, singleMediumReviewPolicyOf } from "../single-medium-policy";
+import { WORLD_COST_RULE, pinWorldCostRule, worldCostRuleOf, worldCostPolicyOf } from "../world-cost-rule";
 import { planQaCompletionCapacity,authorizeQaCompletionCapacity,readQaCompletionCapacity,qaCompletionCapacityStatus,
   planQaCompletionRecovery,resumeQaCompletionRecovery,nextQaCompletionRecovery } from "../qa-completion-capacity";
 import { qaCompletionCapacityId,QA_COMPLETION_CAP,QA_KINGDOM_COMPLETION_CAP,QA_KINGDOM_COMPLETION_CONFIRMATION,
@@ -174,7 +176,7 @@ afterAll(async () => {
   if (path.dirname(directory) === realpathSync(tmpdir()) && path.basename(directory).startsWith("findme-detective-world-")) rmSync(directory, { recursive: true });
 });
 
-async function newDetectiveWorld(gameId: string, ageYears=8, born=false, explorer=false, kingdom=false, windows=false, sunburst=false) {
+async function newDetectiveWorld(gameId: string, ageYears=8, born=false, explorer=false, kingdom=false, windows=false, sunburst=false, costRule=false) {
   const version = explorer ? 12 : 13, level = explorer ? "explorers" : "detectives";
   const journey = new Set(boardsOfWorlds(["journey"]));
   const kingdomBoards=new Set(boardsOfWorlds(["kingdom"]));
@@ -202,6 +204,7 @@ async function newDetectiveWorld(gameId: string, ageYears=8, born=false, explore
     } else await pinLocalPatchSourceFamily(tx, gameId, { sceneVersion: version, searchLevel: level });
     if(born && explorer) await pinExplorersOperationalPolicy(tx,gameId,EXPLORERS_OPERATIONAL_RELEASE,c.storage.id);
     else if(born && !kingdom && !windows)await pinDetectivesOperationalPolicy(tx,gameId,DETECTIVES_OPERATIONAL_RELEASE,c.storage.id);
+    if(costRule)await pinWorldCostRule(tx,gameId,WORLD_COST_RULE);
   });
   if(kingdom||windows) await db.childProfile.update({where:{id:profile.id},data:{identityAssetId:profile.identityAssetId,avatarAssetId:profile.avatarAssetId}});
   if(born)await db.childProfile.update({where:{id:"chl-"+gameId},data:{originalPhotoAssetId:"ast-photo-"+gameId}});
@@ -3667,6 +3670,110 @@ it("completes a fresh Explorer Journey with 27 images and exactly 27 combined ME
   expect(request).not.toHaveBeenCalled(); expect(diagnose).not.toHaveBeenCalled(); expect(fetch).not.toHaveBeenCalled();
 },1500000);
 
+it("world-cost-rule/v1: a fresh Explorer Journey with the six-dollar rule completes with 27 images and 27 MEDIUM assessments, every from-birth policy intact", async () => {
+  const gameId = "explorer-born-cost-rule-synthetic";
+  await newDetectiveWorld(gameId, 8, true, true, false, false, false, true);
+  expect(await worldCostRuleOf(db, gameId)).toMatchObject({ version: WORLD_COST_RULE, targetMicroUsd: 4_000_000, alertAboveMicroUsd: 5_000_000,
+    ceilingMicroUsd: 6_000_000, ceilingOutcome: "hold", automaticBudgetExtension: false });
+  expect((await boardWizardBudgetOf(c).audit(boardWizardWorldId(gameId))).capMicroUsd).toBe(6_000_000);
+  // The original from-birth pin is unchanged: the rule sits beside it and only moves the ceiling.
+  expect(await explorersOperationalPolicyOf(db,gameId)).toMatchObject({effort:"low",worldCapMicroUsd:4000000});
+  const context = await resolveLocalPatchBoardsForGame(db, gameId, 12);
+  const journey = new Set(boardsOfWorlds(["journey"]));
+  const hides = context.boards.filter(board => journey.has(board.board)).flatMap(board => board.hides);
+  const provider = controlledSol(false, false, undefined, false, false, 12);
+  const request = vi.fn(async () => { throw Error("A prospective Explorer cannot buy a historical HIGH review"); });
+  const diagnose = vi.fn(async () => { throw Error("Clean synthetic results cannot buy a diagnosis"); });
+  const container = { ...c, visualReview: { request }, backgroundReview: provider.fake } as Container;
+  const render = vi.fn<LocalPatchHideDeps["render"]>(async ({requestKey, stylePng, subjectQuality}) => {
+    expect(subjectQuality).toBe("medium"); expect(requestKey.endsWith(":render:1")).toBe(true);
+    const hide = hides.find(hide => requestKey.startsWith(hide.id + ":")); if (!hide) throw Error("Unknown synthetic Explorer hide");
+    const mask = maskForHide(hide);
+    const figure = await sharp({create:{width:Math.round(mask.width*0.6),height:Math.round(mask.height*0.8),channels:4,background:"#1e3ca0"}}).png().toBuffer();
+    const png = await sharp(stylePng).composite([{input:figure,left:mask.left+Math.round(mask.width*0.2),top:mask.top+Math.round(mask.height*0.2)}]).png().toBuffer();
+    return paintedOk(png, bill(requestKey, 50000));
+  });
+  const deps: LocalPatchHideDeps = { readBoardArt: readArt, renderPolicySha256: localPatchRenderPolicySha256(LOCAL_PATCH_IMAGE_POLICY), render,
+    judge: async () => { throw Error("Per-hide historical judge forbidden"); } };
+  let result = { pending:true, attention:null as string|null }, ticks=0;
+  while (result.pending && ticks++ < 900) {
+    result = await runLocalPatchWorldSlice(container, deps, gameId, {hardDeadlineAt:Date.now()+270000,diagnose});
+    expect(result.attention).toBeNull();
+  }
+  expect(result.pending).toBe(false); expect(render).toHaveBeenCalledTimes(27); expect(provider.creates).toHaveLength(27);
+  const game = await db.game.findUniqueOrThrow({where:{id:gameId}});
+  expect(["READY","DELIVERED"]).toContain(game.status);
+  const rows = await db.targetVariantAsset.findMany({where:{variant:"A",targetInstance:{gameScene:{gameId}}}});
+  for (const row of rows) {
+    expect(row.status).toBe("GENERATED"); expect(row.attempts).toBe(1);
+    expect(JSON.parse(row.judgeJson!).boardReview.dual.single).toBe(SINGLE_MEDIUM_VISUAL_REVIEW_VERSION);
+  }
+  // The MEDIUM review pin reads its ceiling from the world's own pin.
+  expect(await singleMediumReviewPolicyOf(db, gameId)).toMatchObject({ worldCapMicroUsd: 6_000_000, automaticBudgetExtension: false });
+  expect(await boardWizardBudgetOf(container).audit(boardWizardWorldId(gameId))).toMatchObject({capMicroUsd:6_000_000,held:false,pendingRequestKeys:[],unknownRequestKeys:[]});
+  expect(await db.auditLog.count({where:{entityId:gameId,actorType:"ADMIN"}})).toBe(0);
+  expect(request).not.toHaveBeenCalled(); expect(diagnose).not.toHaveBeenCalled(); expect(fetch).not.toHaveBeenCalled();
+},1500000);
+
+it("world-cost-rule/v1: a fresh Journey Detective world is told above five dollars and keeps going; at six it stops and is held, with no refund and no parent mail", async () => {
+  const gameId = "journey-cost-rule-ceiling-synthetic";
+  await newDetectiveWorld(gameId, 8, true, false, false, false, false, true);
+  expect(await worldCostPolicyOf(db, gameId)).toEqual({ version: WORLD_COST_RULE, ceilingMicroUsd: 6_000_000, alertAboveMicroUsd: 5_000_000,
+    targetMicroUsd: 4_000_000, ceilingOutcome: "hold" });
+  expect(await detectivesOperationalPolicyOf(db, gameId)).toMatchObject({ worldCapMicroUsd: 4000000 });
+  const budget = boardWizardBudgetOf(c), worldId = boardWizardWorldId(gameId);
+  expect((await budget.audit(worldId)).capMicroUsd).toBe(6_000_000);
+  // The first MEDIUM review can still pin itself against the world's own ceiling.
+  await ensureSingleMediumReviewPolicy(c, gameId, async () => {});
+  expect(await singleMediumReviewPolicyOf(db, gameId)).toMatchObject({ worldCapMicroUsd: 6_000_000 });
+  const mails: EmailMessage[] = [], send = c.email.send;
+  c.email.send = async (message: EmailMessage) => { mails.push(message); return { id: 'synthetic-mail-' + mails.length }; };
+  try {
+    // Four dollars is not a stop: a purchase above it is admitted like any other.
+    await spendTo(c, gameId, 4_100_000);
+    expect(await noticeKingdomCostAboveAlert(c, gameId)).toBe(false);
+    await budget.reserve(worldId, { requestKey: 'synthetic-rule-above-four-paint', scope: 'image', operationFingerprint: 'b'.repeat(64), reserveMicroUsd: 120_000 });
+    await budget.settle(worldId, 'synthetic-rule-above-four-paint', bill('synthetic-rule-above-four-' + gameId, 50_000));
+    // Above five: told, and the world still buys.
+    await spendTo(c, gameId, 5_100_000);
+    expect(await noticeKingdomCostAboveAlert(c, gameId)).toBe(true);
+    const above = mails.filter(m => m.tag === 'admin-alert' && m.subject.includes('$5'));
+    expect(above.length).toBeGreaterThan(0);
+    expect(above[0]!.text).toContain('$6.00');
+    await budget.reserve(worldId, { requestKey: 'synthetic-rule-above-five-paint', scope: 'image', operationFingerprint: 'c'.repeat(64), reserveMicroUsd: 120_000 });
+    await budget.settle(worldId, 'synthetic-rule-above-five-paint', bill('synthetic-rule-above-five-' + gameId, 50_000));
+    // At six: nothing in flight and the first painting does not fit. The world stops; nothing is bought or refunded.
+    await spendTo(c, gameId, 5_950_000);
+    const forbidden = vi.fn(async () => { throw Error('Unexpected provider dispatch at the ceiling'); });
+    const refund = vi.fn(async () => ({ ok: true, providerRefundId: 'synthetic-refund' }));
+    const container = { ...c, visualReview: { request: forbidden }, backgroundReview: {}, payment: { id: 'mock', refund } } as unknown as Container;
+    const deps = { render: forbidden, judge: forbidden, readBoardArt: readArt, renderPolicySha256: localPatchRenderPolicySha256(LOCAL_PATCH_IMAGE_POLICY) } as unknown as LocalPatchHideDeps;
+    let result = await runLocalPatchWorldSlice(container, deps, gameId, { hardDeadlineAt: Date.now() + 270_000, diagnose: forbidden });
+    for (let tick = 0; tick < 4 && result.pending; tick++)
+      result = await runLocalPatchWorldSlice(container, deps, gameId, { hardDeadlineAt: Date.now() + 270_000, diagnose: forbidden });
+    expect(result.pending).toBe(false);
+    expect(result.attention).toContain('world-cost-rule/v1');
+    expect(result.attention).toContain('stopped at its $6.00 ceiling');
+    expect(result.attention).toContain('no automatic refund');
+    expect(forbidden).not.toHaveBeenCalled();
+    expect(refund).not.toHaveBeenCalled();
+    const game = await db.game.findUniqueOrThrow({ where: { id: gameId }, include: { orders: true } });
+    expect(game.status).toBe('GENERATION_FAILED');
+    expect(game.orders.map(o => o.paymentStatus)).toEqual(['PAID']);
+    expect(await db.auditLog.count({ where: { id: `aud_ceiling_refund_${gameId}` } })).toBe(0);
+    expect(await db.generationJob.findUniqueOrThrow({ where: { id: 'job_' + gameId } })).toMatchObject({ status: 'FAILED', currentStep: LOCAL_PATCH_CEILING_CLOSED });
+    expect(mails.filter(m => m.tag === 'game-refunded')).toHaveLength(0);
+    const held = mails.filter(m => m.tag === 'admin-alert' && m.subject.includes('נעצר בתקרה'));
+    expect(held.length).toBeGreaterThan(0);
+    expect(held[0]!.text).toContain('$6.00');
+    expect(await tickGeneration(container, gameId, 1_000)).toMatchObject({ pending: false });
+    expect(await resumeKingdomCeilingRefunds(container)).toBe(0);
+    expect(forbidden).not.toHaveBeenCalled();
+    expect(refund).not.toHaveBeenCalled();
+    expect((await budget.audit(worldId)).committedMicroUsd).toBe(5_950_000);
+  } finally { c.email.send = send; }
+}, 600_000);
+
 
 it("resumes v3 and v4 Explorer guided thirds through one fresh MEDIUM each and normal all-27 publication", async () => {
   vi.useFakeTimers({ toFake: ["Date"] });
@@ -5220,6 +5327,61 @@ it('kingdom-generation/v6: one notice above five dollars never stops the world, 
     expect(forbidden).not.toHaveBeenCalled();
     expect(refund).toHaveBeenCalledTimes(1);
     expect((await budget.audit(worldId)).committedMicroUsd).toBe(6_750_000);
+  } finally { c.email.send = send; }
+}, 600_000);
+
+it('kingdom-generation/v7: above five dollars the world keeps going; at six it stops and is held for a person, with no refund and no parent mail', async () => {
+  fixture.kingdomRelease = 'v7';
+  const gameId = 'kingdom-v7-ceiling-synthetic';
+  await newDetectiveWorld(gameId, 8, true, false, true, false, true);
+  fixture.kingdomRelease = 'v1';
+  expect(await kingdomGenerationReleaseOf(db, gameId)).toMatchObject({ version: 'kingdom-generation/v7', worldCapMicroUsd: 6_000_000,
+    alertAboveMicroUsd: 5_000_000, targetMicroUsd: 4_000_000, ceilingOutcome: 'hold', automaticBudgetExtension: false });
+  // Every v6 recovery applies to v7.
+  expect(await kingdomV6RecoveryOf(db, gameId)).toBe(true);
+  const budget = boardWizardBudgetOf(c), worldId = boardWizardWorldId(gameId);
+  expect((await budget.audit(worldId)).capMicroUsd).toBe(6_000_000);
+  const mails: EmailMessage[] = [], send = c.email.send;
+  c.email.send = async (message: EmailMessage) => { mails.push(message); return { id: 'synthetic-mail-' + mails.length }; };
+  try {
+    // Four dollars is not a stop; above five the service is told once and the world still buys.
+    await spendTo(c, gameId, 5_100_000);
+    expect(await noticeKingdomCostAboveAlert(c, gameId)).toBe(true);
+    const above = mails.filter(m => m.tag === 'admin-alert' && m.subject.includes('$5'));
+    expect(above.length).toBeGreaterThan(0);
+    expect(above[0]!.text).toContain('$6.00');
+    await budget.reserve(worldId, { requestKey: 'synthetic-v7-above-five-paint', scope: 'image', operationFingerprint: 'c'.repeat(64), reserveMicroUsd: 150_000 });
+    await budget.settle(worldId, 'synthetic-v7-above-five-paint', bill('synthetic-v7-above-five-' + gameId, 63_500));
+    // At six: nothing in flight, the next painting does not fit. The world stops; nothing is bought, nothing refunded.
+    await spendTo(c, gameId, 5_750_000);
+    const forbidden = vi.fn(async () => { throw Error('Unexpected provider dispatch at the ceiling'); });
+    const refund = vi.fn(async () => ({ ok: true, providerRefundId: 'synthetic-refund' }));
+    const container = { ...c, visualReview: { request: forbidden }, backgroundReview: {}, payment: { id: 'mock', refund } } as unknown as Container;
+    const deps = { render: forbidden, judge: forbidden, readBoardArt: readArt, renderPolicySha256: localPatchRenderPolicySha256(LOCAL_PATCH_SUNBURST_IMAGE_POLICY) } as unknown as LocalPatchHideDeps;
+    let result = await runLocalPatchWorldSlice(container, deps, gameId, { hardDeadlineAt: Date.now() + 270_000, diagnose: forbidden });
+    for (let tick = 0; tick < 4 && result.pending; tick++)
+      result = await runLocalPatchWorldSlice(container, deps, gameId, { hardDeadlineAt: Date.now() + 270_000, diagnose: forbidden });
+    expect(result.pending).toBe(false);
+    expect(result.attention).toContain('stopped at its $6.00 ceiling');
+    expect(result.attention).toContain('no automatic refund');
+    expect(forbidden).not.toHaveBeenCalled();
+    expect(refund).not.toHaveBeenCalled();
+    const game = await db.game.findUniqueOrThrow({ where: { id: gameId }, include: { orders: true } });
+    expect(game.status).toBe('GENERATION_FAILED');
+    expect(game.orders.map(o => o.paymentStatus)).toEqual(['PAID']);
+    expect(await db.auditLog.count({ where: { id: `aud_ceiling_refund_${gameId}` } })).toBe(0);
+    expect(await db.generationJob.findUniqueOrThrow({ where: { id: 'job_' + gameId } })).toMatchObject({ status: 'FAILED', currentStep: LOCAL_PATCH_CEILING_CLOSED });
+    // The service is told; the parent is not written to.
+    expect(mails.filter(m => m.tag === 'game-refunded')).toHaveLength(0);
+    const held = mails.filter(m => m.tag === 'admin-alert' && m.subject.includes('נעצר בתקרה'));
+    expect(held.length).toBeGreaterThan(0);
+    expect(held[0]!.text).toContain('$6.00');
+    // Never claimed, re-entered or refunded later either.
+    expect(await tickGeneration(container, gameId, 1_000)).toMatchObject({ pending: false });
+    expect(await resumeKingdomCeilingRefunds(container)).toBe(0);
+    expect(forbidden).not.toHaveBeenCalled();
+    expect(refund).not.toHaveBeenCalled();
+    expect((await budget.audit(worldId)).committedMicroUsd).toBe(5_750_000);
   } finally { c.email.send = send; }
 }, 600_000);
 

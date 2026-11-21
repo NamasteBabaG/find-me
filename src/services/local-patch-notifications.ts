@@ -6,6 +6,7 @@ import type { Container } from "./container";
 import { ensurePlayerLink, tokenForLink } from "./share-link.service";
 import { hashToken } from "../lib/ids";
 import { gameReadyEmail } from "./email/templates";
+import { readyMailHero } from "./email/ready-hero";
 import { routeMail } from "./email/fallback";
 import { IDENTITY_GATE_ACTION, identityGateReceiptOf } from "./generation/board-wizard-identity-gate";
 import { JUDGE_CHECKS } from "./generation/local-patch-judge";
@@ -94,10 +95,11 @@ export async function enqueueLocalPatchNotifications(c: Container, tx: Prisma.Tr
   if (game.deletedAt || !game.childProfile || !["READY", "DELIVERED"].includes(game.status)) throw new Error("Notifications require a published owned game");
   const configSha256 = sha(JSON.stringify(config));
   const link = await ensurePlayerLink({ ...c, db: tx as Container["db"] }, gameId);
+  const locale = game.locale === "he" ? "he" : "en";
   const ready = routeMail(gameReadyEmail({ to: game.owner?.email ?? "", childName: game.childProfile.displayName,
     playLink: link.url, libraryLink: `${c.appUrl}/library/${gameId}`, sceneCount: config.scenes.length,
     targetCount: config.scenes.reduce((total, scene) => total + scene.targets.length, 0),
-    locale: game.locale === "he" ? "he" : "en", playMode: "find-any" }), c.emailFallbackTo);
+    locale, playMode: "find-any", hero: readyMailHero(c.appUrl, game.scenes, locale) }), c.emailFallbackTo);
   const shippedTargets = new Map(config.scenes.map(scene => [scene.slug, new Set(scene.targets.map(target => target.id))]));
   const rows = game.scenes.flatMap(scene => scene.targets.filter(target => shippedTargets.get(scene.sceneSlug)?.has(target.targetId)).flatMap(target => target.variants.filter(row => row.variant === "A" && row.status === "GENERATED")
     .map(row => ({ assetId: row.assetId, judgeJson: row.judgeJson, board: scene.sceneSlug, targetId: target.targetId }))));

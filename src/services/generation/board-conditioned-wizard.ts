@@ -41,6 +41,7 @@ import { readLocalPatchEmergencyBudget } from "./local-patch-budget-recovery";
 import { readNewQaWorldBudget } from "./local-patch-qa-budget";
 import { readLeanWorldBudget } from "./lean-release";
 import { readKingdomGenerationBudget } from './kingdom-generation-release';
+import { readWorldCostRuleBudget } from "./world-cost-rule";
 import { recoverBoardOccludedUpperBody, type BoardUpperBodyRecoveryRequest } from "./board-upper-body-recovery";
 import { prepareBoardUpperBodyRecoveryPlayerBoard, bindBoardUpperBodyRecoveryPlayerGame } from "./board-conditioned-player";
 
@@ -124,7 +125,9 @@ export async function readBoardWizardBudgetAuthority(c: Container, worldId: stri
   if (kingdomCeiling) return kingdomCeiling;
   // The explicit five-dollar completion of one existing game is read first and is
   // exclusive: it throws beside any other completion grant (never a sum or fallback).
-  return await readQaFiveCompletionBudget(c, worldId) ?? await readQaCompletionCapacity(c, worldId) ?? await readDetectivesCompletionBudget(c, worldId) ?? await readLeanCapacityRecoveryBudget(c, worldId) ?? await readLeanCompletionBudget(c, worldId) ?? await readLeanWorldBudget(c, worldId)
+  // world-cost-rule/v1 (a new Explorer or Journey Detective world) replaces the lean world's four dollars with its own six.
+  return await readQaFiveCompletionBudget(c, worldId) ?? await readQaCompletionCapacity(c, worldId) ?? await readDetectivesCompletionBudget(c, worldId) ?? await readLeanCapacityRecoveryBudget(c, worldId) ?? await readLeanCompletionBudget(c, worldId)
+    ?? await readWorldCostRuleBudget(c, worldId) ?? await readLeanWorldBudget(c, worldId)
     ?? await readNewQaWorldBudget(c, worldId) ?? await readLocalPatchEmergencyBudget(c, worldId) ?? readBoardWizardBudgetExtension(c, worldId);
 }
 function budgetOf(c: Container, attempt = 1, options: WorldBudgetOptions = {}) { return boardWizardBudget(new CasWorldBudgetRepository(new PrismaWorldBudgetStore(c.db)), attempt, options,

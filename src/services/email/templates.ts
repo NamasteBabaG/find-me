@@ -1,11 +1,13 @@
 import type { EmailMessage } from "@/infra/email/types";
 import { dirOf, getDict, tf, type Locale } from "@/i18n";
 import { escapeHtml } from "./html";
+import type { ReadyMailHero } from "./ready-hero";
 
 /**
  * Transactional emails in the recipient's language. Warm, one big button,
- * no marketing. Inline styles and tables only (email clients, Outlook too);
- * no images, so nothing depends on a host the mail client may not reach.
+ * no marketing. Inline styles and tables only (email clients, Outlook too).
+ * The only picture is the ready mail's child-free board (`ready-hero.ts`);
+ * every message reads and works with pictures blocked.
  */
 const P = {
   page: "#FBF6EC",
@@ -26,7 +28,24 @@ interface LayoutOptions {
   preheader?: string;
   /** Short messages read best centred; lists (the admin mail) keep the reading edge. */
   align?: "center" | "start";
+  /** A board across the top of the card, and the world's name above the title. */
+  hero?: ReadyMailHero;
 }
+
+/** The board, flush with the card's rounded top; while it loads or is blocked, the world's colour and its name. */
+function heroRow(hero: ReadyMailHero): string {
+  const tint = tintOf(hero);
+  return `<tr><td bgcolor="${tint}" style="background:${tint};border-radius:28px 28px 0 0;padding:0;">
+          <img src="${escapeHtml(hero.src)}" width="520" alt="${escapeHtml(hero.worldTitle)}" style="display:block;width:100%;max-width:520px;height:auto;border:0;outline:none;text-decoration:none;border-radius:28px 28px 0 0;font-family:${FONT};font-size:16px;line-height:24px;font-weight:700;color:${P.ink};">
+        </td></tr>`;
+}
+
+/** A colour reaches a style attribute only as a plain hex value. */
+const tintOf = (hero: ReadyMailHero) => /^#[0-9A-Fa-f]{6}$/.test(hero.tint) ? hero.tint : P.panel;
+
+/** Which world this is, on a soft pill of the world's own colour. */
+const worldPill = (hero: ReadyMailHero) =>
+  `<p style="margin:0 0 14px;"><span style="display:inline-block;padding:6px 16px;border-radius:999px;background:${tintOf(hero)};font-family:${FONT};font-size:14px;line-height:20px;font-weight:700;color:${P.ink};">${escapeHtml(hero.worldTitle)}</span></p>`;
 
 function layout(locale: Locale, title: string, bodyHtml: string, options: LayoutOptions = {}): string {
   const t = getDict(locale);
@@ -45,7 +64,9 @@ function layout(locale: Locale, title: string, bodyHtml: string, options: Layout
     </td></tr>
     <tr><td bgcolor="${P.card}" style="background:${P.card};border-radius:28px;box-shadow:0 14px 34px rgba(23,22,43,0.07);">
       <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
-        <tr><td style="padding:28px 30px 32px;text-align:${align};">
+        ${options.hero ? heroRow(options.hero) : ""}
+        <tr><td style="padding:${options.hero ? "24px" : "28px"} 30px 32px;text-align:${align};">
+          ${options.hero ? worldPill(options.hero) : ""}
           <h1 style="margin:0 0 12px;font-family:${FONT};font-size:28px;line-height:36px;font-weight:800;color:${P.ink};">${escapeHtml(title)}</h1>
           ${bodyHtml}
         </td></tr>
@@ -83,8 +104,9 @@ export function magicLinkEmail(input: { to: string; link: string; locale: Locale
   };
 }
 
-/** `libraryLink` is absent when the game has no owner account to open a library for. */
-export function gameReadyEmail(input: { to: string; childName: string; playLink: string; libraryLink?: string; sceneCount: number; locale: Locale; playMode?: "find-any"; targetCount?: number }): EmailMessage {
+/** `libraryLink` is absent when the game has no owner account to open a library for.
+ * `hero` is the child-free first board of the game's world (`readyMailHero`); without one the mail is text only. */
+export function gameReadyEmail(input: { to: string; childName: string; playLink: string; libraryLink?: string; sceneCount: number; locale: Locale; playMode?: "find-any"; targetCount?: number; hero?: ReadyMailHero | null }): EmailMessage {
   const r = getDict(input.locale).email.ready;
   const vars = { name: input.childName, count: input.sceneCount, stars: input.targetCount ?? input.sceneCount * 5, play: input.playLink, library: input.libraryLink ?? "" };
   const variableWorld = input.targetCount !== undefined && input.targetCount !== input.sceneCount * 5;
@@ -104,6 +126,7 @@ export function gameReadyEmail(input: { to: string; childName: string; playLink:
     html: layout(input.locale, tf(r.title, vars), `${paragraph(body)}${button(input.playLink, r.button)}${manage}`, {
       preheader: body,
       align: "center",
+      ...(input.hero ? { hero: input.hero } : {}),
     }),
     text: (input.playMode === "find-any" ? `${body}\n${r.text}` : r.text)
       .split("\n")
@@ -127,10 +150,12 @@ export function gameRefundedEmail(input: { to: string; childName: string; locale
 }
 
 export type AdminAlertKind = "delivered-with-problems" | "held-for-review" | "generation-failed" | "needs-new-photo" | "generation-stalled"
-  | "cost-above-alert" | "ceiling-refunded" | "ceiling-notice-failed" | "ready-mail-failed";
+  | "cost-above-alert" | "ceiling-refunded" | "ceiling-notice-failed" | "ready-mail-failed" | "ceiling-held";
 
 const ALERT_HEAD: Record<AdminAlertKind, { subject: string; lead: string }> = {
-  "cost-above-alert": { subject: "💸 העולם של {name} עבר $5", lead: "העלות המחויבת של העולם עברה את סף ההתראה של $5. העולם ממשיך לעבוד כרגיל. התקרה הקשיחה היא $7: שם העולם נסגר וההזמנה מוחזרת אוטומטית." },
+  "cost-above-alert": { subject: "💸 העולם של {name} עבר $5", lead: "העלות המחויבת של העולם עברה את סף ההתראה של $5. העולם ממשיך לעבוד כרגיל. מה קורה בתקרה, כתוב בפרטים." },
+  // kingdom-generation/v7 and world-cost-rule/v1 (Guy, 2026-11-20): stopped at the ceiling and held for him; no refund, no parent mail.
+  "ceiling-held": { subject: "🛑 העולם של {name} נעצר בתקרה", lead: "העולם הגיע לתקרה בלי להשלים את כל המחבואים ונעצר: לא נקנה בשבילו שום דבר נוסף. לא בוצע החזר ולא נשלחה הודעה להורה. אפשר לנסות להציל אותו מהאדמין, או להחזיר משם את הכסף." },
   "ceiling-refunded": { subject: "↩️ העולם של {name} הגיע לתקרת $7 והוחזר", lead: "העולם הגיע לתקרה הקשיחה של $7 בלי להשלים את כל המחבואים. הוא נסגר וההזמנה הוחזרה אוטומטית; הודעה להורה נשלחת בנפרד. כדאי לבדוק באדמין מה עצר אותו." },
   "ceiling-notice-failed": { subject: "📭 הודעת ההחזר להורה של {name} לא נשלחה", lead: "ההחזר בתקרת $7 בוצע, אבל ההודעה להורה לא נשלחה אחרי שלושה ניסיונות. יש ליצור קשר עם ההורה." },
   "ready-mail-failed": { subject: "📭 מייל ״המשחק מוכן״ של {name} לא נשלח", lead: "המשחק מוכן ואפשר לשחק בו, אבל המייל להורה לא נשלח אחרי שלושה ניסיונות. אפשר לשלוח שוב מדף המשחק באדמין או ליצור קשר עם ההורה." },

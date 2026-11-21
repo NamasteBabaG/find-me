@@ -3,6 +3,7 @@ import { statusOf, transitionGame } from "./game-status";
 import { ensurePlayerLink } from "./share-link.service";
 import { createMagicLink } from "./auth.service";
 import { gameReadyEmail } from "./email/templates";
+import { readyMailHero } from "./email/ready-hero";
 import { isPlayable } from "@/domain/order-state";
 import { routeMail } from "./email/fallback";
 import { deleteAsset } from "./asset.service";
@@ -91,7 +92,7 @@ export async function deliverGameMail(c: Container, gameId: string, actor: Actor
       if (published.success) targetCount = published.data.scenes.reduce((total, scene) => total + scene.targets.length, 0);
     } catch { /* Legacy games without a parsed config retain their original copy. */ }
     const mail = gameReadyEmail({ to: owner?.email ?? "", childName: game.childProfile.displayName, playLink: link.url, libraryLink, sceneCount: game.scenes.length, locale,
-      targetCount,
+      targetCount, hero: readyMailHero(c.appUrl, game.scenes, locale),
       ...(game.scenes.length > 0 && game.scenes.every(scene => isLocalPatchAdvisoryVersion(scene.sceneVersion)) ? { playMode: "find-any" as const } : {}) });
     // A game with nobody to send it to is a game nobody will open. Until every
     // path into a paid game guarantees an address, an operator's inbox takes

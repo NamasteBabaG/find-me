@@ -18,9 +18,13 @@ vi.mock("@/services/generation/subject-upgrade", async importOriginal => ({
   openAdmittedInterruptions: mocks.admittedInterruptions,
 }));
 vi.mock("@/services/generation/lean-release", () => ({ readLeanWorldBudget: mocks.leanBudget }));
-// The v6 pin's constants are read at module load (single-medium-policy); only the budget reader is controlled here.
+// The v6/v7 pins' constants are read at module load (single-medium-policy); only the budget reader is controlled here.
 vi.mock("@/services/generation/kingdom-generation-release", () => ({ readKingdomGenerationBudget: mocks.kingdomBudget,
-  KINGDOM_GENERATION_V6: "kingdom-generation/v6", KINGDOM_V6_CEILING_MICRO_USD: 7_000_000 }));
+  KINGDOM_GENERATION_V6: "kingdom-generation/v6", KINGDOM_V6_CEILING_MICRO_USD: 7_000_000,
+  KINGDOM_GENERATION_V7: "kingdom-generation/v7", KINGDOM_V7_CEILING_MICRO_USD: 6_000_000 }));
+// world-cost-rule/v1 has no pin in these worlds: its readers answer "none", like the lean reader above when unset.
+vi.mock("@/services/generation/world-cost-rule", () => ({ readWorldCostRuleBudget: async () => null,
+  worldCostPolicyOf: async () => null, worldCeilingMicroUsdOf: async () => null }));
 vi.mock("@/lib/server/qa-access", () => ({ qaAccessDenied: mocks.denied }));
 vi.mock("@/lib/server/session", () => ({ currentUser: mocks.user, draftTokenFromCookie: async () => mocks.token, isAdminEmail: () => mocks.admin }));
 vi.mock("@/services/container", () => ({ getContainer: () => ({ db: { game: { findUnique: mocks.game }, asset: { findUnique: mocks.asset }, generationJob: { findUnique: mocks.job }, worldBudgetLedger: { findUnique: mocks.ledger } }, email: { id: "console" } }) }));

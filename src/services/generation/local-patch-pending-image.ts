@@ -10,7 +10,8 @@ import { LocalPatchRetainedPurchaseStore, fenceLocalPatchImages } from "./local-
 import { singleLowReviewAuthorization } from "./single-low-policy";
 import type { WorldBudgetRequest } from "./world-budget";
 import { KINGDOM_IMAGE_INTERRUPTION_MAX_ATTEMPT } from "../../domain/generation/kingdom-image-interruption";
-import { KINGDOM_V6_CEILING_MICRO_USD, kingdomV6RecoveryOf } from "./kingdom-generation-release";
+import { kingdomV6RecoveryOf } from "./kingdom-generation-release";
+import { worldCeilingMicroUsdOf } from "./world-cost-rule";
 
 const observationId = (gameId: string, key: string) => "aud_pending_image_" + hash([gameId, key]);
 const closureId = (gameId: string, key: string) => "aud_abandoned_image_" + hash([gameId, key]);
@@ -62,7 +63,8 @@ export async function reconcilePendingLocalPatchImages(c: Container, gameId: str
     || game.orders.some(o => o.refundedAt || o.paymentStatus === "REFUNDED")) return 0;
   const worldId = boardWizardWorldId(gameId), budget = boardWizardBudgetOf(c), audit = await budget.audit(worldId);
   const kingdom = await kingdomV6RecoveryOf(c.db, gameId);
-  if (audit.capMicroUsd !== (kingdom ? KINGDOM_V6_CEILING_MICRO_USD : 4000000) || audit.overCapMicroUsd || audit.conflictRequestKeys.length || audit.overrunRequestKeys.length) return 0;
+  // The world's own pinned ceiling (kingdom v6/v7, world-cost-rule/v1), else four dollars.
+  if (audit.capMicroUsd !== (await worldCeilingMicroUsdOf(c.db, gameId) ?? 4000000) || audit.overCapMicroUsd || audit.conflictRequestKeys.length || audit.overrunRequestKeys.length) return 0;
   const store = new LocalPatchRetainedPurchaseStore(c, gameId, budget);
   let closed = 0;
   for (const key of audit.pendingRequestKeys) {

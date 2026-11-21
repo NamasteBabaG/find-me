@@ -20,6 +20,11 @@ export const KINGDOM_GENERATION_V6 = 'kingdom-generation/v6';
 export const KINGDOM_V6_CEILING_MICRO_USD = 7_000_000;
 export const KINGDOM_V6_ALERT_MICRO_USD = 5_000_000;
 export const KINGDOM_V6_TARGET_MICRO_USD = 4_000_000;
+/** kingdom-generation/v7 (Guy, 2026-11-20): the same $4 target and $5 alert, a $6 ceiling, and at the ceiling the
+ * world STOPS and the service is told, with no automatic refund: a person tries to save it first. Every v6 recovery
+ * applies. v6 is unchanged for the worlds pinned to it. */
+export const KINGDOM_GENERATION_V7 = 'kingdom-generation/v7';
+export const KINGDOM_V7_CEILING_MICRO_USD = 6_000_000;
 const KINGDOM_GENERATION_POLICY = Object.freeze({
   version: KINGDOM_GENERATION_RELEASE, world: 'kingdom', prospectiveOnly: true,
   windowsSha256: KINGDOM_GENERATION_WINDOWS_SHA256,
@@ -44,10 +49,13 @@ const KINGDOM_GENERATION_POLICY_V6 = Object.freeze({
   ...KINGDOM_GENERATION_POLICY_V5, version: KINGDOM_GENERATION_V6, worldCapMicroUsd: KINGDOM_V6_CEILING_MICRO_USD,
   alertAboveMicroUsd: KINGDOM_V6_ALERT_MICRO_USD, targetMicroUsd: KINGDOM_V6_TARGET_MICRO_USD, ceilingOutcome: 'refund',
 } as const);
+const KINGDOM_GENERATION_POLICY_V7 = Object.freeze({
+  ...KINGDOM_GENERATION_POLICY_V6, version: KINGDOM_GENERATION_V7, worldCapMicroUsd: KINGDOM_V7_CEILING_MICRO_USD, ceilingOutcome: 'hold',
+} as const);
 const kingdomPolicies = {
   v1: KINGDOM_GENERATION_POLICY, v2: KINGDOM_GENERATION_POLICY_V2,
   v3: KINGDOM_GENERATION_POLICY_V3, v4: KINGDOM_GENERATION_POLICY_V4, v5: KINGDOM_GENERATION_POLICY_V5,
-  v6: KINGDOM_GENERATION_POLICY_V6,
+  v6: KINGDOM_GENERATION_POLICY_V6, v7: KINGDOM_GENERATION_POLICY_V7,
 };
 export function newKingdomGenerationPolicy() {
   return kingdomPolicies[env().KINGDOM_GENERATION_RELEASE] ?? KINGDOM_GENERATION_POLICY;
@@ -80,19 +88,27 @@ async function receipt(db: Reader, gameId: string, policy: ReturnType<typeof new
   };
 }
 
-/** The v6 recoveries (kingdom-unreadable-recovery/v1, kingdom-rate-limit-recovery/v1) apply to v6 pins only;
- * every older pin keeps its historical park. */
+/** The v6 recoveries (kingdom-unreadable-recovery/v1, kingdom-rate-limit-recovery/v1, kingdom-image-interruption/v1,
+ * the orphan closer) apply to v6 and v7 pins; every older pin keeps its historical park. */
 export async function kingdomV6RecoveryOf(db: Reader, gameId: string): Promise<boolean> {
-  return (await kingdomGenerationReleaseOf(db, gameId))?.version === KINGDOM_GENERATION_V6;
+  const version = (await kingdomGenerationReleaseOf(db, gameId))?.version;
+  return version === KINGDOM_GENERATION_V6 || version === KINGDOM_GENERATION_V7;
 }
 
-/** The v6 cost thresholds of a pinned world, or null for every older pin. */
+/** The cost thresholds of a v6 (refund at $7) or v7 (stop and hold at $6) world, or null for every older pin. */
 export async function kingdomCostPolicyOf(db: Reader, gameId: string) {
   const pin = await kingdomGenerationReleaseOf(db, gameId);
-  if (!pin || pin.version !== KINGDOM_GENERATION_V6 || typeof pin.alertAboveMicroUsd !== 'number'
-    || typeof pin.targetMicroUsd !== 'number' || pin.ceilingOutcome !== 'refund') return null;
-  return { ceilingMicroUsd: pin.worldCapMicroUsd, alertAboveMicroUsd: pin.alertAboveMicroUsd, targetMicroUsd: pin.targetMicroUsd,
-    ceilingOutcome: pin.ceilingOutcome };
+  if (!pin || typeof pin.alertAboveMicroUsd !== 'number' || typeof pin.targetMicroUsd !== 'number') return null;
+  const outcome = pin.version === KINGDOM_GENERATION_V6 && pin.ceilingOutcome === 'refund' && pin.worldCapMicroUsd === KINGDOM_V6_CEILING_MICRO_USD ? 'refund' as const
+    : pin.version === KINGDOM_GENERATION_V7 && pin.ceilingOutcome === 'hold' && pin.worldCapMicroUsd === KINGDOM_V7_CEILING_MICRO_USD ? 'hold' as const : null;
+  if (!outcome) return null;
+  return { version: pin.version, ceilingMicroUsd: pin.worldCapMicroUsd, alertAboveMicroUsd: pin.alertAboveMicroUsd, targetMicroUsd: pin.targetMicroUsd,
+    ceilingOutcome: outcome };
+}
+
+/** The pinned hard ceiling of a v6 or v7 world, or null for every older pin. */
+export async function kingdomCeilingMicroUsdOf(db: Reader, gameId: string): Promise<number | null> {
+  return (await kingdomCostPolicyOf(db, gameId))?.ceilingMicroUsd ?? null;
 }
 
 /** Checkout calls this only within its new family seal, before the order or any paid work. */

@@ -10,6 +10,7 @@ import { boardConditioningHash as hash } from "./board-conditioned-source";
 import { sha256Bytes } from "./fixed-sprite";
 import { boardWizardBudgetOf, boardWizardWorldId } from "./board-conditioned-wizard";
 import { sourcePlacementReleaseOf } from "./source-placement-release";
+import { worldCeilingMicroUsdOf } from "./world-cost-rule";
 import { IDENTITY_GATE_ACTION, identityGateReceiptSchema, identityReceiptReadyForPublication,
   reconciledIdentityReason, retainIdentityReasonReconciliation, IDENTITY_REASON_RECONCILIATION_VERSION } from "./board-wizard-identity-gate";
 
@@ -52,7 +53,8 @@ export async function resumeIdentityReasonHold(c: Container, requestedGameId: st
       const sourcePin = await sourcePlacementReleaseOf(c.db, game.id);
       if (!sourcePin || sourcePin.baseSceneVersion !== DETECTIVES_SCENE_VERSION) continue;
       const budget = boardWizardBudgetOf(c), audit = await budget.audit(boardWizardWorldId(game.id));
-      if (audit.capMicroUsd !== 4_000_000 || audit.held || audit.pendingRequestKeys.length || audit.unknownRequestKeys.length) continue;
+      // The world's own pinned ceiling (kingdom v6/v7, world-cost-rule/v1), else four dollars.
+      if (audit.capMicroUsd !== (await worldCeilingMicroUsdOf(c.db, game.id) ?? 4_000_000) || audit.held || audit.pendingRequestKeys.length || audit.unknownRequestKeys.length) continue;
       const restored = await c.db.$transaction(async tx => {
         // Game -> Job -> Child, the same order used by deletion and identity claims.
         const fencedGame = await tx.game.updateMany({ where: { id: game.id, ownerId: game.ownerId,

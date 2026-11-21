@@ -19,6 +19,7 @@ import { boardWizardBudgetOf } from "./board-conditioned-wizard";
 import { PrismaWorldBudgetStore } from "../../infra/db/prisma-world-budget-store";
 import { PrismaRetainedPurchaseStore } from "../../infra/db/prisma-retained-purchase-store";
 import { sameChargeEvidence } from "./world-budget";
+import { worldCeilingMicroUsdOf } from "./world-cost-rule";
 import { fenceLocalPatchImages } from "./local-patch-lifecycle";
 import { localPatchGeometry } from "./local-patch-geometry";
 import { localPatchPublicationGeometryHash } from "./local-patch-publication-policy";
@@ -80,7 +81,7 @@ export async function nextPropJoinRepair(c:Container):Promise<string|null>{
   const row=await c.db.targetVariantAsset.findFirst({where:{variant:"A",provider:"local-patch",targetInstance:{gameSceneId:ctx.scene.id,targetId:ctx.hide.targetId}}});
   if(!row||!candidate(row,false)||!await authenticRefusal(c.db,gameId,row,ctx)||await c.db.auditLog.findUnique({where:{id:auditId(gameId,row.attempts)}}))continue;
   const a=await boardWizardBudgetOf(c).audit(gameId+":board-wizard");
-  if(a.capMicroUsd===4000000&&!a.held&&!a.pendingRequestKeys.length&&a.remainingMicroUsd>=250000)return gameId;
+  if(a.capMicroUsd===(await worldCeilingMicroUsdOf(c.db,gameId)??4000000)&&!a.held&&!a.pendingRequestKeys.length&&a.remainingMicroUsd>=250000)return gameId;
  }catch{/* An invalid authority never changes another world's scheduling. */}}
  return null;
 }
@@ -94,7 +95,8 @@ export async function resumePropJoinRepair(c:Container,gameId:string):Promise<bo
  const row=await c.db.targetVariantAsset.findFirst({where:{variant:"A",provider:"local-patch",targetInstance:{gameSceneId:ctx.scene.id,targetId:ctx.hide.targetId}}});
  if(!row||!candidate(row,false)||!await authenticRefusal(c.db,gameId,row,ctx)||await c.db.auditLog.findUnique({where:{id:auditId(gameId,row.attempts)}}))return false;
  const a=await boardWizardBudgetOf(c).audit(gameId+":board-wizard");
- if(a.capMicroUsd!==4000000||a.held||a.pendingRequestKeys.length||a.remainingMicroUsd<250000)return false;
+ // The world's own pinned ceiling (kingdom v6/v7, world-cost-rule/v1), else four dollars.
+ if(a.capMicroUsd!==(await worldCeilingMicroUsdOf(c.db,gameId)??4000000)||a.held||a.pendingRequestKeys.length||a.remainingMicroUsd<250000)return false;
  return c.db.$transaction(async tx=>{
   await fenceLocalPatchImages(tx,gameId);
   const live=await context(tx,gameId),current=await tx.targetVariantAsset.findUnique({where:{id:row.id}});

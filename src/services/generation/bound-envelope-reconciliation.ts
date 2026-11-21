@@ -8,6 +8,7 @@ import { localPatchBoundEnvelopeUndecided } from "./local-patch-dual-evidence";
 import { fenceLocalPatchImages } from "./local-patch-lifecycle";
 import { singleMediumReviewPolicyOf } from "./single-medium-policy";
 import { identityRevisionPending } from "./identity-source-revision-state";
+import { worldCeilingMicroUsdOf } from "./world-cost-rule";
 
 const EXHAUSTED = "local-patch:recovery-exhausted";
 const ACTION = "generation:bound-envelope-reconciliation";
@@ -37,7 +38,8 @@ async function eligible(c:Container,gameId:string) {
     ||!job.lastError?.startsWith("local-patch: "))return null;
   const budget=await boardWizardBudgetOf(c).audit(gameId+":board-wizard");
   // UNKNOWN money remains fully reserved. Free reconciliation grants no capacity.
-  if(budget.capMicroUsd!==4000000||budget.overCapMicroUsd||budget.conflictRequestKeys.length||budget.overrunRequestKeys.length)return null;
+  // The world's own pinned ceiling (kingdom v6/v7, world-cost-rule/v1), else four dollars.
+  if(budget.capMicroUsd!==(await worldCeilingMicroUsdOf(c.db,gameId)??4000000)||budget.overCapMicroUsd||budget.conflictRequestKeys.length||budget.overrunRequestKeys.length)return null;
   const ledger=await c.db.worldBudgetLedger.findUnique({where:{worldId:gameId+":board-wizard"}});if(!ledger)return null;
   const rows=await c.db.targetVariantAsset.findMany({where:{variant:"A",provider:"local-patch",status:"FAILED",
     targetInstance:{gameScene:{gameId}}},include:{targetInstance:{select:{gameSceneId:true}}},orderBy:{id:"asc"}});

@@ -154,4 +154,38 @@ describe("prospective Explorer single LOW admission", () => {
     expect(await explorersOperationalPolicyOf(db, historical.gameId)).toBeNull();
     expect(noProvider).not.toHaveBeenCalled();
   });
+  it("world-cost-rule/v1: new Explorer and Detective drafts get a six-dollar ceiling that stops and holds, and no other world gains it", async () => {
+    const { EXPLORERS_OPERATIONAL_RELEASE } = await import("../../domain/generation/explorers-operational-policy");
+    const { DETECTIVES_OPERATIONAL_RELEASE } = await import("../../domain/generation/detectives-operational-policy");
+    const { WORLD_COST_RULE, worldCostRuleOf, worldCostRuleAuditId, readWorldCostRuleBudget, worldCostPolicyOf, pinWorldCostRule } = await import("../generation/world-cost-rule");
+    const { readLeanWorldBudget } = await import("../generation/lean-release");
+    const release = { ...c, explorersOperationalRelease: EXPLORERS_OPERATIONAL_RELEASE, detectivesOperationalRelease: DETECTIVES_OPERATIONAL_RELEASE, worldCostRule: WORLD_COST_RULE };
+    const explorer = await createDraft(release, null, "he", { searchLevel: "explorers" });
+    const detective = await createDraft(release, null, "he", { searchLevel: "detectives" });
+    for (const draft of [explorer, detective]) {
+      const worldId = draft.gameId + ":board-wizard";
+      expect(await worldCostRuleOf(db, draft.gameId)).toMatchObject({ version: WORLD_COST_RULE, worldId, targetMicroUsd: 4_000_000,
+        alertAboveMicroUsd: 5_000_000, ceilingMicroUsd: 6_000_000, ceilingOutcome: "hold", automaticBudgetExtension: false });
+      expect(await worldCostPolicyOf(db, draft.gameId)).toMatchObject({ ceilingMicroUsd: 6_000_000, ceilingOutcome: "hold" });
+      expect(await readWorldCostRuleBudget(c, worldId)).toMatchObject({ worldId, capMicroUsd: 6_000_000 });
+      // The lean pin itself is unchanged; the rule is read before it.
+      expect(await readLeanWorldBudget(c, worldId)).toMatchObject({ capMicroUsd: 4_000_000 });
+      expect(await db.order.count({ where: { gameId: draft.gameId } })).toBe(0);
+      expect(await db.worldBudgetLedger.count({ where: { worldId } })).toBe(0);
+    }
+    // Without the container's rule a new draft keeps four dollars, and an old draft never gains it.
+    const plain = await createDraft({ ...release, worldCostRule: undefined }, null, "he", { searchLevel: "explorers" });
+    expect(await worldCostRuleOf(db, plain.gameId)).toBeNull();
+    expect(await readWorldCostRuleBudget(c, plain.gameId + ":board-wizard")).toBeNull();
+    // A copied receipt cannot authorize another game.
+    const row = await db.auditLog.findUniqueOrThrow({ where: { id: worldCostRuleAuditId(explorer.gameId) } });
+    await db.auditLog.create({ data: { ...row, id: worldCostRuleAuditId(plain.gameId), entityId: plain.gameId } });
+    await expect(worldCostRuleOf(db, plain.gameId)).rejects.toThrow("Invalid or changed rule pin");
+    await db.auditLog.delete({ where: { id: worldCostRuleAuditId(plain.gameId) } });
+    // A started world cannot take it later.
+    await db.game.update({ where: { id: plain.gameId }, data: { status: "PACKAGE_SELECTED" } });
+    await expect(db.$transaction(tx => pinWorldCostRule(tx, plain.gameId, WORLD_COST_RULE))).rejects.toThrow("unstarted");
+    expect(await worldCostRuleOf(db, plain.gameId)).toBeNull();
+    expect(noProvider).not.toHaveBeenCalled();
+  });
 });

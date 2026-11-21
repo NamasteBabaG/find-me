@@ -8,7 +8,10 @@ import { useGameText } from "../i18n";
 import { sounds } from "../audio/sounds";
 import { IslandGrid } from "./IslandGrid";
 import { StarCounter } from "./StarCounter";
-import { useMapLabels } from "../engine/useMapLabels";
+import { PlaceEmblem } from "@/app/home/PlaceEmblem";
+import { WorldEmblem } from "@/ui/WorldEmblem";
+import { cloudlet } from "@/ui/cloudlet";
+import { snakeSpots, trailPath, waveSpots } from "../engine/map-layout";
 import { GameExit, type GameExitTarget } from "./GameExit";
 import { Button } from "@/ui/Button";
 import { Icon } from "@/ui/Icon";
@@ -40,15 +43,20 @@ interface Props {
 const TRAVEL_MS = 1500;
 /** Choosing a place: the child walks there first, briefly, then the place opens. */
 const CHOOSE_MS = 700;
+/** The product's cloud, as the site and the game's cloud curtain draw it. */
+const CLOUD = cloudlet(100);
 
 /**
- * The world map: one painted illustration, nine destinations, and the child's
- * own marker walking the route between them.
+ * The world map: nine places on a calm map, and the child's own marker walking
+ * the route between them.
  *
- * The art is scenery. Every node, label and the marker is a DOM layer on top,
- * so they respond to progress, language and direction — and so the map is also
- * an ordered list of nine buttons for anyone using a keyboard or a screen
- * reader. A game composed before worlds existed falls back to the island grid.
+ * Per Guy (2026-11-20) the painted maps were too busy for a child: the world is
+ * its emblem and each place is its own, the same ones the site shows, on a trail
+ * in the world's colour that turns gold where the child has walked. The layout
+ * follows the route (`map-layout.ts`), upright on a phone and across on a wide
+ * screen. The map is also an ordered list of nine buttons for anyone using a
+ * keyboard or a screen reader. A game composed before worlds existed falls back
+ * to the island grid.
  */
 export function WorldMap({ config, world: shown, progress, onOpen, onPassport, onWorlds, worldSelector, demo, travelFrom, onTravelDone, onReplay, roundRoute, onStartOver, exit }: Props) {
   const { g } = useGameText();
@@ -149,18 +157,29 @@ function WorldMapView({ config, world, progress, onOpen, onPassport, onWorlds, w
   const chosenNode = chosen ? world.nodes.find((n) => n.boardSlug === chosen) : undefined;
   const at = chosenNode ?? (travelling && from ? from : marker);
   const currentBoard = boards.get(marker.boardSlug);
-  const { ref: mapRef, positions, minHeight: labelsMinHeight, markerClearance } = useMapLabels(nodes, at.boardSlug);
-  const displayPosition = (node: typeof marker) => positions[node.boardSlug] ?? node;
+  // The places in route order, and where each one sits on an upright and on a wide map.
+  const route = useMemo(() => [...nodes].sort((a, b) => a.routeIndex - b.routeIndex), [nodes]);
+  const layout = useMemo(() => ({ snake: snakeSpots(route.length), wave: waveSpots(route.length) }), [route.length]);
+  const spotStyle = (slug: string) => {
+    const i = Math.max(0, route.findIndex((n) => n.boardSlug === slug));
+    const s = layout.snake[i] ?? { x: 0.5, y: 0.5 }, w = layout.wave[i] ?? s;
+    return { ["--sx" as string]: s.x, ["--sy" as string]: s.y, ["--wx" as string]: w.x, ["--wy" as string]: w.y };
+  };
+  // The trail is gold up to where the child stands; the whole of it once the world is done.
+  const walkedTo = complete ? route.length - 1 : Math.max(0, route.findIndex((n) => n.boardSlug === marker.boardSlug));
 
   return (
-    <div className="wmap" data-world={world.slug} style={{ ["--wmap-sky" as string]: world.map.palette.sky, ["--wmap-accent" as string]: world.map.palette.accent }}>
+    <div className="wmap" data-world={world.slug} style={{ ["--wmap-sky" as string]: world.map.palette.sky, ["--wmap-ground" as string]: world.map.palette.ground, ["--wmap-accent" as string]: world.map.palette.accent }}>
       <header className="wmap__bar">
-        {/* No portrait here: the marker on the painting is the child on this screen, and two faces read as two children. */}
+        {/* No portrait here: the marker on the map is the child on this screen, and two faces read as two children. */}
         <div className="wmap__who">
           {exit ? <GameExit exit={exit} /> : null}
+          <WorldEmblem slug={world.slug} className="wmap__emblem" />
           <div>
             <h1 className="wmap__title">{world.name}</h1>
-            <p className="wmap__sub">{done === 0 ? world.tagline : tf(g.map.stamps, { done, total, piece: world.collectible.piece })}</p>
+            {done === 0
+              ? <p className="wmap__sub wmap__sub--tagline">{world.tagline}</p>
+              : <p className="wmap__sub">{tf(g.map.stamps, { done, total, piece: world.collectible.piece })}</p>}
           </div>
         </div>
         <div className="wmap__actions">
@@ -196,12 +215,25 @@ function WorldMapView({ config, world, progress, onOpen, onPassport, onWorlds, w
       ) : null}
 
       <div className="wmap__frame">
-        <div ref={mapRef} className="wmap__art" style={{ aspectRatio: `${world.map.width} / ${world.map.height}`, ["--wmap-labels-height" as string]: `${labelsMinHeight}px` }}>
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={world.map.art} alt="" className="wmap__img" width={world.map.width} height={world.map.height} draggable={false} fetchPriority="high" />
+        <div className="wmap__art">
+          {/* Scenery, quiet on purpose: two hills of the world's ground and three of the product's clouds. */}
+          <svg className="wmap__land" viewBox="0 0 1000 1000" preserveAspectRatio="none" aria-hidden focusable="false">
+            <path d="M0 820Q300 700 620 860T1000 800V1000H0Z" />
+            <path d="M0 920Q450 840 1000 940V1000H0Z" />
+          </svg>
+          {["a", "b", "c"].map((k) => (
+            <svg key={k} className={`wmap__cloud wmap__cloud--${k}`} viewBox="0 0 100 60" aria-hidden focusable="false"><path d={CLOUD} /></svg>
+          ))}
+          {/* The trail through every place, gold where the child has walked: one for an upright map, one for a wide one. */}
+          {(["snake", "wave"] as const).map((shape) => (
+            <svg key={shape} className={`wmap__trail wmap__trail--${shape}`} viewBox="0 0 1000 1000" preserveAspectRatio="none" aria-hidden focusable="false">
+              <path className="wmap__trail-way" d={trailPath(layout[shape])} />
+              {walkedTo > 0 ? <path className="wmap__trail-walked" d={trailPath(layout[shape].slice(0, walkedTo + 1))} /> : null}
+              <path className="wmap__trail-steps" d={trailPath(layout[shape])} />
+            </svg>
+          ))}
 
-          {/* Nine places, in route order: each is its name, and the name is the button. No board
-              thumbnails and no drawn route on top of the painting: only the child marks a place.
+          {/* Nine places, in route order: each is its emblem and its name, and both are the button.
               This list is also the map for a keyboard or a screen reader. */}
           <ol className="wmap__nodes" aria-label={g.map.stopsAria}>
             {nodes.map((node) => {
@@ -217,7 +249,7 @@ function WorldMapView({ config, world, progress, onOpen, onPassport, onWorlds, w
               const count = board ? sceneFoundIds(progress, board).length : 0;
               const here = at.boardSlug === node.boardSlug;
               return (
-                <li key={node.boardSlug} className={`wmap__node wmap__node--${state === "completed" && !boardComplete ? "visited" : state}${here ? " is-here" : ""}`} style={{ left: `${displayPosition(node).x * 100}%`, top: `${displayPosition(node).y * 100}%` }}>
+                <li key={node.boardSlug} className={`wmap__node wmap__node--${state === "completed" && !boardComplete ? "visited" : state}${here ? " is-here" : ""}`} style={spotStyle(node.boardSlug)}>
                   <button
                     type="button"
                     className="wmap__place"
@@ -230,14 +262,17 @@ function WorldMapView({ config, world, progress, onOpen, onPassport, onWorlds, w
                     aria-label={`${node.routeIndex}. ${label} — ${board?.playMode === "find-any" ? tf(g.scene.boardStars, { found: count, total: board.targets.length }) : stateLabel(g, state, sp.completed)}`}
                     data-board={node.boardSlug}
                   >
-                    {boardComplete ? <span className="wmap__place-done" aria-hidden>✓</span> : null}
+                    <span className="wmap__medal" aria-hidden>
+                      <PlaceEmblem place={node.boardSlug} />
+                      {boardComplete ? <span className="wmap__place-done">✓</span> : null}
+                      {/* The gold stars it holds, as one star and a count: what there is to come back for. */}
+                      {board && count > 0 && !boardComplete ? (
+                        <span className="wmap__place-stars">
+                          <StarCounter earned={count} total={board.targets.length} size="sm" />
+                        </span>
+                      ) : null}
+                    </span>
                     <span className="wmap__place-name" aria-hidden>{label}</span>
-                    {/* The gold stars it holds, as one star and a count: what there is to come back for. */}
-                    {board && count > 0 && !boardComplete ? (
-                      <span className="wmap__place-stars" aria-hidden>
-                        <StarCounter earned={count} total={board.targets.length} size="sm" />
-                      </span>
-                    ) : null}
                   </button>
                   {teaser === node.boardSlug ? (
                     <span className="wmap__teaser" role="status">
@@ -252,7 +287,7 @@ function WorldMapView({ config, world, progress, onOpen, onPassport, onWorlds, w
           {/* The child, standing above the place they are at or have just chosen. */}
           <div
             className={`wmap__marker${travelling || chosen ? " wmap__marker--travel" : ""} wmap__marker--${at.travelStyle}`}
-            style={{ left: `${displayPosition(at).x * 100}%`, top: `${displayPosition(at).y * 100}%`, transitionDuration: `${chosen ? CHOOSE_MS : TRAVEL_MS}ms`, ["--wmap-marker-clearance" as string]: `${markerClearance}px` }}
+            style={{ ...spotStyle(at.boardSlug), transitionDuration: `${chosen ? CHOOSE_MS : TRAVEL_MS}ms` }}
             aria-hidden
           >
             {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -262,14 +297,21 @@ function WorldMapView({ config, world, progress, onOpen, onPassport, onWorlds, w
         </div>
       </div>
 
-      {/* The current place is also available as a full child-sized action below the map. */}
+      {/* Offer the same destination as a primary action below the map. */}
       {complete ? null : travelling ? (
         <button type="button" className="wmap__skip" onClick={() => setTravelling(false)}>
           {g.map.skip}
         </button>
       ) : currentBoard ? (
         <Button type="button" size="kid" className="wmap__go" onClick={() => onOpen(currentBoard.slug)}>
-          <span className="wmap__go-name">{currentBoard.name}</span>
+          <span className="wmap__go-thumb" aria-hidden>
+            <PlaceEmblem place={currentBoard.slug} />
+          </span>
+          {/* Where the child is and the place's name, nothing more (Guy, 2026-11-20): the map already shows its stars. */}
+          <span className="wmap__go-text">
+            <span className="wmap__go-kicker">{done === 0 ? g.map.here : g.map.soon}</span>
+            <span className="wmap__go-name">{currentBoard.name}</span>
+          </span>
           <span className="fm-btn__arrow" aria-hidden />
         </Button>
       ) : null}
