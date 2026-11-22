@@ -11,7 +11,7 @@ export const PLACEMENT_GUIDE_V2_VERSION = "local-patch-placement-guide/v2" as co
 export type PlacementGuideVersion = typeof PLACEMENT_GUIDE_VERSION | typeof PLACEMENT_GUIDE_V2_VERSION;
 const digest = z.string().regex(/^[a-f0-9]{64}$/);
 export const placementGuideSchema = z.object({
-  version: z.union([z.literal(PLACEMENT_GUIDE_VERSION), z.literal(PLACEMENT_GUIDE_V2_VERSION)]), hideId: z.string().min(1), attempt: z.number().int().min(1).max(3),
+  version: z.union([z.literal(PLACEMENT_GUIDE_VERSION), z.literal(PLACEMENT_GUIDE_V2_VERSION)]), hideId: z.string().min(1), attempt: z.number().int().min(1).max(4),
   sceneVersion: z.union([z.literal(12), z.literal(13)]), sourceSha256: digest, geometrySha256: digest,
   reviewAuthorizationSha256: digest,
 }).strict();

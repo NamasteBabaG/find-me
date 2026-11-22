@@ -17,6 +17,7 @@ import { JOURNEY_WALL_PROVIDER_RETRY_ACTION, JOURNEY_WALL_REPLACEMENT_ACTION } f
 import { QA_FIVE_COMPLETION_ACTION } from '../../domain/generation/qa-five-dollar-completion';
 import { QA_SUNBURST_TAIL_COMPLETION_ACTION } from '../../domain/generation/qa-sunburst-tail-completion';
 import { RETAINED_WINDOW_ACTION } from '../../domain/generation/retained-window';
+import { KINGDOM_FALLBACK_RECOVERY_ACTION } from '../../../content/detectives/kingdom/fallback-placement-v1';
 
 function demand(value: unknown, message: string): asserts value {
   if (!value) throw new Error(`LOCAL_PATCH_DELETE: ${message}`);
@@ -74,7 +75,8 @@ export async function deleteLocalPatchGame(c: Container, gameId: string, actor: 
         "local-patch:qa-guided-repair-context", "local-patch:visible-head-policy-corrected", "local-patch:retained-normal-head-restored",
         "local-patch:head-pixel-correction", SOURCE_FIGURE_ACTION, JOURNEY_SOURCE_HEAD_ACTION, JOURNEY_SUNBURST_HEAD_ACTION, JOURNEY_SUNBURST_TAIL_ACTION, JOURNEY_HEAD_FRAME_REPLAY_ACTION,
         QA_FIVE_COMPLETION_ACTION, QA_SUNBURST_TAIL_COMPLETION_ACTION, JOURNEY_WALL_REPLACEMENT_ACTION, JOURNEY_WALL_PROVIDER_RETRY_ACTION, JOURNEY_WALL_COAT_ACTION, JOURNEY_PARIS_CHAIR_ACTION,
-        RETAINED_WINDOW_ACTION, RETAINED_WINDOW_ACTION + ':once', RETAINED_WINDOW_ACTION + ':alternate-once'] } }, data: { metaJson: null } });
+        RETAINED_WINDOW_ACTION, RETAINED_WINDOW_ACTION + ':once', RETAINED_WINDOW_ACTION + ':alternate-once',
+        KINGDOM_FALLBACK_RECOVERY_ACTION] } }, data: { metaJson: null } });
     let sharedAssetsRetained = 0;
     for (const asset of await tx.asset.findMany({ where: { id: { in: inventory.assetIds } } })) {
       demand(asset.ownerId === game.ownerId && asset.provider === LOCAL_PATCH_PROVIDER && asset.providerRequestId === gameId

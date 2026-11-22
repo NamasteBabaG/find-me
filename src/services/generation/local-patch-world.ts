@@ -43,7 +43,8 @@ import type { Container } from "../container";
 import { type LocalPatchBoard, type LocalPatchHide } from "../../domain/scene/local-patch-hides";
 import { ALL_LOCAL_PATCH_BOARDS, localPatchBoardForVersion, isLocalPatchAdvisoryVersion, isLocalPatchStrictVersion } from "../../domain/scene/local-patch-catalog";
 import { worldsOwned } from "../world-catalog.service";
-import { kingdomGenerationWindowForHide, resolveLocalPatchBoardsForGame } from "./source-placement-release";
+import { kingdomFallbackRecoveryFrom, kingdomGenerationWindowForHide, resolveLocalPatchBoardsForGame } from "./source-placement-release";
+import { kingdomFallbackPainting } from './kingdom-fallback-recovery';
 import { deliverLocalPatchNotifications } from "../local-patch-notifications";
 import { GenerationPaused, boardWizardBudgetOf, boardWizardWorldId } from "./board-conditioned-wizard";
 import { retainedPurchaseKeysFor } from "../../infra/db/prisma-retained-purchase-store";
@@ -314,6 +315,7 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
   const placementContexts = await Promise.all([...new Set(game.scenes.map(scene => scene.sceneVersion))]
     .map(version => resolveLocalPatchBoardsForGame(c.db, gameId, version)));
   const kingdomPlacement = placementContexts.find(context => context.release?.baseSceneVersion === 13 && context.release.worldSlug === 'kingdom');
+  const fallback = kingdomPlacement ? kingdomFallbackRecoveryFrom(kingdomPlacement) : null;
   const boardFor = (slug: string, version: number) => placementContexts.find(context => context.sceneVersion === version)
     ?.boards.find(board => board.board === slug) ?? null;
   // local-patch-slice-pacing/v1: the provider passes below name each question whose answer the provider has just
@@ -1022,9 +1024,11 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
   }
   // The extra allowance belongs to named rows, never to this engine or to a
   // restarted invocation. All other delivered pixels are protected by the grant.
+  const fallbackRow = (row: typeof rows[number] | undefined) => !!fallback && row?.id === fallback.rowId;
   const settledHide = (row: typeof rows[number] | undefined) => extraPlan
     ? !row || !extraRows.has(row.id) || localPatchSettled(row, 4)
-    : headPainting(row)||bodyPainting(row)?false:localPatchSettled(row, nativeFourthPainting(row) ? 4 : attemptLimit);
+    : fallbackRow(row) ? row?.status === 'GENERATED' || row?.status === 'APPROVED'
+      : headPainting(row)||bodyPainting(row)?false:localPatchSettled(row, nativeFourthPainting(row) ? 4 : attemptLimit);
   // local-patch-no-route-rest/v1: an appearance with no automatic evidence question left is never painted again,
   // so it no longer holds the whole world in the normal phase; others' final repairs may start (2026-11-03: four such
   // rows at attempt 1 kept giza 2's third painting unreachable and the world idle).
@@ -1047,6 +1051,7 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
   const repairCheckpoints = new Map(rows.map(row => [row.id, JSON.stringify(selfRepairOf(row) ?? null)]));
   const automaticWork = automatic && !extraPlan && !journeyPins.length ? work.filter(item => {
     const row = stateOf(item.sceneId, item.hide.targetId);
+    if (fallbackRow(row)) return false;
     if(row&&windowStops.has(row.id))return false;
     if (kingdomRelease && kingdomPlacement && kingdomGenerationWindowForHide(kingdomPlacement, item.hide.id)?.authority.sourceErase) return false;
     return needsSelfRepair(row) && !legacyReviewOwed(row) && !headPainting(row) && !headExhausted(row) && !contextPainting(row) && !contextExhausted(row) && !sourceBodyBirthMarker(row!) && !bodyPainting(row) && !bodyExhausted(row) && !(row && (guidedFrameExhausted(row) && !completionRepair(row) && !mechanicalRepair(row) || nativeMaskTailExhausted(row))) && !leanThirdPainting(row) && !guidedThirdPainting(row) && !(hasLocalPatchCapability(game.scenes.find(scene => scene.id === item.sceneId)?.sceneVersion, "integratedQuality")
@@ -1074,6 +1079,7 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
     : plan.indices.map(index => work[index]!)).filter(item => {
     if (automaticWork.includes(item)) return false;
     const candidate = stateOf(item.sceneId, item.hide.targetId);
+    if (fallback && candidate && fallbackRow(candidate)) return kingdomFallbackPainting(fallback, candidate);
     if(candidate&&windowStops.has(candidate.id))return false;
     if (legacyReviewOwed(candidate)) return false;
     if(headPainting(candidate))return true;
@@ -1405,7 +1411,8 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
         reviewOwed: legacyReviewOwed(row) || !!row && (progress && readyReviewOwed(row) || rejudgePending(row) || playerReviewEnabled() && needsPlayerReview(row)),
         // Legacy worlds still owe their historical end-of-world third attempt:
         // a normal-phase gave-up there must not park them before that pass.
-        noRoute: automatic && (gaveUp.has(item.hide.id) || !!neighborReview && neighborReview.rowId === row?.id && row.status === 'FAILED'),
+        noRoute: automatic && (gaveUp.has(item.hide.id) || !!neighborReview && neighborReview.rowId === row?.id && row.status === 'FAILED'
+          || !!fallback && !!row && fallbackRow(row) && row.status === 'FAILED' && !kingdomFallbackPainting(fallback, row)),
         repairSpent: !legacyReviewOwed(row) && (journeyExhausted(row) || headExhausted(row) || contextExhausted(row) || progress && !!row && !journeyPainting(row) && !headPainting(row) && !contextPainting(row) && !bodyPainting(row) && !nativeFourthPainting(row) && (bodyExhausted(row) || !!sourceBodyBirthMarker(row) && row.attempts>=LOCAL_PATCH_MAX_ATTEMPTS || guidedFrameExhausted(row) && !completionRepair(row) && !mechanicalRepair(row) || nativeMaskTailExhausted(row) || needsSelfRepair(row) && selfRepairProgress(selfRepairOf(row), row.attempts).exhausted && !mechanicalRepair(row))) });
     });
     const rest = pendingReviews ? null : localPatchRestDecision(rests);

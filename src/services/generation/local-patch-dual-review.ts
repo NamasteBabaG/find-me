@@ -485,7 +485,7 @@ export async function dualReviewQuestionCandidates(c: Pick<Container, "db" | "st
   const found: ReturnType<typeof of>[] = [of(questions.q, "quality", questions.qualityStrategy),
     of(await questions.anatomy(), "continuity", questions.continuityStrategy),
     of(await questions.anatomy("responses-background"), "continuity", questions.continuityStrategy)];
-  const upgrade = await subjectUpgradeOf(c.db, prepared.game.id), plan = subjectPlanOfHide(questions.binding.hideId, prepared.scene.sceneVersion);
+  const upgrade = await subjectUpgradeOf(c.db, prepared.game.id), plan = subjectPlanOfHide(questions.binding.hideId, prepared.scene.sceneVersion, prepared.placementContext);
   if (upgrade && plan) {
     try {
       const photoPng = await loadSubjectPhoto(c, prepared, upgrade);
@@ -670,7 +670,7 @@ async function dualReview(c: Container, prepared: Prepared, deps: LocalPatchBoar
   if (options.decideRetained && !upgrade) return decideRetainedAnswer(c, prepared, version, dualBinding(prepared, version));
   let subjectContext: SubjectQuestionContext | undefined;
   if (upgrade) {
-    const plan = subjectPlanOfHide(request.hides[0]!.hideId, prepared.scene.sceneVersion);
+    const plan = subjectPlanOfHide(request.hides[0]!.hideId, prepared.scene.sceneVersion, prepared.placementContext);
     if (!plan) throw Error("SUBJECT_REVIEW: missing enrolled subject plan");
     try { subjectContext = { upgrade, plan, photoPng: await loadSubjectPhoto(c, prepared, upgrade) }; }
     catch (error) {
@@ -970,7 +970,7 @@ async function dualReview(c: Container, prepared: Prepared, deps: LocalPatchBoar
   const subjectGate = async (reviewed: Omit<Reviewed, "evidence" | "diagnosis">): Promise<Reviewed | Waiting> => {
     // A bundle's subject stage is kept only when it passed (v2, or v1 which asked more); otherwise v2 is asked here.
     if (reviewed.proof.subject?.combined === SUBJECT_QUALITY_BUNDLE_VERSION) return { ...reviewed, evidence: null, diagnosis: null };
-    const plan = subjectPlanOfHide(hideId, prepared.scene.sceneVersion);
+    const plan = subjectPlanOfHide(hideId, prepared.scene.sceneVersion, prepared.placementContext);
     if (!upgrade || !plan || plan.board !== prepared.board.board) throw Error(`SUBJECT_REVIEW: ${hideId} has no enrolled subject plan`);
     let photoPng: Buffer;
     try { photoPng = await loadSubjectPhoto(c, prepared, upgrade); }
@@ -1092,7 +1092,7 @@ export async function prospectiveSingleVisualReviewQuestion(c: Pick<Container, "
   const version = await dualVisualReviewVersion(c.db, prepared.game.id);
   if (!version) throw Error("SINGLE_REVIEW: a pinned visual release is required for planning");
   const asked = {...prepared, request: await dualQualityRequest(version, prepared.request)};
-  const upgrade = await subjectUpgradeOf(c.db, prepared.game.id), plan = subjectPlanOfHide(asked.request.hides[0]!.hideId, prepared.scene.sceneVersion);
+  const upgrade = await subjectUpgradeOf(c.db, prepared.game.id), plan = subjectPlanOfHide(asked.request.hides[0]!.hideId, prepared.scene.sceneVersion, prepared.placementContext);
   if (!upgrade || !plan) throw Error("SINGLE_REVIEW: enrolled subject evidence required for planning");
   const photoPng = await loadSubjectPhoto(c, asked, upgrade), one = await prepareSingleLowQuestion(c, asked, version, {upgrade, plan, photoPng});
   return {requestKey:one.requestKey, fingerprint:one.question.fingerprint, singleVersion:one.singleVersion,

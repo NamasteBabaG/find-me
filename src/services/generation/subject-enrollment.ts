@@ -7,6 +7,8 @@ import { SUBJECT_POLICY_VERSION, subjectPlanCanonical, subjectPlanFor, type Subj
 import { localPatchHideForVersion } from "../../domain/scene/local-patch-family-hide";
 import { localPatchBoardForVersion } from "../../domain/scene/local-patch-catalog";
 import { DUAL_VISUAL_REVIEW_V3 } from "./visual-review-release";
+import { isKingdomAlternate, type TrustedSourcePlacementContext } from './source-placement-release';
+import { KINGDOM_FALLBACK_PLACEMENT } from '../../../content/detectives/kingdom/fallback-placement-v1';
 
 /**
  * One world's explicit, immutable enrollment in the subject upgrade: the subject
@@ -78,7 +80,11 @@ const sha = (value: string) => createHash("sha256").update(value).digest("hex");
 export const subjectPlanSha256 = (plan: SubjectPlan) => sha(subjectPlanCanonical(plan));
 
 /** The subject plan of one v12 hide, by its authored id; null for any other id. */
-export function subjectPlanOfHide(hideId: string, sceneVersion = 12): SubjectPlan | null {
+export function subjectPlanOfHide(hideId: string, sceneVersion = 12, placement?: TrustedSourcePlacementContext): SubjectPlan | null {
+  if (placement && isKingdomAlternate(placement, hideId)) {
+    const board = placement.boards.find(item => item.board === KINGDOM_FALLBACK_PLACEMENT.boardId)!;
+    return { ...subjectPlanFor(board, hideId), action: KINGDOM_FALLBACK_PLACEMENT.fallback.placement.support };
+  }
   if (sceneVersion !== 12) {
     if (!hasLocalPatchCapability(sceneVersion, "subjectEnrollment")) return null;
     const authored = localPatchHideForVersion(hideId, sceneVersion);

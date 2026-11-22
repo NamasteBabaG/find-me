@@ -718,10 +718,13 @@ it.each(["newyork-detectives-hide-1", "giza-detectives-hide-2"])("Sunburst refus
   expect(rows).toHaveLength(1); expect(rows[0]).toMatchObject({ attempts: 0, status: "PENDING" });
 });
 
-it.each([{mode:"clean",interrupted:false,guided:false},{mode:"transport",interrupted:true,guided:false},{mode:"guided",interrupted:false,guided:true},{mode:"tail",interrupted:false,guided:true},{mode:"body",interrupted:false,guided:true}].map(v=>({...v,born:false})).concat([{mode:"born-clean",interrupted:false,guided:false,born:true},{mode:"born-guided",interrupted:false,guided:true,born:true},{mode:"born-transport",interrupted:true,guided:false,born:true},{mode:"born-crown",interrupted:false,guided:false,born:true},{mode:"kingdom-clean",interrupted:false,guided:false,born:true},{mode:"kingdom-transport",interrupted:true,guided:false,born:true},{mode:"kingdom-guided",interrupted:false,guided:true,born:true},{mode:"window-clean",interrupted:false,guided:false,born:true},{mode:"sunburst-clean",interrupted:false,guided:false,born:true},{mode:"kingdom-sunburst-paced",interrupted:true,guided:false,born:true}]).concat([{mode:"kingdom-neighbor-recovery",interrupted:false,guided:false,born:true},{mode:"kingdom-v6-unreadable",interrupted:false,guided:false,born:true},{mode:"kingdom-v6-rate-limit",interrupted:false,guided:false,born:true},{mode:"kingdom-v6-image-interruptions",interrupted:false,guided:false,born:true}]).map(testCase => ({ ...testCase, reviewEffort: testCase.born && testCase.mode !== "born-crown" ? "MEDIUM" : "LOW" })))("completes 27 hides with bounded $reviewEffort review and no extra planner; mode=$mode", async ({mode,interrupted,guided,born}) => {
+it.each([{mode:"clean",interrupted:false,guided:false},{mode:"transport",interrupted:true,guided:false},{mode:"guided",interrupted:false,guided:true},{mode:"tail",interrupted:false,guided:true},{mode:"body",interrupted:false,guided:true}].map(v=>({...v,born:false})).concat([{mode:"born-clean",interrupted:false,guided:false,born:true},{mode:"born-guided",interrupted:false,guided:true,born:true},{mode:"born-transport",interrupted:true,guided:false,born:true},{mode:"born-crown",interrupted:false,guided:false,born:true},{mode:"kingdom-clean",interrupted:false,guided:false,born:true},{mode:"kingdom-transport",interrupted:true,guided:false,born:true},{mode:"kingdom-guided",interrupted:false,guided:true,born:true},{mode:"window-clean",interrupted:false,guided:false,born:true},{mode:"sunburst-clean",interrupted:false,guided:false,born:true},{mode:"kingdom-sunburst-paced",interrupted:true,guided:false,born:true}]).concat([{mode:"kingdom-neighbor-recovery",interrupted:false,guided:false,born:true},{mode:"kingdom-v6-unreadable",interrupted:false,guided:false,born:true},{mode:"kingdom-v6-rate-limit",interrupted:false,guided:false,born:true},{mode:"kingdom-v6-image-interruptions",interrupted:false,guided:false,born:true},{mode:"kingdom-v7-placement-recovery",interrupted:false,guided:false,born:true}]).map(testCase => ({ ...testCase, reviewEffort: testCase.born && testCase.mode !== "born-crown" ? "MEDIUM" : "LOW" })))("completes 27 hides with bounded $reviewEffort review and no extra planner; mode=$mode", async ({mode,interrupted,guided,born}) => {
   vi.useFakeTimers({ toFake: ["Date"] });
   const kingdom = mode.startsWith("kingdom-"), crown = mode === "born-crown", body = mode === "body";
   const neighborRecovery = mode === 'kingdom-neighbor-recovery';
+  const placementRecovery = mode === 'kingdom-v7-placement-recovery';
+  const { KINGDOM_FALLBACK_PLACEMENT: alternate, KINGDOM_FALLBACK_RECOVERY_ACTION } = await import('../../../../content/detectives/kingdom/fallback-placement-v1');
+  const { enrollKingdomFallbackRecovery, kingdomFallbackRecoveryOf } = await import('../kingdom-fallback-recovery');
   // kingdom-unreadable-recovery/v1: two unreadable answers about one picture, then its repaint; never a park.
   const v6Unreadable = mode === 'kingdom-v6-unreadable', unreadableHide = 'nightcarnival-detectives-hide-3';
   // kingdom-rate-limit-recovery/v1: two 429 refusals at create on one picture, waited out, then a new question; never a park.
@@ -731,17 +734,19 @@ it.each([{mode:"clean",interrupted:false,guided:false},{mode:"transport",interru
   const v6Images = mode === 'kingdom-v6-image-interruptions', interruptedPaintings = new Map([
     ['castlegate-detectives-hide-2', [1]], ['cloudcity-detectives-hide-3', [1]], ['nightcarnival-detectives-hide-1', [1]], ['underwater-detectives-hide-2', [1]]]);
   const v6 = v6Unreadable || v6RateLimit || v6Images;
-  const compact = mode === 'kingdom-sunburst-paced' || neighborRecovery || v6;
+  const compact = mode === 'kingdom-sunburst-paced' || neighborRecovery || v6 || placementRecovery;
   const paced = mode === 'kingdom-sunburst-paced', sunburst = mode === 'sunburst-clean' || compact;
   const age = compact || !body && !born ? 8 : 7;
   const gameId = "detective-single-world-synthetic-" + mode;
   if (neighborRecovery) fixture.kingdomRelease = 'v4';
   if (v6) fixture.kingdomRelease = 'v6';
+  if (placementRecovery) fixture.kingdomRelease = 'v7';
   await newDetectiveWorld(gameId, age, born, false, kingdom, mode === 'window-clean', sunburst);
   if (compact) await db.game.update({ where: { id: gameId }, data: { paidAt: new Date() } });
   if (sunburst) expect(await localPatchPainterRelease(db, gameId)).toBe(LOCAL_PATCH_SUNBURST_PAINTER);
   expect(!!await kingdomGenerationReleaseOf(db, gameId)).toBe(compact);
-  const context = await resolveLocalPatchBoardsForGame(db, gameId, 13), hides = context.boards.flatMap(board => board.hides);
+  let context = await resolveLocalPatchBoardsForGame(db, gameId, 13);
+  let hides = context.boards.flatMap(board => board.hides);
   expect(context.boards).toHaveLength(9); expect(hides).toHaveLength(27);
   if (v6Images) for (const hideId of interruptedPaintings.keys()) expect(hides.map(h => h.id)).toContain(hideId);
   // Simulate the actual older deployment: genuine LOW purchases under the
@@ -772,6 +777,24 @@ it.each([{mode:"clean",interrupted:false,guided:false},{mode:"transport",interru
       // legacy helper models the larger multi-panel request at the Flex tier.
       return { ...answer, reading: { ...answer.reading, raw: JSON.stringify(raw),
         usage: { input_tokens: 12_000, output_tokens: 2_500 } } };
+    };
+  }
+  let placementAdopted = false;
+  if (placementRecovery) {
+    const retrieve = provider.fake.retrieve.bind(provider.fake);
+    provider.fake.retrieve = async id => {
+      const answer = await retrieve(id);
+      if (answer.status !== 'completed') return answer;
+      const raw = JSON.parse(answer.reading.raw!);
+      const row = raw.assessment.assessment.quality.hides[0];
+      if (row.hideId === alternate.hideId && !placementAdopted) {
+        const where = 'Target legs have a hard cut at the bottom return at y=496.';
+        Object.assign(row.verdict, { verdict: 'fail', childComplete: 'fail', pictureWhole: 'fail', severeSeam: 'fail', reason: where,
+          faults: ['childComplete', 'pictureWhole', 'severeSeam'].map(check => ({ check, where })) });
+        row.verdict.boundaryIntegrity.bottom = { status: 'fail', observation: where };
+        Object.assign(raw.continuity.cases[0], { state: 'broken', faults: [{ kind: 'hard-cut', where }] });
+      }
+      return { ...answer, reading: { ...answer.reading, raw: JSON.stringify(raw), usage: { input_tokens: 12_000, output_tokens: 2_500 } } };
     };
   }
   const unreadableAnswers = new Map<string, boolean>();
@@ -824,6 +847,12 @@ it.each([{mode:"clean",interrupted:false,guided:false},{mode:"transport",interru
     render: async ({ requestKey, stylePng, prompt, subjectQuality, placementGuidePng, maskPng, worldId }) => {
       expect(subjectQuality).toBe(sunburst ? "high" : "medium");
       const hide = hides.find(hide => requestKey.startsWith(hide.id + ":")); if (!hide) throw Error("Unregistered Detective painter request");
+      if (placementRecovery && hide.id === alternate.hideId && placementAdopted) {
+        expect(requestKey).toBe(`${alternate.hideId}:peeking:render:4`);
+        expect(placementGuidePng).toBeDefined();
+        expect(prompt).toContain('small dark tray at the upper counter');
+        expect(prompt).not.toContain('previous painting failed');
+      }
       if (v6Images && interruptedPaintings.get(hide.id)?.includes(Number(requestKey.split(":").at(-1)))) {
         prompts.set(requestKey, prompt); imageInterruptions.push(requestKey);
         // Dispatched, no image back: the charge is unknown and stays reserved in full.
@@ -847,7 +876,8 @@ it.each([{mode:"clean",interrupted:false,guided:false},{mode:"transport",interru
       if (guided && (hide.id === guidedHideId || body&&hide.id==="giza-detectives-hide-2")) {
         expect(body?[1,2,3,4,5]:tail ? [1,2,3,4] : [1,2,3]).toContain(Number(requestKey.split(":").at(-1)));
         if (requestKey.endsWith(":render:3")) expect(placementGuidePng).toBeDefined();
-      } else expect(requestKey.endsWith(":render:1") || v6Unreadable && hide.id === unreadableHide && requestKey.endsWith(":render:2")
+      } else expect(requestKey.endsWith(":render:1") || placementRecovery && hide.id === alternate.hideId
+        || v6Unreadable && hide.id === unreadableHide && requestKey.endsWith(":render:2")
         || v6Images && Number(requestKey.split(":").at(-1)) === (interruptedPaintings.get(hide.id)?.length ?? 0) + 1, requestKey).toBe(true);
       expect(prompt).toContain("local-patch-authored-paint/v1"); prompts.set(requestKey, prompt);
       const mask = placementGuidePng ? guidedFrameGeometry(maskForHide(hide), localPatchReturnRegion(cropOf(hide), maskForHide(hide), hide.returnRect).local).target : maskForHide(hide);
@@ -865,7 +895,8 @@ it.each([{mode:"clean",interrupted:false,guided:false},{mode:"transport",interru
       if (libraryRail) figureRect.height = 510 - figureRect.top;
       const crop = cropOf(hide);
       paintedFigures.set(hide.id, { ...figureRect, left: crop.left + figureRect.left, top: crop.top + figureRect.top });
-      const figure = await sharp({ create: { width: figureRect.width, height: figureRect.height, channels: 4, background: requestKey.endsWith(":render:2") ? "#304f91" : "#1e3ca0" } }).png().toBuffer();
+      const figure = await sharp({ create: { width: figureRect.width, height: figureRect.height, channels: 4,
+        background: requestKey.endsWith(":render:2") ? "#304f91" : placementRecovery && requestKey.endsWith(':render:3') ? '#40328c' : "#1e3ca0" } }).png().toBuffer();
       let png = await sharp(stylePng).composite([{ input: figure, left: figureRect.left, top: figureRect.top }]).png().toBuffer();
       if (libraryRail) {
         // The provider may disregard its mask; these blue pixels are behind
@@ -896,6 +927,29 @@ it.each([{mode:"clean",interrupted:false,guided:false},{mode:"transport",interru
   let result = { pending: true, attention: null as string | null }, ticks = 0, observedPeak = 0, cooldownChecked = false;
   for (; ticks < 900 && result.pending; ticks++) {
     result = await runLocalPatchWorldSlice(container, deps, gameId, { hardDeadlineAt: Date.now() + 270_000, diagnose, ...(body||mode==="born-clean"?{maxHides:1}:{}) });
+    if (placementRecovery && result.attention && !placementAdopted) {
+      expect(result.attention).toContain(alternate.hideId);
+      const current = await db.targetVariantAsset.findMany({ where: { variant: 'A', targetInstance: { gameScene: { gameId } } }, orderBy: { id: 'asc' } });
+      protectedRows = current.filter(row => row.status === 'GENERATED');
+      expect(protectedRows).toHaveLength(26);
+      const failed = current.find(row => row.status === 'FAILED')!;
+      expect(failed.attempts).toBe(3);
+      expect(JSON.parse(failed.judgeJson!).hide).toBe(alternate.hideId);
+      const ledger = await db.worldBudgetLedger.findUniqueOrThrow({ where: { worldId: boardWizardWorldId(gameId) } });
+      expect(await enrollKingdomFallbackRecovery(container, gameId)).toBe(false);
+      fixture.kingdomRelease = 'v8';
+      expect(await enrollKingdomFallbackRecovery(container, gameId)).toBe(true);
+      expect(await enrollKingdomFallbackRecovery(container, gameId)).toBe(false);
+      expect(await db.worldBudgetLedger.findUniqueOrThrow({ where: { worldId: ledger.worldId } })).toEqual(ledger);
+      expect(await kingdomFallbackRecoveryOf(db, gameId)).toMatchObject({ previousJudgeJson: failed.judgeJson, authorizedAttempt: 4,
+        providerCalls: 0, approvalTransferred: false });
+      context = await resolveLocalPatchBoardsForGame(db, gameId, 13);
+      hides = context.boards.flatMap(board => board.hides);
+      expect(hides.find(hide => hide.id === alternate.hideId)).toMatchObject(alternate.fallback);
+      placementAdopted = true;
+      result = { pending: true, attention: null };
+      continue;
+    }
     if (neighborRecovery && result.attention && !neighborAdopted) {
       const before = await boardWizardBudgetOf(container).audit(boardWizardWorldId(gameId));
       console.info('kingdom-neighbor-recovery-checkpoint', { reason: result.attention, committed: before.committedMicroUsd,
@@ -992,6 +1046,7 @@ it.each([{mode:"clean",interrupted:false,guided:false},{mode:"transport",interru
   expect(await subjectUpgradeOf(db, gameId)).toMatchObject({ actorType: "SYSTEM", operatorId: SYSTEM_ENROLLMENT_OPERATOR, ageYears: age });
   const rows = await db.targetVariantAsset.findMany({ where: { variant: "A", targetInstance: { gameScene: { gameId } } } });
   expect(rows).toHaveLength(27); expect(rows.every(row => row.status === "GENERATED" && row.attempts === (body ? JSON.parse(row.judgeJson!).hide===guidedHideId?5:JSON.parse(row.judgeJson!).hide==="giza-detectives-hide-2"?4:1 : guided && JSON.parse(row.judgeJson!).hide === guidedHideId ? tail ? 4 : 3
+    : placementRecovery && JSON.parse(row.judgeJson!).hide === alternate.hideId ? 4
     : v6Unreadable && JSON.parse(row.judgeJson!).hide === unreadableHide ? 2
     : v6Images ? (interruptedPaintings.get(JSON.parse(row.judgeJson!).hide)?.length ?? 0) + 1 : 1))).toBe(true);
   if (v6Images) {
@@ -1007,8 +1062,16 @@ it.each([{mode:"clean",interrupted:false,guided:false},{mode:"transport",interru
     expect(await db.auditLog.count({ where: { entityId: gameId, action: 'local-patch-image-interruption/v1' } })).toBe(0);
   }
   // v6: 27 paintings + 1 repaint; 27 first questions + 1 same-pixel re-ask + 1 question about the repaint.
-  expect(prompts.size).toBe(body?34:tail ? 30 : guided ? 29 : v6Unreadable ? 28 : v6Images ? 31 : 27); expect(provider.creates).toHaveLength(neighborRecovery ? 28 : body?32:guided ? 29 : interrupted ? 28 : v6Unreadable ? 29 : 27); expect(provider.creates.filter(create => create.quality)).toHaveLength(neighborRecovery ? 28 : body?32:guided ? 29 : interrupted ? 28 : v6Unreadable ? 29 : 27);
-  expect(provider.creates.filter(create => create.tier === "default")).toHaveLength(neighborRecovery ? 28 : v6Unreadable ? 29 : v6RateLimit || v6Images ? 27 : interrupted ? 1 : 0);
+  expect(prompts.size).toBe(body?34:tail || placementRecovery ? 30 : guided ? 29 : v6Unreadable ? 28 : v6Images ? 31 : 27);
+  const reviews = placementRecovery ? 30 : neighborRecovery ? 28 : body ? 32 : guided ? 29 : interrupted ? 28 : v6Unreadable ? 29 : 27;
+  expect(provider.creates).toHaveLength(reviews); expect(provider.creates.filter(create => create.quality)).toHaveLength(reviews);
+  expect(provider.creates.filter(create => create.tier === "default")).toHaveLength(placementRecovery ? 30 : neighborRecovery ? 28 : v6Unreadable ? 29 : v6RateLimit || v6Images ? 27 : interrupted ? 1 : 0);
+  if (placementRecovery) {
+    expect(placementAdopted).toBe(true);
+    expect(await db.targetVariantAsset.findMany({ where: { id: { in: (protectedRows as {id: string}[]).map(row => row.id) } }, orderBy: { id: 'asc' } })).toEqual(protectedRows);
+    const selected = config.scenes.find(scene => scene.slug === alternate.boardId)!;
+    expect(selected.targets.find(target => target.id === alternate.targetId)?.slots[0].hintText).toBe(alternate.fallback.hint[config.locale]);
+  }
   if (v6RateLimit) {
     expect(rateLimited).toBe(2);
     // Answered by a NEW question that says why it is asked again; the two zero-settled keys stay closed.
@@ -1039,7 +1102,7 @@ it.each([{mode:"clean",interrupted:false,guided:false},{mode:"transport",interru
     expect(request.prompt).toContain('"version":"' + SINGLE_MEDIUM_VISUAL_REVIEW_VERSION + '"');
     expect(request.prompt).toContain("HEAD_RETURN_EVIDENCE: ");
     expect(request.prompt).toContain('"version":"' + TARGET_HEAD_VISIBLE_VERSION + '"');
-    if (neighborRecovery || v6) expect(request.labels).toHaveLength(6);
+    if (neighborRecovery || v6 || placementRecovery) expect(request.labels).toHaveLength(6);
     else {
       expect(request.labels.at(-2)).toContain(request.hideId + ":native-provider-raw 512x768");
       expect(request.labels.at(-1)).toContain(request.hideId + ":native-shipping-crown 512x768");
@@ -1100,7 +1163,7 @@ shippingSha256: proof.imageSha256, geometrySha256: proof.geometrySha256,
     if (corrupt === 'false-doubt') { const raw = JSON.parse(changed.boardReview.dual.quality.raw); raw.doubt = true; raw.doubtReason = 'Synthetic located uncertainty at the left join'; changed.boardReview.dual.quality.raw = JSON.stringify(raw); }
     expect(await allowedDualPublication(db, { ...binding, judgeJson: JSON.stringify(changed) })).toBe(false);
   }
-  if(born&&!crown){const policy=await db.auditLog.findUniqueOrThrow({where:{id:"aud_single_medium_"+gameId}});const pin=JSON.parse(policy.metaJson!);expect(pin).toMatchObject({effort:"medium",worldCapMicroUsd:v6?7000000:4000000,oneUsableAssessmentPerImage:true,automaticBudgetExtension:false});await db.auditLog.delete({where:{id:policy.id}});expect(await allowedDualPublication(db,binding)).toBe(false);await db.auditLog.create({data:policy});expect(await allowedDualPublication(db,binding)).toBe(true);}
+  if(born&&!crown){const policy=await db.auditLog.findUniqueOrThrow({where:{id:"aud_single_medium_"+gameId}});const pin=JSON.parse(policy.metaJson!);expect(pin).toMatchObject({effort:"medium",worldCapMicroUsd:placementRecovery?6000000:v6?7000000:4000000,oneUsableAssessmentPerImage:true,automaticBudgetExtension:false});await db.auditLog.delete({where:{id:policy.id}});expect(await allowedDualPublication(db,binding)).toBe(false);await db.auditLog.create({data:policy});expect(await allowedDualPublication(db,binding)).toBe(true);}
   if (kingdom) {
     for (const corrupt of ["missing-head", "foreign-raw", "foreign-shipping", "wrong-return"]) {
       const changed = structuredClone(original);
@@ -1174,7 +1237,7 @@ shippingSha256: proof.imageSha256, geometrySha256: proof.geometrySha256,
     expect(observedPeak).toBeGreaterThan(3_000_000);
   }
   const audit = await boardWizardBudgetOf(c).audit(worldId);
-  expect(audit).toMatchObject({ capMicroUsd: v6 ? 7_000_000 : born?4_000_000:tail ? 10_000_000 : 8_000_000, held: false, pendingRequestKeys: [] });
+  expect(audit).toMatchObject({ capMicroUsd: placementRecovery ? 6_000_000 : v6 ? 7_000_000 : born?4_000_000:tail ? 10_000_000 : 8_000_000, held: false, pendingRequestKeys: [] });
   if (paced) {
     await expect(boardWizardBudgetOf(c).reserve(worldId, { scope: 'judge', requestKey: 'over-inclusive-cap',
       operationFingerprint: 'f'.repeat(64), reserveMicroUsd: audit.remainingMicroUsd + 1 })).rejects.toMatchObject({ code: 'cap_exceeded' });
@@ -1191,6 +1254,17 @@ shippingSha256: proof.imageSha256, geometrySha256: proof.geometrySha256,
     expect(await boardWizardBudgetOf(c).readContinuationApproval(worldId, audit.unknownRequestKeys[0]!)).toMatchObject({ version: "world-automatic-review-recovery/v5", imageSha256: expect.any(String) });
   } else expect(audit.reservedMicroUsd).toBe(0);
   expect(audit.committedMicroUsd).toBeLessThanOrEqual(audit.capMicroUsd);
+  if (placementRecovery) {
+    expect(audit.committedMicroUsd).toBeLessThan(4_000_000);
+    const pin = await db.auditLog.findFirstOrThrow({ where: { entityId: gameId, action: KINGDOM_FALLBACK_RECOVERY_ACTION } });
+    const replacement = rows.find(row => row.attempts === 4)!;
+    const publication = { ...publicationBinding(gameId, replacement), sceneVersion: 13 };
+    await db.auditLog.delete({ where: { id: pin.id } });
+    expect(await allowedDualPublication(db, publication)).toBe(false);
+    await db.auditLog.create({ data: pin });
+    expect(await deleteLocalPatchGame(container, gameId, { type: 'USER', id: game.ownerId! }, game.ownerId!)).toBe(true);
+    expect((await db.auditLog.findUniqueOrThrow({ where: { id: pin.id } })).metaJson).toBeNull();
+  }
   if(born){expect(await db.auditLog.count({where:{entityType:"Game",entityId:gameId,actorType:"ADMIN"}})).toBe(0);expect(await detectivesOperationalPolicyOf(db,gameId)).toMatchObject({worldCapMicroUsd:4000000,model:"gpt-6.1-sol",effort:"low",automaticBudgetExtension:false});const bodyRows=rows.filter(r=>sourceBodyBirthMarker(r));expect(bodyRows).toHaveLength(kingdom?0:2);for(const r of bodyRows){expect(r.attempts).toBe(1);expect(JSON.parse(r.judgeJson!).sourceBodyComposition.outsideChangedPixels).toBe(0);}}
   const child = await db.childProfile.findUniqueOrThrow({ where: { id: "chl-" + gameId } });
   const photo = await db.asset.findUniqueOrThrow({ where: { id: "ast-photo-" + gameId } });
@@ -5384,6 +5458,24 @@ it('kingdom-generation/v7: above five dollars the world keeps going; at six it s
     expect((await budget.audit(worldId)).committedMicroUsd).toBe(5_750_000);
   } finally { c.email.send = send; }
 }, 600_000);
+
+it('kingdom-generation/v8 binds the measured alternate from birth while v7 keeps the original', async () => {
+  const { KINGDOM_FALLBACK_PLACEMENT: profile, KINGDOM_FALLBACK_PLACEMENT_SHA256 } = await import('../../../../content/detectives/kingdom/fallback-placement-v1');
+  fixture.kingdomRelease = 'v7';
+  const originalId = 'synthetic-kingdom-v7-placement';
+  await newDetectiveWorld(originalId, 8, true, false, true, false, true);
+  fixture.kingdomRelease = 'v8';
+  const alternateId = 'synthetic-kingdom-v8-placement';
+  await newDetectiveWorld(alternateId, 8, true, false, true, false, true);
+  expect(await kingdomGenerationReleaseOf(db, alternateId)).toMatchObject({ version: 'kingdom-generation/v8',
+    fallbackPlacementSha256: KINGDOM_FALLBACK_PLACEMENT_SHA256, worldCapMicroUsd: 6_000_000, ceilingOutcome: 'hold', automaticBudgetExtension: false });
+  const original = await resolveLocalPatchBoardsForGame(db, originalId, 13), current = await resolveLocalPatchBoardsForGame(db, alternateId, 13);
+  const otherHides = (context: typeof current) => context.boards.flatMap(board => board.hides).filter(hide => hide.id !== profile.hideId);
+  expect(otherHides(current)).toHaveLength(26); expect(otherHides(current)).toEqual(otherHides(original));
+  expect(sourcePlacementForHide(original, profile.hideId)?.effective.crop).toEqual(profile.originalCrop);
+  expect(subjectPlanOfHide(profile.hideId, 13, current)).toMatchObject({ pose: 'peeking', action: profile.fallback.placement.support });
+  expect(subjectPlanOfHide(profile.hideId, 13, original)?.pose).toBe('standing');
+});
 
 it('kingdom-generation/v6 closes and refunds at the ceiling while an UNKNOWN charge awaits supplier reconciliation, keeping it in full (QAV6-01)', async () => {
   fixture.kingdomRelease = 'v6';

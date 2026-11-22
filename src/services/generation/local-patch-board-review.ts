@@ -38,7 +38,7 @@ import { sceneBySlug } from "../scene-catalog.service";
 import type { BudgetJson } from "./world-budget";
 import { LOCAL_PATCH_COMPOSITION_VERSION, LOCAL_PATCH_RETURN_GUARD } from "./local-patch-seam";
 import { AUTHORED_PATCH_COMPOSITION_VERSION, localPatchReturnRegion } from "../../domain/scene/local-patch-return-region";
-import { resolveLocalPatchBoardsForGame, sourcePlacementForHide } from "./source-placement-release";
+import { isKingdomAlternate, resolveLocalPatchBoardsForGame, sourcePlacementForHide } from "./source-placement-release";
 import { AUTHORED_RECOVERY_COMPOSITION_VERSION } from "../../domain/scene/local-patch-authored-recovery";
 import type { PatchRectangle } from "../../domain/scene/local-patch-return-region";
 import { authoredLocalPatchReturnMatches, authoredLocalPatchReviewBinding, authoredLocalPatchRecoveryEvidenceMatches } from "./local-patch-authored-return";
@@ -341,7 +341,8 @@ export async function prepareLocalPatchBoardReview(c: Container, input: { gameId
       return { hideId: e.hide.id, beforePng, afterPng, ...(closeupPng && afterEvidencePng ? { closeupPng, afterEvidencePng } : {}),
         ...(options.playerReview ? { boundaryComparisons: await prepareBoundaryComparisons(beforePng, afterPng, returnedWindow), returnedWindow }
           : hasLocalPatchCapability(scene.sceneVersion, "integratedQuality") ? { neighborComparisons: await prepareNeighborComparisons(beforePng, afterPng) } : {}),
-        expectation: { ageYears: child.ageYears, support: `${e.hide.pose} on ${board.ground}` } };
+        expectation: { ageYears: child.ageYears, support: isKingdomAlternate(placementContext, e.hide.id)
+          ? e.hide.placement!.support : `${e.hide.pose} on ${board.ground}` } };
     })),
   };
   const question = (request: LocalPatchBoardJudgeRequest) => {

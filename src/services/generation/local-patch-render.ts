@@ -15,7 +15,7 @@ import { WHOLE_SOURCE_CONTEXT_IMAGE_RESERVE } from "./whole-source-context-pin";
 import { wholeSourceContextImagePolicy, type WholeSourceContextTransport } from "../../infra/generation/openai-local-patch";
 import { sourceBodyMarkerSchema, sourceBodyDirections, sourceBodyOverlay, SOURCE_BODY_REPAIR_VERSION, type SourceBodyMarker } from '../../domain/scene/source-body-repair';
 import { sourceBodyMaskPng, applySourceBodyPixels } from './source-body-repair-compose';
-import { kingdomGenerationWindowForHide, sourceBodyForHide, sourceBodyBirthForHide } from './source-placement-release';
+import { kingdomFallbackRecoveryFrom, kingdomGenerationWindowForHide, sourceBodyForHide, sourceBodyBirthForHide } from './source-placement-release';
 import { retainedWindowAuthorityFor } from '../../../content/detectives/retained-window-v1';
 import { protectRetainedWindowPaintAlpha, retainedWindowSourceEraseEdit } from '../../domain/generation/retained-window';
 import { sourceBodyBirthMarkerSchema, type SourceBodyBirthMarker } from '../../domain/generation/detectives-operational-policy';
@@ -448,7 +448,9 @@ export async function renderLocalPatchHide(deps: LocalPatchRenderDeps, input: Lo
     throw Error("GUIDED_FRAME: source pixels differ from the trusted placement");
   if (input.placementGuide) {
     const guide = placementGuideSchema.parse(input.placementGuide);
+    const alternate = guide.attempt === 4 ? kingdomFallbackRecoveryFrom(input.placementContext!) : null;
     if (guide.hideId !== input.hide.id || guide.attempt !== input.attempt || guide.sceneVersion !== input.contentVersion
+      || guide.attempt === 4 && (alternate?.hideId !== guide.hideId || guide.version !== PLACEMENT_GUIDE_V2_VERSION)
       || guide.sourceSha256 !== guidedReturn!.source.sha256
       || guide.geometrySha256 !== sha(Buffer.from(JSON.stringify({ crop: cropOf(input.hide), child: maskForHide(input.hide), returned: guidedReturn!.local })))
       || !input.subjectDirection || input.nativeMaskTail || input.sourceBodyRepair || input.sourceBodyBirth

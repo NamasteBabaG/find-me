@@ -142,11 +142,12 @@ export function subjectRefusalOf(prior: unknown, plan: SubjectPlan, ageYears: nu
  */
 export async function subjectDirectionFor(c: Pick<Container, "db" | "storage">, gameId: string, hideId: string,
   contentVersion: number, judgeJson: string | null,
-  painter: { basePolicySha256?: string; attemptNumber?: number; forceMedium?: boolean } = {}): Promise<LocalPatchAttemptInput["subjectDirection"]> {
+  painter: { basePolicySha256?: string; attemptNumber?: number; forceMedium?: boolean;
+    placement?: import('./source-placement-release').TrustedSourcePlacementContext } = {}): Promise<LocalPatchAttemptInput["subjectDirection"]> {
   if (!hasLocalPatchCapability(contentVersion, "subjectEnrollment")) return undefined;
   const upgrade = await subjectUpgradeOf(c.db, gameId);
   if (!upgrade) return undefined;
-  const plan = subjectPlanOfHide(hideId, contentVersion);
+  const plan = subjectPlanOfHide(hideId, contentVersion, painter.placement);
   if (!plan) throw Error(`SUBJECT_PLAN: enrolled ${hideId} has no subject plan`);
   let prior: unknown = null;
   try { prior = JSON.parse(judgeJson ?? "null"); } catch { prior = null; }

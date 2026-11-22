@@ -16,6 +16,7 @@ import { REVIEW_EXISTING_WORK_MODE } from '@/domain/generation/work-mode';
 import { JOURNEY_WALL_COAT_SELECTOR } from '@/domain/generation/journey-wall-coat';
 import { JOURNEY_PARIS_CHAIR_SELECTOR } from '@/domain/generation/journey-paris-chair';
 import { JOURNEY_SUNBURST_HEAD_HIDE_ID, JOURNEY_WALL_REPLACEMENT_HIDE } from '@/domain/generation/journey-source-head';
+import { KINGDOM_FALLBACK_PLACEMENT } from '../../../../../content/detectives/kingdom/fallback-placement-v1';
 
 export const runtime = "nodejs";
 /** The owner-only QA publication turn may revalidate 27 stored appearances. */
@@ -96,10 +97,19 @@ export async function POST(req: Request) {
     }
     if (restore !== null) {
       const hideId = query.get('hideId'), sourceKey = query.get('sourceKey');
-      if (!['retained-window-v1','retained-window-alternate-v1','retained-kingdom-tail-v1','journey-source-head-v2','journey-source-head-sunburst-v1','journey-source-head-sunburst-tail-v1','journey-head-frame-v1',JOURNEY_WALL_COAT_SELECTOR,JOURNEY_PARIS_CHAIR_SELECTOR].includes(restore) || requestedMode !== 'review-existing' || !gameId || env().APP_ENV !== 'qa'
+      if (!['retained-window-v1','retained-window-alternate-v1','retained-kingdom-tail-v1','journey-source-head-v2','journey-source-head-sunburst-v1','journey-source-head-sunburst-tail-v1','journey-head-frame-v1',JOURNEY_WALL_COAT_SELECTOR,JOURNEY_PARIS_CHAIR_SELECTOR,KINGDOM_FALLBACK_PLACEMENT.version].includes(restore) || requestedMode !== 'review-existing' || !gameId || env().APP_ENV !== 'qa'
         || c.storage.id !== 'db' || !hideId || !/^[A-Za-z0-9._:-]{1,160}$/.test(hideId)
         || sourceKey !== null && !/^[A-Za-z0-9._:-]{1,240}$/.test(sourceKey))
         return NextResponse.json({ error: 'unsupported-free-restore' }, { status: 400 });
+      if (restore === KINGDOM_FALLBACK_PLACEMENT.version) {
+        if (req.method !== 'POST' || req.headers.get('origin') !== new URL(req.url).origin
+          || query.getAll('restore').length !== 1 || sourceKey !== null || hideId !== KINGDOM_FALLBACK_PLACEMENT.hideId)
+          return NextResponse.json({ error: 'unsupported-kingdom-placement' }, { status: 400 });
+        enter('kingdom-alternate-placement');
+        const { enrollKingdomFallbackRecovery } = await import('@/services/generation/kingdom-fallback-recovery');
+        const enrolled = await enrollKingdomFallbackRecovery(c, gameId);
+        return NextResponse.json({ enrolled, providerCalls: 0, approvalTransferred: false }, { headers: { 'Cache-Control': 'no-store' } });
+      }
       if (restore === JOURNEY_WALL_COAT_SELECTOR || restore === JOURNEY_PARIS_CHAIR_SELECTOR) {
         const chair = restore === JOURNEY_PARIS_CHAIR_SELECTOR;
         const candidates = query.getAll('previousCandidateSha256');

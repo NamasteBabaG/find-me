@@ -4,7 +4,11 @@ import { createHash } from "node:crypto";
 import { detectivesOperationalPolicyOf } from "./detectives-operational-policy";
 import type { DetectivesOperationalReceipt } from "../../domain/generation/detectives-operational-policy";
 import { journeyWindowReleaseOf, type JourneyWindowPin } from './journey-window-release';
-import { kingdomGenerationReleaseOf } from './kingdom-generation-release';
+import { KINGDOM_GENERATION_V7, KINGDOM_GENERATION_V8, kingdomGenerationReleaseOf } from './kingdom-generation-release';
+import { KINGDOM_FALLBACK_PLACEMENT as kingdomAlternate, KINGDOM_FALLBACK_PLACEMENT_SHA256 } from '../../../content/detectives/kingdom/fallback-placement-v1';
+import { KINGDOM_DETECTIVE_ADVENTURE_CATALOG } from '../../../content/detectives/kingdom/runtime-release';
+import { kingdomFallbackAdventure, kingdomFallbackPlacement } from '../../domain/scene/kingdom-fallback-placement';
+import type { KingdomFallbackRecovery } from './kingdom-fallback-recovery';
 import { KINGDOM_GAMEPLAY_NEIGHBOR_REVIEW, type KingdomReviewEvidence } from '../../domain/generation/kingdom-generation';
 import { kingdomGenerationWindows } from '../../../content/detectives/retained-window-v1';
 import { JOURNEY_WINDOW_MANIFEST, JOURNEY_WINDOW_BODY_MANIFEST } from '../../../content/detectives/journey-window-release-v1';
@@ -210,7 +214,8 @@ export type TrustedSourcePlacementContext = {
   readonly release: SourcePlacementReleasePin | null;
   readonly manifestSha256: string | null;
 };
-type ContextProof = { digest: string; contracts: Map<string, SourcePlacementHideContract>; bodies: Map<string, SourceBodyGeometry>; birthPin: DetectivesOperationalReceipt|null; windows:JourneyWindowPin|null; kingdomGeneration:string|null; kingdomReview: KingdomReviewEvidence | null; neighborReviewHide: string | null };
+type ContextProof = { digest: string; contracts: Map<string, SourcePlacementHideContract>; bodies: Map<string, SourceBodyGeometry>; birthPin: DetectivesOperationalReceipt|null; windows:JourneyWindowPin|null; kingdomGeneration:string|null; kingdomReview: KingdomReviewEvidence | null; neighborReviewHide: string | null;
+  kingdomAlternate: boolean; kingdomFallbackRecovery: KingdomFallbackRecovery | null };
 const trustedContexts = new WeakMap<object, ContextProof>();
 function freeze<T>(value: T): T {
   if (value !== null && typeof value === "object") {
@@ -302,15 +307,28 @@ export async function resolveLocalPatchBoardsForGame(db: Reader, gameId: string,
       return {...h,returnRect:change.returned,...(wardrobe?{wardrobe}:{})};
     })})));
   }
-  const context: TrustedSourcePlacementContext = Object.freeze({ [contextBrand]: true as const, gameId, sceneVersion,
-    boards, release: release ? freeze(release) : null, manifestSha256: release?.manifestSha256 ?? null });
   const kingdomPin = release?.baseSceneVersion === 13 && release.worldSlug === 'kingdom'
     ? await kingdomGenerationReleaseOf(db, gameId) : null;
+  const kingdomFallbackRecovery = kingdomPin?.version === KINGDOM_GENERATION_V7
+    ? await (await import('./kingdom-fallback-recovery')).kingdomFallbackRecoveryOf(db, gameId) : null;
+  const hasAlternate = kingdomPin?.version === KINGDOM_GENERATION_V8 || !!kingdomFallbackRecovery;
+  if (hasAlternate) {
+    const parent = boards.find(item => item.board === kingdomAlternate.boardId);
+    const original = contracts.get(kingdomAlternate.hideId);
+    demand(parent && original, 'Kingdom alternate requires its original source placement');
+    const { board, contract } = kingdomFallbackPlacement(parent!, original!);
+    kingdomFallbackAdventure(KINGDOM_DETECTIVE_ADVENTURE_CATALOG);
+    boards = freeze(boards.map(item => item === parent ? board : item));
+    contracts.set(kingdomAlternate.hideId, freeze(contract));
+  }
+  const context: TrustedSourcePlacementContext = Object.freeze({ [contextBrand]: true as const, gameId, sceneVersion,
+    boards, release: release ? freeze(release) : null, manifestSha256: release?.manifestSha256 ?? null });
   const kingdomGeneration = kingdomPin?.windowsSha256 ?? null;
   const neighborReview = kingdomPin && await (await import('./kingdom-neighbor-review')).kingdomNeighborReviewOf(db, gameId);
   trustedContexts.set(context, { digest: contextDigest(context), contracts, bodies, birthPin:birthPin?freeze(birthPin):null, windows, kingdomGeneration,
     kingdomReview: kingdomPin && 'reviewEvidence' in kingdomPin ? kingdomPin.reviewEvidence ?? null : null,
-    neighborReviewHide: neighborReview?.hideId ?? null });
+    neighborReviewHide: neighborReview?.hideId ?? null, kingdomAlternate: hasAlternate,
+    kingdomFallbackRecovery: kingdomFallbackRecovery ? freeze(kingdomFallbackRecovery) : null });
   return context;
 }
 
@@ -336,10 +354,22 @@ export async function resolveLocalPatchBoardForGame(db: Reader, gameId: string, 
 
 export function sourceBodyForHide(context:TrustedSourcePlacementContext,hideId:string){assertTrustedSourcePlacementContext(context);return trustedContexts.get(context)!.bodies.get(hideId)??null;}
 export function sourcePlacementManifestForHide(context:TrustedSourcePlacementContext,hideId:string){assertTrustedSourcePlacementContext(context);const pin=trustedContexts.get(context)!.windows;
+ if (isKingdomAlternate(context, hideId)) return KINGDOM_FALLBACK_PLACEMENT_SHA256;
  return sourceBodyForHide(context,hideId)?pin?.bodyManifestSha256??SOURCE_BODY_REPAIR_MANIFEST_SHA256
    :pin&&JOURNEY_WINDOW_MANIFEST.entries.some(e=>e.hideId===hideId)?pin.manifestSha256:context.manifestSha256;}
 
 export function sourceBodyBirthForHide(context:TrustedSourcePlacementContext,hideId:string){assertTrustedSourcePlacementContext(context);const proof=trustedContexts.get(context)!;return proof.bodies.has(hideId)?proof.birthPin:null;}
+
+export function isKingdomAlternate(context: TrustedSourcePlacementContext, hideId: string) {
+  if (hideId !== kingdomAlternate.hideId) return false;
+  assertTrustedSourcePlacementContext(context);
+  return trustedContexts.get(context)!.kingdomAlternate;
+}
+
+export function kingdomFallbackRecoveryFrom(context: TrustedSourcePlacementContext) {
+  assertTrustedSourcePlacementContext(context);
+  return trustedContexts.get(context)!.kingdomFallbackRecovery;
+}
 
 export function kingdomGenerationWindowForHide(context: TrustedSourcePlacementContext, hideId: string) {
   if (context.release?.baseSceneVersion !== 13 || context.release.worldSlug !== 'kingdom') return null;

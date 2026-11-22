@@ -112,7 +112,10 @@ export async function allowedDualPublication(db: Prisma.TransactionClient, input
  * collection refusal. Each stage is read only by its own policy's reader. */
 export async function allowedDualSubject(db: Prisma.TransactionClient, worldId: string, upgrade: SubjectUpgradeReceipt, proof: DualReviewProof,
   input: LocalPatchPublicationBinding, lean = false, single = false): Promise<boolean> {
-  const subject = proof.subject, plan = subjectPlanOfHide(input.hideId, input.sceneVersion);
+  const { KINGDOM_FALLBACK_PLACEMENT_SHA256 } = await import('../../../content/detectives/kingdom/fallback-placement-v1');
+  const placement = proof.authoredReturn?.sourcePlacement?.manifestSha256 === KINGDOM_FALLBACK_PLACEMENT_SHA256
+    ? await (await import('./source-placement-release')).resolveLocalPatchBoardsForGame(db, input.gameId, input.sceneVersion) : undefined;
+  const subject = proof.subject, plan = subjectPlanOfHide(input.hideId, input.sceneVersion, placement);
   const crown=JSON.parse(input.judgeJson??"null")?.crownReturn;
   if(subject?.recompositionAnchor&&crown===undefined)return false;
   if(crown!==undefined){const repair=await(await import("./published-crown-repair")).publishedCrownRepairOf(db,input.gameId);if(repair?.pin.selected.some(s=>s.rowId===input.variantId)&&!subject?.recompositionAnchor)return false;}

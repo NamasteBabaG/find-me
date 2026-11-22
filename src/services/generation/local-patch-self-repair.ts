@@ -225,7 +225,7 @@ export async function runLocalPatchSelfRepair(c: Container, input: { gameId: str
       priorStateSha256: hash({ ...state, nativeSizeReplay: undefined, phase: "rejected" }) } };
   }
   const upgrade = hasLocalPatchCapability(scene.sceneVersion, "integratedQuality") ? await subjectUpgradeOf(c.db, gameId) : null;
-  const plan = upgrade ? subjectPlanOfHide(hide.id, scene.sceneVersion) : null;
+  const plan = upgrade ? subjectPlanOfHide(hide.id, scene.sceneVersion, placementContext) : null;
   // Keep the last review's actual refusal. A new cycle can never erase the old
   // paid attempt, and an identical geometry/source recipe is never repurchased.
   if (!state || state.phase === "awaiting-review" || state.phase === "rejected") {

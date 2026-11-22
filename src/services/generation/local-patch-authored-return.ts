@@ -16,7 +16,7 @@ import { AUTHORED_RECOVERY_COMPOSITION_VERSION, AUTHORED_RECOVERY_CONTEXT_VERSIO
 import { SELF_REPAIR_VERSION, selfRepairDecisionSchema } from "../../domain/scene/local-patch-self-repair";
 import { sourcePlacementRecoveryGeometryAllowed, type SourcePlacementHideContract } from "../../domain/scene/source-placement-release";
 import { prepareSourceNeighborContract } from "../../domain/scene/local-patch-source-neighbors";
-import { assertTrustedSourcePlacementContext, kingdomGenerationWindowForHide, resolveLocalPatchBoardsForGame, sourcePlacementForHide,
+import { assertTrustedSourcePlacementContext, isKingdomAlternate, kingdomGenerationWindowForHide, resolveLocalPatchBoardsForGame, sourcePlacementForHide,
   type TrustedSourcePlacementContext, sourceBodyForHide, sourcePlacementManifestForHide } from "./source-placement-release";
 import { sceneBySlug } from "../scene-catalog.service";
 import { PrismaWorldBudgetStore } from "../../infra/db/prisma-world-budget-store";
@@ -94,7 +94,8 @@ export function assertAuthoredLocalPatchRecoveryGeometry(parent: AuthoredLocalPa
   const entry = sourcePlacementForHide(placementContext, parent.hideId), plan = selfRepairDecisionSchema.parse(decision);
   const board = placementContext.boards.find(b => b.board === parent.boardId), hide = board?.hides.find(h => h.id === parent.hideId);
   if (!entry || !board || !hide || !equal(parent, expectedAuthoredLocalPatchReturn(board, hide, placementContext.sceneVersion, placementContext))
-    || parent.sourcePlacement?.manifestSha256 !== placementContext.manifestSha256
+    || parent.sourcePlacement?.manifestSha256 !== (isKingdomAlternate(placementContext, parent.hideId)
+      ? sourcePlacementManifestForHide(placementContext, parent.hideId) : placementContext.manifestSha256)
     || parent.sourcePlacement.basePlacementSha256 !== entry.basePlacementSha256
     || !sourcePlacementRecoveryGeometryAllowed(entry, { crop: parent.crop, child: plan.protectedCore, returnRect: plan.returnWindow }))
     throw Error("AUTHORED_RECOVERY: fixed crop, source heads or authored child/window envelope is unsafe");

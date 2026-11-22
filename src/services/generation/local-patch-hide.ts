@@ -49,6 +49,8 @@ import { readPinnedLocalPatchArt } from "./local-patch-art";
 import { readCollectionArt } from "./collection-art";
 import { env } from "../../lib/env";
 import { LOCAL_PATCH_MAX_ATTEMPTS, LOCAL_PATCH_NORMAL_ATTEMPTS, localPatchFinalRepairAllowed, nextLocalPatchAttempt } from "../../domain/scene/local-patch-attempts";
+import { isKingdomAlternate, kingdomFallbackRecoveryFrom } from './source-placement-release';
+import { kingdomFallbackPainting } from './kingdom-fallback-recovery';
 import { isLocalPatchAdvisoryVersion, isLocalPatchAgeVersion, isLocalPatchStrictVersion } from "../../domain/scene/local-patch-catalog";
 import { requireLocalPatchExtraAttempt, fenceLocalPatchExtraAttempt } from "./local-patch-extra-attempt";
 import { localPatchPublicationGeometryHash } from "./local-patch-publication-policy";
@@ -305,6 +307,12 @@ export async function runLocalPatchHide(c: Container, deps: LocalPatchHideDeps, 
       provider: LOCAL_PATCH_PROVIDER, promptVersion,
       ...(isLocalPatchStrictVersion(scene.sceneVersion) ? { judgeJson: JSON.stringify({ adaptiveRecovery: initialAdaptiveRecovery() }) } : {}),
     } });
+  const fallback = isKingdomAlternate(placementContext, hide.id) ? kingdomFallbackRecoveryFrom(placementContext) : null;
+  if (fallback) demand(kingdomFallbackPainting(fallback, row) && deps.fence && !input.extraAttemptAuthorizationId
+    && !input.guidedFrame && !input.nativeMaskTail && !input.sourceHeadRecovery && !input.journeyHeadRecovery
+    && !input.sourceBodyRepair && !input.wholeSourceContext
+    && deps.renderPolicySha256 === localPatchRenderPolicySha256(LOCAL_PATCH_SUNBURST_IMAGE_POLICY),
+  'The bound Kingdom replacement requires its one exact appearance and Sunburst purchase');
 
   let guidedFrame: GuidedFrameMarker | null = null;
   if (input.guidedFrame) {
@@ -363,17 +371,18 @@ export async function runLocalPatchHide(c: Container, deps: LocalPatchHideDeps, 
   const extra = input.extraAttemptAuthorizationId ? await requireLocalPatchExtraAttempt(c, {
     gameId, hideId: hide.id, rowId: row.id, authorizationId: input.extraAttemptAuthorizationId,
   }) : null;
-  const attemptLimit = journeyRecovery ? journeyRecovery.pin.authorizedAttempt : headRecovery || wholeContext || nativeMaskTail ? 4 : extra?.authorizedAttempt ?? (input.finalRepair ? LOCAL_PATCH_MAX_ATTEMPTS : LOCAL_PATCH_NORMAL_ATTEMPTS);
+  const attemptLimit = fallback?.authorizedAttempt ?? (journeyRecovery ? journeyRecovery.pin.authorizedAttempt : headRecovery || wholeContext || nativeMaskTail ? 4 : extra?.authorizedAttempt ?? (input.finalRepair ? LOCAL_PATCH_MAX_ATTEMPTS : LOCAL_PATCH_NORMAL_ATTEMPTS));
   const { attempt, exhausted } = bodyRepair ? {attempt:bodyRepair.selected.authorizedAttempt,exhausted:false} : nextLocalPatchAttempt(row, attemptLimit);
   const birthPolicy=sourceBodyBirthForHide(placementContext,hide.id),bodyBirth=birthPolicy&&!journeyRecovery&&!exhausted?sourceBodyBirthMarkerFor(birthPolicy,row.id,hide.id,attempt):null;
   if(bodyBirth)demand(!bodyRepair&&!guidedFrame&&!nativeMaskTail&&!extra&&scene.sceneVersion===13,'From-birth footprints keep normal finite image attempts');
   const original=journeyRecovery?JSON.parse(journeyRecovery.pin.previousJudgeJson):bodyRepair||headRecovery?JSON.parse(row.judgeJson??'{}'):{};
   let guidedHistory: Record<string, unknown>=journeyRecovery?{journeyHeadRecovery:journeyRecovery.marker,...(original.selfRepair?{selfRepair:original.selfRepair}:{}),...(original.guidedFrameRecovery?{guidedFrameRecovery:original.guidedFrameRecovery}:{})}:headRecovery?{sourceHeadRecovery:headRecovery.marker,...(headRecovery.join?{sourceHeadJoin:headRecovery.join}:{}),...(original.selfRepair?{selfRepair:original.selfRepair}:{}),...(original.guidedFrameRecovery?{guidedFrameRecovery:original.guidedFrameRecovery}:{})}:wholeContext?{wholeSourceContext:wholeContext.marker}:bodyBirth?{sourceBodyBirth:bodyBirth}:bodyRepair?{sourceBodyRepair:bodyRepair.marker,...(original.selfRepair?{selfRepair:original.selfRepair}:{}),...(original.guidedFrameRecovery?{guidedFrameRecovery:original.guidedFrameRecovery}:{}),...(original.nativeMaskTail?{nativeMaskTail:original.nativeMaskTail}:{})}:guidedFrame?{guidedFrameRecovery:guidedFrame,selfRepair:JSON.parse(row.judgeJson!).selfRepair,...(nativeMaskTail?{nativeMaskTail}:{})}:{};
+  if (fallback) guidedHistory.kingdomFallback = fallback.previousJudgeSha256;
   // judgeJson is intentionally kept while PENDING: clearing lastError must not
   // change the prompt/fingerprint when attempt 2/3 resumes after an interruption.
   // v8 corrects its own located defect on the very next attempt. The old paid
   // recipes still add repair instructions only on their final repair pass.
-  const repairChecks = input.repairChecks ?? (isLocalPatchStrictVersion(scene.sceneVersion)
+  const repairChecks = fallback ? undefined : input.repairChecks ?? (isLocalPatchStrictVersion(scene.sceneVersion)
     ? attempt > 1 ? localPatchRepairChecks(row.judgeJson, scene.sceneVersion, { hideId: hide.id }) : undefined
     : input.finalRepair ? localPatchRepairChecks(row.judgeJson) : undefined);
   const base = {
@@ -442,7 +451,7 @@ export async function runLocalPatchHide(c: Container, deps: LocalPatchHideDeps, 
   let placementGuide: PlacementGuide | null = null;
   const priorGuide = placementGuideOf(row.judgeJson);
   if ((scene.sceneVersion === 12 || scene.sceneVersion === 13) && !journeyRecovery && !headRecovery && !wholeContext && !bodyRepair && !bodyBirth && !nativeMaskTail && !extra
-    && (attempt <= LOCAL_PATCH_NORMAL_ATTEMPTS || !!guidedFrame)) {
+    && (attempt <= LOCAL_PATCH_NORMAL_ATTEMPTS || !!guidedFrame || !!fallback)) {
     const authority = await singleLowReviewAuthorization(c.db, gameId);
     if (authority?.kind === "from-birth") {
       const returned = expectedGuidedLocalPatchReturn(board, hide, scene.sceneVersion, placementContext);
@@ -460,7 +469,7 @@ export async function runLocalPatchHide(c: Container, deps: LocalPatchHideDeps, 
   }
   if (priorGuide?.attempt === attempt) demand(placementGuide, "Persisted placement guide cannot be removed from a started painting");
   if (placementGuide) guidedHistory = { ...guidedHistory, placementGuide };
-  const adaptiveRecovery = journeyRecovery || headRecovery || wholeContext || guidedFrame || placementGuide || bodyRepair || bodyBirth ? null : prepareAdaptiveRecovery(row.judgeJson, row, attempt, {
+  const adaptiveRecovery = fallback || journeyRecovery || headRecovery || wholeContext || guidedFrame || placementGuide || bodyRepair || bodyBirth ? null : prepareAdaptiveRecovery(row.judgeJson, row, attempt, {
     gameId, rowId: row.id, contentVersion: scene.sceneVersion, promptVersion, hide,
     boardSha256: sha256Bytes(artwork), identitySha256: sha256Bytes(sheet), ageYears: child.ageYears,
     renderPolicySha256: deps.renderPolicySha256,
@@ -503,8 +512,8 @@ export async function runLocalPatchHide(c: Container, deps: LocalPatchHideDeps, 
 
   const identityReferences = await prepareLocalPatchIdentityReferences(sheet, scene.sceneVersion);
   // An enrolled world's subject plan for this appearance; absent for every other world.
-  const subjectDirection = nativeDetailSubjectDirection(await subjectDirectionFor(c, gameId, hide.id, scene.sceneVersion, row.judgeJson,
-    { basePolicySha256: paint.renderPolicySha256, attemptNumber: attempt }));
+  const subjectDirection = nativeDetailSubjectDirection(await subjectDirectionFor(c, gameId, hide.id, scene.sceneVersion, fallback ? null : row.judgeJson,
+    { basePolicySha256: paint.renderPolicySha256, attemptNumber: attempt, placement: placementContext }));
   const nativeDetailRepair=!journeyRecovery&&repairChecks?.includes('styleMatch') ? nativeDetailRepairOf(row.judgeJson,hide.id,scene.sceneVersion) : undefined;
   const attemptResult = await renderLocalPatchHide({
     ledger: budget, store: new LocalPatchRetainedPurchaseStore(c, gameId, budget, input.deadlineAt),

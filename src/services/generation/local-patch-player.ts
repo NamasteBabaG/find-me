@@ -9,7 +9,7 @@ import { Prisma } from "@prisma/client";
 import { GameConfigSchema, SpriteRefSchema, type GameConfig, type PlayWorld } from "../../domain/game/config";
 import { composeGame, composeScene, composeWorld } from "../../domain/game/compose";
 import { isLocalPatchAdvisoryVersion } from "../../domain/scene/local-patch-catalog";
-import { resolveLocalPatchBoardsForGame } from "./source-placement-release";
+import { isKingdomAlternate, resolveLocalPatchBoardsForGame } from "./source-placement-release";
 import { newId } from "../../lib/ids";
 import type { Container } from "../container";
 import { signedAssetUrl } from "../asset.service";
@@ -33,6 +33,8 @@ import { leanReviewRecoveryOf } from "./lean-review-recovery-pin";
 import { getDict, tf } from "../../i18n";
 import { WIZARD_ADVENTURE_CATALOG } from "../../../content/adventures/wizard-release";
 import { attachAdventureBook } from "../../domain/adventure/compose";
+import { kingdomFallbackAdventure } from '../../domain/scene/kingdom-fallback-placement';
+import { KINGDOM_FALLBACK_PLACEMENT } from '../../../content/detectives/kingdom/fallback-placement-v1';
 
 const STYLE = "local-patch-world-v1";
 const sha = (bytes: Buffer) => createHash("sha256").update(bytes).digest("hex");
@@ -151,8 +153,12 @@ async function assembleLocalPatchGame(c: Container, gameId: string, sunburstTail
     // The patch includes the surroundings/occlusion already. Old foreground
     // overlays and sprite flips must not repaint or move the judged picture.
     composed.art = { ...composed.art, foreground: undefined };
-    for (const target of composed.targets) for (const slot of target.slots) {
-      slot.flip = false; slot.rotation = 0; slot.layer = "front";
+    for (const target of composed.targets) {
+      const alternate = includedHides.find(hide => hide.targetId === target.id && isKingdomAlternate(placements, hide.id));
+      for (const slot of target.slots) {
+        slot.flip = false; slot.rotation = 0; slot.layer = "front";
+        if (alternate?.hint) slot.hintText = alternate.hint[locale];
+      }
     }
     scenes.push({ ...composed, worldSlug: world.slug });
     if (sunburstTail) {
@@ -165,10 +171,14 @@ async function assembleLocalPatchGame(c: Container, gameId: string, sunburstTail
   demand(worlds.size === 1, "the nine boards must belong to one world");
   const config = GameConfigSchema.parse(composeGame({ gameId, child: who, locale, packageTier: "ONE_WORLD", styleVersion: STYLE,
     scenes, worlds: [...worlds.values()], ...(game.giftJson ? { gift: JSON.parse(game.giftJson) } : {}) }));
-  return game.scenes.every(scene => isCollectionVersion(scene.sceneVersion))
-    ? attachAdventureBook(config, game.scenes[0]!.sceneVersion === 13 ? detectiveFamilyForBoard(game.scenes[0]!.sceneSlug).adventure : game.scenes[0]!.sceneVersion === INTEGRATED_COLLECTION_VERSION ? INTEGRATED_WIZARD_CATALOG : game.scenes[0]!.sceneVersion === REFRESHED_COLLECTION_VERSION ? REFRESHED_WIZARD_CATALOG : WIZARD_ADVENTURE_CATALOG, scenes.map(scene => scene.slug),
-      partialRelease?.version === 2 ? { verifiedSubset: Object.fromEntries(scenes.filter(scene => scene.targets.length === 2)
-        .map(scene => [scene.slug, scene.targets.map(target => target.id)])) } : {}) : config;
+  if (!game.scenes.every(scene => isCollectionVersion(scene.sceneVersion))) return config;
+  const version = game.scenes[0]!.sceneVersion;
+  const catalog = version === 13 ? detectiveFamilyForBoard(game.scenes[0]!.sceneSlug).adventure
+    : version === INTEGRATED_COLLECTION_VERSION ? INTEGRATED_WIZARD_CATALOG
+      : version === REFRESHED_COLLECTION_VERSION ? REFRESHED_WIZARD_CATALOG : WIZARD_ADVENTURE_CATALOG;
+  return attachAdventureBook(config, isKingdomAlternate(placements, KINGDOM_FALLBACK_PLACEMENT.hideId) ? kingdomFallbackAdventure(catalog) : catalog,
+    scenes.map(scene => scene.slug), partialRelease?.version === 2 ? { verifiedSubset: Object.fromEntries(scenes.filter(scene => scene.targets.length === 2)
+      .map(scene => [scene.slug, scene.targets.map(target => target.id)])) } : {});
 }
 
 /** Publish only an entirely verified world, atomically with the worker fence. */
