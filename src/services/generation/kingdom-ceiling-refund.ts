@@ -8,6 +8,7 @@ import { sendAdminAlert } from "../admin-alert.service";
 import { gameRefundedEmail } from "../email/templates";
 import { routeMail } from "../email/fallback";
 import type { RefundStatus } from "../../infra/payment/types";
+import { hasUnresolvedManualRefund } from "../payment-refund.service";
 
 /**
  * kingdom-ceiling-refund/v1 (kingdom-generation/v6, review QAV6-02). The refund a world closed at its ceiling owes, and
@@ -90,6 +91,7 @@ export async function advanceCeilingRefund(c: Container, gameId: string, now = D
   if (refund.state === "confirmed") { await advanceCeilingNotice(c, gameId, now); return "confirmed"; }
   const order = await c.db.order.findUniqueOrThrow({ where: { id: refund.orderId } });
   if (order.paymentStatus === "REFUNDED") return confirm(c, gameId, refund, row.metaJson, refund.providerRefundId, now);
+  if (await hasUnresolvedManualRefund(c.db, order.id)) return "pending";
   if (refund.state === "sending" && (refund.leaseUntil > now || refund.nextCheckAt > now)) return "pending";
   if (refund.state === "refused" || refund.state === "unresolved") return refund.state;
   const status = async (): Promise<RefundStatus> => c.payment.refundStatus

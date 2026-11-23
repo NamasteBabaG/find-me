@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { qaAccessConfig, qaAccessConfigured, qaCronAllowed, qaDeniedResponse, qaTokenFromRequest, safeQaNext, validQaSession } from "@/lib/qa-access";
+import { qaAccessConfig, qaAccessConfigured, qaCronAllowed, qaDeniedResponse, qaPayMeSandboxCallback, qaTokenFromRequest, safeQaNext, validQaSession } from "@/lib/qa-access";
 
 export async function middleware(req: NextRequest) {
   const c = qaAccessConfig();
@@ -8,7 +8,7 @@ export async function middleware(req: NextRequest) {
   const read = req.method === "GET" || req.method === "HEAD";
   const publicGate = (read && (path === "/qa-access" || path.startsWith("/_next/static/") || mailPicture(path))) ||
     (req.method === "POST" && path === "/qa-access/login");
-  if (publicGate || await qaCronAllowed(req, c) || await validQaSession(qaTokenFromRequest(req, c), c)) {
+  if (publicGate || qaPayMeSandboxCallback(req, c) || await qaCronAllowed(req, c) || await validQaSession(qaTokenFromRequest(req, c), c)) {
     const response = NextResponse.next();
     response.headers.set("X-Robots-Tag", "noindex, nofollow, noarchive");
     if (read && mailPicture(path)) response.headers.set("Cache-Control", "public, max-age=86400");

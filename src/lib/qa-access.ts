@@ -42,6 +42,17 @@ export function qaAccessConfigured(c: QaAccessConfig): boolean {
   return qaAccessProblem(c) === null;
 }
 
+/** Only the sandbox provider can reach this exact receiver without a browser cookie.
+ * The handler still confirms the sale against PayMe before committing any event. */
+export function qaPayMeSandboxCallback(req: Request, c = qaAccessConfig()): boolean {
+  return c.enabled && qaAccessConfigured(c)
+    && envValue("PAYMENT_PROVIDER", process.env.PAYMENT_PROVIDER) === "payme"
+    && envValue("PAYME_ENVIRONMENT", process.env.PAYME_ENVIRONMENT) === "sandbox"
+    && envValue("GENERATION_PROVIDER", process.env.GENERATION_PROVIDER) === "mock"
+    && req.method === "POST" && new URL(req.url).pathname === "/api/webhooks/payment"
+    && req.headers.get("content-type")?.split(";", 1)[0]?.trim().toLowerCase() === "application/x-www-form-urlencoded";
+}
+
 export function qaAccessProblem(c: QaAccessConfig): string | null {
   if (!c.password) return "QA_PASSWORD_MISSING";
   if (c.password.length < 16) return "QA_PASSWORD_TOO_SHORT";

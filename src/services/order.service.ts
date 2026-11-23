@@ -1,6 +1,6 @@
 import { newId } from "@/lib/ids";
 import { LEGAL_VERSION } from "@/domain/legal";
-import { Prisma } from "@prisma/client";
+import { Prisma, type Order } from "@prisma/client";
 import { boardsFor, PACKAGES, isPackageTier, isCurrency, priceFor } from "@/domain/package";
 import { type Currency, pick, type Locale } from "@/i18n/config";
 import { flowError, type FlowError } from "@/i18n/errors";
@@ -16,6 +16,7 @@ import { storedSearchLevel } from "@/domain/search-level";
 import { localPatchSourceSelectionAllowed } from "./generation/source-placement-release";
 import { GameStatusConflict, statusOf, transitionGame } from "./game-status";
 import { WEBHOOK, audit, type Actor } from "./audit.service";
+import { recordConfirmedOrderRefund, runManualRefund } from "./payment-refund.service";
 import { bindCheckoutFamilyChild, reconcilePaidFamilyChildren } from "./family.service";
 import { childHasPaidWorld } from "./child-pricing.service";
 import { claimChildWorldForCheckout, startOrdinaryCheckout, startWorldPurchaseCheckout } from "./world-purchase-checkout.service";
@@ -136,14 +137,17 @@ export async function startCheckout(c: Container, input: { gameId: string; email
   const pkg = PACKAGES[game.packageTier];
   const currency = input.currency;
   const amount = priceFor(pkg.tier, currency, continuation); // server-verified child's price
+  const product = c.payment.id === "payme" ? pick({ en: "Find Me", he: "איפה אני?" }, locale)
+    : pick({ en: `Where's ${game.childProfile.displayName}?`, he: `איפה ${game.childProfile.displayName}?` }, locale);
+  const description = `${product} — ${pick(pkg.name, locale)}`;
   if (game.familyChildId && await c.db.childWorldPurchase.findUnique({ where: { activeGameId: game.id } })) {
     return startWorldPurchaseCheckout(c, { gameId: game.id, userId: user.id, email: user.email, currency, amount, locale,
-      description: `${pick({ en: `Where's ${game.childProfile!.displayName}?`, he: `איפה ${game.childProfile!.displayName}?` }, locale)} — ${pick(pkg.name, locale)}`,
+      description,
       legalVersion: input.legalVersion, ...(resumeOrderId ? { resumeOrderId } : {}) });
   }
   return startOrdinaryCheckout(c, {
     gameId: game.id, userId: user.id, email: user.email, currency, amount, locale,
-    description: `${pick({ en: `Where's ${game.childProfile.displayName}?`, he: `איפה ${game.childProfile.displayName}?` }, locale)} — ${pick(pkg.name, locale)}`,
+    description,
     legalVersion: input.legalVersion, ...(resumeOrderId ? { resumeOrderId } : {}),
   });
 }
@@ -196,7 +200,8 @@ export async function handlePaymentWebhook(c: Container, rawBody: string, header
       const current = await tx.order.findUniqueOrThrow({ where: { id: order.id } });
       if (current.provider !== c.payment.id) return { body: "provider mismatch", track: [], rejected: true };
       // Validate immutable money under the same fence as checkout repricing.
-      if (ev.kind === "PAID" && (ev.amountAgorot !== current.amountAgorot || (ev.currency !== undefined && ev.currency !== current.currency))) {
+      if ((ev.kind === "PAID" || ev.kind === "REFUNDED" && current.provider === "payme")
+        && (ev.amountAgorot !== current.amountAgorot || (ev.currency !== undefined && ev.currency !== current.currency))) {
         await audit(c, WEBHOOK, "payment:amount-mismatch", "Order", current.id,
           { expected: `${current.amountAgorot} ${current.currency}`, got: `${ev.amountAgorot} ${ev.currency ?? "?"}` }, tx);
         return { body: "amount mismatch", track: [], rejected: true };
@@ -236,7 +241,7 @@ export async function handlePaymentWebhook(c: Container, rawBody: string, header
 }
 
 type Applied = { body: string; track: Array<{ name: "payment_completed"; props: Record<string, string> }>; rejected?: boolean };
-type OrderRow = { id: string; gameId: string; paymentStatus: string; packageTier: string };
+type OrderRow = Pick<Order, "id" | "gameId" | "paymentStatus" | "packageTier" | "provider" | "providerPaymentId" | "paidAt">;
 
 /**
  * Idempotent, monotonic and reconciling, inside the caller's transaction.
@@ -286,6 +291,10 @@ async function applyPaymentEvent(c: Container, tx: Prisma.TransactionClient, ord
       }
     }
     if (order.paymentStatus === "REFUNDED") return { body: "ignored: order already refunded", track: [] };
+    if (order.provider === "payme" && order.paymentStatus === "PAID" && order.providerPaymentId !== ev.providerPaymentId) {
+      await audit(c, WEBHOOK, "payment:other-sale-paid", "Order", order.id, { providerEventId: ev.providerEventId }, tx);
+      return { body: "payment recorded for another sale", track: [] };
+    }
     const first = order.paymentStatus !== "PAID";
     const previousPaid = await tx.order.findFirst({ where: { gameId: order.gameId, NOT: { id: order.id },
       OR: [{ paymentStatus: { in: ["PAID", "REFUNDED"] } }, { paidAt: { not: null } }] }, select: { id: true } });
@@ -323,9 +332,13 @@ async function applyPaymentEvent(c: Container, tx: Prisma.TransactionClient, ord
     return { body: "ok", track: [] };
   }
   // REFUNDED
-  if (order.paymentStatus !== "PAID" && order.paymentStatus !== "REFUNDED") return { body: `ignored: refund of an order that is ${order.paymentStatus}`, track: [] };
-  if (order.paymentStatus === "PAID") await tx.order.update({ where: { id: order.id }, data: { paymentStatus: "REFUNDED", refundedAt: new Date() } });
-  await moveGame("REFUNDED", (from) => from === "REFUNDED");
+  if (order.provider === "payme" && order.providerPaymentId !== ev.providerPaymentId) {
+    await audit(c, WEBHOOK, "payment:other-sale-refund", "Order", order.id, { providerEventId: ev.providerEventId }, tx);
+    return { body: "refund recorded for another sale", track: [] };
+  }
+  if (order.provider !== "payme" && order.paymentStatus !== "PAID" && order.paymentStatus !== "REFUNDED")
+    return { body: `ignored: refund of an order that is ${order.paymentStatus}`, track: [] };
+  await recordConfirmedOrderRefund(c, tx, order, WEBHOOK);
   return { body: "ok", track: [] };
 }
 
@@ -334,29 +347,10 @@ function isUniqueViolation(err: unknown): boolean {
 }
 
 export async function refundOrder(c: Container, orderId: string, actor: Actor): Promise<{ ok: boolean; reason?: string }> {
-  const order = await c.db.order.findUnique({ where: { id: orderId } });
-  if (!order || order.paymentStatus !== "PAID") return { ok: false, reason: "ההזמנה לא במצב ששולם." };
-  const res = await c.payment.refund(order.providerPaymentId ?? "", order.amountAgorot);
-  if (!res.ok) return { ok: false, reason: "ספק התשלום סירב להחזר." };
-  // The order row and the game move together, and only from PAID: a refund
-  // that lost a race to a webhook or to another admin writes nothing rather
-  // than marking an order refunded twice or re-refunding a refunded game.
-  // (The provider call above is still outside the fence; two admins clicking
-  // at the same instant can both reach the provider. Recorded in the handoff.)
-  const claimed = await c.db.$transaction(async (tx) => {
-    const marked = await tx.order.updateMany({ where: { id: orderId, paymentStatus: "PAID" }, data: { paymentStatus: "REFUNDED", refundedAt: new Date() } });
-    if (marked.count !== 1) return false;
-    const status = statusOf(await tx.game.findUniqueOrThrow({ where: { id: order.gameId }, select: { status: true } }));
-    if (status !== "REFUNDED" && canTransition(status, "REFUNDED")) {
-      await transitionGame(c, order.gameId, "REFUNDED", actor, { orderId, providerRefundId: res.providerRefundId }, tx);
-    } else if (status !== "REFUNDED") {
-      await audit(c, actor, "payment:game-unreachable", "Game", order.gameId, { from: status, to: "REFUNDED", orderId }, tx);
-    }
-    return true;
-  });
-  if (!claimed) return { ok: false, reason: "ההזמנה כבר לא במצב ששולם." };
+  const result = await runManualRefund(c, orderId, actor);
+  if (!result.ok) return result;
   // A manual refund of a world closed at its ceiling finishes its owed-refund record and parent notice (QAV6-03).
-  await wakeCeilingRefund(c, order.gameId);
+  await wakeCeilingRefund(c, result.gameId);
   return { ok: true };
 }
 

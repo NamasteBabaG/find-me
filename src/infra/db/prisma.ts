@@ -8,7 +8,10 @@ import { boundedRuntimeDatabaseUrl } from "./runtime-url";
  * instance is cached on globalThis so hot reloads don't leak connections.
  */
 const globalForPrisma = globalThis as unknown as { __findmePrisma?: PrismaClient };
-const runtimeUrl = boundedRuntimeDatabaseUrl(envValue("QA_WIZARD_MOCK", process.env.QA_WIZARD_MOCK) === "on"
+const sandbox = envValue("APP_ENV", process.env.APP_ENV) === "qa"
+  && envValue("PAYMENT_PROVIDER", process.env.PAYMENT_PROVIDER) === "payme"
+  && envValue("PAYME_ENVIRONMENT", process.env.PAYME_ENVIRONMENT) === "sandbox";
+const runtimeUrl = boundedRuntimeDatabaseUrl(sandbox || envValue("QA_WIZARD_MOCK", process.env.QA_WIZARD_MOCK) === "on"
   ? env().DATABASE_URL
   : process.env.DATABASE_URL);
 

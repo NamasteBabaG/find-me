@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createQaSession, qaAccessConfig } from "../qa-access";
+import { createQaSession, qaAccessConfig, qaPayMeSandboxCallback } from "../qa-access";
+import { NextRequest } from "next/server";
+import { middleware } from "@/middleware";
 import { POST as login } from "@/app/qa-access/login/route";
 import { GET as gateStatus } from "@/app/api/qa-access/status/route";
 import { qaAccessDenied, requireQaAccess } from "../server/qa-access";
@@ -25,6 +27,24 @@ let ip = 0;
 function form(value: string, next = "/create", caller = String(++ip)) {
   return new Request(`${origin}/qa-access/login`, { method: "POST", headers: { origin, "content-type": "application/x-www-form-urlencoded", "x-forwarded-for": caller }, body: new URLSearchParams({ password: value, next }) });
 }
+
+it("admits only PayMe sandbox form notifications through the outer gate", async () => {
+  vi.stubEnv("PAYMENT_PROVIDER", "payme");
+  vi.stubEnv("PAYME_ENVIRONMENT", "sandbox");
+  vi.stubEnv("GENERATION_PROVIDER", "mock");
+  const notification = new NextRequest(origin + "/api/webhooks/payment", { method: "POST",
+    headers: { "content-type": "application/x-www-form-urlencoded; charset=utf-8" }, body: "notify_type=sandbox" });
+  expect(qaPayMeSandboxCallback(notification)).toBe(true);
+  expect((await middleware(notification)).headers.get("x-middleware-next")).toBe("1");
+  expect((await middleware(new NextRequest(origin + "/api/webhooks/payment"))).status).toBe(401);
+  expect((await middleware(new NextRequest(origin + "/api/jobs/tick", {
+    method: "POST", headers: { "content-type": "application/x-www-form-urlencoded" }, body: "test=1",
+  }))).status).toBe(401);
+  vi.stubEnv("PAYME_ENVIRONMENT", "live");
+  expect((await middleware(notification)).status).toBe(401);
+  vi.stubEnv("PAYME_ENVIRONMENT", "sandbox"); vi.stubEnv("GENERATION_PROVIDER", "openai");
+  expect((await middleware(notification)).status).toBe(401);
+});
 
 describe("the QA login route", () => {
   it("reports stale access without redirecting, then recovers through normal login only", async () => {

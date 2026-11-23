@@ -122,7 +122,8 @@ export class PayMeProvider implements PaymentProvider {
       return { ok: false, reason: "the callback amount differs from the confirmed sale" };
     const event: PaymentWebhookEvent = {
       // PayMe has no event id; the documented de-duplication key is notify_type + sale + transaction.
-      providerEventId: `payme:${notify}:${saleId}:${transactionId}`, orderId, kind, providerPaymentId: saleId,
+      providerEventId: `payme:${notify}:${saleId}:${transactionId}`, orderId,
+      kind: kind === "PAID" && status === "refunded" ? "REFUNDED" : kind, providerPaymentId: saleId,
       amountAgorot: amount as number, currency: currency.toUpperCase(),
       // No buyer details are kept: only the references the event was confirmed by.
       raw: { notify_type: notify, payme_sale_id: saleId, payme_transaction_id: transactionId, transaction_id: orderId, sale_status: status },
@@ -134,7 +135,7 @@ export class PayMeProvider implements PaymentProvider {
     if (!providerPaymentId || !Number.isSafeInteger(amountAgorot) || amountAgorot <= 0) return { ok: false };
     const { answer } = await this.post("refund-sale", { payme_sale_id: providerPaymentId, sale_refund_amount: amountAgorot, language: "en" });
     const code = typeof answer.status_error_code === "number" ? answer.status_error_code : Number(answer.status_error_code);
-    if (answer.status_code === 0 && (answer.sale_status === "refunded" || answer.sale_status === "partial-refund"))
+    if (answer.status_code === 0 && answer.sale_status === "refunded")
       return { ok: true, ...(typeof answer.payme_transaction_id === "string" ? { providerRefundId: answer.payme_transaction_id } : {}) };
     // Already fully refunded: positive proof the money is back, whoever moved it.
     if (code === ALREADY_FULLY_REFUNDED) return { ok: true };

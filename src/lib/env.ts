@@ -1,5 +1,6 @@
 import { z } from "zod";
-import { assertPaymentActivationQualified } from "@/domain/payment-readiness";
+import { assertPaymentActivationQualified, isPayMeSandbox, PAYME_SANDBOX_SCHEMA } from "@/domain/payment-readiness";
+import type { SpendGuard } from "@/domain/spend-policy";
 import { envValue, normaliseEnvValue } from "./env-value";
 import { QA_WIZARD_MOCK_SCHEMA } from "@/domain/generation/qa-wizard-mock";
 
@@ -179,7 +180,9 @@ export function env(): Env {
   // Said out loud once: an invisible character is not something anyone should
   // have to find by reading a stack trace. Names only, never values.
   if (repaired.length) console.warn(`[env] trimmed invisible characters from: ${repaired.join(", ")} — fix the value where it is set.`);
-  const vercelUrl = normaliseEnvValue(process.env.VERCEL_PROJECT_PRODUCTION_URL ?? process.env.VERCEL_URL ?? "");
+  const sandbox = raw.APP_ENV === "qa" && raw.PAYMENT_PROVIDER === "payme" && raw.PAYME_ENVIRONMENT === "sandbox";
+  const vercelUrl = normaliseEnvValue((sandbox ? process.env.VERCEL_URL
+    : process.env.VERCEL_PROJECT_PRODUCTION_URL ?? process.env.VERCEL_URL) ?? "");
   raw.APP_URL = raw.APP_URL ?? (vercelUrl ? `https://${vercelUrl}` : undefined);
   const parsed = EnvSchema.safeParse(raw);
   if (!parsed.success) {
@@ -249,8 +252,22 @@ export function env(): Env {
   if (appEnv === "qa" && parsed.data.GENERATION_PROVIDER !== "mock" && !parsed.data.QA_TESTER_EMAILS.trim()) {
     throw new Error("QA_TESTER_EMAILS is empty while GENERATION_PROVIDER is real: anyone with the URL could put renders on the project's account. List the testers, or set GENERATION_PROVIDER=mock.");
   }
-  assertPaymentActivationQualified({ appEnv, provider: parsed.data.PAYMENT_PROVIDER,
-    purchasingEnabled: parsed.data.PURCHASING_ENABLED === "on", realGeneration: parsed.data.GENERATION_PROVIDER !== "mock" });
+  const payment = { appEnv, provider: parsed.data.PAYMENT_PROVIDER, paymeEnvironment: parsed.data.PAYME_ENVIRONMENT,
+    purchasingEnabled: parsed.data.PURCHASING_ENABLED === "on", realGeneration: parsed.data.GENERATION_PROVIDER !== "mock" };
+  if (isPayMeSandbox(payment)) {
+    const database = URL.canParse(settings.DATABASE_URL) ? new URL(settings.DATABASE_URL) : null;
+    const app = new URL(settings.APP_URL);
+    if (!database || !["postgresql:", "postgres:"].includes(database.protocol)
+      || !["qa", PAYME_SANDBOX_SCHEMA].includes(database.searchParams.getAll("schema").join(","))
+      || app.protocol !== "https:" || !app.hostname.includes(".")
+      || settings.STORAGE_PROVIDER !== "db" || settings.EMAIL_PROVIDER !== "console"
+      || settings.QA_WIZARD_MOCK !== "off" || !settings.QA_TESTER_EMAILS.trim() || !settings.PAYME_SELLER_ID) {
+      throw new Error("PayMe Sandbox needs isolated PostgreSQL, DB storage, console email, HTTPS, a seller key and listed QA testers.");
+    }
+    database.searchParams.set("schema", PAYME_SANDBOX_SCHEMA);
+    settings.DATABASE_URL = database.toString();
+  }
+  assertPaymentActivationQualified(payment);
   cached = { ...parsed.data, APP_ENV: appEnv };
   return cached;
 }
@@ -265,12 +282,13 @@ export function isLiveShop(): boolean {
 }
 
 /** The spend policy, from the environment. */
-export function spendGuard(): { appEnv: "development" | "qa" | "production"; realGeneration: boolean; testers: string[] } {
+export function spendGuard(): SpendGuard {
   const e = env();
   return {
     // env() always fills APP_ENV in; the schema's optional is for parsing only.
     appEnv: e.APP_ENV ?? "development",
     realGeneration: e.GENERATION_PROVIDER !== "mock",
+    ...(e.APP_ENV === "qa" && e.PAYMENT_PROVIDER === "payme" && e.PAYME_ENVIRONMENT === "sandbox" ? { paymeSandbox: true } : {}),
     testers: e.QA_TESTER_EMAILS.split(",")
       .map((s) => s.trim().toLowerCase())
       .filter(Boolean),

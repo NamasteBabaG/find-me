@@ -45,8 +45,7 @@ async function gameContext(db: Pick<Tx, "game">, gameId: string, ownerId?: strin
   const game = await db.game.findUnique({ where: { id: gameId }, include: { orders: true, familyChild: true } });
   if (!game || !game.ownerId || (ownerId && game.ownerId !== ownerId) || game.deletedAt || !["READY", "DELIVERED"].includes(game.status)
     || !game.configJson || game.familyChild?.deletedAt || (game.familyChild && game.familyChild.ownerId !== game.ownerId)
-    || !game.orders.some(order => order.userId === game.ownerId && order.paymentStatus === "PAID")
-    || game.orders.some(order => order.paymentStatus === "REFUNDED" || order.refundedAt)) throw unavailable();
+    || !game.orders.some(order => order.userId === game.ownerId && order.paymentStatus === "PAID" && !order.refundedAt)) throw unavailable();
   return game;
 }
 async function resolveShare(c: C, token: string, db: Pick<Tx, "guestShare" | "game"> = c.db) {

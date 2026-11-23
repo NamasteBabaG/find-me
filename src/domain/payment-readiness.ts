@@ -1,5 +1,6 @@
 /** Source qualification only. Credentials and redirect success are not payment proof. */
 export const PAYMENT_READINESS_VERSION = "payment-source-readiness/v1" as const;
+export const PAYME_SANDBOX_SCHEMA = "qa_payme_sandbox";
 /** The source adapter (checkout, get-sales-confirmed callbacks, refund, refund status) exists since 2026-11-19; nothing
  * about it is verified against a merchant account, so every remaining gap still blocks real payments. */
 export const PAYME_QUALIFICATION_GAPS = Object.freeze([
@@ -12,12 +13,18 @@ export type PaymentReadinessInput = Readonly<{
   provider: "mock" | "payme";
   purchasingEnabled: boolean;
   realGeneration: boolean;
+  paymeEnvironment?: "sandbox" | "live";
 }>;
+
+export function isPayMeSandbox(input: PaymentReadinessInput): boolean {
+  return input.appEnv === "qa" && input.provider === "payme" && input.paymeEnvironment === "sandbox"
+    && !input.realGeneration;
+}
 
 export function paymentReadiness(input: PaymentReadinessInput) {
   const active = input.purchasingEnabled || input.realGeneration;
   const simulated = input.provider === "mock" && input.appEnv !== "production";
-  const mode = !active ? "closed" : simulated ? "simulation" : "blocked";
+  const mode = !active ? "closed" : simulated ? "simulation" : isPayMeSandbox(input) ? "sandbox" : "blocked";
   const blockers = mode !== "blocked" ? [] : input.provider === "mock"
     ? ["mock-payments-in-production"] : [...PAYME_QUALIFICATION_GAPS];
   return {

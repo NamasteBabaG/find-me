@@ -13,12 +13,14 @@ export interface SpendGuard {
   appEnv: "development" | "qa" | "production";
   /** The painter is a real, billed model. */
   realGeneration: boolean;
+  /** The test merchant's checkout is limited to the same named QA testers. */
+  paymeSandbox?: boolean;
   /** Lower-cased emails allowed to cause spend on a QA box. */
   testers: readonly string[];
 }
 
 export function spendAllowedFor(guard: SpendGuard, email: string | null | undefined): boolean {
-  if (guard.appEnv !== "qa" || !guard.realGeneration) return true;
+  if (guard.appEnv !== "qa" || (!guard.realGeneration && !guard.paymeSandbox)) return true;
   if (!email) return false;
   return guard.testers.includes(email.trim().toLowerCase());
 }

@@ -88,6 +88,8 @@ describe("PayMe adapter", () => {
     expect(await ok.payme.refund("SALE-1", 2900)).toEqual({ ok: true, providerRefundId: "TRX-R" });
     expect(ok.calls[0]).toMatchObject({ url: "https://sandbox.payme.io/api/refund-sale", body: { payme_sale_id: "SALE-1", sale_refund_amount: 2900 } });
     expect(await provider(() => ({ status_code: 1, status_error_code: 309 })).payme.refund("SALE-1", 2900)).toEqual({ ok: true });
+    await expect(provider(() => ({ status_code: 0, sale_status: "partial-refund" })).payme.refund("SALE-1", 2900))
+      .rejects.toBeInstanceOf(PayMeUnknownOutcome);
     expect(await provider(() => ({ status_code: 1, status_error_code: 305, status_additional_info: "chargeback" })).payme.refund("SALE-1", 2900)).toEqual({ ok: false });
     // A matching call may still be running, a timeout, a gateway page or an undocumented code: never a refusal, never a success.
     for (const answer of [{ status_code: 1, status_error_code: 998 }, { status_code: 1, status_error_code: 991 }, "<html>502</html>", Error("socket hang up")])

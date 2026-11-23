@@ -5,9 +5,10 @@ import { PrismaClient } from "@prisma/client";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { applyTestSchema } from "@/lib/test-schema";
 import { MockPaymentProvider } from "@/infra/payment/mock";
+import { PayMeProvider } from "@/infra/payment/payme";
 import type { PaymentEventKind } from "@/infra/payment/types";
 import { checkoutCloseReceiptId } from "../checkout-close.service";
-import { handlePaymentWebhook } from "../order.service";
+import { handlePaymentWebhook, refundOrder } from "../order.service";
 import type { Container } from "../container";
 
 let db: PrismaClient, scratch: string, sequence = 0;
@@ -111,6 +112,70 @@ describe("payment reconciliation uses provider truth and the checkout write fenc
     expect(await db.paymentEvent.count({ where: { orderId: f.orderId } })).toBe(2);
     expect(f.c.analytics.track).toHaveBeenCalledTimes(1);
     expect(await db.auditLog.count({ where: { action: "status:CHECKOUT_PENDING->PAID", entityId: f.gameId } })).toBe(1);
+  });
+
+  it("preserves the game when a duplicate charge is refunded and closes it on refund of the last payment", async () => {
+    const f = await fixture();
+    const second = f.orderId + "-duplicate";
+    expect((await f.deliver("PAID", "paid-before-refund")).status).toBe(200);
+    await db.game.update({ where: { id: f.gameId }, data: { status: "TARGETS_GENERATING" } });
+    await db.order.create({ data: { id: second, gameId: f.gameId, userId: f.userId, provider: "mock", packageTier: "ONE_WORLD",
+      amountAgorot: 3900, currency: "ILS", paymentStatus: "PAID", paidAt: new Date() } });
+    expect((await f.deliver("REFUNDED", "duplicate-refunded", second)).status).toBe(200);
+    expect(await db.order.findUnique({ where: { id: second } })).toMatchObject({ paymentStatus: "REFUNDED" });
+    expect(await db.game.findUnique({ where: { id: f.gameId } })).toMatchObject({ status: "TARGETS_GENERATING" });
+    expect((await f.deliver("REFUNDED", "last-payment-refunded")).status).toBe(200);
+    expect(await db.game.findUnique({ where: { id: f.gameId } })).toMatchObject({ status: "REFUNDED" });
+  });
+
+  it("keeps a late PayMe completion for an already refunded sale from queuing a game", async () => {
+    const f = await fixture("payme");
+    const saleId = "payme-" + f.orderId;
+    f.c.payment = new PayMeProvider({ sellerId: "synthetic-seller", environment: "sandbox",
+      callbackUrl: "https://example.invalid/api/webhooks/payment",
+      fetch: vi.fn(async () => Response.json({ status_code: 0, items: [{ sale_payme_id: saleId, transaction_id: f.orderId,
+        sale_status: "refunded", sale_price: 3900, sale_currency: "ILS" }] })) });
+    const body = new URLSearchParams({ notify_type: "sale-complete", transaction_id: f.orderId, payme_sale_id: saleId,
+      payme_transaction_id: "synthetic-provider-event", price: "3900" }).toString();
+    expect(await handlePaymentWebhook(f.c, body, {})).toEqual({ status: 200, body: "ok" });
+    expect(await db.order.findUnique({ where: { id: f.orderId } })).toMatchObject({ paymentStatus: "REFUNDED" });
+    expect(await db.game.findUnique({ where: { id: f.gameId } })).toMatchObject({ status: "REFUNDED" });
+    expect(await db.generationJob.count({ where: { gameId: f.gameId } })).toBe(0);
+    expect(f.c.analytics.track).not.toHaveBeenCalled();
+  });
+
+  it("holds the manual refund before dispatch and reconciles a lost reply without paying twice", async () => {
+    const f = await fixture();
+    await f.deliver("PAID", "paid-before-manual-refund");
+    const money = vi.spyOn(f.payment, "refund").mockRejectedValue(new Error("synthetic transport failure"));
+    const status = vi.fn().mockResolvedValueOnce("unknown").mockResolvedValueOnce("refunded");
+    Object.assign(f.payment, { refundStatus: status });
+    const actor = { type: "ADMIN" as const, id: f.userId };
+    expect(await refundOrder(f.c, f.orderId, actor)).toMatchObject({ ok: false });
+    expect(await refundOrder(f.c, f.orderId, actor)).toMatchObject({ ok: false });
+    expect(await db.order.findUnique({ where: { id: f.orderId } })).toMatchObject({ paymentStatus: "PAID" });
+    expect(await refundOrder(f.c, f.orderId, actor)).toEqual({ ok: true });
+    expect(money).toHaveBeenCalledTimes(1);
+    expect(status).toHaveBeenCalledTimes(2);
+    expect(await db.order.findUnique({ where: { id: f.orderId } })).toMatchObject({ paymentStatus: "REFUNDED" });
+  });
+
+  it("admits only one refund while the first admin is waiting for the provider", async () => {
+    const f = await fixture();
+    await f.deliver("PAID", "paid-before-parallel-refunds");
+    let admitted!: () => void;
+    let finish!: (answer: { ok: boolean }) => void;
+    const onSend = new Promise<void>(resolve => { admitted = resolve; });
+    const provider = new Promise<{ ok: boolean }>(resolve => { finish = resolve; });
+    const money = vi.spyOn(f.payment, "refund").mockImplementation(async () => { admitted(); return provider; });
+    const actor = { type: "ADMIN" as const, id: f.userId };
+    const first = refundOrder(f.c, f.orderId, actor);
+    await onSend;
+    try {
+      expect(await refundOrder(f.c, f.orderId, actor)).toMatchObject({ ok: false });
+      expect(money).toHaveBeenCalledTimes(1);
+    } finally { finish({ ok: true }); }
+    expect(await first).toEqual({ ok: true });
   });
 
   it("validates current money after the transaction fence, not a pre-transaction quote", async () => {
