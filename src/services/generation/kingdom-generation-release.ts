@@ -26,7 +26,9 @@ export const KINGDOM_V6_TARGET_MICRO_USD = 4_000_000;
  * applies. v6 is unchanged for the worlds pinned to it. */
 export const KINGDOM_GENERATION_V7 = 'kingdom-generation/v7';
 export const KINGDOM_GENERATION_V8 = 'kingdom-generation/v8';
+export const KINGDOM_GENERATION_V9 = 'kingdom-generation/v9';
 export const KINGDOM_V7_CEILING_MICRO_USD = 6_000_000;
+const KINGDOM_QUALIFICATION_CAP_MICRO_USD = 4_000_000;
 const KINGDOM_GENERATION_POLICY = Object.freeze({
   version: KINGDOM_GENERATION_RELEASE, world: 'kingdom', prospectiveOnly: true,
   windowsSha256: KINGDOM_GENERATION_WINDOWS_SHA256,
@@ -57,13 +59,20 @@ const KINGDOM_GENERATION_POLICY_V7 = Object.freeze({
 const KINGDOM_GENERATION_POLICY_V8 = Object.freeze({
   ...KINGDOM_GENERATION_POLICY_V7, version: KINGDOM_GENERATION_V8, fallbackPlacementSha256: KINGDOM_FALLBACK_PLACEMENT_SHA256,
 } as const);
+const KINGDOM_GENERATION_POLICY_V9 = Object.freeze({
+  ...KINGDOM_GENERATION_POLICY_V8, version: KINGDOM_GENERATION_V9, worldCapMicroUsd: KINGDOM_QUALIFICATION_CAP_MICRO_USD,
+  alertAboveMicroUsd: KINGDOM_QUALIFICATION_CAP_MICRO_USD,
+} as const);
 const kingdomPolicies = {
   v1: KINGDOM_GENERATION_POLICY, v2: KINGDOM_GENERATION_POLICY_V2,
   v3: KINGDOM_GENERATION_POLICY_V3, v4: KINGDOM_GENERATION_POLICY_V4, v5: KINGDOM_GENERATION_POLICY_V5,
   v6: KINGDOM_GENERATION_POLICY_V6, v7: KINGDOM_GENERATION_POLICY_V7, v8: KINGDOM_GENERATION_POLICY_V8,
 };
-export function newKingdomGenerationPolicy() {
-  return kingdomPolicies[env().KINGDOM_GENERATION_RELEASE] ?? KINGDOM_GENERATION_POLICY;
+export function newKingdomGenerationPolicy(gameId?: string) {
+  const settings = env();
+  if (gameId && settings.APP_ENV === 'qa' && settings.PAYMENT_PROVIDER === 'mock' && gameId === settings.KINGDOM_QA_FOUR_DOLLAR_GAME_ID)
+    return KINGDOM_GENERATION_POLICY_V9;
+  return kingdomPolicies[settings.KINGDOM_GENERATION_RELEASE] ?? KINGDOM_GENERATION_POLICY;
 }
 const id = (gameId: string) => 'aud_kingdom_generation_' + gameId;
 type Reader = Pick<Prisma.TransactionClient, 'auditLog'>;
@@ -98,7 +107,8 @@ async function receipt(db: Reader, gameId: string, policy: ReturnType<typeof new
  * the orphan closer) apply from v6; every older pin keeps its historical park. */
 export async function kingdomV6RecoveryOf(db: Reader, gameId: string): Promise<boolean> {
   const version = (await kingdomGenerationReleaseOf(db, gameId))?.version;
-  return version === KINGDOM_GENERATION_V6 || version === KINGDOM_GENERATION_V7 || version === KINGDOM_GENERATION_V8;
+  return version === KINGDOM_GENERATION_V6 || version === KINGDOM_GENERATION_V7
+    || version === KINGDOM_GENERATION_V8 || version === KINGDOM_GENERATION_V9;
 }
 
 /** The cost thresholds of a v6 (refund at $7) or v7 (stop and hold at $6) world, or null for every older pin. */
@@ -106,8 +116,9 @@ export async function kingdomCostPolicyOf(db: Reader, gameId: string) {
   const pin = await kingdomGenerationReleaseOf(db, gameId);
   if (!pin || typeof pin.alertAboveMicroUsd !== 'number' || typeof pin.targetMicroUsd !== 'number') return null;
   const outcome = pin.version === KINGDOM_GENERATION_V6 && pin.ceilingOutcome === 'refund' && pin.worldCapMicroUsd === KINGDOM_V6_CEILING_MICRO_USD ? 'refund' as const
-    : (pin.version === KINGDOM_GENERATION_V7 || pin.version === KINGDOM_GENERATION_V8)
-      && pin.ceilingOutcome === 'hold' && pin.worldCapMicroUsd === KINGDOM_V7_CEILING_MICRO_USD ? 'hold' as const : null;
+    : pin.ceilingOutcome === 'hold' && (
+      (pin.version === KINGDOM_GENERATION_V7 || pin.version === KINGDOM_GENERATION_V8) && pin.worldCapMicroUsd === KINGDOM_V7_CEILING_MICRO_USD
+      || pin.version === KINGDOM_GENERATION_V9 && pin.worldCapMicroUsd === KINGDOM_QUALIFICATION_CAP_MICRO_USD) ? 'hold' as const : null;
   if (!outcome) return null;
   return { version: pin.version, ceilingMicroUsd: pin.worldCapMicroUsd, alertAboveMicroUsd: pin.alertAboveMicroUsd, targetMicroUsd: pin.targetMicroUsd,
     ceilingOutcome: outcome };
@@ -121,7 +132,7 @@ export async function kingdomCeilingMicroUsdOf(db: Reader, gameId: string): Prom
 /** Checkout calls this only within its new family seal, before the order or any paid work. */
 export async function pinKingdomGenerationRelease(tx: Prisma.TransactionClient, gameId: string) {
   if (env().APP_ENV !== 'qa' || await localPatchPainterRelease(tx, gameId) !== LOCAL_PATCH_SUNBURST_PAINTER) return;
-  const value = await receipt(tx, gameId, newKingdomGenerationPolicy());
+  const value = await receipt(tx, gameId, newKingdomGenerationPolicy(gameId));
   await tx.auditLog.create({ data: {
     id: id(gameId), actorType: 'SYSTEM', action: 'generation:' + value.version, entityType: 'Game', entityId: gameId, metaJson: JSON.stringify(value),
   } });
@@ -130,7 +141,7 @@ export async function pinKingdomGenerationRelease(tx: Prisma.TransactionClient, 
 export async function kingdomGenerationReleaseOf(db: Reader, gameId: string) {
   const row = await db.auditLog.findUnique({ where: { id: id(gameId) } });
   if (!row) return null;
-  const policy = Object.values(kingdomPolicies).find(candidate => row.action === 'generation:' + candidate.version);
+  const policy = [...Object.values(kingdomPolicies), KINGDOM_GENERATION_POLICY_V9].find(candidate => row.action === 'generation:' + candidate.version);
   if (!policy) throw Error('KINGDOM_GENERATION: invalid or changed release pin');
   const value = await receipt(db, gameId, policy);
   if (row.actorType !== 'SYSTEM' || row.actorId !== null || row.action !== 'generation:' + value.version || row.entityType !== 'Game'

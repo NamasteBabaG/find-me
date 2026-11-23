@@ -46,6 +46,8 @@ const EnvSchema = z.object({
   DETECTIVES_WINDOW_RELEASE: z.enum(["off", "v1"]).prefault("off"),
   /** Prospective Kingdom-only release, selected at checkout in real QA. */
   KINGDOM_GENERATION_RELEASE: z.enum(["v1", "v2", "v3", "v4", "v5", "v6", "v7", "v8"]).prefault("v1"),
+  /** One fresh Kingdom draft can prove the v8 pipeline at a hard four-dollar ceiling. */
+  KINGDOM_QA_FOUR_DOLLAR_GAME_ID: z.string().regex(/^game_[a-z0-9]{20}$/).optional(),
   /** Painting quality for NEW local-patch drafts, pinned per game when the draft
    * is created; a game keeps its pin, and a game without one keeps its content
    * version's own quality (MEDIUM for v12). low-v1 is qualified only on QA with
@@ -202,6 +204,10 @@ export function env(): Env {
   const settings = parsed.data;
   if (settings.KINGDOM_GENERATION_RELEASE !== "v1" && (appEnv !== "qa" || settings.QA_WIZARD_MOCK === "on")) {
     throw new Error("The selected KINGDOM_GENERATION_RELEASE requires the regular QA Wizard.");
+  }
+  if (settings.KINGDOM_QA_FOUR_DOLLAR_GAME_ID && (appEnv !== "qa" || settings.QA_WIZARD_MOCK === "on"
+    || settings.PAYMENT_PROVIDER !== "mock" || settings.KINGDOM_GENERATION_RELEASE !== "v8" || settings.LOCAL_PATCH_PAINTER !== "sunburst-v1")) {
+    throw new Error("The four-dollar Kingdom draft requires regular QA, Sunburst v8 and mock payment.");
   }
   if (settings.QA_WIZARD_MOCK === "on") {
     const database = URL.canParse(settings.DATABASE_URL) ? new URL(settings.DATABASE_URL) : null;

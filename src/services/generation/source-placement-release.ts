@@ -4,7 +4,7 @@ import { createHash } from "node:crypto";
 import { detectivesOperationalPolicyOf } from "./detectives-operational-policy";
 import type { DetectivesOperationalReceipt } from "../../domain/generation/detectives-operational-policy";
 import { journeyWindowReleaseOf, type JourneyWindowPin } from './journey-window-release';
-import { KINGDOM_GENERATION_V7, KINGDOM_GENERATION_V8, kingdomGenerationReleaseOf } from './kingdom-generation-release';
+import { KINGDOM_GENERATION_V7, KINGDOM_GENERATION_V8, KINGDOM_GENERATION_V9, kingdomGenerationReleaseOf } from './kingdom-generation-release';
 import { KINGDOM_FALLBACK_PLACEMENT as kingdomAlternate, KINGDOM_FALLBACK_PLACEMENT_SHA256 } from '../../../content/detectives/kingdom/fallback-placement-v1';
 import { KINGDOM_DETECTIVE_ADVENTURE_CATALOG } from '../../../content/detectives/kingdom/runtime-release';
 import { kingdomFallbackAdventure, kingdomFallbackPlacement } from '../../domain/scene/kingdom-fallback-placement';
@@ -311,7 +311,7 @@ export async function resolveLocalPatchBoardsForGame(db: Reader, gameId: string,
     ? await kingdomGenerationReleaseOf(db, gameId) : null;
   const kingdomFallbackRecovery = kingdomPin?.version === KINGDOM_GENERATION_V7
     ? await (await import('./kingdom-fallback-recovery')).kingdomFallbackRecoveryOf(db, gameId) : null;
-  const hasAlternate = kingdomPin?.version === KINGDOM_GENERATION_V8 || !!kingdomFallbackRecovery;
+  const hasAlternate = kingdomPin?.version === KINGDOM_GENERATION_V8 || kingdomPin?.version === KINGDOM_GENERATION_V9 || !!kingdomFallbackRecovery;
   if (hasAlternate) {
     const parent = boards.find(item => item.board === kingdomAlternate.boardId);
     const original = contracts.get(kingdomAlternate.hideId);
