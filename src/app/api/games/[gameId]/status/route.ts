@@ -10,6 +10,7 @@ import { selfRepairEnabled } from "@/domain/scene/local-patch-self-repair";
 import { statusOf } from "@/services/game-status";
 import { RESUMABLE_STATUSES } from "@/services/generation/pipeline";
 import { ensurePlayerLink } from "@/services/share-link.service";
+import { backgroundWorkRunning } from "@/services/jobs-heartbeat.service";
 import { signedAssetUrl } from "@/services/asset.service";
 import { FIXED_WORLD_STYLE_VERSION, isFixedWorldStyle, readFixedWorldStage, fixedWorldConfigSha256 } from "@/services/generation/fixed-world-stage-record";
 import { findScene } from "../../../../../../content/scenes";
@@ -230,6 +231,8 @@ export async function GET(req: Request, ctx: { params: Promise<{ gameId: string 
     progress.state = "failed"; progress.failed = true; progress.current = null; progress.done = false;
   }
   const playUrl = isPlayable(status) && progress.done ? (await ensurePlayerLink(c, gameId)).url : null;
+  // Whether the world goes on with this page closed: only while the scheduled tick is really running.
+  const backgroundWork = progress.done ? false : await backgroundWorkRunning(c.db);
   return NextResponse.json(
     {
       status,
@@ -239,6 +242,7 @@ export async function GET(req: Request, ctx: { params: Promise<{ gameId: string 
       ...(fixedAssemblyReady === false ? { step: characterReady ? 2 : 1 } : {}),
       ...progress,
       playUrl,
+      backgroundWork,
       qaPreviewUrl,
       qaBoards,
       qaCost,

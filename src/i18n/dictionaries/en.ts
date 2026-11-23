@@ -263,7 +263,7 @@ export const en = {
       items: [
         ["Who is the game for?", "The game is mainly for ages 4–10. Younger children may enjoy an adult's help with reading, controls and searching."],
         ["What photo should I upload?", "Choose one child in good light with a clearly visible face. Choose the age the child should appear in the game, even if the photo is older. The photo guides facial features and hair; the chosen age guides height and body proportions. Only use a photo with permission."],
-        ["When will the game be ready?", "After payment is confirmed, the game is created and checked. You can close the window and follow its status in your family area, then open it there when it's ready."],
+        ["When will the game be ready?", "After payment is confirmed, the game is created and checked. The progress page shows each step and says whether you can close it. Once the game is ready, you can open it from your family area."],
         ["Which devices can we play on?", "Open the game in a browser on a phone, tablet or computer. Drag and zoom the picture. Landscape gives you a wider view, but rotating the screen is optional."],
         ["What if we can't find the character?", "Zoom in, ask for a hint and keep looking. A wrong tap carries no penalty."],
         ["Can I send it as a gift?", "Yes. Use a photo you have permission to upload. After payment, add a sender and greeting in the family area. Share the game link when it's ready; anyone holding it can play. Keep your family area sign-in link to yourself."],
@@ -297,6 +297,8 @@ export const en = {
     /** Explorers or Detectives: how busy the boards are. Never a judgement of the child. */
     level: {
       title: "Which path suits you?",
+      // Pilot QA (2026-11-23): the four choices it tried had the same price and contents, and nothing said so.
+      same: "Same price and the same world on both paths: the path only sets how hard the character is to find.",
       explorers: { name: "Explorers", line: "A gentle search for little ones" },
       detectives: { name: "Detectives", line: "More details, more challenge" },
       chosen: "Path: {level}",
@@ -371,6 +373,8 @@ export const en = {
     creating: {
       title: "Preparing {name}'s adventure",
       lead: "You can close this window and return to the family area to check progress.",
+      // Pilot QA (2026-11-23): where nothing advances a world but this page, the page says so.
+      leadKeepOpen: "Keep this page open: preparation moves forward while it's open. If it closes, open it again from the family area and it picks up where it stopped.",
       drawing: "Drawing {name}…",
       drawingLead: "One photo is becoming a character in the style of the worlds.",
       meet: "Meet {name}",
@@ -408,10 +412,13 @@ export const en = {
       qa: "The team is reviewing the game.",
       qaAdmin: "Review in admin",
       qaParent: "You can close this window and return to the family area. Once approved, the game can be opened there.",
+      qaParentKeepOpen: "Keep this page open until the game is approved. After that you can also open it from the family area.",
       readyTitle: "{name}'s adventure is ready!",
       readyLead: "Open the game and start searching.",
       open: "Open the game",
-      manage: "Manage the game in my family area",
+      manageGame: "Manage and share the game",
+      help: "Help",
+      nextNav: "Manage and help",
     },
   },
   family: {
@@ -425,7 +432,7 @@ export const en = {
     tests: "QA: unassigned test adventures", count: "{n} adventures", countOne: "1 adventure", preparing: "This adventure is being prepared", noAdventures: "No adventures here yet.",
     getHelp: "Get help",
     generationState: {
-      preparing: { title: "This adventure is being prepared", hint: "You can leave this page. Preparation continues on the server." },
+      preparing: { title: "This adventure is being prepared", hint: "You can leave this page. Preparation continues on the server.", hintOpenPage: "Preparation moves forward while the progress page is open. Open it and keep it open until the game is ready." },
       repairing: { title: "Finishing this adventure", hint: "Automatic recovery is continuing. Your progress is saved." },
       delayed: { title: "Preparation is taking longer", hint: "Preparation is waiting for the service. Your progress is saved; you do not need to approve pictures." },
       needsPhoto: { title: "A new photo is needed", hint: "Open the progress page to provide a new photo." },
@@ -774,7 +781,7 @@ export const en = {
     DRAFT_LOCKED: "These game details cannot be edited at this stage. Return to the family area to check its status.",
     DRAFT_NOT_FOUND: "We couldn’t find this game. If you have already paid, check your family area before creating a new game.",
     NAME_TOO_SHORT: "Please enter at least two letters.",
-    INVALID_CHILD_AGE: "Choose the character's age in the game, from 2 to 10.",
+    INVALID_CHILD_AGE: "Choose the character's age in the game, from 4 to 10.",
     NEED_NAME: "Please enter a name first.",
     PHOTO_FIRST: "Please upload a photo first.",
     UNKNOWN_PACKAGE: "We couldn’t identify the package. Return to the packages screen and choose again.",
@@ -817,9 +824,10 @@ export const en = {
       bodyFive: "{name} is hiding in {count} places, with five hiding spots in each. Any three open the next place; the rest are stars to collect.",
       bodyVariable: "{name} is hiding in {count} places, with {stars} hiding spots in all. Any three in a place open the next one.",
       button: "Open the game",
-      manageLead: "Anyone with the game link can play. To add a greeting or change the link, sign in to your family area.",
-      manage: "Go to my family area",
-      text: "{name}'s adventure is ready!\nOpen the game and start searching.\n\nGame link — share with family: {play}\nAnyone holding this link can play.\n\nFamily area — for managing the game: {library}\nManagement requires signing in to your account. Don't share personal sign-in links.",
+      manageLead: "Anyone with the game link can play. To add a greeting or change the link, open the game's management page.",
+      manage: "Manage and share the game",
+      help: "Help and contact",
+      text: "{name}'s adventure is ready!\nOpen the game and start searching.\n\nGame link — share with family: {play}\nAnyone holding this link can play.\n\nManage and share the game: {library}\nManagement requires signing in to your account. Don't share personal sign-in links.\n\nHelp and contact: {help}",
     },
     refunded: {
       subject: "We couldn't finish {name}'s adventure, and your payment is refunded",

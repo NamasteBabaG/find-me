@@ -5,8 +5,9 @@ import { pinWorldCostRule } from "./generation/world-cost-rule";
 import { Prisma } from "@prisma/client";
 import { newDraftToken, newId } from "@/lib/ids";
 import { normalizeChildName } from "@/lib/copy";
-import { validChildAge } from "@/domain/child-appearance";
+import { newChildAgeAllowed } from "@/domain/child-appearance";
 import { PACKAGES, isPackageTier, purchasableTiers, type PackageTier } from "@/domain/package";
+import { WORLDS_PER_ORDER } from "@/domain/offering";
 import { isEditableDraft } from "@/domain/order-state";
 import { boardSlugs } from "@/domain/world";
 import type { CropBox } from "@/infra/generation/types";
@@ -108,7 +109,7 @@ export async function createDraft(c: Container, ownerId: string | null, locale: 
 export async function setChildName(c: Container, gameId: string, rawName: string, ageYears?: number): Promise<FlowResult> {
   const name = normalizeChildName(rawName);
   if (name.length < 2) return flowError("NAME_TOO_SHORT", "כתבו שם של לפחות שתי אותיות.");
-  if (ageYears !== undefined && !validChildAge(ageYears)) return flowError("INVALID_CHILD_AGE", "בחרו את גיל הדמות במשחק, בין 2 ל־10.");
+  if (ageYears !== undefined && !newChildAgeAllowed(ageYears)) return flowError("INVALID_CHILD_AGE", "בחרו את גיל הדמות במשחק, בין 4 ל־10.");
   try {
     return await c.db.$transaction(async tx => {
       const game = await tx.game.findUnique({ where: { id: gameId }, include: { childProfile: true } });
@@ -353,8 +354,8 @@ export async function detectiveSelectionEligible(c: Container, game: { id?: stri
 }
 
 export async function availablePackages(c: Container, styleVersion = newDraftStyleVersion(), availableWorldCount?: number, level: SearchLevel = "explorers") {
-  const tiers = purchasableTiers(availableWorldCount ?? (await worldsForDraft(c, styleVersion, level)).length);
-  return env().APP_ENV === "qa" || styleVersion === LOCAL_PATCH_STYLE ? tiers.filter(p => p.tier === "ONE_WORLD") : tiers;
+  // One world per order everywhere (domain/offering): the home page never advertises a bundle the wizard cannot build.
+  return purchasableTiers(Math.min(WORLDS_PER_ORDER, availableWorldCount ?? (await worldsForDraft(c, styleVersion, level)).length));
 }
 
 /**
@@ -418,7 +419,7 @@ export async function selectPackage(c: Container, gameId: string, tierRaw: strin
   const game = await loadDraft(c, gameId);
   if (!game || game.deletedAt || !isEditableDraft(statusOf(game))) return flowError("DRAFT_LOCKED", "הטיוטה כבר לא ניתנת לעריכה.");
   const status = statusOf(game);
-  if (game.styleVersion === LOCAL_PATCH_STYLE && tier !== "ONE_WORLD") return flowError("PACKAGE_UNAVAILABLE", "בגרסת QA זו זמין עולם אחד עם תשעה בורדים.");
+  if (!purchasableTiers(WORLDS_PER_ORDER).some(p => p.tier === tier)) return flowError("PACKAGE_UNAVAILABLE", "בכל הזמנה עולם אחד. עולם נוסף לאותו ילד נקנה בהזמנה נפרדת.");
   if (status === "DRAFT" || status === "PHOTO_UPLOADED" || status === "PHOTO_VALIDATING" || status === "PHOTO_REJECTED") return flowError("PHOTO_FIRST", "קודם צריך להעלות תמונה.");
 
   const level = storedSearchLevel(game.searchLevel);
@@ -426,8 +427,7 @@ export async function selectPackage(c: Container, gameId: string, tierRaw: strin
   if (version === null || !await localPatchSourceSelectionAllowed(c.db, game, level)) return levelUnavailable();
   const worlds = await worldsForDraft(c, game.styleVersion, level);
   if (level === "detectives" && !worlds.length) return levelUnavailable();
-  if (!purchasableTiers(worlds.length).some((p) => p.tier === tier)
-    || (env().APP_ENV === "qa" && tier !== "ONE_WORLD")) return flowError("PACKAGE_UNAVAILABLE", "החבילה הזאת עדיין לא זמינה.");
+  if (!purchasableTiers(Math.min(WORLDS_PER_ORDER, worlds.length)).some((p) => p.tier === tier)) return flowError("PACKAGE_UNAVAILABLE", "החבילה הזאת עדיין לא זמינה.");
 
   const purchase = await c.db.childWorldPurchase.findUnique({ where: { activeGameId: gameId } });
   if (purchase) {

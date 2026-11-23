@@ -91,7 +91,8 @@ export async function deliverGameMail(c: Container, gameId: string, actor: Actor
       const published = GameConfigSchema.safeParse(JSON.parse(game.configJson ?? "null"));
       if (published.success) targetCount = published.data.scenes.reduce((total, scene) => total + scene.targets.length, 0);
     } catch { /* Legacy games without a parsed config retain their original copy. */ }
-    const mail = gameReadyEmail({ to: owner?.email ?? "", childName: game.childProfile.displayName, playLink: link.url, libraryLink, sceneCount: game.scenes.length, locale,
+    const mail = gameReadyEmail({ to: owner?.email ?? "", childName: game.childProfile.displayName, playLink: link.url, libraryLink,
+      helpLink: `${c.appUrl}/support?order=${encodeURIComponent(game.id)}`, sceneCount: game.scenes.length, locale,
       targetCount, hero: readyMailHero(c.appUrl, game.scenes, locale),
       ...(game.scenes.length > 0 && game.scenes.every(scene => isLocalPatchAdvisoryVersion(scene.sceneVersion)) ? { playMode: "find-any" as const } : {}) });
     // A game with nobody to send it to is a game nobody will open. Until every

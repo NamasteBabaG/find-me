@@ -1,18 +1,19 @@
 import { activeWorlds, allWorlds, findWorld, worldOfBoard } from "../../content/worlds";
 import { findScene } from "../../content/scenes";
 import { boardSlugs, type WorldDefinition } from "@/domain/world";
+import { isOfferedWorld } from "@/domain/offering";
 import type { Container } from "./container";
 import { activeSceneSlugs } from "./scene-catalog.service";
 
 /**
- * Worlds, filtered by what is actually playable.
+ * Worlds, filtered by what is actually playable and approved for sale.
  *
- * A world is only offered when every one of its nine boards is active: half a
- * journey is not a journey, and a parent must never buy a map with a hole in it.
+ * A world is only offered when it is in the approved offering (domain/offering) and every one of its nine boards is
+ * active: half a journey is not a journey, and a parent must never buy a map with a hole in it.
  */
 export async function purchasableWorlds(c: Container, sceneVersion?: number): Promise<WorldDefinition[]> {
   const active = new Set(await activeSceneSlugs(c));
-  return activeWorlds().filter((w) => w.purchasable && boardSlugs(w).every((slug) =>
+  return activeWorlds().filter((w) => w.purchasable && isOfferedWorld(w.slug) && boardSlugs(w).every((slug) =>
     active.has(slug) && (sceneVersion === undefined || findScene(slug, sceneVersion)?.active === true)));
 }
 

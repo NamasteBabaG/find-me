@@ -25,14 +25,16 @@ export function LoginForm({ devOutbox, next = "/family" }: { devOutbox: boolean;
     );
   }
   return (
-    <form action={action} className="fm-card fm-card--pad-4 fm-stack fm-stack--3">
+    // noValidate: the server answers in the page's language; the browser's own bubbles do not (pilot QA, 2026-11-23).
+    <form action={action} noValidate className="fm-card fm-card--pad-4 fm-stack fm-stack--3">
       <input type="hidden" name="next" value={next} />
       <div className="fm-field">
         <label htmlFor="email" className="fm-label">
           {l.emailLabel}
         </label>
-        <input id="email" name="email" type="email" className="fm-input" required autoComplete="email" dir="ltr" placeholder="you@example.com" />
-        {state && !state.ok ? <p className="fm-error">{errorText(t, state)}</p> : null}
+        <input id="email" name="email" type="email" className="fm-input" required autoComplete="email" dir="ltr" placeholder="you@example.com"
+          aria-invalid={state && !state.ok ? true : undefined} aria-describedby={state && !state.ok ? "login-email-error" : undefined} />
+        {state && !state.ok ? <p id="login-email-error" className="fm-error" role="alert">{errorText(t, state)}</p> : null}
       </div>
       <Button type="submit" size="lg" loading={pending}>
         {l.sendLink}

@@ -9,6 +9,7 @@ import { WORLD_PRICES } from "@/domain/package";
 import { childHasPaidWorld } from "@/services/child-pricing.service";
 import { getContainer } from "@/services/container";
 import { familyAdventures } from "@/services/family-adventures.service";
+import { backgroundWorkRunning } from "@/services/jobs-heartbeat.service";
 import { SiteHeader, SiteFooter } from "@/ui/Shell";
 import { Sticker } from "../FamilyParts";
 import { AdventureCard, FamilyCompanion } from "../FamilyCards";
@@ -32,7 +33,8 @@ export default async function ChildPage({ params, searchParams }: { params: Prom
   const c = getContainer();
   const child = (await familyAdventures(c, user.id, childId))[0];
   if (!child) notFound();
-  const continuation = await childHasPaidWorld(c.db, { ownerId: user.id, familyChildId: child.id });
+  const [continuation, backgroundWork] = await Promise.all([childHasPaidWorld(c.db, { ownerId: user.id, familyChildId: child.id }),
+    child.adventures.some(a => !a.ready) ? backgroundWorkRunning(c.db) : Promise.resolve(false)]);
   const f = t.family;
   const stamps = child.adventures.filter(a => a.tracked).flatMap(a => a.worlds).reduce((sum, w) => ({ n: sum.n + w.stamped, total: sum.total + w.places }), { n: 0, total: 0 });
   return <><SiteHeader user={user} isAdmin={isAdminEmail(user.email)} />
@@ -45,7 +47,7 @@ export default async function ChildPage({ params, searchParams }: { params: Prom
       <div className="family-desk">
         <section className="family-desk__main" aria-label={tf(f.open, { name: child.name })}>
           {child.adventures.length === 0 ? <p className="fm-lead">{f.noAdventures}</p> : null}
-          {child.adventures.map((adventure, i) => <AdventureCard key={adventure.gameId} adventure={adventure} child={child} t={t} eager={i === 0} friendIntent={query.friends === adventure.gameId ? query.world ?? null : null} />)}
+          {child.adventures.map((adventure, i) => <AdventureCard key={adventure.gameId} adventure={adventure} child={child} t={t} eager={i === 0} friendIntent={query.friends === adventure.gameId ? query.world ?? null : null} backgroundWork={backgroundWork} />)}
         </section>
         <FamilyCompanion child={child} t={t} returningPrice={continuation ? formatMoney(WORLD_PRICES[currency].additional, currency, locale) : null} stamps={stamps} />
       </div>

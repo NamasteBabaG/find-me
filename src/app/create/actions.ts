@@ -9,7 +9,7 @@ import { getContainer } from "@/services/container";
 import { getCurrency } from "@/i18n/server";
 import { createDraft, searchLevelTerms, selectPackage, selectWorlds } from "@/services/create-flow.service";
 import { startCheckout } from "@/services/order.service";
-import { validChildAge } from "@/domain/child-appearance";
+import { newChildAgeAllowed } from "@/domain/child-appearance";
 import { isSearchLevel, type SearchLevel } from "@/domain/search-level";
 import { currentDraft } from "@/lib/server/current-draft";
 import { currentUser, draftTokenFromCookie, setDraftCookie, requestHeaders } from "@/lib/server/session";
@@ -31,7 +31,7 @@ export async function saveNameAction(_prev: ActionResult | null, formData: FormD
   const ageYears = Number(formData.get("ageYears"));
   const familyChildId = String(formData.get("familyChildId") ?? "") || null;
   const level = formData.get("searchLevel");
-  if (!validChildAge(ageYears)) return flowError("INVALID_CHILD_AGE", "בחרו את גיל הדמות במשחק, בין 2 ל־10.");
+  if (!newChildAgeAllowed(ageYears)) return flowError("INVALID_CHILD_AGE", "בחרו את גיל הדמות במשחק, בין 4 ל־10.");
   let savedGameId: string | undefined;
   const requestedDraft = String(formData.get("draftGameId") ?? "") || undefined;
   const guarded = await guardDb(async () => {

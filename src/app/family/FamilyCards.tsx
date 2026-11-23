@@ -6,16 +6,19 @@ import { FamilyFriendSharing } from "@/ui/friends/FamilyFriendSharing";
 import { ToolIcon } from "@/game/components/ToolIcon";
 import { currentWorld, MapGlimpse, PlaceRoute, StarTally, Sticker } from "./FamilyParts";
 
-export function AdventureCard({ adventure, child, t, eager, friendIntent }: { adventure: FamilyAdventure; child: FamilyChild; t: Dictionary; eager: boolean; friendIntent?: string | null }) {
+/** `backgroundWork`: the scheduled tick is really running (jobs-heartbeat.service). Without it a world in preparation
+ * moves only while its progress page is open, and the card says so instead of promising the server goes on alone. */
+export function AdventureCard({ adventure, child, t, eager, friendIntent, backgroundWork = false }: { adventure: FamilyAdventure; child: FamilyChild; t: Dictionary; eager: boolean; friendIntent?: string | null; backgroundWork?: boolean }) {
   const f = t.family;
   const manage = <Link href={`/library/${adventure.gameId}`} className="family-manage">{t.library.manage}</Link>;
   if (!adventure.ready) {
     const state = adventure.preparation ?? "preparing";
     const copy = f.generationState[state];
+    const hint = state === "preparing" && !backgroundWork ? f.generationState.preparing.hintOpenPage : copy.hint;
     return <article className="adventure adventure--preparing">
       <div className="adventure__wait" aria-hidden="true"><Sticker url={child.avatarUrl} name={child.name} /></div>
       <div className="adventure__body">
-        <h2>{copy.title}</h2><p className="adventure__hint">{copy.hint}</p>
+        <h2>{copy.title}</h2><p className="adventure__hint">{hint}</p>
         <div className="adventure__actions">{state === "attention" || state === "unavailable"
           ? <LinkButton href={`/support?order=${encodeURIComponent(adventure.gameId)}`} variant="secondary">{f.getHelp}</LinkButton>
           : <LinkButton href={`/creating/${adventure.gameId}`} variant="secondary">{t.library.viewProgress}</LinkButton>}</div>

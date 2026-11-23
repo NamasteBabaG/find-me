@@ -1,5 +1,6 @@
 "use client";
 
+import { useId } from "react";
 import { useI18n } from "@/i18n/client";
 import { SEARCH_LEVELS, type SearchLevel } from "@/domain/search-level";
 
@@ -15,9 +16,13 @@ export function SearchLevelChoice({ value, onChange, describedBy, invalid = fals
 }) {
   const { t } = useI18n();
   const copy = t.create.level;
+  const sameId = useId();
+  const both = SEARCH_LEVELS.every(level => allowedLevels.includes(level));
   return (
-    <fieldset className={`level-choice${invalid ? " level-choice--invalid" : ""}`} aria-describedby={describedBy} disabled={disabled}>
+    <fieldset className={`level-choice${invalid ? " level-choice--invalid" : ""}`} aria-describedby={[both ? sameId : null, describedBy].filter(Boolean).join(" ") || undefined} disabled={disabled}>
       <legend className="level-choice__title">{copy.title}</legend>
+      {/* What changes between the two, in one sentence: only how hard the search is, never the price or the world. */}
+      {both ? <p id={sameId} className="level-choice__same">{copy.same}</p> : null}
       <div className="level-choice__options">
         {SEARCH_LEVELS.filter(level => allowedLevels.includes(level)).map(level => {
           const card = copy[level];

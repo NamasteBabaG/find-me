@@ -24,5 +24,6 @@ export default async function FamilyPlay({ params, searchParams }: { params: Pro
   if (!game?.configJson) notFound();
   const config = withFreshAssetUrls(c, applyQaDetectiveArt(parseGameConfig(game.configJson)));
   // The account's album comes with the page, so the map opens with the child where they really are.
-  return <GameShell key={game.id} config={config} albumOwner skipGift initialWorld={gameWorlds(config).some(world => world.slug === query.world) ? query.world : undefined} initialAlbum={albumSeed(config, game.adventureAlbum?.snapshotJson)} autoStartScene={config.scenes.some(s => s.slug === query.board) ? query.board : undefined} parentZoneHref={`/family/${childId}`} />;
+  // "To the parents' area" opens the parents' area itself (pilot QA, 2026-11-23: it opened the child's page).
+  return <GameShell key={game.id} config={config} albumOwner skipGift initialWorld={gameWorlds(config).some(world => world.slug === query.world) ? query.world : undefined} initialAlbum={albumSeed(config, game.adventureAlbum?.snapshotJson)} autoStartScene={config.scenes.some(s => s.slug === query.board) ? query.board : undefined} parentZoneHref="/family" />;
 }

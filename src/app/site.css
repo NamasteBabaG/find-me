@@ -446,6 +446,7 @@
    them as rows, a wider form sets them side by side. Selection is sea, with a tick that pops. */
 .level-choice { container: level / inline-size; min-width: 0; margin: 0; padding: 0; border: 0; display: flex; flex-direction: column; gap: var(--space-1); }
 .level-choice__title { padding: 0; font-family: var(--font-display); font-weight: 700; font-size: var(--fs-200); line-height: var(--lh-200); }
+.level-choice__same { margin: 0; font-size: var(--fs-100); line-height: var(--lh-100); color: var(--ink-2); }
 .level-choice__options { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-1); padding-top: var(--space-1); }
 .level-card { position: relative; display: grid; grid-template-columns: auto minmax(0, 1fr); grid-template-areas: "art name" "art line"; align-content: center; column-gap: var(--space-2); min-width: 0; min-height: var(--touch-min); padding: var(--space-2); text-align: start; color: var(--ink); }
 .level-card:active { transform: scale(0.98); }
@@ -464,7 +465,7 @@
 .level-card.fm-card--selected .level-card__check { background: var(--sea); box-shadow: var(--shadow-1); animation: fm-pop-in var(--dur-3) var(--ease-pop); }
 .level-card.fm-card--selected .level-card__check::after { content: ""; width: var(--space-2); height: var(--space-2); background: var(--white); -webkit-mask: var(--icon-check) center / contain no-repeat; mask: var(--icon-check) center / contain no-repeat; }
 .level-card__name { grid-area: name; font-family: var(--font-display); font-weight: 800; font-size: var(--fs-300); line-height: var(--lh-300); overflow-wrap: anywhere; }
-.level-card__line { grid-area: line; font-size: var(--fs-100); line-height: var(--lh-100); color: var(--ink-3); }
+.level-card__line { grid-area: line; font-size: var(--fs-100); line-height: var(--lh-100); color: var(--ink-2); }
 .level-choice--invalid .level-card { border-color: var(--danger); box-shadow: 0 0 0 4px var(--coral-soft), var(--shadow-1); }
 @container level (min-width: 440px) { .level-choice__options { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 
@@ -586,9 +587,8 @@
 .summary__who { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: var(--space-2); }
 .summary__title { font-family: var(--font-display); font-weight: 800; font-size: var(--fs-300); line-height: var(--lh-300); overflow-wrap: anywhere; }
 .summary__meta { font-size: var(--fs-100); line-height: var(--lh-100); color: var(--ink-2); }
-/* "Edit" is a small chip, not loose underlined text; an invisible band keeps the 48px a finger needs. */
-.summary__edit { position: relative; display: inline-flex; align-items: center; gap: var(--space-0-5); min-height: var(--space-4); padding-inline: var(--space-2); border-radius: var(--radius-pill); background: var(--paper-2); color: var(--ink); font-family: var(--font-display); font-weight: 700; font-size: var(--fs-100); line-height: var(--lh-100); text-decoration: none; transition: background var(--dur-1); }
-.summary__edit::after { content: ""; position: absolute; inset: calc(var(--space-1) * -1) 0; }
+/* "Edit" is a chip, not loose underlined text, and the chip itself is the 48px a finger needs (pilot QA: a 32px chip). */
+.summary__edit { display: inline-flex; align-items: center; gap: var(--space-0-5); min-height: var(--touch-min); padding-inline: var(--space-3); border-radius: var(--radius-pill); background: var(--paper-2); color: var(--ink); font-family: var(--font-display); font-weight: 700; font-size: var(--fs-100); line-height: var(--lh-100); text-decoration: none; transition: background var(--dur-1); }
 .summary__edit:hover { background: var(--paper-3); }
 .summary__world { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: var(--space-2); padding: var(--space-1) var(--space-2) var(--space-1) var(--space-1); border-radius: var(--radius-3); background: var(--paper-2); }
 .summary__emblem { display: block; width: var(--space-8); height: var(--space-8); flex: none; }
@@ -598,8 +598,13 @@
 .summary__total { display: flex; align-items: flex-end; justify-content: space-between; gap: var(--space-2); margin-top: auto; padding-top: var(--space-2); border-top: 1px solid var(--line); font-family: var(--font-display); font-weight: 700; font-size: var(--fs-200); line-height: var(--lh-200); }
 .summary__price { display: flex; flex-direction: column; align-items: flex-end; }
 .summary__price strong { font-weight: 900; font-size: var(--fs-500); line-height: var(--lh-500); letter-spacing: -0.02em; }
-.summary__price small { font-family: var(--font-body); font-weight: 500; font-size: var(--fs-50); line-height: var(--lh-50); color: var(--ink-3); }
+.summary__price small { font-family: var(--font-body); font-weight: 500; font-size: var(--fs-50); line-height: var(--lh-50); color: var(--ink-2); }
 .summary__legal { margin: 0; font-size: var(--fs-50); line-height: var(--lh-50); color: var(--ink-2); }
+/* The documents beside the tick are links a finger can hit: each is its own 48px row item, not 14px of fine print. */
+.summary__docs { display: flex; flex-wrap: wrap; gap: 0 var(--space-2); margin: calc(var(--space-1) * -1) 0 0; padding: 0; list-style: none; }
+.summary__docs a { display: inline-flex; align-items: center; min-height: var(--touch-min); font-size: var(--fs-100); line-height: var(--lh-100); font-weight: 600; color: var(--ink); }
+/* A server answer belongs to the field it is about. */
+.service-acceptance + .fm-error { margin-top: calc(var(--space-1) * -1); }
 .summary__pay { margin-top: auto; }
 .summary__pay[aria-busy="true"] .fm-btn__label { visibility: visible; opacity: 1; }
 .summary__pay[aria-busy="true"] .fm-spinner { position: static; margin: 0; }
@@ -695,7 +700,8 @@
 .cp__avatar { display: block; width: 100%; height: 100%; object-fit: cover; transform: scale(1.18); transform-origin: 50% 42%; }
 .cp--done { gap: var(--space-3); }
 .cp__delivery { display: flex; flex-direction: column; align-items: center; gap: var(--space-1); padding-top: var(--space-2); border-top: 1px solid var(--line); width: 100%; }
-.cp__manage { display: inline-flex; align-items: center; justify-content: center; min-height: var(--touch-min); padding-inline: var(--space-2); }
+/* After the game itself: the parent's two other doors, side by side, wrapping on a narrow phone. */
+.cp__next { display: flex; flex-wrap: wrap; justify-content: center; gap: var(--space-1); width: 100%; }
 .cp__pencil { font-size: var(--fs-800); line-height: 1; animation: cp-scribble 1.6s ease-in-out infinite; transform-origin: 80% 80%; }
 .cp__party { font-size: var(--fs-800); line-height: 1; }
 .cp__title { font-family: var(--font-display); font-size: var(--fs-500); line-height: var(--lh-500); font-weight: 800; letter-spacing: -0.01em; }

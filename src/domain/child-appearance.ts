@@ -5,6 +5,15 @@ export function validChildAge(value: unknown): value is number {
   return typeof value === "number" && Number.isInteger(value) && value >= 2 && value <= 10;
 }
 
+/** Who a NEW character may be: the same 4 to 10 the home page promises (pilot QA, 2026-11-23: the wizard offered 2).
+ * Games and children made before keep their own age, so validChildAge still reads 2 to 10 everywhere it records. */
+export const NEW_CHILD_AGE_MIN = 4;
+export const CHILD_AGE_MAX = 10;
+export const NEW_CHILD_AGES = CHILD_AGES.filter(age => age >= NEW_CHILD_AGE_MIN);
+export function newChildAgeAllowed(value: unknown): value is number {
+  return validChildAge(value) && value >= NEW_CHILD_AGE_MIN && value <= CHILD_AGE_MAX;
+}
+
 /** Frozen historical prompt. New refreshed releases use childBodyDirection.
  * Unknown legacy ages remain unknown, rather than silently making everyone eight. */
 export function childAgeDirection(ageYears?: number | null): string {

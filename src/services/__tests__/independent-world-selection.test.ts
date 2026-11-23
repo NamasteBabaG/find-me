@@ -46,11 +46,22 @@ describe("a new adventure starts with one world, chosen without a package step",
     expect(await selectWorlds(c, early.id, ["kingdom"])).toMatchObject({ ok: false });
     expect(await scenes(early.id)).toEqual([]);
   });
-  it("keeps a package the draft already has", async () => {
+  it("keeps a package an older draft already has", async () => {
     const g = await draft(), c = context();
-    await selectPackage(c, g.id, "TWO_WORLDS");
-    expect(await selectWorlds(c, g.id, ["timetravel", "journey"])).toEqual({ ok: true });
+    // Written before one world per order (pilot QA, 2026-11-23); a new draft can no longer choose it.
+    await db.game.update({ where: { id: g.id }, data: { packageTier: "TWO_WORLDS" } });
+    expect(await selectWorlds(c, g.id, ["kingdom", "journey"])).toEqual({ ok: true });
     expect((await db.game.findUniqueOrThrow({ where: { id: g.id } })).packageTier).toBe("TWO_WORLDS");
+  });
+  it("sells one approved world per order in every environment (pilot QA P1-3)", async () => {
+    const g = await draft(), c = context();
+    for (const tier of ["TWO_WORLDS", "ALL_WORLDS"]) expect(await selectPackage(c, g.id, tier)).toMatchObject({ ok: false, code: "PACKAGE_UNAVAILABLE" });
+    expect((await worldsForDraft(c, "")).map(w => w.slug)).toEqual(["journey", "kingdom"]);
+    expect((await availablePackages(c, "")).map(p => p.tier)).toEqual(["ONE_WORLD"]);
+    expect(await selectPackage(c, g.id, "ONE_WORLD")).toEqual({ ok: true });
+    const before = await scenes(g.id);
+    expect(await selectWorlds(c, g.id, ["timetravel"])).toMatchObject({ ok: false });
+    expect(await scenes(g.id)).toEqual(before);
   });
 });
 
@@ -63,19 +74,19 @@ describe("independent worlds are a choice, not a difficulty ladder", () => {
     expect(await selectPackage(c, g.id, "ONE_WORLD")).toEqual({ ok: true });
     expect((await scenes(g.id)).map(s => s.sceneSlug)).toEqual(boardsOfWorlds(["kingdom"]));
   });
-  it("allows a non-adjacent pair in stable catalog order", async () => {
+  it("keeps an older two-world draft's pair in stable catalog order", async () => {
     const g = await draft(), c = context();
-    await selectPackage(c, g.id, "TWO_WORLDS");
-    expect(await selectWorlds(c, g.id, ["timetravel", "journey"])).toEqual({ ok: true });
-    expect((await scenes(g.id)).map(s => s.sceneSlug)).toEqual(boardsOfWorlds(["journey", "timetravel"]));
+    await db.game.update({ where: { id: g.id }, data: { packageTier: "TWO_WORLDS" } });
+    expect(await selectWorlds(c, g.id, ["kingdom", "journey"])).toEqual({ ok: true });
+    expect((await scenes(g.id)).map(s => s.sceneSlug)).toEqual(boardsOfWorlds(["journey", "kingdom"]));
   });
   it("rejects unavailable, duplicate and wrong-count choices without modifying the draft", async () => {
     const g = await draft(), c = context();
     await selectPackage(c, g.id, "ONE_WORLD");
     const before = await scenes(g.id);
-    for (const slugs of [[], ["no-such-world"], ["journey", "kingdom"]]) expect(await selectWorlds(c, g.id, slugs)).toMatchObject({ ok: false });
+    for (const slugs of [[], ["no-such-world"], ["timetravel"], ["journey", "kingdom"]]) expect(await selectWorlds(c, g.id, slugs)).toMatchObject({ ok: false });
     expect(await scenes(g.id)).toEqual(before);
-    await selectPackage(c, g.id, "TWO_WORLDS");
+    await db.game.update({ where: { id: g.id }, data: { packageTier: "TWO_WORLDS" } });
     expect(await selectWorlds(c, g.id, ["kingdom", "kingdom"])).toMatchObject({ ok: false, code: "WRONG_SCENE_COUNT" });
   });
   it("offers either complete updated world on the current three-hide rendering engine", async () => {
@@ -101,7 +112,7 @@ describe("independent worlds are a choice, not a difficulty ladder", () => {
     const auditBefore = await db.auditLog.count();
     // A real database constraint, not a mocked transaction claiming to roll back.
     await db.$executeRawUnsafe(`CREATE TRIGGER fail_selection BEFORE INSERT ON GameScene WHEN NEW.gameId = '${g.id}' AND NEW.orderIndex = 1 BEGIN SELECT RAISE(ABORT, 'selection test failure'); END`);
-    try { await expect(selectPackage(c, g.id, "TWO_WORLDS")).rejects.toThrow(); }
+    try { await expect(selectWorlds(c, g.id, ["kingdom"])).rejects.toThrow(); }
     finally { await db.$executeRawUnsafe("DROP TRIGGER fail_selection"); }
     expect(await scenes(g.id)).toEqual(before);
     expect(await db.game.findUniqueOrThrow({ where: { id: g.id } })).toEqual(gameBefore);
@@ -133,7 +144,7 @@ describe("independent worlds are a choice, not a difficulty ladder", () => {
     const a = await db.familyChild.create({ data: { id: "child-a", ownerId: "parent", displayName: "Same name" } });
     const b = await db.familyChild.create({ data: { id: "child-b", ownerId: "parent", displayName: "Same name" } });
     const games = [];
-    for (const [familyChildId, world] of [[a.id, "kingdom"], [a.id, "journey"], [b.id, "timetravel"]] as const) {
+    for (const [familyChildId, world] of [[a.id, "kingdom"], [a.id, "journey"], [b.id, "journey"]] as const) {
       const g = await draft(); games.push(g);
       expect(await chooseDraftChild(db, { gameId: g.id, actorId: "parent", draftToken: g.draftToken, familyChildId, name: "Same name", ageYears: 5 })).toEqual({ ok: true });
       await selectPackage(context(), g.id, "ONE_WORLD");

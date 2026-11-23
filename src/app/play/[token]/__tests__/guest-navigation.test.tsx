@@ -37,10 +37,10 @@ it("preserves account-backed progress and family navigation for the verified own
   expect(result.props.parentZoneHref).toBe("/family");
 });
 
-it("takes the verified owner back to this child's page, not the family list", async () => {
+it("takes the verified owner to the parents' area the button names, not the child's page (pilot QA, 2026-11-23)", async () => {
   rig.user.mockResolvedValue({ id: "owner" });
   rig.game.mockResolvedValue({ ownerId: "owner", familyChildId: "fam_child" });
-  expect((await page()).props.parentZoneHref).toBe("/family/fam_child");
+  expect((await page()).props.parentZoneHref).toBe("/family");
   rig.user.mockResolvedValue({ id: "other-parent" });
   expect((await page()).props.parentZoneHref).toBeUndefined();
 });

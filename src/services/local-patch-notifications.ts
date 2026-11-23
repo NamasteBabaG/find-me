@@ -97,7 +97,7 @@ export async function enqueueLocalPatchNotifications(c: Container, tx: Prisma.Tr
   const link = await ensurePlayerLink({ ...c, db: tx as Container["db"] }, gameId);
   const locale = game.locale === "he" ? "he" : "en";
   const ready = routeMail(gameReadyEmail({ to: game.owner?.email ?? "", childName: game.childProfile.displayName,
-    playLink: link.url, libraryLink: `${c.appUrl}/library/${gameId}`, sceneCount: config.scenes.length,
+    playLink: link.url, libraryLink: `${c.appUrl}/library/${gameId}`, helpLink: `${c.appUrl}/support?order=${encodeURIComponent(gameId)}`, sceneCount: config.scenes.length,
     targetCount: config.scenes.reduce((total, scene) => total + scene.targets.length, 0),
     locale, playMode: "find-any", hero: readyMailHero(c.appUrl, game.scenes, locale) }), c.emailFallbackTo);
   const shippedTargets = new Map(config.scenes.map(scene => [scene.slug, new Set(scene.targets.map(target => target.id))]));

@@ -34,15 +34,14 @@ export default async function PlayPage({ params }: { params: Promise<{ token: st
   const config = withFreshAssetUrls(c, applyQaDetectiveArt(parseGameConfig(resolved.game.configJson)));
   // The play link identifies a game, never a person. Only a signed-in owner
   // gets the family album kept in the account; everyone else keeps it in the browser.
-  let albumOwner = false, childId: string | null = null, initialAlbum: ReturnType<typeof albumSeed>;
+  let albumOwner = false, initialAlbum: ReturnType<typeof albumSeed>;
   if (config.adventure) {
-    const [user, game] = await Promise.all([currentUser(), c.db.game.findUnique({ where: { id: resolved.game.id }, select: { ownerId: true, familyChildId: true, adventureAlbum: { select: { snapshotJson: true } } } })]);
+    const [user, game] = await Promise.all([currentUser(), c.db.game.findUnique({ where: { id: resolved.game.id }, select: { ownerId: true, adventureAlbum: { select: { snapshotJson: true } } } })]);
     albumOwner = Boolean(user && game?.ownerId && game.ownerId === user.id);
-    childId = albumOwner ? game?.familyChildId ?? null : null;
     // Only the verified owner's page carries the account's album; a recipient keeps their own browser's.
     if (albumOwner) initialAlbum = albumSeed(config, game?.adventureAlbum?.snapshotJson);
   }
-  // A bearer link grants play, not access to account navigation. Keep recipients
-  // in the game; retain the family shortcut only for its verified owner, to this child's page.
-  return <GameShell key={config.locale} config={config} playToken={token} parentZoneHref={albumOwner ? childId ? `/family/${childId}` : "/family" : undefined} albumOwner={albumOwner} initialAlbum={initialAlbum} />;
+  // A bearer link grants play, not access to account navigation. Keep recipients in the game; only its verified
+  // owner gets the shortcut, and "to the parents' area" opens the parents' area itself (pilot QA, 2026-11-23).
+  return <GameShell key={config.locale} config={config} playToken={token} parentZoneHref={albumOwner ? "/family" : undefined} albumOwner={albumOwner} initialAlbum={initialAlbum} />;
 }

@@ -18,6 +18,8 @@ interface Status {
   failed: boolean;
   state: CreationState;
   playUrl: string | null;
+  /** The scheduled tick is really running, so the world goes on with this page closed. Absent or false: say to keep it open. */
+  backgroundWork?: boolean;
   qaPreviewUrl?: string | null;
   qaBoards?: { boardId: string; name: string; state: string; attempts: number; slots: { slotId: string; state: string; reason: string | null }[] }[] | null;
   qaCost?: { spentCents: number; reservedCents: number; capCents: number; held: boolean } | null;
@@ -213,9 +215,12 @@ export function CreatingStatus({ gameId, childName, isAdmin }: { gameId: string;
             </>
           )}
         </div>
-        <Link href="/library" className="fm-small cp__manage">
-          {cr.manage}
-        </Link>
+        {/* Pilot QA (2026-11-23): the game is the one call, and the parent's two other doors are named beside it, as
+            buttons a finger can hit: this game's management (greeting, sharing, deletion) and help for this order. */}
+        <nav className="cp__next" aria-label={cr.nextNav}>
+          <LinkButton href={`/library/${encodeURIComponent(gameId)}`} variant="secondary">{cr.manageGame}</LinkButton>
+          <LinkButton href={`/support?order=${encodeURIComponent(gameId)}`} variant="ghost">{cr.help}</LinkButton>
+        </nav>
       </div>
     );
   }
@@ -233,7 +238,8 @@ export function CreatingStatus({ gameId, childName, isAdmin }: { gameId: string;
     <div className="fm-stack fm-stack--3 cp">
       <div className="create__head">
         <h1 className="create__title">{tf(cr.title, { name: childName })}</h1>
-        <p className="fm-lead">{cr.lead}</p>
+        {/* The page promises the window may close only while something other than this page moves the world. */}
+        <p className="fm-lead">{s.backgroundWork ? cr.lead : cr.leadKeepOpen}</p>
       </div>
       {reconnecting}
       {s.state === "needs_new_photo" && s.newPhotoUrl ? (
@@ -291,7 +297,7 @@ export function CreatingStatus({ gameId, childName, isAdmin }: { gameId: string;
         <Notice kind="warn">{cr.heldAction} {isAdmin ? <Link href={`/admin/orders/${gameId}`}>{cr.qaAdmin}</Link> : <Link href="/library">{cr.backToLibrary}</Link>}</Notice>
       ) : s.state === "awaiting_review" ? (
         <Notice kind="info">
-          {cr.qa} {isAdmin ? <Link href={`/admin/orders/${gameId}`}>{cr.qaAdmin}</Link> : cr.qaParent}
+          {cr.qa} {isAdmin ? <Link href={`/admin/orders/${gameId}`}>{cr.qaAdmin}</Link> : s.backgroundWork ? cr.qaParent : cr.qaParentKeepOpen}
         </Notice>
       ) : null}
       <QaBoardProgress status={s} hebrew={locale === "he"} />

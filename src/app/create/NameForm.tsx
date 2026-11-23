@@ -4,7 +4,7 @@ import { useActionState, useState } from "react";
 import { Button } from "@/ui/Button";
 import { useI18n } from "@/i18n/client";
 import { errorText } from "@/i18n/errors";
-import { CHILD_AGES, validChildAge } from "@/domain/child-appearance";
+import { NEW_CHILD_AGES, newChildAgeAllowed } from "@/domain/child-appearance";
 import type { SearchLevel } from "@/domain/search-level";
 import { saveNameAction, type ActionResult } from "./actions";
 import { SearchLevelChoice } from "./SearchLevelChoice";
@@ -21,7 +21,7 @@ export function NameForm({ draftGameId, initialName, initialAge, children = [], 
   const { t } = useI18n();
   const n = t.create.name;
   const [selectedId, setSelectedId] = useState(initialChildId);
-  const [age, setAge] = useState<string>(validChildAge(initialAge) ? String(initialAge) : "");
+  const [age, setAge] = useState<string>(newChildAgeAllowed(initialAge) ? String(initialAge) : "");
   const [newName, setNewName] = useState(initialChildId ? "" : initialName);
   // No level is chosen for the parent: the first visit asks for a clear answer.
   const [level, setLevel] = useState<SearchLevel | null>(initialLevel);
@@ -35,7 +35,8 @@ export function NameForm({ draftGameId, initialName, initialAge, children = [], 
   const ageInvalid = Boolean(state && !state.ok && state.code === "INVALID_CHILD_AGE");
   const levelInvalid = levelMissing || Boolean(state && !state.ok && (state.code === "SEARCH_LEVEL_REQUIRED" || state.code === "SEARCH_LEVEL_UNAVAILABLE"));
   return (
-    <form action={action} className="fm-card fm-card--pad-6 fm-stack fm-stack--3" onSubmit={event => {
+    // noValidate: the server answers in the page's language; the browser's own bubbles do not (pilot QA, 2026-11-23).
+    <form action={action} noValidate className="fm-card fm-card--pad-6 fm-stack fm-stack--3" onSubmit={event => {
       // Answered on the spot, in the product's words, before a round trip.
       if (!asking || level && offered.includes(level)) return;
       event.preventDefault();
@@ -81,7 +82,7 @@ export function NameForm({ draftGameId, initialName, initialAge, children = [], 
           <span className="fm-select">
             <select id="ageYears" name="ageYears" className="fm-input" value={age} onChange={e => setAge(e.target.value)} required aria-invalid={ageInvalid ? true : undefined} aria-describedby={state && !state.ok ? "child-form-error" : undefined}>
               <option value="" disabled>{n.agePlaceholder}</option>
-              {CHILD_AGES.map(age => <option key={age} value={age}>{age}</option>)}
+              {NEW_CHILD_AGES.map(age => <option key={age} value={age}>{age}</option>)}
             </select>
           </span>
         </div>

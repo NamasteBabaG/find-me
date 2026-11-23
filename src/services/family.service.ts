@@ -1,7 +1,7 @@
 import { Prisma, type PrismaClient } from "@prisma/client";
 import { createHash } from "node:crypto";
 import { GAME_STATUSES, isEditableDraft, type GameStatus } from "@/domain/order-state";
-import { validChildAge } from "@/domain/child-appearance";
+import { newChildAgeAllowed } from "@/domain/child-appearance";
 import { isSearchLevel, storedSearchLevel, type SearchLevel } from "@/domain/search-level";
 import { normalizeChildName } from "@/lib/copy";
 import { newId } from "@/lib/ids";
@@ -80,7 +80,7 @@ export async function chooseDraftChild(db: PrismaClient, input: {
   gameId: string; actorId: string | null; draftToken: string | null;
   familyChildId: string | null; name: string; ageYears: number; searchLevel?: SearchLevel;
 }): Promise<FlowResult> {
-  if (!validChildAge(input.ageYears)) return flowError("INVALID_CHILD_AGE", "בחרו את גיל הדמות במשחק, בין 2 ל־10.");
+  if (!newChildAgeAllowed(input.ageYears)) return flowError("INVALID_CHILD_AGE", "בחרו את גיל הדמות במשחק, בין 4 ל־10.");
   if (input.searchLevel !== undefined && !isSearchLevel(input.searchLevel)) return flowError("SEARCH_LEVEL_REQUIRED", "בחרו מגלים או בלשים.");
   try {
     return await db.$transaction(async tx => {

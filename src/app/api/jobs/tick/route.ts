@@ -9,6 +9,7 @@ import { retryFailedAdminAlerts } from "@/services/admin-alert.service";
 import { resumeKingdomCeilingRefunds } from "@/services/generation/kingdom-ceiling-refund";
 import { alertStalledGeneration } from "@/services/generation-health.service";
 import { sweepQualityBatches } from "@/services/generation/quality-batch";
+import { recordCronHeartbeat } from "@/services/jobs-heartbeat.service";
 import { env } from "@/lib/env";
 import { currentUser, draftTokenFromCookie, isAdminEmail } from "@/lib/server/session";
 import { safeEqual } from "@/lib/ids";
@@ -80,6 +81,9 @@ export async function POST(req: Request) {
     if (!(await isAllowed(req, gameId))) return NextResponse.json({ error: "forbidden" }, { status: 403 });
     if (requestedMode !== null && (requestedMode !== 'review-existing' || !gameId || env().APP_ENV !== 'qa' || c.storage.id !== 'db'))
       return NextResponse.json({ error: 'unsupported-work-mode' }, { status: 400 });
+    // Only the scheduled tick comes without a game (isAllowed: the cron's own credential). Its run is what lets a
+    // screen tell a parent the window may close (jobs-heartbeat.service).
+    if (!gameId) await recordCronHeartbeat(c.db);
     if (publication !== null) {
       if (publication !== 'sunburst-tail-v1' || requestedMode !== 'review-existing' || !gameId || restore !== null
         || query.getAll('publication').length !== 1)

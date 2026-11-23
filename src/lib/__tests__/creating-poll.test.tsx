@@ -42,8 +42,22 @@ describe("the mounted creating screen", () => {
     expect(view.container.querySelectorAll(".cp__open")).toHaveLength(1);
     expect(view.getByRole("heading", { level: 1 }).textContent).toBe("Test's adventure is ready!");
     expect(view.queryByText("Preparing Test's adventure")).toBeNull();
-    expect(view.getByRole("link", { name: en.create.creating.manage }).classList.contains("cp__open")).toBe(false);
+    // Pilot QA (2026-11-23): the parent's other two doors are named beside the game, as real buttons.
+    const manage = view.getByRole("link", { name: en.create.creating.manageGame });
+    expect(manage.getAttribute("href")).toBe("/library/test-game");
+    expect(view.getByRole("link", { name: en.create.creating.help }).getAttribute("href")).toBe("/support?order=test-game");
+    expect(manage.classList.contains("cp__open")).toBe(false);
+    expect(manage.classList.contains("fm-btn")).toBe(true);
   });
+  it.each([[true, en.create.creating.lead], [false, en.create.creating.leadKeepOpen], [undefined, en.create.creating.leadKeepOpen]] as const)(
+    "promises the window may close only while the scheduled tick runs (backgroundWork %s)", async (backgroundWork, lead) => {
+      const payload = { status: "TARGETS_GENERATING", ...creationProgress({ status: "TARGETS_GENERATING", characterReady: true, spotsDone: 3, spotsTotal: 27 }),
+        pending: false, playUrl: null, avatarUrl: null, place: null, ...(backgroundWork === undefined ? {} : { backgroundWork }) };
+      vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify(payload))));
+      const view = mount();
+      await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+      expect(view.getByText(lead)).toBeTruthy();
+    });
   it.each([["QA_PENDING", "/play/test"], ["READY", null]] as const)("does not invite before a playable game and URL both exist (%s / %s)", async (value, playUrl) => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(status(value, playUrl)));
     const view = mount();

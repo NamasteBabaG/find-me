@@ -105,18 +105,21 @@ export function magicLinkEmail(input: { to: string; link: string; locale: Locale
 }
 
 /** `libraryLink` is absent when the game has no owner account to open a library for.
+ * `helpLink` is the game's own help page (pilot QA, 2026-11-23: the mail named no way to help).
  * `hero` is the child-free first board of the game's world (`readyMailHero`); without one the mail is text only. */
-export function gameReadyEmail(input: { to: string; childName: string; playLink: string; libraryLink?: string; sceneCount: number; locale: Locale; playMode?: "find-any"; targetCount?: number; hero?: ReadyMailHero | null }): EmailMessage {
+export function gameReadyEmail(input: { to: string; childName: string; playLink: string; libraryLink?: string; helpLink?: string; sceneCount: number; locale: Locale; playMode?: "find-any"; targetCount?: number; hero?: ReadyMailHero | null }): EmailMessage {
   const r = getDict(input.locale).email.ready;
-  const vars = { name: input.childName, count: input.sceneCount, stars: input.targetCount ?? input.sceneCount * 5, play: input.playLink, library: input.libraryLink ?? "" };
+  const vars = { name: input.childName, count: input.sceneCount, stars: input.targetCount ?? input.sceneCount * 5, play: input.playLink, library: input.libraryLink ?? "", help: input.helpLink ?? "" };
   const variableWorld = input.targetCount !== undefined && input.targetCount !== input.sceneCount * 5;
   const body = tf(input.playMode === "find-any" ? (variableWorld ? r.bodyVariable : r.bodyFive) : r.body, vars);
   const start = dirOf(input.locale) === "rtl" ? "right" : "left";
-  // Who can open the game and where it is managed: a quiet panel under the button, not a second call.
-  const manage = input.libraryLink
+  // The game is the one call; managing it and getting help are named under it, in a quiet panel, each its own link.
+  const link = (href: string, label: string) =>
+    `<a href="${escapeHtml(href)}" style="display:inline-block;margin-${start === "right" ? "left" : "right"}:18px;padding:6px 0;font-family:${FONT};font-size:15px;line-height:24px;font-weight:700;color:${P.ink};text-decoration:underline;">${label}</a>`;
+  const manage = input.libraryLink || input.helpLink
     ? `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:22px;"><tr><td bgcolor="${P.panel}" style="background:${P.panel};border-radius:18px;padding:16px 18px;text-align:${start};">
-        <p style="margin:0 0 6px;font-family:${FONT};font-size:14px;line-height:22px;color:${P.text};">${r.manageLead}</p>
-        <a href="${escapeHtml(input.libraryLink)}" style="font-family:${FONT};font-size:14px;line-height:22px;font-weight:700;color:${P.ink};text-decoration:underline;">${r.manage}</a>
+        ${input.libraryLink ? `<p style="margin:0 0 6px;font-family:${FONT};font-size:14px;line-height:22px;color:${P.text};">${r.manageLead}</p>` : ""}
+        ${input.libraryLink ? link(input.libraryLink, r.manage) : ""}${input.helpLink ? link(input.helpLink, r.help) : ""}
       </td></tr></table>`
     : "";
   return {
@@ -130,7 +133,7 @@ export function gameReadyEmail(input: { to: string; childName: string; playLink:
     }),
     text: (input.playMode === "find-any" ? `${body}\n${r.text}` : r.text)
       .split("\n")
-      .filter((line) => input.libraryLink || !line.includes("{library}"))
+      .filter((line) => (input.libraryLink || !line.includes("{library}")) && (input.helpLink || !line.includes("{help}")))
       .map((line) => tf(line, vars))
       .join("\n"),
   };
