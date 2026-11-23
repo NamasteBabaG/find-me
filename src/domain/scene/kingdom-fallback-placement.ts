@@ -1,6 +1,7 @@
 import { KINGDOM_FALLBACK_PLACEMENT as profile, KINGDOM_FALLBACK_PLACEMENT_SHA256 } from '../../../content/detectives/kingdom/fallback-placement-v1';
 import { assertPlaceable, cropOf, LocalPatchBoardSchema, maskForHide, type LocalPatchBoard } from './local-patch-hides';
-import { localPatchReturnRegion, rectanglesIntersect } from './local-patch-return-region';
+import { LOCAL_PATCH_RETURN_FEATHER, localPatchReturnRegion, rectanglesIntersect, type AuthoredLocalPatchReturnContract,
+  type PatchRectangle } from './local-patch-return-region';
 import type { ContinuityReading } from './local-patch-body-continuity';
 import { AdventureCatalogSchema, type AdventureCatalog } from '../adventure/content';
 import { prepareSourceNeighborContract, SOURCE_NEIGHBOR_CONTRACT_VERSION } from './local-patch-source-neighbors';
@@ -53,6 +54,26 @@ export function kingdomFallbackAdventure(catalog: AdventureCatalog): AdventureCa
     throw Error('KINGDOM_FALLBACK: no exact passport zone to replace');
   return AdventureCatalogSchema.parse({ ...catalog, boards: catalog.boards.map(board => board === parent
     ? { ...parent, personalZones: parent.personalZones.map(zone => same(zone, original) ? alternate : zone) } : board) });
+}
+
+/** A paid crown at the right feather of the candy-tray placement can use
+ * the adjacent background. Keep the crop, mask, and other three joins intact. */
+export function kingdomFallbackHeadEdge(parent: AuthoredLocalPatchReturnContract | undefined, heads: readonly PatchRectangle[]) {
+  const crop = { ...profile.originalCrop, left: profile.fallback.left, top: profile.fallback.top };
+  const returned = profile.fallback.returnRect, feather = LOCAL_PATCH_RETURN_FEATHER;
+  if (parent?.contentVersion !== 13 || parent.hideId !== profile.hideId || parent.boardId !== profile.boardId
+    || parent.source?.sha256 !== profile.sourceSha256 || parent.sourcePlacement?.manifestSha256 !== KINGDOM_FALLBACK_PLACEMENT_SHA256
+    || !same(parent.crop, crop) || !same(parent.child, profile.fallback.mask) || !same(parent.local, returned)
+    || heads.length !== 2) return null;
+  const right = returned.left + returned.width;
+  const gaps = heads.map(head => right - head.left - head.width);
+  if (gaps.some(gap => gap < 1) || !gaps.some(gap => gap <= 2)
+    || heads.some(head => head.left - returned.left < feather || head.top - returned.top < feather
+      || returned.top + returned.height - head.top - head.height < feather)) return null;
+  const extra = 2 * feather;
+  const strip = { left: crop.left + right, top: crop.top + returned.top, width: extra + feather, height: returned.height };
+  if (right + extra > crop.width || profile.neighbors.some(neighbor => rectanglesIntersect(strip, neighbor.head))) return null;
+  return { ...returned, width: returned.width + extra };
 }
 
 /** The corroborated failure must be on the original complete, settled board review. */

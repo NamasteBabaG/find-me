@@ -30,11 +30,11 @@ import { reconcileLegacyPaidJoinHead } from "./legacy-paid-join-head-recovery";
 import { legacyHeadCorrectionCandidate } from "../../domain/generation/legacy-paid-join-head";
 import { reconcileVisibleHeadPolicy } from "./visible-head-policy-recovery";
 import { restoreRetainedNormalHeadOnce } from "./retained-normal-head-scan";
-import { correctHeadPixels } from "./head-pixel-correction";
+import { correctHeadPixels, resumeKingdomHeadEdge } from "./head-pixel-correction";
 import { correctCrownTabs } from "./crown-tab";
 import { recordSingleTransportFaults } from "./single-transport-continuation";
 import { crownTabCandidate } from "../../domain/generation/crown-tab";
-import { headPixelCorrectionCandidate } from "../../domain/generation/head-pixel-correction";
+import { headPixelCorrectionCandidate, kingdomHeadEdgeCandidate } from "../../domain/generation/head-pixel-correction";
 import { detectivesNativeMaskTail } from "./detectives-completion-budget";
 import { singleLowReviewAuthorization as detectivesSingleReviewAuthorization, hasSingleLowCapacity as hasDetectivesLowCapacity } from "./single-low-policy";
 import { hasLocalPatchCapability } from "../../domain/scene/local-patch-family";
@@ -395,6 +395,9 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
     job = await c.db.generationJob.findUniqueOrThrow({ where: { id: job.id } });
   if (!finalizingTail && job.currentStep === LOCAL_PATCH_RECOVERY_EXHAUSTED && await resumeKingdomNeighborReview(c, gameId))
     job = await c.db.generationJob.findUniqueOrThrow({ where: { id: job.id } });
+  if (!finalizingTail && kingdomPlacement && job.currentStep === LOCAL_PATCH_RECOVERY_EXHAUSTED
+    && await resumeKingdomHeadEdge(c, gameId, job, deps.readBoardArt))
+    return { ...empty, pending: true, claimed: false, paused: false };
   if (!finalizingTail && job.currentStep === LOCAL_PATCH_RECOVERY_EXHAUSTED && await resumePropJoinRepair(c, gameId))
     job = await c.db.generationJob.findUniqueOrThrow({ where: { id: job.id } });
   if (!finalizingTail && job.currentStep === LOCAL_PATCH_RECOVERY_EXHAUSTED && await resumeQaCompletionRecovery(c, gameId))
@@ -619,6 +622,9 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
     where: { variant: LOCAL_PATCH_VARIANT, targetInstance: { gameScene: { gameId } } },
     include: { targetInstance: { select: { targetId: true, gameSceneId: true } } },
   });
+  const headEdgesAtStart = new Set(kingdomPlacement ? rows.filter(kingdomHeadEdgeCandidate).map(row => row.judgeJson) : []);
+  const newKingdomHeadEdge = (candidates: typeof rows) => !!kingdomPlacement && candidates.some(row =>
+    !headEdgesAtStart.has(row.judgeJson) && kingdomHeadEdgeCandidate(row));
   const stateOf = (sceneId: string, targetId: string) =>
     rows.find(r => r.targetInstance.gameSceneId === sceneId && r.targetInstance.targetId === targetId);
   // Correct deterministic clipping from the retained current purchase BEFORE
@@ -1005,6 +1011,7 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
       }
     }
     if (reviewedScenes.size) await reload();
+    if (dual && newKingdomHeadEdge(rows)) return yieldToContinue();
   }
   const unresolvedQuality = strict && rows.find(row => row.status === "FAILED" && row.lastError?.startsWith("quality-unresolved:"));
   if (unresolvedQuality && !automatic) {
@@ -1377,6 +1384,7 @@ export async function runLocalPatchWorldSlice(c: Container, deps: LocalPatchHide
   // A parked job was already written the moment it was parked; leaving it alone
   // here is the point, not an omission.
   if (!attention) {
+    if (newKingdomHeadEdge(after)) return { ...await yieldToContinue(), outcomes, blocked };
     if (deferredBudgetError && automatic && after.some(row => {
       const repair = savedApplyingRepairOf(row.judgeJson);
       return repair && repairCheckpoints.get(row.id) !== JSON.stringify(selfRepairOf(row))

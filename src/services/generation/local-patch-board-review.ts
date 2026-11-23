@@ -1,5 +1,6 @@
 import { publishedCrownRepairOf } from "./published-crown-repair";
 import { recordWindowFailure } from './repeat-window-stop';
+import { headPixelExtendedReturn } from '../../domain/generation/head-pixel-correction';
 import { RETAINED_WINDOW_VERSION, retainedWindowRegion, retainedWindowMeasurementBounds } from '../../domain/generation/retained-window';
 import { retainedWindowAuthorityFor } from '../../../content/detectives/retained-window-v1';
 import { SOURCE_CROWN_COMPOSITION_VERSION, sourceCrownReturned } from "../../domain/scene/source-crown-return";
@@ -333,9 +334,11 @@ export async function prepareLocalPatchBoardReview(c: Container, input: { gameId
       }
       const receipt = JSON.parse(e.row.judgeJson!);
       const windowAuthority = receipt.retainedWindow !== undefined ? retainedWindowAuthorityFor(receipt.authoredReturn, receipt.retainedWindow.manifestSha256) : null;
-      const returned = windowAuthority ? retainedWindowRegion(windowAuthority) : receipt.crownReturn!==undefined ? sourceCrownReturned(receipt.authoredReturn,receipt.crownReturn)! : [SELF_REPAIR_COMPOSITION_VERSION, AUTHORED_RECOVERY_COMPOSITION_VERSION].includes(receipt.compositionVersion)
-        ? selfRepairDecisionSchema.parse(receipt.selfRepair.decision).returnWindow
-        : localPatchReturnRegion(e.crop, maskForHide(e.hide), e.hide.returnRect).local;
+      const returned = headPixelExtendedReturn(receipt) ?? (windowAuthority ? retainedWindowRegion(windowAuthority) : receipt.crownReturn!==undefined
+        ? sourceCrownReturned(receipt.authoredReturn,receipt.crownReturn)!
+        : [SELF_REPAIR_COMPOSITION_VERSION, AUTHORED_RECOVERY_COMPOSITION_VERSION].includes(receipt.compositionVersion)
+          ? selfRepairDecisionSchema.parse(receipt.selfRepair.decision).returnWindow
+          : localPatchReturnRegion(e.crop, maskForHide(e.hide), e.hide.returnRect).local);
       // The same window for the boundary strips and, under the object-joins question, its magnified joins.
       const returnedWindow = { ...returned, left: e.crop.left - context.left + returned.left, top: e.crop.top - context.top + returned.top };
       return { hideId: e.hide.id, beforePng, afterPng, ...(closeupPng && afterEvidencePng ? { closeupPng, afterEvidencePng } : {}),

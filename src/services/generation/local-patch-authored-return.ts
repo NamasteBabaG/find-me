@@ -1,5 +1,6 @@
 import { SOURCE_CROWN_COMPOSITION_VERSION, sourceCrownReturned, sourceCrownCorrectionSchema } from "../../domain/scene/source-crown-return";
 import { crownTabSchema } from "../../domain/generation/crown-tab";
+import { headPixelExtendedReturn } from "../../domain/generation/head-pixel-correction";
 import { journeyHeadMarkerSchema, journeyHeadAuthorityFor, journeyHeadHash } from '../../domain/generation/journey-source-head';
 import { RETAINED_WINDOW_VERSION, retainedWindowMarkerSchema, retainedWindowCanonicalHash } from '../../domain/generation/retained-window';
 import { retainedWindowAuthorityFor } from '../../../content/detectives/retained-window-v1';
@@ -29,7 +30,7 @@ import { foregroundForPinnedPrompt, foregroundPlanConflict } from "./local-patch
 const equal = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
 const object = (value: unknown): Record<string, unknown> => value !== null && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
 export type AuthoredLocalPatchReceipt = { compositionVersion?: unknown; authoredReturn?: unknown; authoredRecovery?: unknown;
-  retainedWindow?: unknown; journeyHeadRecovery?: unknown;
+  retainedWindow?: unknown; journeyHeadRecovery?: unknown; headPixelCorrection?: unknown;
   crownReturn?: unknown; propJoinCorrection?: unknown; selfRepair?: unknown; recoveryComposition?: unknown; foreground?: unknown; judgedSha256?: unknown; promptVersion?: unknown; boardReview?: unknown };
 
 /** Reconstruct from trusted pinned source data, never from a claimed receipt. */
@@ -128,7 +129,7 @@ export function authoredLocalPatchSourceNeighborContract(entry: SourcePlacementH
   const recovered = receipt.authoredRecovery !== undefined ? readAuthoredLocalPatchRecovery(parent, receipt.authoredRecovery) : null;
   const crown=receipt.crownReturn!==undefined?sourceCrownReturned(parent,receipt.crownReturn):null;
   if(receipt.crownReturn!==undefined&&(!crown||receipt.compositionVersion!==SOURCE_CROWN_COMPOSITION_VERSION||recovered))throw Error("CROWN_RETURN: invalid source-qualified return");
-  const returned = crown ?? recovered?.returnWindow ?? entry.effective.returnRect;
+  const returned = headPixelExtendedReturn(receipt) ?? crown ?? recovered?.returnWindow ?? entry.effective.returnRect;
   if (recovered && (receipt.compositionVersion !== AUTHORED_RECOVERY_COMPOSITION_VERSION
     || !sourcePlacementRecoveryGeometryAllowed(entry, { crop: recovered.crop, child: recovered.protectedCore, returnRect: returned })))
     throw Error("AUTHORED_RECOVERY: source-neighbor recovery window is unsafe");

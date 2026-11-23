@@ -1,23 +1,27 @@
-import { Prisma } from "@prisma/client";
-import sharp from "sharp";
+import { Prisma, type GenerationJob } from "@prisma/client";
+import { isDeepStrictEqual as same } from "node:util";
 import type { Container } from "../container";
+import { env } from "../../lib/env";
 import { DbStorage } from "../../infra/storage/db";
 import { PrismaWorldBudgetStore } from "../../infra/db/prisma-world-budget-store";
-import { HEAD_PIXEL_CORRECTION_ACTION, HEAD_PIXEL_CORRECTION_VERSION, MEASURED_HEAD_FADE_REASON, composeHeadPixelCorrection,
-  headPixelCorrectionCandidate, headPixelCorrectionSchema, type HeadPixelCorrection } from "../../domain/generation/head-pixel-correction";
+import { HEAD_PIXEL_CORRECTION_ACTION, HEAD_PIXEL_CORRECTION_VERSION, MEASURED_HEAD_FADE_REASON,
+  headPixelCorrectionCandidate, headPixelCorrectionSchema, headPixelExtendedReturn, kingdomHeadEdgeCandidate } from "../../domain/generation/head-pixel-correction";
 import { targetHeadAnswerSchema, targetHeadReturnDecision, type TargetHeadEvidence } from "../../domain/generation/target-head-return";
 import { readSingleVisualReview, SINGLE_MEDIUM_VISUAL_REVIEW_VERSION } from "../../domain/generation/single-visual-review";
 import { localPatchRuntimeContinuityVerdict } from "../../domain/scene/local-patch-body-continuity";
 import { CROWN_TAB_CONTINUITY_REPAIR_VERSION, crownTabContinuityCut } from "../../domain/generation/crown-tab";
 import { retainedNormalHeadSchema } from "../../domain/generation/retained-normal-head";
-import { cropOf } from "../../domain/scene/local-patch-hides";
-import { LOCAL_PATCH_RETURN_FEATHER } from "../../domain/scene/local-patch-return-region";
-import { resolveLocalPatchBoardsForGame } from "./source-placement-release";
+import { cropOf, maskForHide } from "../../domain/scene/local-patch-hides";
+import { LOCAL_PATCH_RETURN_FEATHER, localPatchReturnRegion, rectanglesIntersect } from "../../domain/scene/local-patch-return-region";
+import { kingdomFallbackHeadEdge } from "../../domain/scene/kingdom-fallback-placement";
+import { KINGDOM_FALLBACK_PLACEMENT } from "../../../content/detectives/kingdom/fallback-placement-v1";
+import { SUNBURST_REVIEW_COVERAGE_MICRO_USD } from "../../domain/generation/sunburst-painter";
+import { isKingdomAlternate, resolveLocalPatchBoardsForGame } from "./source-placement-release";
 import { readShippedBoardArt, LOCAL_PATCH_PROVIDER, type LocalPatchHideDeps } from "./local-patch-hide";
 import { sceneBySlug } from "../scene-catalog.service";
 import { localPatchGeometry } from "./local-patch-geometry";
 import { localPatchPublicationGeometryHash } from "./local-patch-publication-policy";
-import { authoredLocalPatchReviewBinding } from "./local-patch-authored-return";
+import { authoredLocalPatchReviewBinding, expectedAuthoredLocalPatchReturn } from "./local-patch-authored-return";
 import { readContinuityStage, readQualityStage, verifiedDualStage, type DualReviewProof } from "./local-patch-dual-evidence";
 import { allowedDualSubject } from "./local-patch-dual-publication";
 import type { LocalPatchPublicationBinding } from "./local-patch-publication-policy";
@@ -27,11 +31,14 @@ import { isLeanWorld } from "./lean-release";
 import { readSettledTargetRaw, singleReviewHeadEvidenceMatches } from "./single-review-head-evidence";
 import { fenceLocalPatchImages } from "./local-patch-lifecycle";
 import { sha256Bytes } from "./fixed-sprite";
+import { correctedHeadShipping } from "./head-pixel-correction-compose";
+import { boardWizardBudgetOf } from "./board-conditioned-wizard";
 
 const hash = (value: unknown) => sha256Bytes(Buffer.from(JSON.stringify(value)));
-const rgba = async (png: Buffer) => { const { data, info } = await sharp(png, { limitInputPixels: 8_294_400 }).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
-  return { data, width: info.width, height: info.height, channels: info.channels }; };
 type Candidate = { id: string; status: string; assetId: string | null; judgeJson: string | null };
+type WakeJob = Pick<GenerationJob, 'id' | 'attempts' | 'status' | 'currentStep' | 'updatedAt'>;
+type CorrectClaim = ((tx: Prisma.TransactionClient) => Promise<void>) | WakeJob;
+const exhausted = 'local-patch:recovery-exhausted';
 
 /** C fixes only head blending. Read every other role from its immutable paid
  * document even if a mutable row verdict no longer carries that role's refusal.
@@ -59,15 +66,6 @@ function locatedHeads(proof: DualReviewProof) {
   const answer = targetHeadAnswerSchema.parse(document?.head);
   return { answer, heads: [answer.rawHead, answer.shippingHead] };
 }
-/** The corrected shipping of an authenticated baseline: same RAW, same scene, same return. */
-async function correctedShipping(input: { raw: Buffer; board: Buffer; crop: ReturnType<typeof cropOf>; baseline: Buffer;
-  returned: HeadPixelCorrection["returned"]; heads: HeadPixelCorrection["heads"] }) {
-  const scene = await sharp(input.board, { limitInputPixels: 8_294_400 }).extract(input.crop).png().toBuffer();
-  const { pixels, changed } = composeHeadPixelCorrection({ raw: await rgba(input.raw), scene: await rgba(scene), baseline: await rgba(input.baseline),
-    returned: input.returned, heads: input.heads, band: LOCAL_PATCH_RETURN_FEATHER });
-  return { png: await sharp(pixels, { raw: { width: input.crop.width, height: input.crop.height, channels: 4 } }).png().toBuffer(), changed };
-}
-
 /** Free, finite and bounded to ONE candidate: keep an already-paid normal
  * composition's located head opaque inside its SAME return, then require a fresh
  * ordinary MEDIUM. Nothing is bought, counters and reserves are untouched, and a
@@ -79,7 +77,18 @@ export async function correctHeadPixels(c: Container, gameId: string, rows: read
   return false;
 }
 
-async function correctOne(c: Container, gameId: string, candidate: Candidate, fence: (tx: Prisma.TransactionClient) => Promise<void>,
+/** Resume a parked Sweet Workshop placement only when the paid image can be
+ * recomposed. The same transaction queues its review and keeps every charge. */
+export async function resumeKingdomHeadEdge(c: Container, gameId: string, job: WakeJob,
+  readArt: NonNullable<LocalPatchHideDeps['readBoardArt']> = readShippedBoardArt): Promise<boolean> {
+  const profile = KINGDOM_FALLBACK_PLACEMENT;
+  if (env().APP_ENV !== 'qa' || c.storage.id !== 'db' || job.status !== 'FAILED' || job.currentStep !== exhausted) return false;
+  const row = await c.db.targetVariantAsset.findFirst({ where: { variant: 'A', provider: LOCAL_PATCH_PROVIDER, status: 'FAILED',
+    targetInstance: { targetId: profile.targetId, gameScene: { gameId, sceneSlug: profile.boardId, sceneVersion: 13 } } } });
+  return !!row && kingdomHeadEdgeCandidate(row) && correctOne(c, gameId, row, job, readArt);
+}
+
+async function correctOne(c: Container, gameId: string, candidate: Candidate, claim: CorrectClaim,
   readArt: NonNullable<LocalPatchHideDeps["readBoardArt"]>): Promise<boolean> {
   const game = await c.db.game.findUnique({ where: { id: gameId }, include: { childProfile: true, orders: true } }), child = game?.childProfile;
   if (!game || !child || game.status !== "TARGETS_GENERATING" || game.deletedAt || game.configJson || game.readyAt || !game.ownerId
@@ -117,9 +126,23 @@ async function correctOne(c: Container, gameId: string, candidate: Candidate, fe
   if (targetHeadReturnDecision(proof.quality.raw, evidence).reason !== MEASURED_HEAD_FADE_REASON
     || JSON.stringify(readQualityStage(proof.quality, hide.id, scene.sceneVersion)) !== JSON.stringify(j.verdict)) return false;
   const { heads } = locatedHeads(proof), raw = await readSettledTargetRaw(c.db, gameId, evidence.sourceRequestKey);
+  const extendedReturn = kingdomFallbackHeadEdge(j.authoredReturn, heads) ?? undefined;
+  const worldId = gameId + ':board-wizard';
+  const wake = typeof claim === 'function' ? null : claim;
+  if (wake && !extendedReturn) return false;
+  if (extendedReturn) {
+    if (env().APP_ENV !== 'qa' || c.storage.id !== 'db' || !isKingdomAlternate(context, hide.id)
+      || !same(expectedAuthoredLocalPatchReturn(board, hide, scene.sceneVersion, context), j.authoredReturn)
+      || !same(raw.wire.authoredReturn, j.authoredReturn)) return false;
+    const extended = localPatchReturnRegion(cropOf(hide), maskForHide(hide), extendedReturn).region;
+    if (board.hides.some(other => other.id !== hide.id && rectanglesIntersect(extended,
+      localPatchReturnRegion(cropOf(other), maskForHide(other), other.returnRect).region))) return false;
+    const budget = await boardWizardBudgetOf(c).audit(worldId);
+    if (budget.held || budget.pendingRequestKeys.length || budget.remainingMicroUsd < SUNBURST_REVIEW_COVERAGE_MICRO_USD) return false;
+  }
   const definition = sceneBySlug(scene.sceneSlug, scene.sceneVersion), art = await readArt(board.art, definition.art.sha256 ?? "");
   let corrected;
-  try { corrected = await correctedShipping({ raw: raw.normalized, board: art, crop: cropOf(hide), baseline, returned: evidence.returned, heads }); }
+  try { corrected = await correctedHeadShipping({ raw: raw.normalized, board: art, crop: cropOf(hide), baseline, returned: evidence.returned, heads, extendedReturn }); }
   catch { return false; }
   if (!corrected.changed) return false;
   const candidateSha256 = sha256Bytes(corrected.png);
@@ -131,18 +154,20 @@ async function correctOne(c: Container, gameId: string, candidate: Candidate, fe
     sourceRequestKey: evidence.sourceRequestKey, sourceFingerprint: evidence.sourceFingerprint, sourcePayloadSha256: evidence.sourcePayloadSha256,
     normalizedRawSha256: evidence.normalizedRawSha256, ...(j.retainedNormalHead !== undefined ? { alias: { retainedNormalHead: retainedNormalHeadSchema.parse(j.retainedNormalHead) } } : {}),
     baselineAssetId: baselineAsset.id, baselineShippingSha256: j.judgedSha256, baselineGeometrySha256: j.geometrySha256, boardArtSha256: sha256Bytes(art),
-    returned: evidence.returned, heads, band: LOCAL_PATCH_RETURN_FEATHER,
+    returned: evidence.returned, ...(extendedReturn ? { extendedReturn } : {}), heads, band: LOCAL_PATCH_RETURN_FEATHER,
     headAnswer: { requestKey: proof.quality.requestKey, fingerprint: proof.quality.fingerprint, rawSha256: sha256Bytes(Buffer.from(proof.quality.raw ?? "")) },
     candidateSha256, geometrySha256: localPatchPublicationGeometryHash(geometry), identitySha256 });
   const assetId = "ast_hpc_" + hash([gameId, hide.id, HEAD_PIXEL_CORRECTION_VERSION, candidateSha256]).slice(0, 24), key = `game/${assetId}.png`;
-  const worldId = gameId + ":board-wizard", stored = await PrismaWorldBudgetStore.forReadOnlyTransaction(c.db).read(worldId);
+  const stored = await PrismaWorldBudgetStore.forReadOnlyTransaction(c.db).read(worldId);
   if (!stored) return false;
   // The paid answer's acceptance is not reused: a fresh ordinary MEDIUM decides the new shipping.
   const receipt = { ...j, retainedNormalHead: undefined, headPixelCorrection: marker, judgedSha256: candidateSha256, geometrySha256: marker.geometrySha256,
+    ...(corrected.seam ? { seam: corrected.seam, compositionPermission: 'aligned' } : {}),
     geometryBasis: measured.basis, measuredFraction: Number(measured.measuredFraction.toFixed(4)),
     boardReview: undefined, dualContinuityCheckpoint: undefined, verdict: null, wireFault: null, qualityDisposition: undefined, reviewState: "pending-board-review" };
   return c.db.$transaction(async tx => {
-    await fenceLocalPatchImages(tx, gameId); await fence(tx);
+    await fenceLocalPatchImages(tx, gameId);
+    if (typeof claim === 'function') await claim(tx);
     const current = await tx.targetVariantAsset.findUniqueOrThrow({ where: { id: row.id } }), live = await tx.game.findUniqueOrThrow({ where: { id: gameId }, include: { orders: true, childProfile: true } });
     const ledger = await PrismaWorldBudgetStore.forReadOnlyTransaction(tx).read(worldId), held = await tx.asset.findUniqueOrThrow({ where: { id: baselineAsset.id } });
     const heldBlob = await tx.fileBlob.findUnique({ where: { key: baselineAsset.storagePath } });
@@ -159,8 +184,18 @@ async function correctOne(c: Container, gameId: string, candidate: Candidate, fe
       || held.deletedAt || held.status !== "READY" || !heldBlob || sha256Bytes(Buffer.from(heldBlob.data)) !== j.judgedSha256
       || await tx.auditLog.findUnique({ where: { id: auditId } })) return false;
     if (!await singleReviewHeadEvidenceMatches(tx, binding, evidence) || !await otherPaidRolesPass(tx, binding, proof)) return false;
+    if (wake) {
+      const resumed = await tx.generationJob.updateMany({ where: { id: wake.id, attempts: wake.attempts, status: wake.status,
+        currentStep: wake.currentStep, updatedAt: wake.updatedAt, gameId }, data: {
+        status: 'QUEUED', currentStep: 'local-patch', lastError: null,
+      } });
+      if (resumed.count !== 1) return false;
+    }
     const cas = await tx.worldBudgetLedger.updateMany({ where: { worldId, revision: stored.revision }, data: { revision: { increment: 1 } } });
-    if (cas.count !== 1) return false;
+    if (cas.count !== 1) {
+      if (wake) throw Error('HEAD_PIXELS: concurrent ledger change while resuming correction');
+      return false;
+    }
     const saved = await tx.asset.upsert({ where: { id: assetId }, update: {}, create: { id: assetId, ownerId: game.ownerId, type: "TARGET_SPRITE",
       visibility: "GAME", status: "READY", storagePath: key, mimeType: "image/png", width: 512, height: 768, bytes: corrected.png.length, costCents: 0,
       provider: LOCAL_PATCH_PROVIDER, providerRequestId: gameId } });
@@ -219,8 +254,11 @@ export async function headPixelCorrectionPublicationMatches(db: Prisma.Transacti
     if (!board || !hide) return false;
     const definition = sceneBySlug(board.board, input.sceneVersion), art = await readArt(board.art, definition.art.sha256 ?? "");
     if (sha256Bytes(art) !== marker.boardArtSha256) return false;
-    const corrected = await correctedShipping({ raw: raw.normalized, board: art, crop: cropOf(hide), baseline, returned: marker.returned, heads: marker.heads });
-    if (!corrected.png.equals(candidate)) return false;
+    const extendedReturn = headPixelExtendedReturn(j);
+    if (extendedReturn && (!isKingdomAlternate(context, hide.id) || !same(previous.authoredReturn, j.authoredReturn)
+      || !same(raw.wire.authoredReturn, j.authoredReturn) || !same(expectedAuthoredLocalPatchReturn(board, hide, input.sceneVersion, context), j.authoredReturn))) return false;
+    const corrected = await correctedHeadShipping({ raw: raw.normalized, board: art, crop: cropOf(hide), baseline, returned: marker.returned, heads: marker.heads, extendedReturn });
+    if (!corrected.png.equals(candidate) || extendedReturn && (j.compositionPermission !== 'aligned' || !same(j.seam, corrected.seam))) return false;
     const measured = await localPatchGeometry({ hide, boardPng: art, patchPng: candidate, board: definition.art, contentVersion: input.sceneVersion });
     return localPatchPublicationGeometryHash({ rectJson: JSON.stringify(measured.geometry.rect), hitRectJson: JSON.stringify(measured.geometry.hitRect),
       headAnchorJson: JSON.stringify(measured.geometry.anchor) }) === input.geometrySha256;

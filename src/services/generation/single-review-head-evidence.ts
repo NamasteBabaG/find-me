@@ -18,7 +18,7 @@ import { localPatchReturnRegion, LOCAL_PATCH_COMPOSITION_VERSION, AUTHORED_PATCH
 import { cropOf, maskForHide, type LocalPatchHide } from '../../domain/scene/local-patch-hides';
 import { LEGACY_PAID_JOIN_HEAD_VERSION, legacyPaidJoinHeadPlan } from '../../domain/generation/legacy-paid-join-head';
 import { measureHeadRetention } from '../../domain/generation/head-retention';
-import { HEAD_PIXEL_CORRECTION_ACTION, HEAD_PIXEL_CORRECTION_VERSION, headPixelCorrectionSchema } from '../../domain/generation/head-pixel-correction';
+import { HEAD_PIXEL_CORRECTION_ACTION, HEAD_PIXEL_CORRECTION_VERSION, headPixelCorrectionSchema, headPixelExtendedReturn } from '../../domain/generation/head-pixel-correction';
 import { CROWN_TAB_ACTION, CROWN_TAB_VERSION, crownTabSchema, crownTabWindow } from '../../domain/generation/crown-tab';
 import { SOURCE_FIGURE_RETURN_VERSION, sourceFigureReturnSchema, sourceFigureAuthorityFor, sourceFigureHeadWindow, sourceFigureHash } from '../../domain/generation/source-figure-return';
 import { retainedWindowMarkerSchema, retainedWindowCanonicalHash, RETAINED_WINDOW_VERSION, retainedWindowRegion,
@@ -77,7 +77,7 @@ const judgedWindow=(receipt:Receipt,returned:PatchRectangle):PatchRectangle=>{
   if(!a||sourceFigureHash(a)!==m.authoritySha256)throw Error('HEAD_RETURN: whole-figure permission differs');
   return sourceFigureHeadWindow(a);
  }
- if(receipt.crownTab===undefined)return returned;
+ if(receipt.crownTab===undefined)return headPixelExtendedReturn(receipt)??returned;
  const m=crownTabSchema.parse(receipt.crownTab);
  if(JSON.stringify(m.returned)!==JSON.stringify(returned))throw Error('HEAD_RETURN: crown tab return differs from its window');
  return crownTabWindow(m.returned,m.tab);

@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { composeHeadPixelCorrection, headPixelCorrectionCandidate, headPixelCorrectionWeight, HEAD_PIXEL_CORRECTION_MIN_GAP,
-  MEASURED_HEAD_FADE_REASON, type CorrectionPixels } from '../head-pixel-correction';
+  kingdomHeadEdgeCandidate, MEASURED_HEAD_FADE_REASON, type CorrectionPixels } from '../head-pixel-correction';
+import { KINGDOM_FALLBACK_PLACEMENT as fallback, KINGDOM_FALLBACK_PLACEMENT_SHA256 } from '../../../../content/detectives/kingdom/fallback-placement-v1';
+import { authoredLocalPatchReturnContract } from '../../scene/local-patch-return-region';
+import { kingdomFallbackHeadEdge } from '../../scene/kingdom-fallback-placement';
 
 // Synthetic public pixels: a striped scene, a painted head 4px inside the return, and the
 // composition's own 12px feather as the baseline.
@@ -13,10 +16,10 @@ const rgba = (at: (x: number, y: number) => number[]): CorrectionPixels => {
 const inBox = (b: typeof head, x: number, y: number) => x >= b.left && x < b.left + b.width && y >= b.top && y < b.top + b.height;
 const stripe = (x: number) => Math.floor(x / 6) % 2 ? [40, 60, 90] : [200, 210, 230];
 const scene = rgba(x => stripe(x)), raw = rgba((x, y) => inBox(head, x, y) ? [90, 50, 20] : stripe(x));
-function baselineOf(r = raw, s = scene) {
+function baselineOf(r = raw, s = scene, area = returned) {
   const data = new Uint8Array(s.data);
-  for (let y = returned.top; y < returned.top + returned.height; y++) for (let x = returned.left; x < returned.left + returned.width; x++) {
-    const edge = Math.min(x - returned.left, y - returned.top, returned.left + returned.width - 1 - x, returned.top + returned.height - 1 - y), w = Math.min(1, (edge + 0.5) / 12);
+  for (let y = area.top; y < area.top + area.height; y++) for (let x = area.left; x < area.left + area.width; x++) {
+    const edge = Math.min(x - area.left, y - area.top, area.left + area.width - 1 - x, area.top + area.height - 1 - y), w = Math.min(1, (edge + 0.5) / 12);
     for (let c = 0; c < 3; c++) data[(y * W + x) * 4 + c] = Math.round(r.data[(y * W + x) * 4 + c]! * w + s.data[(y * W + x) * 4 + c]! * (1 - w));
   }
   return { data, width: W, height: H, channels: 4 };
@@ -75,5 +78,33 @@ describe('scheduling only the measured-fade refusal of a normal composition', ()
     expect(headPixelCorrectionCandidate({ ...row(), status: 'GENERATED' })).toBe(false);
     const v1 = JSON.parse(row().judgeJson); v1.boardReview.dual.quality.headEvidence = { version: 'target-head-return/v1', returned };
     expect(headPixelCorrectionCandidate({ ...row(), judgeJson: JSON.stringify(v1) })).toBe(false);
+  });
+
+  it('restores a two-pixel Sweet Workshop crown by moving only the qualified right edge', () => {
+    const parent = authoredLocalPatchReturnContract({ contentVersion: 13, boardId: fallback.boardId, hideId: fallback.hideId,
+      source: { art: 'public/scenes/kingdom-sweetworkshop-detectives-v1/base.webp', sha256: fallback.sourceSha256, width: 3344, height: 1882 },
+      crop: { ...fallback.originalCrop, left: fallback.fallback.left, top: fallback.fallback.top },
+      child: fallback.fallback.mask, authored: fallback.fallback.returnRect,
+      sourcePlacement: { manifestSha256: KINGDOM_FALLBACK_PLACEMENT_SHA256, basePlacementSha256: 'a'.repeat(64) } });
+    const head = { left: 281, top: 132, width: 45, height: 67 };
+    const candidate = row({ authoredReturn: parent }, undefined, answer({ rawHead: head, shippingHead: head }));
+    const receipt = JSON.parse(candidate.judgeJson);
+    receipt.boardReview.dual.quality.headEvidence.returned = parent.local;
+    expect(kingdomHeadEdgeCandidate({ ...candidate, judgeJson: JSON.stringify(receipt) })).toBe(true);
+    const extended = kingdomFallbackHeadEdge(parent, [head, head]);
+    expect(extended).toEqual({ ...parent.local, width: parent.local.width + 24 });
+    expect(kingdomFallbackHeadEdge({ ...parent, sourcePlacement: undefined }, [head, head])).toBeNull();
+    expect(kingdomFallbackHeadEdge(parent, [head, { ...head, width: head.width + 2 }])).toBeNull();
+    expect(kingdomFallbackHeadEdge(parent, [head, { ...head, top: parent.local.top + 2 }])).toBeNull();
+    const paid = rgba((x, y) => inBox(head, x, y) ? [90, 50, 20] : stripe(x));
+    const before = baselineOf(paid, scene, parent.local);
+    const after = composeHeadPixelCorrection({ raw: paid, scene, baseline: before, returned: parent.local,
+      heads: [head, head], extendedReturn: extended! });
+    expect(after.changed).toBeGreaterThan(0);
+    expect(after.pixels).toEqual(baselineOf(paid, scene, extended!).data);
+    expect(px({ ...before, data: after.pixels }, 325, 146)).toEqual(px(paid, 325, 146));
+    expect(px(before, 325, 146)).not.toEqual(px(paid, 325, 146));
+    expect(() => composeHeadPixelCorrection({ raw: paid, scene, baseline: before, returned: parent.local,
+      heads: [head, head], extendedReturn: { ...extended!, top: extended!.top - 1 } })).toThrow('located head inside its return');
   });
 });

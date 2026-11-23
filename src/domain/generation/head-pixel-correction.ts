@@ -1,12 +1,13 @@
 import { z } from 'zod';
-import { LOCAL_PATCH_RETURN_FEATHER } from '../scene/local-patch-return-region';
+import { LOCAL_PATCH_RETURN_FEATHER, type AuthoredLocalPatchReturnContract, type PatchRectangle } from '../scene/local-patch-return-region';
+import { kingdomFallbackHeadEdge } from '../scene/kingdom-fallback-placement';
 import { RETAINED_NORMAL_HEAD_VERSION, retainedNormalHeadSchema } from './retained-normal-head';
 
-/** A free correction of an already-paid normal composition inside its SAME return:
+/** A free correction of an already-paid normal composition inside its return:
  * the paid answer's located head region keeps the paid painting's pixels opaque,
  * instead of being feathered into the original scene. No new painting, no warp,
- * scale, blur, source replacement or window growth; it is a candidate for a fresh
- * ordinary review, never an approval, and never a segmentation of the child. */
+ * scale, blur or source replacement. A source-qualified right edge can extend
+ * the return. The candidate still needs its own ordinary review. */
 export const HEAD_PIXEL_CORRECTION_VERSION = 'head-pixel-correction/v1' as const;
 export const HEAD_PIXEL_CORRECTION_ACTION = 'local-patch:head-pixel-correction';
 /** The refusal it answers, exactly as the measured head check writes it. */
@@ -23,7 +24,7 @@ export const headPixelCorrectionSchema = z.object({ version: z.literal(HEAD_PIXE
   /** The alias chain of the baseline, kept verbatim; its own audit still binds the baseline image. */
   alias: z.object({ retainedNormalHead: retainedNormalHeadSchema }).strict().optional(),
   baselineAssetId: key, baselineShippingSha256: digest, baselineGeometrySha256: digest, boardArtSha256: digest,
-  returned: rect, heads: z.array(rect).min(1).max(2), band: z.literal(LOCAL_PATCH_RETURN_FEATHER),
+  returned: rect, extendedReturn: rect.optional(), heads: z.array(rect).min(1).max(2), band: z.literal(LOCAL_PATCH_RETURN_FEATHER),
   headAnswer: z.object({ requestKey: key, fingerprint: digest, rawSha256: digest }).strict(),
   candidateSha256: digest, geometrySha256: digest, identitySha256: digest }).strict()
   .refine(m => m.alias === undefined || m.alias.retainedNormalHead.version === RETAINED_NORMAL_HEAD_VERSION && m.alias.retainedNormalHead.shippingSha256 === m.baselineShippingSha256,
@@ -36,6 +37,17 @@ const object = (v: unknown): Record<string, unknown> | null => v && typeof v ===
 const depth = (r: Rect, x: number, y: number) => Math.min(x - r.left, y - r.top, r.left + r.width - 1 - x, r.top + r.height - 1 - y);
 const inside = (r: Rect, x: number, y: number) => x >= r.left && x < r.left + r.width && y >= r.top && y < r.top + r.height;
 const gapOf = (r: Rect, h: Rect) => Math.min(h.left - r.left, h.top - r.top, r.left + r.width - h.left - h.width, r.top + r.height - h.top - h.height);
+const sameRect = (a: Rect, b: Rect) => a.left === b.left && a.top === b.top && a.width === b.width && a.height === b.height;
+
+export function headPixelExtendedReturn(receipt: { authoredReturn?: unknown; headPixelCorrection?: unknown }): PatchRectangle | undefined {
+  if (object(receipt.headPixelCorrection)?.extendedReturn === undefined) return;
+  const marker = headPixelCorrectionSchema.parse(receipt.headPixelCorrection);
+  const parent = receipt.authoredReturn as AuthoredLocalPatchReturnContract | undefined;
+  const expected = kingdomFallbackHeadEdge(parent, marker.heads);
+  if (!expected || !sameRect(marker.returned, parent!.local) || !sameRect(marker.extendedReturn!, expected))
+    throw Error('HEAD_PIXELS: extension differs from the qualified source return');
+  return expected;
+}
 /** The composition's own weight for one returned pixel (blendLocalPatch). */
 const baseWeight = (d: number, band: number) => Math.min(1, (d + 0.5) / band);
 /** Euclidean distance from a pixel centre to the union of located head boxes. */
@@ -57,7 +69,7 @@ export function headPixelCorrectionWeight(returned: Rect, heads: readonly Rect[]
 /** Scheduling only: a normal composition whose ONLY refusal is the measured head
  * fade, with complete passing crowns located inside its return. The service still
  * authenticates every paid byte, alias, answer, source and owner before acting. */
-export function headPixelCorrectionCandidate(row: { status: string; assetId?: string | null; judgeJson?: string | null } | undefined): boolean {
+function headCorrectionCandidate(row: { status: string; assetId?: string | null; judgeJson?: string | null } | undefined, edgeOnly: boolean): boolean {
   if (!row || row.status !== 'FAILED' || !row.assetId) return false;
   try {
     const j = object(JSON.parse(row.judgeJson ?? 'null')), state = object(j?.selfRepair), verdict = object(j?.verdict);
@@ -72,21 +84,27 @@ export function headPixelCorrectionCandidate(row: { status: string; assetId?: st
       || !verdict.faults.every(f => object(f)?.where === MEASURED_HEAD_FADE_REASON)) return false;
     const answer = object(object(JSON.parse(String(quality?.raw ?? 'null').trim().replace(/^```(?:json)?[\t ]*\r?\n([\s\S]*?)\r?\n```$/i, '$1')))?.head);
     const returned = rect.safeParse(head.returned), heads = [answer?.rawHead, answer?.shippingHead].map(h => rect.safeParse(h));
-    return answer?.rawCrown === 'pass' && answer.shippingCrown === 'pass' && returned.success && heads.every(h => h.success)
-      && heads.every(h => gapOf(returned.data, h.data!) >= HEAD_PIXEL_CORRECTION_MIN_GAP);
+    if (answer?.rawCrown !== 'pass' || answer.shippingCrown !== 'pass' || !returned.success || heads.some(h => !h.success)) return false;
+    const located = heads.map(h => h.data!), parent = j.authoredReturn as AuthoredLocalPatchReturnContract | undefined;
+    if (kingdomFallbackHeadEdge(parent, located) && sameRect(parent!.local, returned.data)) return true;
+    return !edgeOnly && located.every(h => gapOf(returned.data, h) >= HEAD_PIXEL_CORRECTION_MIN_GAP);
   } catch { return false; }
 }
+export const headPixelCorrectionCandidate = (row: Parameters<typeof headCorrectionCandidate>[0]) => headCorrectionCandidate(row, false);
+export const kingdomHeadEdgeCandidate = (row: Parameters<typeof headCorrectionCandidate>[0]) => headCorrectionCandidate(row, true);
 
 /** Pure pixels, crop-local and aligned: RAW, the original scene crop and the shipped
  * baseline. The baseline must be EXACTLY the ordinary composition of this RAW over
  * this scene in this return (outside unchanged, inside the 12px feather blend), or
  * nothing is corrected. Returns the corrected RGBA pixels and the changed count. */
 export function composeHeadPixelCorrection(input: { raw: CorrectionPixels; scene: CorrectionPixels; baseline: CorrectionPixels;
-  returned: Rect; heads: readonly Rect[]; band?: number }) {
-  const { raw, scene, baseline, returned, heads } = input, band = input.band ?? LOCAL_PATCH_RETURN_FEATHER, w = baseline.width, h = baseline.height;
+  returned: Rect; heads: readonly Rect[]; band?: number; extendedReturn?: Rect }) {
+  const { raw, scene, baseline, returned, heads, extendedReturn } = input, band = input.band ?? LOCAL_PATCH_RETURN_FEATHER;
+  const active = extendedReturn ?? returned, w = baseline.width, h = baseline.height;
   if (![raw, scene].every(p => p.width === w && p.height === h) || ![raw, scene, baseline].every(p => p.channels === 4 && p.data.length === w * h * 4)
-    || returned.left < 0 || returned.top < 0 || returned.left + returned.width > w || returned.top + returned.height > h
-    || !heads.length || heads.some(head => gapOf(returned, head) < HEAD_PIXEL_CORRECTION_MIN_GAP))
+    || active.left < 0 || active.top < 0 || active.left + active.width > w || active.top + active.height > h
+    || extendedReturn && !sameRect(extendedReturn, { ...returned, width: returned.width + 2 * band })
+    || !heads.length || heads.some(head => gapOf(active, head) < (extendedReturn ? band : HEAD_PIXEL_CORRECTION_MIN_GAP)))
     throw Error('HEAD_PIXELS: aligned RGBA crop pixels and a located head inside its return are required');
   const out = new Uint8Array(baseline.data);
   let changed = 0;
@@ -96,8 +114,8 @@ export function composeHeadPixelCorrection(input: { raw: CorrectionPixels; scene
       const expected = c === 3 || !inReturn ? scene.data[p + c]! : Math.round(raw.data[p + c]! * base + scene.data[p + c]! * (1 - base));
       if (baseline.data[p + c] !== expected) throw Error('HEAD_PIXELS: the baseline is not the ordinary composition of this RAW over this scene');
     }
-    if (!inReturn || base >= 1) continue;
-    const corrected = headPixelCorrectionWeight(returned, heads, x, y, band);
+    if (!inside(active, x, y) || base >= 1) continue;
+    const corrected = extendedReturn ? baseWeight(depth(active, x, y), band) : headPixelCorrectionWeight(returned, heads, x, y, band);
     if (corrected <= base) continue;
     let moved = false;
     for (let c = 0; c < 3; c++) {

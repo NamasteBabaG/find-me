@@ -29,7 +29,7 @@ import * as dualPublicationModule from "../local-patch-dual-publication";
 import { correctHeadPixels } from "../head-pixel-correction";
 import { deleteLocalPatchGame } from "../local-patch-deletion";
 import { localPatchPublicationGeometryHash } from "../local-patch-publication-policy";
-import { headPixelCorrectionCandidate, HEAD_PIXEL_CORRECTION_ACTION } from "../../../domain/generation/head-pixel-correction";
+import { headPixelCorrectionCandidate, kingdomHeadEdgeCandidate, HEAD_PIXEL_CORRECTION_ACTION } from "../../../domain/generation/head-pixel-correction";
 import { retainedNormalHeadRecoveryCandidate } from "../../../domain/generation/retained-normal-head";
 import { reconcileLegacyPaidJoinHead, LEGACY_HEAD_RECOVERY_ACTION } from "../legacy-paid-join-head-recovery";
 import { reconcileVisibleHeadPolicy,VISIBLE_HEAD_RECOVERY_ACTION } from "../visible-head-policy-recovery";
@@ -779,7 +779,8 @@ it.each([{mode:"clean",interrupted:false,guided:false},{mode:"transport",interru
         usage: { input_tokens: 12_000, output_tokens: 2_500 } } };
     };
   }
-  let placementAdopted = false;
+  let placementAdopted = false, headEdgeRecovered = false;
+  const alternateHead = { left: 278, top: 132, width: 48, height: 76 };
   if (placementRecovery) {
     const retrieve = provider.fake.retrieve.bind(provider.fake);
     provider.fake.retrieve = async id => {
@@ -787,7 +788,9 @@ it.each([{mode:"clean",interrupted:false,guided:false},{mode:"transport",interru
       if (answer.status !== 'completed') return answer;
       const raw = JSON.parse(answer.reading.raw!);
       const row = raw.assessment.assessment.quality.hides[0];
-      if (row.hideId === alternate.hideId && !placementAdopted) {
+      if (row.hideId === alternate.hideId && placementAdopted) {
+        Object.assign(raw.head, { rawHead: alternateHead, shippingHead: alternateHead });
+      } else if (row.hideId === alternate.hideId) {
         const where = 'Target legs have a hard cut at the bottom return at y=496.';
         Object.assign(row.verdict, { verdict: 'fail', childComplete: 'fail', pictureWhole: 'fail', severeSeam: 'fail', reason: where,
           faults: ['childComplete', 'pictureWhole', 'severeSeam'].map(check => ({ check, where })) });
@@ -898,6 +901,11 @@ it.each([{mode:"clean",interrupted:false,guided:false},{mode:"transport",interru
       const figure = await sharp({ create: { width: figureRect.width, height: figureRect.height, channels: 4,
         background: requestKey.endsWith(":render:2") ? "#304f91" : placementRecovery && requestKey.endsWith(':render:3') ? '#40328c' : "#1e3ca0" } }).png().toBuffer();
       let png = await sharp(stylePng).composite([{ input: figure, left: figureRect.left, top: figureRect.top }]).png().toBuffer();
+      if (placementRecovery && hide.id === alternate.hideId && placementAdopted) {
+        const head = await sharp({ create: { width: alternateHead.width, height: alternateHead.height, channels: 4,
+          background: '#08ccf3' } }).png().toBuffer();
+        png = await sharp(png).composite([{ input: head, left: alternateHead.left, top: alternateHead.top }]).png().toBuffer();
+      }
       if (libraryRail) {
         // The provider may disregard its mask; these blue pixels are behind
         // the locked source railing and cannot enlarge the visible tap target.
@@ -949,6 +957,30 @@ it.each([{mode:"clean",interrupted:false,guided:false},{mode:"transport",interru
       placementAdopted = true;
       result = { pending: true, attention: null };
       continue;
+    }
+    if (placementRecovery && placementAdopted && !headEdgeRecovered) {
+      const row = await db.targetVariantAsset.findFirstOrThrow({ where: { variant: 'A',
+        targetInstance: { targetId: alternate.targetId, gameScene: { gameId, sceneSlug: alternate.boardId } } } });
+      if (kingdomHeadEdgeCandidate(row)) {
+        // New failures queue the free correction. The same repair must also be
+        // available for a version already parked before the fix was deployed.
+        expect(result).toMatchObject({ pending: true, attention: null });
+        await db.generationJob.update({ where: { id: 'job_' + gameId }, data: { status: 'FAILED', currentStep: 'local-patch:recovery-exhausted' } });
+        const worldId = boardWizardWorldId(gameId), ledger = await db.worldBudgetLedger.findUniqueOrThrow({ where: { worldId } });
+        const reviewsBefore = provider.creates.length;
+        result = await runLocalPatchWorldSlice(container, deps, gameId, { hardDeadlineAt: Date.now() + 270_000, diagnose });
+        expect(result).toMatchObject({ pending: true, attention: null, claimed: false });
+        expect(provider.creates).toHaveLength(reviewsBefore);
+        const after = await db.worldBudgetLedger.findUniqueOrThrow({ where: { worldId } });
+        expect(JSON.parse(after.snapshotJson)).toEqual(JSON.parse(ledger.snapshotJson));
+        const restored = await db.targetVariantAsset.findUniqueOrThrow({ where: { id: row.id } });
+        expect(restored).toMatchObject({ attempts: 4, status: 'GENERATED' });
+        expect(JSON.parse(restored.judgeJson!)).toMatchObject({ reviewState: 'pending-board-review', verdict: null,
+          headPixelCorrection: { extendedReturn: { ...alternate.fallback.returnRect, width: 168 } } });
+        const archive = await db.auditLog.findUniqueOrThrow({ where: { id: JSON.parse(restored.judgeJson!).headPixelCorrection.auditId } });
+        expect(JSON.parse(archive.metaJson!)).toMatchObject({ previousJudgeJson: row.judgeJson, providerCalls: 0, requestsPreserved: true });
+        headEdgeRecovered = true;
+      }
     }
     if (neighborRecovery && result.attention && !neighborAdopted) {
       const before = await boardWizardBudgetOf(container).audit(boardWizardWorldId(gameId));
@@ -1063,11 +1095,14 @@ it.each([{mode:"clean",interrupted:false,guided:false},{mode:"transport",interru
   }
   // v6: 27 paintings + 1 repaint; 27 first questions + 1 same-pixel re-ask + 1 question about the repaint.
   expect(prompts.size).toBe(body?34:tail || placementRecovery ? 30 : guided ? 29 : v6Unreadable ? 28 : v6Images ? 31 : 27);
-  const reviews = placementRecovery ? 30 : neighborRecovery ? 28 : body ? 32 : guided ? 29 : interrupted ? 28 : v6Unreadable ? 29 : 27;
+  const reviews = placementRecovery ? 31 : neighborRecovery ? 28 : body ? 32 : guided ? 29 : interrupted ? 28 : v6Unreadable ? 29 : 27;
   expect(provider.creates).toHaveLength(reviews); expect(provider.creates.filter(create => create.quality)).toHaveLength(reviews);
-  expect(provider.creates.filter(create => create.tier === "default")).toHaveLength(placementRecovery ? 30 : neighborRecovery ? 28 : v6Unreadable ? 29 : v6RateLimit || v6Images ? 27 : interrupted ? 1 : 0);
+  expect(provider.creates.filter(create => create.tier === "default")).toHaveLength(placementRecovery ? 31 : neighborRecovery ? 28 : v6Unreadable ? 29 : v6RateLimit || v6Images ? 27 : interrupted ? 1 : 0);
   if (placementRecovery) {
     expect(placementAdopted).toBe(true);
+    expect(headEdgeRecovered).toBe(true);
+    expect(provider.creates.filter(create => create.hideId === alternate.hideId).at(-1)?.prompt)
+      .toContain('"returned":{"left":184,"top":116,"width":168,"height":183}');
     expect(await db.targetVariantAsset.findMany({ where: { id: { in: (protectedRows as {id: string}[]).map(row => row.id) } }, orderBy: { id: 'asc' } })).toEqual(protectedRows);
     const selected = config.scenes.find(scene => scene.slug === alternate.boardId)!;
     expect(selected.targets.find(target => target.id === alternate.targetId)?.slots[0].hintText).toBe(alternate.fallback.hint[config.locale]);
@@ -1129,7 +1164,8 @@ it.each([{mode:"clean",interrupted:false,guided:false},{mode:"transport",interru
         sourceRequestKey: `${receipt.hide}:${receipt.pose}:render:${row.attempts}`,
 shippingSha256: proof.imageSha256, geometrySha256: proof.geometrySha256,
         identitySha256: proof.identitySha256,
-        returned: receipt.retainedWindow ? retainedWindowRegion(KINGDOM_GENERATION_WINDOWS.find(x => x.authority.hideId === receipt.hide)!.authority) : receipt.authoredReturn.local,
+        returned: placementRecovery && receipt.hide === alternate.hideId ? { ...alternate.fallback.returnRect, width: 168 }
+          : receipt.retainedWindow ? retainedWindowRegion(KINGDOM_GENERATION_WINDOWS.find(x => x.authority.hideId === receipt.hide)!.authority) : receipt.authoredReturn.local,
         feather: 12,
       });
       expect(targetHeadReturnDecision(proof.quality.raw, proof.quality.headEvidence).disposition).toBe("pass");
@@ -1259,11 +1295,17 @@ shippingSha256: proof.imageSha256, geometrySha256: proof.geometrySha256,
     const pin = await db.auditLog.findFirstOrThrow({ where: { entityId: gameId, action: KINGDOM_FALLBACK_RECOVERY_ACTION } });
     const replacement = rows.find(row => row.attempts === 4)!;
     const publication = { ...publicationBinding(gameId, replacement), sceneVersion: 13 };
+    const receipt = JSON.parse(replacement.judgeJson!);
+    const edgeAudit = await db.auditLog.findUniqueOrThrow({ where: { id: receipt.headPixelCorrection.auditId } });
+    await db.auditLog.delete({ where: { id: edgeAudit.id } });
+    expect(await allowedDualPublication(db, publication)).toBe(false);
+    await db.auditLog.create({ data: edgeAudit });
     await db.auditLog.delete({ where: { id: pin.id } });
     expect(await allowedDualPublication(db, publication)).toBe(false);
     await db.auditLog.create({ data: pin });
     expect(await deleteLocalPatchGame(container, gameId, { type: 'USER', id: game.ownerId! }, game.ownerId!)).toBe(true);
     expect((await db.auditLog.findUniqueOrThrow({ where: { id: pin.id } })).metaJson).toBeNull();
+    expect((await db.auditLog.findUniqueOrThrow({ where: { id: edgeAudit.id } })).metaJson).toBeNull();
   }
   if(born){expect(await db.auditLog.count({where:{entityType:"Game",entityId:gameId,actorType:"ADMIN"}})).toBe(0);expect(await detectivesOperationalPolicyOf(db,gameId)).toMatchObject({worldCapMicroUsd:4000000,model:"gpt-6.1-sol",effort:"low",automaticBudgetExtension:false});const bodyRows=rows.filter(r=>sourceBodyBirthMarker(r));expect(bodyRows).toHaveLength(kingdom?0:2);for(const r of bodyRows){expect(r.attempts).toBe(1);expect(JSON.parse(r.judgeJson!).sourceBodyComposition.outsideChangedPixels).toBe(0);}}
   const child = await db.childProfile.findUniqueOrThrow({ where: { id: "chl-" + gameId } });
