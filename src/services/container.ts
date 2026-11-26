@@ -4,6 +4,7 @@ import { EXPLORERS_OPERATIONAL_RELEASE, type ExplorersOperationalRelease } from 
 import { DETECTIVES_OPERATIONAL_RELEASE, detectivesOperationalQualified, type DetectivesOperationalRelease } from "../domain/generation/detectives-operational-policy";
 import { WORLD_COST_RULE, type WorldCostRule } from "./generation/world-cost-rule";
 import { adminEmails, env, flag } from "@/lib/env";
+import { businessProfile } from "@/lib/business-profile";
 import { prisma, type Db } from "@/infra/db/prisma";
 import type { StorageProvider } from "@/infra/storage/types";
 import { LocalDiskStorage } from "@/infra/storage/local";
@@ -137,7 +138,7 @@ function build(): Container {
   const email: EmailProvider = e.QA_WIZARD_MOCK === "on"
     ? { id: "console", async send() { return { id: "qa-wizard-mock" }; } }
     : e.EMAIL_PROVIDER === "resend"
-      ? new ResendEmailProvider(e.RESEND_API_KEY ?? "", e.EMAIL_FROM)
+      ? new ResendEmailProvider(e.RESEND_API_KEY ?? "", e.EMAIL_FROM, businessProfile().email)
       : new ConsoleEmailProvider(path.join(storageRoot, "outbox"));
 
   const analytics: AnalyticsSink = e.ANALYTICS_PROVIDER === "none" ? new NoopAnalytics() : new ConsoleAnalytics();

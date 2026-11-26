@@ -1,11 +1,13 @@
 import type { EmailMessage, EmailProvider } from "./types";
 
-/** Resend adapter via plain fetch (no SDK dependency). */
+/** Resend adapter via plain fetch (no SDK dependency). `replyTo`: where a reader's reply goes (the public support inbox,
+ * SUPPORT_EMAIL): the sending domain has no mailbox, so a reply to `from` would bounce. */
 export class ResendEmailProvider implements EmailProvider {
   readonly id = "resend" as const;
   constructor(
     private readonly apiKey: string,
     private readonly from: string,
+    private readonly replyTo: string | null = null,
   ) {
     if (!apiKey) throw new Error("RESEND_API_KEY is required for EMAIL_PROVIDER=resend");
   }
@@ -21,7 +23,8 @@ export class ResendEmailProvider implements EmailProvider {
       signal: controller.signal,
       headers: { Authorization: `Bearer ${this.apiKey}`, "Content-Type": "application/json",
         ...(message.idempotencyKey ? { "Idempotency-Key": message.idempotencyKey } : {}) },
-      body: JSON.stringify({ from: this.from, to: [message.to], subject: message.subject, html: message.html, text: message.text, tags: [{ name: "kind", value: message.tag }] }),
+      body: JSON.stringify({ from: this.from, to: [message.to], ...(this.replyTo ? { reply_to: [this.replyTo] } : {}),
+        subject: message.subject, html: message.html, text: message.text, tags: [{ name: "kind", value: message.tag }] }),
     });
     if (!res.ok) throw new Error(`Resend failed: ${res.status} ${await res.text()}`);
     const data = (await res.json()) as { id: string };

@@ -394,4 +394,17 @@ describe("advisory notification outbox", () => {
       expect(init.body).not.toContain("logical-delivery");
     } finally { vi.stubGlobal("fetch", vi.fn(async () => { throw new Error("No network"); })); }
   });
+
+  it("sends a reader's reply to the support inbox, and adds nothing when there is none", async () => {
+    const wire = vi.fn(async (_url: string | URL | Request, _init?: RequestInit) => new Response(JSON.stringify({ id: "wire-id" }), { status: 200 }));
+    vi.stubGlobal("fetch", wire);
+    try {
+      const mail = { to: "parent@example.invalid", subject: "ready", text: "ready", html: "ready", tag: "game-ready" as const };
+      await new ResendEmailProvider("synthetic-never-real", "hello@example.invalid", "support@example.invalid").send(mail);
+      await new ResendEmailProvider("synthetic-never-real", "hello@example.invalid").send(mail);
+      const [withSupport, without] = wire.mock.calls.map(call => JSON.parse(String((call[1] as RequestInit).body)));
+      expect(withSupport).toMatchObject({ from: "hello@example.invalid", reply_to: ["support@example.invalid"] });
+      expect(without).not.toHaveProperty("reply_to");
+    } finally { vi.stubGlobal("fetch", vi.fn(async () => { throw new Error("No network"); })); }
+  });
 });
