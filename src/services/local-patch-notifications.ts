@@ -12,6 +12,7 @@ import { IDENTITY_GATE_ACTION, identityGateReceiptOf } from "./generation/board-
 import { JUDGE_CHECKS } from "./generation/local-patch-judge";
 import { DbStorage } from "../infra/storage/db";
 import { requireCanonicalIdentityReuse } from "./generation/local-patch-identity-reuse";
+import { alertRecipients } from "../domain/team-notices";
 
 const ACTION = "local-patch:notification-pending";
 const MAX_ATTEMPTS = 3;
@@ -115,7 +116,8 @@ export async function enqueueLocalPatchNotifications(c: Container, tx: Prisma.Tr
   } catch { identityConcern = "ביקורת הזהות אינה זמינה לפענוח"; }
   const messages: { kind: Notice["kind"]; message: EmailMessage; viaFallback: boolean }[] = [];
   if (ready) messages.push({ kind: "ready", message: ready.message, viaFallback: ready.viaFallback });
-  if (concerns.length || identityConcern) for (const to of [...new Set((c.adminEmails ?? []).map(email => email.trim().toLowerCase()).filter(Boolean))]) {
+  // team-notices/v1: the concerns go to the alerts inbox (the admins when it is unset).
+  if (concerns.length || identityConcern) for (const to of alertRecipients(c)) {
     messages.push({ kind: "concerns", message: concernsMail(c.appUrl, gameId, to, concerns, identityConcern), viaFallback: false });
   }
   for (const item of messages) {
@@ -188,7 +190,7 @@ export async function deliverLocalPatchNotifications(c: Container, gameId?: stri
       const blob = await c.db.fileBlob.findUnique({ where: { key: notice.key } });
       if (!blob || sha(Buffer.from(blob.data)) !== notice.payloadSha256) { await finish("cancelled", { error: "notification payload unavailable or changed" }); continue; }
       const mail: EmailMessage = JSON.parse(Buffer.from(blob.data).toString());
-      const authorized = notice.kind === "concerns" ? (c.adminEmails ?? []).some(email => email.toLowerCase() === mail.to.toLowerCase())
+      const authorized = notice.kind === "concerns" ? alertRecipients(c).includes(mail.to.toLowerCase())
         : (notice.viaFallback ? c.emailFallbackTo : game.owner?.email)?.toLowerCase() === mail.to.toLowerCase();
       if (!authorized || sha(mail.to.toLowerCase()) !== notice.recipientSha256 || mail.idempotencyKey !== event.id) { await finish("cancelled", { error: "recipient authorization changed" }); continue; }
       if (!canDispatch()) break;

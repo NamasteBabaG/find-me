@@ -232,7 +232,24 @@ export async function handlePaymentWebhook(c: Container, rawBody: string, header
   // kingdom-ceiling-refund/v1 (QAV6-03): the provider's committed refund is positive proof that finishes an owed ceiling
   // refund (and sends its parent notice) without another refund. A no-op for every other game; the cron sweep is the backstop.
   if (ev.kind === "REFUNDED" && !applied.rejected) await wakeCeilingRefund(c, order.gameId);
+  // team-notices/v1: the team hears about every real order, a second payment for the same world, and a provider's refund.
+  if (!applied.rejected) {
+    const kind = ev.kind === "PAID" ? (applied.body === "ok" ? "order-paid" : applied.body === "duplicate payment recorded" ? "order-duplicate-paid" : null)
+      : ev.kind === "REFUNDED" && applied.body === "ok" ? "order-refunded" : null;
+    if (kind) await notifyTeam(c, order.gameId, kind);
+  }
   return { status: applied.rejected ? 400 : 200, body: applied.body };
+}
+
+/**
+ * team-notices/v1: a durable notice to the alerts and finance inboxes (admin-alert.service). Real money only: a mock
+ * checkout is a test, not an order. Bounded so the provider's webhook is answered quickly; an unsent notice stays
+ * pending and the cron sends it. Never throws: the money already moved and is committed.
+ */
+async function notifyTeam(c: Container, gameId: string, kind: "order-paid" | "order-duplicate-paid" | "order-refunded") {
+  if (c.payment.id === "mock") return;
+  try { await (await import("./admin-alert.service")).sendAdminAlert(c, { gameId, kind }, { deadlineAt: Date.now() + 6_000 }); }
+  catch { console.error("[team-notices] order notice deferred", { kind }); }
 }
 
 type Applied = { body: string; track: Array<{ name: "payment_completed"; props: Record<string, string> }>; rejected?: boolean };
@@ -357,6 +374,7 @@ export async function refundOrder(c: Container, orderId: string, actor: Actor): 
   if (!claimed) return { ok: false, reason: "ההזמנה כבר לא במצב ששולם." };
   // A manual refund of a world closed at its ceiling finishes its owed-refund record and parent notice (QAV6-03).
   await wakeCeilingRefund(c, order.gameId);
+  await notifyTeam(c, order.gameId, "order-refunded");
   return { ok: true };
 }
 

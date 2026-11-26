@@ -10,6 +10,7 @@ import type { EmailMessage } from "../infra/email/types";
 import { deliverLocalPatchNotifications } from "./local-patch-notifications";
 import { generationHealthConcern } from "./generation-health.service";
 import { adminAlertNotificationPrefix } from "./admin-alert-deletion";
+import { MONEY_NOTICE_KINDS, TEAM_NOTICE_KINDS, allNoticeRecipients, noticeRecipients } from "../domain/team-notices";
 export { adminAlertNotificationPrefix } from "./admin-alert-deletion";
 
 export const ALERT_RETRY_WINDOW_MS = 24 * 60 * 60 * 1000;
@@ -19,12 +20,24 @@ const LEASE_MS = 60_000;
 const RETRY_PAGE_SIZE = 100;
 const RETRY_LIMIT = 20;
 export const ADMIN_ALERT_PENDING_ACTION = "admin-alert:notification-pending";
-const KINDS = ["delivered-with-problems", "held-for-review", "generation-failed", "needs-new-photo", "generation-stalled",
-  "cost-above-alert", "ceiling-refunded", "ceiling-notice-failed", "ready-mail-failed", "ceiling-held"] as const;
+const KINDS = TEAM_NOTICE_KINDS;
 const SUCCESS_ACTIONS = KINDS.map(kind => `admin-alert:${kind}`);
 const FAILURE_KINDS = new Map<string, AdminAlertKind>(KINDS.map(kind => [`admin-alert:${kind}:failed`, kind]));
 const sha = (value: string | Buffer) => createHash("sha256").update(value).digest("hex");
-const recipients = (c: Container) => [...new Set((c.adminEmails ?? []).map(to => to.trim().toLowerCase()).filter(Boolean))];
+/** team-notices/v1: who is told about this kind (the alerts inbox, plus the finance inbox for money), and everyone any
+ * notice may go to (what a stored notice's recipient is matched against). */
+const recipients = (c: Container, kind: AdminAlertKind) => noticeRecipients(c, kind);
+const anyRecipients = (c: Container) => allNoticeRecipients(c);
+const ORDER_STATE: Record<string, string> = { PAID: "שולם", REFUNDED: "הוחזר", PENDING: "ממתין", FAILED: "נכשל", CANCELLED: "בוטל" };
+const when = (date: Date | null | undefined) => date ? new Date(date).toISOString().slice(0, 16).replace("T", " ") + " UTC" : null;
+/** One line per order of the world, for the notices about money. */
+function orderLines(orders: ReadonlyArray<{ id: string; amountAgorot?: number | null; currency?: string | null; paymentStatus: string; paidAt: Date | null; refundedAt: Date | null }>) {
+  return orders.filter(o => typeof o.amountAgorot === "number").map(o => {
+    const dates = [...(when(o.paidAt) ? [`שולם ${when(o.paidAt)}`] : []), ...(when(o.refundedAt) ? [`הוחזר ${when(o.refundedAt)}`] : [])];
+    return [`הזמנה ${o.id}: ${(o.amountAgorot! / 100).toFixed(2)} ${o.currency ?? ""}`.trim(),
+      ...(dates.length ? dates : [ORDER_STATE[o.paymentStatus] ?? o.paymentStatus])].join(" · ");
+  });
+}
 const noticeId = (gameId: string, kind: AdminAlertKind, to: string) => {
   if (!/^[A-Za-z0-9_-]{1,160}$/.test(gameId)) throw Error("ADMIN_ALERT: canonical game id required");
   return `aud_aan_${sha(JSON.stringify([gameId, kind, to])).slice(0, 40)}`;
@@ -56,6 +69,10 @@ async function context(c: Container, input: AdminAlertInput) {
 }
 function relevant(input: AdminAlertInput, current: Awaited<ReturnType<typeof context>>, allowReadyIntent = false): boolean {
   const { game, failedSpots } = current;
+  // team-notices/v1: an order notice stays true whatever the world did next; only a deleted world is not reported.
+  if (input.kind === "order-paid") return !game.deletedAt && game.orders.some(order => !!order.paidAt);
+  if (input.kind === "order-duplicate-paid") return !game.deletedAt && game.orders.filter(order => !!order.paidAt).length > 1;
+  if (input.kind === "order-refunded") return !game.deletedAt && game.orders.some(order => order.paymentStatus === "REFUNDED" || !!order.refundedAt);
   // kingdom-generation/v6: the one notice that is about a refund the service itself made at the ceiling.
   if (input.kind === "ceiling-refunded" || input.kind === "ceiling-notice-failed") return !game.deletedAt && game.status === "REFUNDED";
   if (game.deletedAt || ["DELETED", "REFUNDED", "CANCELLED"].includes(game.status)
@@ -107,7 +124,8 @@ async function ensureNotice(c: Container, input: AdminAlertInput, to: string): P
     childName: game.childProfile?.displayName ?? "", ownerEmail: game.owner?.email ?? null,
     status: statusOf(game), sceneCount: game.scenes.length, problems: input.problems ?? [],
     failedSpots: failedSpots.map(f => ({ where: `${f.sceneSlug}/${f.targetId}/${f.variant}`, attempts: f.attempts, reason: f.lastError ?? "" })),
-    costCents: await generationCostForDisplay(c, input.gameId), error: input.error }), to, idempotencyKey: id };
+    costCents: await generationCostForDisplay(c, input.gameId), error: input.error,
+    ...(MONEY_NOTICE_KINDS.has(input.kind) ? { orders: orderLines(game.orders) } : {}) }), to, idempotencyKey: id };
   const bytes = Buffer.from(JSON.stringify(message)), payloadKey = `${adminAlertNotificationPrefix(input.gameId)}${id}.json`;
   const notice: Notice = { version: "admin-alert-notification/v1", kind: input.kind, state: "pending",
     payloadKey, payloadSha256: sha(bytes), recipientSha256: sha(to), attempts: 0,
@@ -140,7 +158,7 @@ async function deliverNotice(c: Container, event: Event, to: string, deadlineAt:
     await c.db.auditLog.updateMany({ where: { id: event.id, action: ADMIN_ALERT_PENDING_ACTION, metaJson: JSON.stringify(notice) },
       data: { action: `admin-alert:notification-${state}`, metaJson: JSON.stringify({ ...notice, state, leaseUntil: 0 }) } });
   };
-  if (!recipients(c).includes(to)) { await finish("cancelled"); return "skipped"; }
+  if (!recipients(c, notice.kind).includes(to)) { await finish("cancelled"); return "skipped"; }
   if (notice.attempts >= MAX_ATTEMPTS || (notice.firstAttemptAt !== null && Date.now() - notice.firstAttemptAt >= RETRY_WINDOW_MS)) {
     await finish("unknown"); return "skipped";
   }
@@ -165,7 +183,7 @@ async function deliverNotice(c: Container, event: Event, to: string, deadlineAt:
   try {
     // Recheck lifecycle and the current heartbeat after claiming the message.
     const current = await context(c, { gameId: event.entityId, kind: notice.kind });
-    if (!recipients(c).includes(to) || !relevant({ gameId: event.entityId, kind: notice.kind }, current, true)) { await finish("cancelled"); return "skipped"; }
+    if (!recipients(c, notice.kind).includes(to) || !relevant({ gameId: event.entityId, kind: notice.kind }, current, true)) { await finish("cancelled"); return "skipped"; }
     if (notice.kind === "delivered-with-problems" && current.game.status === "READY") {
       // The customer notification can still be pending after publication. Keep
       // the report until delivery without spending a transport retry attempt.
@@ -198,7 +216,7 @@ async function deliverNotice(c: Container, event: Event, to: string, deadlineAt:
 export async function sendAdminAlert(c: Container, input: AdminAlertInput, options: { deadlineAt?: number } = {}): Promise<AdminAlertOutcome> {
   const outcome: AdminAlertOutcome = { sent: [], failed: [], skipped: [] }, deadlineAt = Math.min(options.deadlineAt ?? Infinity, Date.now() + 20_000);
   try {
-    for (const to of recipients(c)) {
+    for (const to of recipients(c, input.kind)) {
       if (deadlineAt - Date.now() < 4_000) break;
       const event = await ensureNotice(c, input, to), result = event ? await deliverNotice(c, event, to, deadlineAt) : "skipped";
       outcome[result].push(to);
@@ -213,7 +231,7 @@ export async function retryFailedAdminAlerts(c: Container, options: { deadlineAt
   const deadlineAt = Math.min(options.deadlineAt ?? Infinity, Date.now() + 20_000), sent = new Set<string>();
   await deliverLocalPatchNotifications(c, undefined, { deadlineAt }).catch(() => console.error("[local-patch notifications] bounded retry unavailable"));
   try {
-    const admins = recipients(c);
+    const admins = anyRecipients(c);
     if (!admins.length || deadlineAt - Date.now() < 4_000) return { retried: 0 };
     const pending: Event[] = [], passAt = new Date();
     let cursor: string | undefined;

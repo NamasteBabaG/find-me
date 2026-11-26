@@ -75,6 +75,10 @@ const EnvSchema = z.object({
   DEFAULT_COUNTRY: z.string().optional(),
 
   ADMIN_EMAILS: z.string().prefault(""),
+  /** team-notices/v1: the inbox for every game alert and order notice (comma-separated). Unset: the admins. Grants nothing. */
+  ALERT_EMAILS: z.string().prefault(""),
+  /** team-notices/v1: also told about orders and money (payments, refunds, cost thresholds). Grants nothing. */
+  FINANCE_EMAILS: z.string().prefault(""),
   QA_AUTO_APPROVE: z.enum(["true", "false"]).prefault("false"),
   /** Explicit diagnostic escape hatch, QA only. Broken games must not ship by default. */
   QA_DELIVER_WITH_PROBLEMS: z.enum(["true", "false"]).prefault("false"),
@@ -283,7 +287,6 @@ export function adminEmails(): string[] {
     .map((e) => e.trim().toLowerCase())
     .filter(Boolean);
 }
-
 export function flag(name: "FEATURE_GIFT_WRAP" | "FEATURE_BONUS_CHARACTER" | "QA_AUTO_APPROVE" | "QA_DELIVER_WITH_PROBLEMS" | "GENERATION_BOTH_VARIANTS"): boolean {
   return env()[name] === "true";
 }

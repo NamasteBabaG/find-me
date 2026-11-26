@@ -291,3 +291,50 @@ describe("durable internal admin notifications", () => {
     await expect(retryFailedAdminAlerts(f.c)).resolves.toEqual({ retried: 0 }); expect(f.send).not.toHaveBeenCalled();
   });
 });
+
+/** team-notices/v1 (Guy, 2026-11-26). Synthetic addresses only. */
+describe("the team's inboxes", () => {
+  const paidOrder = { id: "ord_synthetic", amountAgorot: 2990, currency: "ILS", paymentStatus: "PAID", paidAt: new Date("2026-11-26T09:30:00Z"), refundedAt: null };
+  function team() {
+    const f = fakes(["admin@example.test"]);
+    Object.assign(f.c, { alertEmails: ["alerts@example.test"], financeEmails: ["money@example.test"] });
+    return f;
+  }
+
+  it("sends a game alert to the alerts inbox only, and not to the admins it replaces", async () => {
+    const f = team();
+    expect((await sendAdminAlert(f.c, input)).sent).toEqual(["alerts@example.test"]);
+    expect(f.requests.map(mail => mail.to)).toEqual(["alerts@example.test"]);
+  });
+
+  it("sends a new order to both inboxes, with its amount", async () => {
+    const f = team(); Object.assign(f.game(), { status: "TARGETS_GENERATING", lastError: null, orders: [paidOrder] });
+    expect((await sendAdminAlert(f.c, { gameId: input.gameId, kind: "order-paid" })).sent).toEqual(["alerts@example.test", "money@example.test"]);
+    expect(f.requests[0]!.subject).toContain("הזמנה חדשה");
+    expect(f.requests[0]!.text).toContain("הזמנה ord_synthetic: 29.90 ILS · שולם 2026-11-26 09:30 UTC");
+  });
+
+  it("keeps an order notice true after the world moved on, and reports a refund and a second payment", async () => {
+    const f = team(), refunded = { ...paidOrder, paymentStatus: "REFUNDED", refundedAt: new Date("2026-11-27T10:00:00Z") };
+    Object.assign(f.game(), { status: "REFUNDED", lastError: null, orders: [refunded, { ...paidOrder, id: "ord_second" }] });
+    for (const kind of ["order-paid", "order-refunded", "order-duplicate-paid"] as const)
+      expect((await sendAdminAlert(f.c, { gameId: input.gameId, kind })).sent).toEqual(["alerts@example.test", "money@example.test"]);
+    expect(f.requests.find(mail => mail.subject.includes("הוחזר"))!.text).toContain("הוחזר 2026-11-27 10:00 UTC");
+  });
+
+  it("sends a cost threshold to finance too, and nothing to a deleted world", async () => {
+    const f = team(); Object.assign(f.game(), { status: "TARGETS_GENERATING", lastError: null, orders: [paidOrder] });
+    expect((await sendAdminAlert(f.c, { gameId: input.gameId, kind: "cost-above-alert", problems: ["Synthetic"] })).sent).toEqual(["alerts@example.test", "money@example.test"]);
+    const gone = team(); Object.assign(gone.game(), { deletedAt: new Date(), orders: [paidOrder] });
+    expect((await sendAdminAlert(gone.c, { gameId: input.gameId, kind: "order-paid" })).sent).toEqual([]);
+  });
+
+  it("retries a pending money notice to finance from the cron", async () => {
+    const f = team(); Object.assign(f.game(), { status: "TARGETS_GENERATING", lastError: null, orders: [paidOrder] });
+    f.send.mockImplementation(async mail => { f.requests.push(copy(mail)); if (mail.to.startsWith("money")) throw Error("Transport failed"); return { id: "provider_test" }; });
+    await sendAdminAlert(f.c, { gameId: input.gameId, kind: "order-paid" });
+    f.send.mockImplementation(async mail => { f.requests.push(copy(mail)); return { id: "provider_test" }; });
+    atMinute(2); expect((await retryFailedAdminAlerts(f.c)).retried).toBe(1);
+    expect(f.requests.map(mail => mail.to)).toEqual(["alerts@example.test", "money@example.test", "money@example.test"]);
+  });
+});

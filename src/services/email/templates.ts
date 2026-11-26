@@ -2,6 +2,7 @@ import type { EmailMessage } from "@/infra/email/types";
 import { dirOf, getDict, tf, type Locale } from "@/i18n";
 import { escapeHtml } from "./html";
 import type { ReadyMailHero } from "./ready-hero";
+import type { TeamNoticeKind } from "@/domain/team-notices";
 
 /**
  * Transactional emails in the recipient's language. Warm, one big button,
@@ -152,10 +153,14 @@ export function gameRefundedEmail(input: { to: string; childName: string; locale
   };
 }
 
-export type AdminAlertKind = "delivered-with-problems" | "held-for-review" | "generation-failed" | "needs-new-photo" | "generation-stalled"
-  | "cost-above-alert" | "ceiling-refunded" | "ceiling-notice-failed" | "ready-mail-failed" | "ceiling-held";
+/** Every notice the team receives (team-notices/v1, src/domain/team-notices.ts says who gets which). */
+export type AdminAlertKind = TeamNoticeKind;
 
 const ALERT_HEAD: Record<AdminAlertKind, { subject: string; lead: string }> = {
+  // team-notices/v1 (Guy, 2026-11-26): every real order, and every movement of its money, to the team's inboxes.
+  "order-paid": { subject: "🧾 הזמנה חדשה: העולם של {name}", lead: "התקבל תשלום על עולם חדש. ספק הסליקה אישר את התשלום, והעולם נכנס להכנה." },
+  "order-duplicate-paid": { subject: "⚠️ תשלום כפול על העולם של {name}", lead: "התקבל תשלום נוסף על עולם שכבר שולם. שני התשלומים נשמרו, אבל המשחק לא ייווצר פעמיים. צריך להחזיר את התשלום הכפול מספק הסליקה או מהאדמין." },
+  "order-refunded": { subject: "↩️ הוחזר כסף: העולם של {name}", lead: "ההזמנה של העולם הזה הוחזרה, והעולם נסגר. הפרטים למטה." },
   "cost-above-alert": { subject: "💸 העולם של {name} עבר $5", lead: "העלות המחויבת של העולם עברה את סף ההתראה של $5. העולם ממשיך לעבוד כרגיל. מה קורה בתקרה, כתוב בפרטים." },
   // kingdom-generation/v7 and world-cost-rule/v1 (Guy, 2026-11-20): stopped at the ceiling and held for him; no refund, no parent mail.
   "ceiling-held": { subject: "🛑 העולם של {name} נעצר בתקרה", lead: "העולם הגיע לתקרה בלי להשלים את כל המחבואים ונעצר: לא נקנה בשבילו שום דבר נוסף. לא בוצע החזר ולא נשלחה הודעה להורה. אפשר לנסות להציל אותו מהאדמין, או להחזיר משם את הכסף." },
@@ -186,12 +191,15 @@ export function adminAlertEmail(input: {
   failedSpots: Array<{ where: string; attempts: number; reason: string }>;
   costCents: number | null;
   error?: string;
+  /** The world's orders, one line each (amount, currency, state, dates). Only order notices carry them. */
+  orders?: string[];
 }): Omit<EmailMessage, "to"> {
   const head = ALERT_HEAD[input.kind];
   const subject = tf(head.subject, { name: input.childName || input.gameId });
   const facts = [
     `משחק: ${input.gameId} · ${input.sceneCount} לוחות · סטטוס ${input.status}`,
     `הורה: ${input.ownerEmail ?? "אין כתובת"}`,
+    ...(input.orders ?? []),
     `עלות עד עכשיו: ${input.costCents === null ? "לא ידועה" : `$${(input.costCents / 100).toFixed(2)}`}`,
   ];
   const problems = input.problems.map((p) => `• ${p}`);

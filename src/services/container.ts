@@ -66,6 +66,10 @@ export interface Container {
   deliverWithProblems?: boolean;
   /** Who is told when a game goes out with problems, or does not go out at all (ADMIN_EMAILS). */
   adminEmails?: string[];
+  /** team-notices/v1: the alerts inbox (ALERT_EMAILS; the admins when unset) and the finance inbox (FINANCE_EMAILS).
+   * Both only receive; neither grants anything. src/domain/team-notices.ts. */
+  alertEmails?: string[];
+  financeEmails?: string[];
   /** Explicit provider selection for newly pinned QA games. No model fallback. */
   visualReview?: { request(question: VisualReviewQuestion, timeoutMs?: number): Promise<LocalPatchJudgeResult> };
   pinDualVisualReview?: boolean;
@@ -104,6 +108,8 @@ export interface Container {
 export function deliverWithProblemsOf(qaAutoApprove: boolean, appEnv: string | undefined, diagnosticOptIn = false): boolean {
   return qaAutoApprove && appEnv === "qa" && diagnosticOptIn;
 }
+
+const emailList = (value: string | undefined) => (value ?? "").split(",").map(email => email.trim().toLowerCase()).filter(Boolean);
 
 function build(): Container {
   const e = env();
@@ -159,6 +165,8 @@ function build(): Container {
     autoApprove: flag("QA_AUTO_APPROVE"),
     deliverWithProblems: deliverWithProblemsOf(flag("QA_AUTO_APPROVE"), e.APP_ENV, flag("QA_DELIVER_WITH_PROBLEMS")),
     adminEmails: adminEmails(),
+    alertEmails: emailList(e.ALERT_EMAILS),
+    financeEmails: emailList(e.FINANCE_EMAILS),
     pinDualVisualReview: e.APP_ENV === "qa" && e.LOCAL_PATCH_VISUAL_REVIEW !== "legacy",
     // A new question version is chosen by name, never by default: the deployed
     // dual-high-v1 value keeps meaning v1 exactly.

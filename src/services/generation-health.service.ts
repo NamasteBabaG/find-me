@@ -3,6 +3,7 @@ import { Prisma } from "@prisma/client";
 import type { Container } from "./container";
 import { sendAdminAlert } from "./admin-alert.service";
 import { GENERATION_STALE_MS } from "@/domain/generation-health";
+import { alertRecipients } from "@/domain/team-notices";
 
 const ACTION = "generation:health-alert";
 const PAGE_SIZE = 50;
@@ -108,7 +109,7 @@ async function seedDoneClaim(c: Container, gameId: string): Promise<void> {
 export async function alertStalledGeneration(c: Container, options: { deadlineAt?: number } = {}): Promise<{ attempted: number }> {
   const deadlineAt = Math.min(options.deadlineAt ?? Infinity, Date.now() + 15_000);
   let attempted = 0;
-  if (!c.adminEmails?.length) return { attempted };
+  if (!alertRecipients(c).length) return { attempted };
   const passAt = new Date(Date.now());
   let cursor: string | undefined;
   try {
