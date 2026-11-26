@@ -8,12 +8,14 @@ import { purchasingEnabled } from "@/lib/purchasing";
 import { env } from "@/lib/env";
 import type { Dictionary } from "@/i18n/dictionaries/en";
 import { QaWizardSimulationNotice } from "./QaWizardSimulationNotice";
+import { PrelaunchArt } from "./PrelaunchArt";
 
 /** Before ordering opens: what is coming, and two real ways to see it now. A disabled button that does nothing read
  * as a broken site (2026-11-26); the demo is the honest next step. */
 export function CreationPrelaunchNotice({ t, heading = "h1" }: { t: Dictionary; heading?: "h1" | "h2" }) {
   const Heading = heading;
   return <div className="prelaunch fm-stack fm-stack--3 fm-center">
+    <PrelaunchArt />
     <Heading className="create__title">{t.create.prelaunch.title}</Heading>
     <p className="fm-lead">{t.create.prelaunch.lead}</p>
     <div className="prelaunch__actions">
@@ -26,7 +28,8 @@ export function CreationPrelaunchNotice({ t, heading = "h1" }: { t: Dictionary; 
 export async function CreationPrelaunch({ user = null, isAdmin = false }: { user?: { email: string } | null; isAdmin?: boolean }) {
   const { t } = await getI18n();
   return <><SiteHeader user={user} isAdmin={isAdmin} />
-    <main className="fm-container fm-container--narrow fm-section create"><CreationPrelaunchNotice t={t} /></main>
+    {/* A sky band that fills the screen down to the footer: a short page is not a stripe of paper above it. */}
+    <main className="prelaunch-page band band--sky"><div className="fm-container fm-container--narrow"><CreationPrelaunchNotice t={t} /></div></main>
     <SiteFooter />
   </>;
 }

@@ -257,32 +257,55 @@
 .sec-head .fm-lead { max-width: 56ch; }
 
 /* The landing's one rhythm: every section breathes by the same beat. */
-.how, .gift-sec, .worlds-sec, .pricing-sec, .faq-sec, .tf, #inside.fm-section { padding-block: var(--section-y); }
+.how, .gift-sec, .worlds-sec, .pricing-sec, .faq-sec, .trust-sec, .tf, #inside.fm-section { padding-block: var(--section-y); }
 
-/* How it works: one road, four stops. The steps are a real sequence, so each stop carries its number on the tile;
-   nothing here is a card, because nothing here is clicked. The road draws itself once the stops arrive. */
-.steps { --stop: var(--space-10); position: relative; display: grid; gap: var(--space-4); grid-template-columns: repeat(4, minmax(0, 1fr)); list-style: none; margin: 0; padding: 0; }
-.steps::before { content: ""; position: absolute; top: calc(var(--stop) / 2); inset-inline: 12.5%; height: 2px; background: repeating-linear-gradient(90deg, var(--ink-4) 0 var(--space-1), transparent var(--space-1) var(--space-2)); transform: scaleX(0); transform-origin: left center; transition: transform 1400ms var(--ease-expo) 200ms; }
-[dir="rtl"] .steps::before { transform-origin: right center; }
-.steps.is-in::before, .steps:not(.rv)::before { transform: scaleX(1); }
-.step { position: relative; display: flex; flex-direction: column; align-items: center; text-align: center; gap: var(--space-2); }
+/* Bands (Guy, 2026-11-26: "not the whole site in one colour, blocks of slightly different grounds"). Each landing
+   section runs edge to edge on its own ground, white and paper between the tinted ones, so the page reads as a
+   sequence of places rather than one long sheet. A tinted band never holds another tinted card: what sits on it is
+   white. `--band` is the section's own ground, for the details that must match it (a ticket's punch holes, the ring
+   around a step's number). */
+.band { background: var(--band); }
+.band--white { --band: var(--white); }
+.band--sky { --band: var(--band-sky); }
+.band--lilac { --band: var(--band-lilac); }
+.band--mint { --band: var(--band-mint); }
+/* On a tinted band the icon chips are white discs in the band's deep tone, and the rules between rows take the
+   band's hue rather than the paper's warm line. */
+.band--sky .feature { border-top-color: color-mix(in srgb, var(--sea-deep) 18%, transparent); }
+.band--sky .feature__icon { background: var(--white); color: var(--sea-deep); box-shadow: 0 1px 2px rgba(27, 111, 168, 0.12); }
+
+/* How it works: one road, four stops (Guy, 2026-11-26: a small picture at each stop, not an icon tile; the icon
+   chips belong to "what's inside"). Each stop is a scene in the place emblems' hand (StepArt.tsx) with its number
+   on a sun disc. Between two stops the road is a dotted arc, over and under in turn like a route on a map, and it
+   draws itself, stop by stop, once the stops arrive. Nothing here is a card, because nothing here is clicked. */
+.steps { --art: 200px; --art-h: calc(var(--art) * 7 / 8); --steps-gap: var(--space-4); position: relative; display: grid; gap: var(--steps-gap); grid-template-columns: repeat(4, minmax(0, 1fr)); list-style: none; margin: 0; padding: 0; }
+.step { position: relative; display: flex; flex-direction: column; align-items: center; text-align: center; gap: var(--space-1); }
+.step__stop { position: relative; display: block; width: var(--art); flex: none; }
+.step__art { display: block; width: 100%; height: auto; }
+.step__num { position: absolute; top: var(--space-1); inset-inline-start: var(--space-1); display: grid; place-items: center; width: var(--space-4); height: var(--space-4); border-radius: var(--radius-pill); background: var(--sun); color: var(--ink); box-shadow: 0 0 0 3px var(--band, var(--paper)), 0 2px 6px rgba(201, 122, 0, 0.28); font-family: var(--font-display); font-weight: 800; font-size: var(--fs-100); line-height: 1; font-variant-numeric: tabular-nums; }
+.step h3 { font-size: var(--fs-300); line-height: var(--lh-300); }
+.step p { color: var(--ink-2); max-width: 30ch; }
+/* The road from this stop to the next: an arc from just past this picture to just before the next one. */
+.step:not(:last-child)::after { content: ""; position: absolute; top: calc(var(--art-h) * 0.3); inset-inline-start: calc(50% + var(--art) / 2 - var(--space-2)); width: calc(100% + var(--steps-gap) - var(--art) + var(--space-4)); height: var(--space-5); border: 2px dashed transparent; border-top-color: var(--ink-4); border-radius: 50% 50% 0 0 / 100% 100% 0 0; transform-origin: left center; }
+.step:nth-child(even):not(:last-child)::after { top: calc(var(--art-h) * 0.48); border-top-color: transparent; border-bottom-color: var(--ink-4); border-radius: 0 0 50% 50% / 0 0 100% 100%; }
+[dir="rtl"] .step:not(:last-child)::after { transform-origin: right center; }
 .steps.rv { opacity: 1; transform: none; }
 .steps.rv .step { opacity: 0; transform: translate3d(0, var(--space-3), 0); transition: opacity var(--dur-reveal) var(--ease-expo), transform var(--dur-reveal) var(--ease-expo); transition-delay: calc(var(--i, 0) * 140ms); }
+.steps.rv .step::after { transform: scaleX(0); transition: transform var(--dur-4) var(--ease-expo); transition-delay: calc(var(--i, 0) * 140ms + 320ms); }
 .steps.is-in .step { opacity: 1; transform: none; }
-.step__icon { position: relative; z-index: 1; width: var(--stop); height: var(--stop); border-radius: var(--radius-3); display: grid; place-items: center; font-size: var(--fs-500); background: var(--white); color: var(--ink); box-shadow: var(--hairline), var(--shadow-1); }
-.step__num { position: absolute; z-index: 2; top: calc(var(--space-1) * -1); inset-inline-start: calc(50% + var(--stop) / 2 - var(--space-2)); display: grid; place-items: center; width: var(--space-3); height: var(--space-3); border-radius: var(--radius-pill); background: var(--ink); color: var(--white); box-shadow: 0 0 0 3px var(--paper); font-family: var(--font-display); font-weight: 800; font-size: var(--fs-50); line-height: 1; font-variant-numeric: tabular-nums; }
-.step h3 { font-size: var(--fs-300); line-height: var(--lh-300); margin-top: var(--space-1); }
-.step p { color: var(--ink-2); max-width: 30ch; }
+.steps.is-in .step::after { transform: none; }
+@media (max-width: 1100px) { .steps { --art: 160px; } }
 @media (max-width: 900px) {
-  .steps { grid-template-columns: minmax(0, 1fr); gap: var(--space-3); }
-  .steps::before { top: calc(var(--stop) / 2); bottom: calc(var(--stop) / 2); inset-inline: auto; inset-inline-start: calc(var(--stop) / 2 - 1px); width: 2px; height: auto; background: repeating-linear-gradient(180deg, var(--ink-4) 0 var(--space-1), transparent var(--space-1) var(--space-2)); transform: scaleY(0); transform-origin: center top; }
-  [dir="rtl"] .steps::before { transform-origin: center top; }
-  .steps.is-in::before, .steps:not(.rv)::before { transform: scaleY(1); }
-  .step { display: grid; grid-template-columns: var(--stop) minmax(0, 1fr); grid-template-rows: auto auto; column-gap: var(--space-3); row-gap: var(--space-0-5); align-items: start; text-align: start; }
-  .step__icon { grid-row: 1 / span 2; }
-  .step__num { inset-inline-start: calc(var(--stop) - var(--space-2)); }
-  .step h3 { margin-top: var(--space-1); }
+  /* A phone reads the road downwards: the picture at the start of each stop, the words beside it, and a dotted
+     line from each picture to the next. */
+  .steps { --art: 112px; grid-template-columns: minmax(0, 1fr); --steps-gap: var(--space-3); }
+  .step { display: grid; grid-template-columns: var(--art) minmax(0, 1fr); grid-template-rows: auto 1fr; column-gap: var(--space-3); row-gap: var(--space-0-5); align-items: start; text-align: start; }
+  .step__stop { grid-row: 1 / span 2; }
+  .step h3 { margin-top: var(--space-3); }
   .step p { max-width: none; }
+  .step:not(:last-child)::after, .step:nth-child(even):not(:last-child)::after { top: calc(var(--art-h) - var(--space-1)); bottom: calc(var(--steps-gap) * -1 - var(--space-1)); inset-inline-start: calc(var(--art) / 2 - 1px); width: 0; height: auto; border: 0; border-inline-start: 2px dashed var(--ink-4); border-radius: 0; transform-origin: center top; }
+  .steps.rv .step::after { transform: scaleY(0); }
+  .steps.is-in .step::after { transform: none; }
 }
 
 /* What's inside: six promises read as one calm table: a hairline over each, a chip in the tint run, the words. No boxes and no
@@ -293,7 +316,7 @@
 .feature p { grid-column: 2; color: var(--ink-2); }
 .feature__icon { grid-row: 1 / span 2; width: var(--space-6); height: var(--space-6); border-radius: var(--radius-pill); display: grid; place-items: center; font-size: var(--fs-300); line-height: 1; background: var(--sun-soft); color: var(--ink); }
 /* The chips hold the product's line icons (src/ui/Icon.tsx), in ink on the tint. */
-.step__icon, .feature__icon { color: var(--ink); }
+.feature__icon { color: var(--ink); }
 /* The colour grammar's chip run (DESIGN_SYSTEM.md, "Colour grammar"): a row of icon chips on paper takes the
    four gouache tints in one fixed order, sun, aqua, lavender, coral, and starts again. Steps and "what's
    inside" read as one family, and no two neighbours share a tint. */
@@ -339,7 +362,7 @@
 .world__route { position: absolute; inset-block-start: var(--space-2); inset-inline-start: var(--space-3); font-family: var(--font-display); font-size: var(--fs-100); font-weight: 800; color: var(--ink-2); opacity: .65; letter-spacing: .06em; }
 .place-emblem { display: block; width: min(100%, 188px); height: auto; }
 .world__body { position: relative; margin-inline: var(--space-3); padding: var(--space-2) 0 var(--space-3); display: grid; place-items: center; border-top: 1px dashed var(--line); }
-.world__body::before, .world__body::after { content: ""; position: absolute; top: -7px; width: 14px; height: 14px; background: var(--paper); border-radius: 50%; }
+.world__body::before, .world__body::after { content: ""; position: absolute; top: -7px; width: 14px; height: 14px; background: var(--band, var(--paper)); border-radius: 50%; }
 .world__body::before { inset-inline-start: calc(-1 * var(--space-3) - 7px); }
 .world__body::after { inset-inline-end: calc(-1 * var(--space-3) - 7px); }
 .world__name { font-family: var(--font-display); font-weight: 800; font-size: var(--fs-300); line-height: var(--lh-300); text-align: center; }
@@ -375,8 +398,7 @@
 .offer__plus { grid-column: 2; align-self: center; justify-self: center; z-index: 1; display: grid; place-items: center; width: var(--space-8); height: var(--space-8); border-radius: 50%; background: var(--sun); color: var(--ink); box-shadow: 0 0 0 var(--space-0-5) var(--white), var(--shadow-2); font-size: var(--fs-400); line-height: 1; }
 .offer__bundles { display: flex; flex-wrap: wrap; gap: var(--space-1); }
 
-/* Trust: four plain facts on the aqua sheet. A white disc holds each icon; the facts are text, not tiles. */
-.trust-sec { padding-block: var(--section-y) 0; }
+/* Trust: four plain facts on the mint band. A white disc holds each icon; the facts are text, not tiles. */
 .trust { display: grid; column-gap: var(--space-5); row-gap: var(--space-4); grid-template-columns: repeat(4, minmax(0, 1fr)); }
 .trust__item { display: flex; flex-direction: column; gap: var(--space-1); }
 .trust__icon { width: var(--space-6); height: var(--space-6); border-radius: var(--radius-pill); background: var(--white); display: grid; place-items: center; font-size: var(--fs-300); box-shadow: 0 1px 2px rgba(23, 22, 43, 0.06); margin-bottom: var(--space-1); }
@@ -550,6 +572,19 @@
 /* Before ordering opens: the two ways to see the game now, side by side; stacked full width on a phone. */
 .prelaunch { padding-block: var(--space-6) var(--space-8); }
 .prelaunch .fm-lead { max-width: 44ch; margin-inline: auto; }
+/* The page itself: a sky band from the header down to the footer, the note in its middle. */
+.prelaunch-page { display: grid; align-content: center; padding-block: var(--space-6); }
+/* The brand peeking from behind the clouds (PrelaunchArt.tsx): the sun mark sits low, half hidden by the bank,
+   and keeps its own blink and glance. */
+.prelaunch-art { position: relative; width: min(100%, 360px); aspect-ratio: 8 / 5; margin-inline: auto; margin-bottom: var(--space-1); }
+.prelaunch-art__sky { position: absolute; inset: 0; width: 100%; height: 100%; }
+.prelaunch-art .prelaunch-art__mark { position: absolute; left: 50%; bottom: 14%; width: 34%; height: auto; aspect-ratio: 1; margin-left: -17%; border-radius: var(--radius-4); box-shadow: inset 0 2px 0 rgba(255, 255, 255, 0.5), inset 0 -4px 0 rgba(201, 122, 0, 0.25), var(--shadow-2); animation: prelaunch-peek 5.6s var(--ease-in-out) infinite; }
+.prelaunch-art__mark .fm-logo__eyes { width: 70%; height: 70%; }
+.prelaunch-art__bank { position: absolute; inset-inline: 0; bottom: 0; width: 100%; height: 42%; filter: drop-shadow(0 8px 12px rgba(58, 84, 140, 0.1)); }
+@keyframes prelaunch-peek { 0%, 100% { transform: translateY(0) rotate(-6deg); } 50% { transform: translateY(calc(var(--space-1) * -1)) rotate(-3deg); } }
+@media (prefers-reduced-motion: reduce) { .prelaunch-art .prelaunch-art__mark { animation: none; } }
+/* Inside a card (a family's world page), the picture is smaller. */
+.fm-card .prelaunch-art { width: min(100%, 240px); }
 .prelaunch__actions { display: flex; flex-wrap: wrap; justify-content: center; gap: var(--space-2); }
 @media (max-width: 600px) { .prelaunch__actions { flex-direction: column; align-items: stretch; } }
 
@@ -923,9 +958,7 @@
   .offer__first { padding-bottom: calc(var(--space-4) + var(--space-4)); }
   .offer__more { padding-top: calc(var(--space-4) + var(--space-4)); }
   .offer__first .fm-btn { align-self: stretch; white-space: normal; text-align: center; padding: var(--space-1) var(--space-2); font-size: var(--fs-200); }
-  .steps { --stop: var(--space-8); }
-  .step__icon { font-size: var(--fs-400); }
-  .fm-footer { padding-block: var(--space-6) var(--space-4); }
+  .fm-footer { padding-block: var(--space-8) var(--space-4); }
   .fm-footer__grid { gap: var(--space-4); padding-bottom: var(--space-4); }
 }
 @media (max-width: 600px) { .features { grid-auto-rows: auto; } }

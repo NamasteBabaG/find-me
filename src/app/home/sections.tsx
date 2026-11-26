@@ -6,8 +6,8 @@ import { formatMoney, pick, tf, type Currency, type Dictionary, type Locale } fr
 import { Reveal } from "./Reveal";
 import { WorldsCarousel, type CarouselWorld } from "./WorldsCarousel";
 import { Icon, type IconName } from "@/ui/Icon";
+import { StepArt } from "./StepArt";
 
-const STEP_ICONS: readonly IconName[] = ["camera", "map", "brush", "search"];
 /** The colour grammar's chip run: one fixed order of the four gouache tints, for every row of icon chips on paper. */
 const TINTS = ["sun", "aqua", "lavender", "coral"] as const;
 const tint = (i: number) => `tint--${TINTS[i % TINTS.length]}`;
@@ -41,21 +41,21 @@ export function Marquee({ scenes, locale }: { scenes: SceneDefinition[]; locale:
 export function HowItWorks({ t }: SectionProps) {
   const h = t.home.how;
   return (
-    <section id="how" className="how">
+    <section id="how" className="how band band--white">
       <div className="fm-container">
         <Reveal className="sec-head">
           <h2>{h.title}</h2>
           <p className="fm-lead">{h.lead}</p>
         </Reveal>
-        {/* One road, four stops: the list arrives as a group, its stops in order, and the road draws itself. */}
+        {/* One road, four stops: the list arrives as a group, its stops in order, and the road between them draws itself. */}
         <Reveal as="ol" className="steps">
           {h.steps.map((s, i) => (
             <li key={s.title} className="step" style={{ ["--i" as string]: i } as CSSProperties}>
-              <span className={`step__icon ${tint(i)}`} aria-hidden>
-                <Icon name={STEP_ICONS[i] ?? "sparkle"} />
-              </span>
-              <span className="step__num" aria-hidden>
-                {i + 1}
+              <span className="step__stop">
+                <StepArt step={i} />
+                <span className="step__num" aria-hidden>
+                  {i + 1}
+                </span>
               </span>
               <h3>{s.title}</h3>
               <p>{s.text}</p>
@@ -75,7 +75,7 @@ const INSIDE_ICONS: readonly IconName[] = ["search", "bulb", "heart", "replay", 
 export function Inside({ t }: SectionProps) {
   const s = t.home.inside;
   return (
-    <section id="inside" className="fm-section">
+    <section id="inside" className="fm-section band band--sky">
       <div className="fm-container">
         <Reveal className="sec-head">
           <h2>{s.title}</h2>
@@ -104,42 +104,40 @@ export function Inside({ t }: SectionProps) {
 export function GiftSection({ t }: SectionProps) {
   const g = t.home.gift;
   return (
-    <section id="gift" className="gift-sec">
+    <section id="gift" className="gift-sec band band--lilac">
       <div className="fm-container">
-        <div className="fm-sheet fm-sheet--lavender">
-          <Reveal className="sec-head">
-            <h2>{g.title}</h2>
-            <p className="fm-lead">{g.lead}</p>
-          </Reveal>
-          <div className="gift-grid">
-            <Reveal className="gift-visual" delay={80}>
-              <div className="gift-box" aria-hidden>
-                <span className="gift-box__ribbon" />
-                <span className="gift-box__ribbon gift-box__ribbon--h" />
-                <div className="gift-tag">
-                  <span className="fm-eyebrow">{g.tagEyebrow}</span>
-                  <strong>{g.tagName}</strong>
-                  <span className="fm-small">{g.tagFrom}</span>
-                </div>
+        <Reveal className="sec-head">
+          <h2>{g.title}</h2>
+          <p className="fm-lead">{g.lead}</p>
+        </Reveal>
+        <div className="gift-grid">
+          <Reveal className="gift-visual" delay={80}>
+            <div className="gift-box" aria-hidden>
+              <span className="gift-box__ribbon" />
+              <span className="gift-box__ribbon gift-box__ribbon--h" />
+              <div className="gift-tag">
+                <span className="fm-eyebrow">{g.tagEyebrow}</span>
+                <strong>{g.tagName}</strong>
+                <span className="fm-small">{g.tagFrom}</span>
               </div>
-              <ul className="gift-features">
-                {g.features.map((f) => (
-                  <li key={f}>{f}</li>
-                ))}
-              </ul>
-            </Reveal>
-            <ul className="occasions">
-              {g.occasions.map((o, i) => (
-                <Reveal as="li" key={o.title} className="occasion" delay={i * 90}>
-                  <span className="occasion__icon" aria-hidden>
-                    <Icon name={OCCASION_ICONS[i] ?? "gift"} />
-                  </span>
-                  <h3>{o.title}</h3>
-                  <p>{o.text}</p>
-                </Reveal>
+            </div>
+            <ul className="gift-features">
+              {g.features.map((f) => (
+                <li key={f}>{f}</li>
               ))}
             </ul>
-          </div>
+          </Reveal>
+          <ul className="occasions">
+            {g.occasions.map((o, i) => (
+              <Reveal as="li" key={o.title} className="occasion" delay={i * 90}>
+                <span className="occasion__icon" aria-hidden>
+                  <Icon name={OCCASION_ICONS[i] ?? "gift"} />
+                </span>
+                <h3>{o.title}</h3>
+                <p>{o.text}</p>
+              </Reveal>
+            ))}
+          </ul>
         </div>
       </div>
     </section>
@@ -152,7 +150,7 @@ export function Worlds({ t, carousel }: { t: Dictionary; carousel: CarouselWorld
   // The catalog can preview unavailable worlds. Do not multiply that preview
   // by a fixed hide count and present it as the purchased game's contents.
   return (
-    <section id="worlds" className="worlds-sec">
+    <section id="worlds" className="worlds-sec band band--white">
       <div className="fm-container">
         <Reveal className="sec-head">
           <h2>{w.title}</h2>
@@ -223,23 +221,21 @@ export function Pricing({ t, locale, allowedTiers, currency }: SectionProps & { 
 export function Trust({ t }: SectionProps) {
   const tr = t.home.trust;
   return (
-    <section id="trust" className="trust-sec">
+    <section id="trust" className="trust-sec band band--mint">
       <div className="fm-container">
-        <div className="fm-sheet fm-sheet--aqua">
-          <Reveal className="sec-head">
-            <h2>{tr.title}</h2>
-          </Reveal>
-          <div className="trust">
-            {tr.items.map((item, i) => (
-              <Reveal key={item.title} className="trust__item" delay={i * 90}>
-                <span className="trust__icon" aria-hidden>
-                  <Icon name={TRUST_ICONS[i] ?? "sparkle"} />
-                </span>
-                <h3>{item.title}</h3>
-                <p>{item.text}</p>
-              </Reveal>
-            ))}
-          </div>
+        <Reveal className="sec-head">
+          <h2>{tr.title}</h2>
+        </Reveal>
+        <div className="trust">
+          {tr.items.map((item, i) => (
+            <Reveal key={item.title} className="trust__item" delay={i * 90}>
+              <span className="trust__icon" aria-hidden>
+                <Icon name={TRUST_ICONS[i] ?? "sparkle"} />
+              </span>
+              <h3>{item.title}</h3>
+              <p>{item.text}</p>
+            </Reveal>
+          ))}
         </div>
       </div>
     </section>
@@ -250,7 +246,7 @@ export function Trust({ t }: SectionProps) {
 export function Faq({ t }: SectionProps) {
   const f = t.home.faq;
   return (
-    <section id="faq" className="faq-sec">
+    <section id="faq" className="faq-sec band band--white">
       <div className="fm-container">
         <Reveal className="sec-head">
           <h2>{f.title}</h2>

@@ -25,6 +25,17 @@ body {
   overflow-x: hidden;
 }
 
+/* A page that carries the site footer fills the screen, so a short page (the prelaunch note, a receipt) ends at its
+   footer instead of a stripe of paper below the night. The page's main takes the remaining height. */
+body:has(> .fm-footer) {
+  display: flex;
+  flex-direction: column;
+}
+body:has(> .fm-footer) > main {
+  flex: 1 0 auto;
+  width: 100%;
+}
+
 h1,
 h2,
 h3,

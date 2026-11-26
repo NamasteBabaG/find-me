@@ -10,7 +10,7 @@ export function FinalCta() {
   const { t } = useI18n();
   const f = t.home.final;
   return (
-    <section className="final">
+    <section className="final band band--white">
       <div className="fm-container">
         <div className="fm-sheet final__sheet">
           <SkyClouds variant="sun" />

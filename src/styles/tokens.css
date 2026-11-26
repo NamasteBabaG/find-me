@@ -47,6 +47,12 @@
   --paper-2: #f4f2ec;
   --paper-3: #e9e6dd;
   --white: #ffffff;
+  /* Section bands (Guy, 2026-11-26: "not the whole site in one colour"): full-width grounds the landing alternates
+     with white and paper. Light enough that --ink-3 still reads at AA on each (4.5:1 or more); the sun sections and
+     the paintings stay the loudest things on the page. */
+  --band-sky: #edf6fb;
+  --band-lilac: #f3f0ff;
+  --band-mint: #e5f7f3;
   --ink: #17162b;
   --ink-2: #4b4a63;
   /* Tertiary text still reads as text: 5.1:1 on white, 4.9:1 on paper, 4.55:1 on paper-2 (WCAG AA 4.5:1).

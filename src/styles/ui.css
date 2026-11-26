@@ -265,8 +265,26 @@ a.fm-btn[aria-disabled="true"] { pointer-events: none; }
 .fm-lang__item:hover { background: var(--paper-2); color: var(--ink); }
 .fm-lang__item.is-active { background: var(--sun-soft, #fff3c4); color: var(--ink); }
 .fm-lang__item .fm-lang__code { margin-inline-start: auto; font-weight: 600; color: var(--ink-2); }
-.fm-footer { padding-block: var(--space-8) var(--space-6); color: var(--ink-2); font-size: var(--fs-100); line-height: var(--lh-100); }
-.fm-footer__grid { display: grid; gap: var(--space-6); grid-template-columns: 1.6fr 1fr 1fr 1.4fr; padding-bottom: var(--space-6); border-bottom: 1px solid var(--line); }
+/* The footer is night (Guy, 2026-11-26: "the footer needs its own colour"): the page's day ends in the demo's
+   night sky, a few stars, and the sun mark still awake. Light text on --night: 0.74 white reads at 10:1. */
+.fm-footer { position: relative; overflow: hidden; padding-block: var(--space-10) var(--space-6); background: var(--night); color: rgba(255, 255, 255, 0.74); font-size: var(--fs-100); line-height: var(--lh-100); }
+.fm-footer::before { content: ""; position: absolute; inset: 0; pointer-events: none; opacity: 0.7;
+  background:
+    radial-gradient(1.5px 1.5px at 8% 18%, var(--white), transparent),
+    radial-gradient(1px 1px at 21% 62%, var(--white), transparent),
+    radial-gradient(2px 2px at 34% 12%, var(--gold-light), transparent),
+    radial-gradient(1px 1px at 47% 44%, var(--white), transparent),
+    radial-gradient(1.5px 1.5px at 58% 9%, var(--white), transparent),
+    radial-gradient(1px 1px at 69% 70%, var(--white), transparent),
+    radial-gradient(2px 2px at 81% 26%, var(--gold-light), transparent),
+    radial-gradient(1px 1px at 92% 54%, var(--white), transparent),
+    radial-gradient(1.5px 1.5px at 15% 88%, var(--white), transparent),
+    radial-gradient(1px 1px at 74% 92%, var(--white), transparent); }
+.fm-footer > .fm-container { position: relative; }
+.fm-footer .fm-logo, .fm-footer .fm-footer__title { color: var(--white); }
+.fm-footer .fm-logo__mark { box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5), inset 0 -2px 0 rgba(201, 122, 0, 0.25), 0 0 24px rgba(255, 197, 61, 0.28); }
+.fm-footer :focus-visible { outline-color: var(--sun); }
+.fm-footer__grid { display: grid; gap: var(--space-6); grid-template-columns: 1.6fr 1fr 1fr 1.4fr; padding-bottom: var(--space-6); border-bottom: 1px solid rgba(255, 255, 255, 0.12); }
 @media (min-width: 721px) and (max-width: 1000px) { .fm-footer__grid { grid-template-columns: 1fr 1fr; } }
 /* A phone reads the footer two columns across, the brand above them: one column of fifteen
    48px rows was longer than most pages it closed. Links are 48px tall with no gap between them. */
@@ -275,10 +293,10 @@ a.fm-btn[aria-disabled="true"] { pointer-events: none; }
   .fm-footer__col:first-child { grid-column: 1 / -1; }
 }
 .fm-footer__col { display: flex; flex-direction: column; align-items: flex-start; }
-.fm-footer__col a { color: var(--ink-2); text-decoration: none; min-height: var(--touch-min); min-width: var(--touch-min); display: inline-flex; align-items: center; }
-.fm-footer__col a:hover { color: var(--ink); text-decoration: underline; }
+.fm-footer__col a { color: rgba(255, 255, 255, 0.74); text-decoration: none; min-height: var(--touch-min); min-width: var(--touch-min); display: inline-flex; align-items: center; transition: color var(--dur-1); }
+.fm-footer__col a:hover { color: var(--white); text-decoration: underline; text-decoration-color: var(--sun); text-underline-offset: 4px; }
 .fm-footer__col .fm-logo { margin-bottom: var(--space-1); }
-.fm-footer__title { font-family: var(--font-display); font-weight: 800; color: var(--ink); font-size: var(--fs-200); line-height: var(--lh-200); margin-bottom: var(--space-1); }
+.fm-footer__title { font-family: var(--font-display); font-weight: 800; color: var(--white); font-size: var(--fs-200); line-height: var(--lh-200); margin-bottom: var(--space-1); }
 .fm-footer__bottom { display: flex; justify-content: space-between; gap: var(--space-2); flex-wrap: wrap; padding-top: var(--space-3); }
 
 /* Notice / alert */
