@@ -135,7 +135,7 @@ export const en = {
     gameShape: "{worlds} · {places} places · {spots} hiding spots",
     searchesCount: "{n} hiding spots",
   },
-  nav: { main: "Main navigation", demo: "Try the game", how: "How it works", gift: "Give a game", pricing: "Packages & prices" },
+  nav: { main: "Main navigation", demo: "Try the game", how: "How it works", gift: "Give a game", pricing: "Pricing" },
   footer: {
     blurb: "A personal seek-and-find game inside illustrated adventures.",
     product: "Product",
@@ -183,7 +183,7 @@ export const en = {
       lead: "A few steps for you. Then the search begins.",
       steps: [
         { time: "Photo", title: "Meet who's hiding", text: "Add a name, the character's age, and a clear picture." },
-        { time: "Package", title: "Choose a world package", text: "See what's included, then continue to payment." },
+        { time: "World", title: "Choose where to go", text: "Pick a world, see what's included, then continue to payment." },
         { time: "Making and checking", title: "We create and check", text: "We create the character, place them in the scenes and check the game." },
         { time: "Off we go", title: "Open and explore", text: "When the game is ready, open the link and start searching." },
       ],
@@ -227,7 +227,6 @@ export const en = {
       next: "Next world",
       owned: "In your family area",
       inTheMaking: "Not available to play yet",
-      available: "Available now — every world stands on its own",
     },
     pricing: {
       title: "How far will your adventure go?",
@@ -274,7 +273,7 @@ export const en = {
       title: "Now it's their turn to find themselves.",
       lead: "One photo, a personal character, and an adventure that starts with a search.",
       cta: "Create a personal game",
-      pricing: "See packages & pricing",
+      pricing: "See pricing",
     },
     defaultName: "Noa",
   },
@@ -284,7 +283,7 @@ export const en = {
       description: "Use a demo photo to test the upload. The game uses characters from existing illustrations, so the uploaded child is not drawn.",
     },
     steps: ["Name & age", "Photo", "World", "Payment"],
-    prelaunch: { title: "Personal adventures are coming soon", action: "Creation opens soon" },
+    prelaunch: { title: "Personal adventures are coming soon", lead: "Ordering opens very soon. Meanwhile, play the demo and see exactly how it works." },
     name: {
       title: "Who's hiding?",
       label: "Name",

@@ -3,19 +3,23 @@ import { getI18n } from "@/i18n/server";
 import { tf } from "@/i18n";
 import { SiteHeader, SiteFooter, Stepper } from "@/ui/Shell";
 import { ScrollToTop } from "./ScrollToTop";
-import { Button, LinkButton } from "@/ui/Button";
+import { LinkButton } from "@/ui/Button";
 import { purchasingEnabled } from "@/lib/purchasing";
 import { env } from "@/lib/env";
 import type { Dictionary } from "@/i18n/dictionaries/en";
 import { QaWizardSimulationNotice } from "./QaWizardSimulationNotice";
 
+/** Before ordering opens: what is coming, and two real ways to see it now. A disabled button that does nothing read
+ * as a broken site (2026-11-26); the demo is the honest next step. */
 export function CreationPrelaunchNotice({ t, heading = "h1" }: { t: Dictionary; heading?: "h1" | "h2" }) {
   const Heading = heading;
-  return <div className="fm-stack fm-stack--3 fm-center">
+  return <div className="prelaunch fm-stack fm-stack--3 fm-center">
     <Heading className="create__title">{t.create.prelaunch.title}</Heading>
-    <p className="fm-lead">{t.errors.PURCHASING_CLOSED}</p>
-    <Button disabled size="lg">{t.create.prelaunch.action}</Button>
-    <LinkButton href="/#demo" variant="secondary" size="lg">{t.nav.demo}</LinkButton>
+    <p className="fm-lead">{t.create.prelaunch.lead}</p>
+    <div className="prelaunch__actions">
+      <LinkButton href="/#demo" size="lg">{t.nav.demo}</LinkButton>
+      <LinkButton href="/#how" variant="secondary" size="lg">{t.nav.how}</LinkButton>
+    </div>
   </div>;
 }
 

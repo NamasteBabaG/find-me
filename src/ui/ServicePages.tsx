@@ -2,6 +2,7 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import type { Locale } from "@/i18n/config";
 import { serviceCopy } from "@/domain/legal";
+import { getDict } from "@/i18n";
 import { businessProfile } from "@/lib/business-profile";
 import { SiteFooter, SiteHeader } from "./Shell";
 import { currentUser, isAdminEmail } from "@/lib/server/session";
@@ -18,7 +19,8 @@ export function BusinessDetails({ locale }: { locale: Locale }) {
   return <section className="service-business fm-card fm-card--pad-3" aria-labelledby="business-title">
     <h2 id="business-title">{c.business}</h2>
     <dl>
-      <div><dt>{c.name}</dt><dd dir="ltr">{p.name}</dd></div>
+      {/* <bdi>, not dir="ltr" on the cell: a Latin name keeps its own order but lines up with the other values. */}
+      <div><dt>{c.name}</dt><dd><bdi>{p.name}</bdi></dd></div>
       <div><dt>{c.number}</dt><dd>{p.number}</dd></div>
       <div><dt>{c.address}</dt><dd>{p.address}</dd></div>
       {p.email ? <div><dt>{c.email}</dt><dd><a href={`mailto:${p.email}`} dir="ltr">{p.email}</a></dd></div> : null}
@@ -33,7 +35,7 @@ export async function ServiceFrame({ locale, title, lead, children }: { locale: 
   const user = await currentUser();
   return <><SiteHeader user={user} isAdmin={isAdminEmail(user?.email)} />
     <main id="service-content" className="fm-container fm-section service-page">
-      <header className="service-head"><p className="fm-hint">FindMe Worlds · {serviceCopy[locale].updated}</p><h1>{title}</h1><p className="fm-lead">{lead}</p></header>
+      <header className="service-head"><p className="fm-hint">{getDict(locale).common.brand} · {serviceCopy[locale].updated}</p><h1>{title}</h1><p className="fm-lead">{lead}</p></header>
       <ServiceNavigation locale={locale} />
       {children}
       <BusinessDetails locale={locale} />

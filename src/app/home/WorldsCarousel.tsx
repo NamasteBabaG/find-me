@@ -32,7 +32,6 @@ export interface WorldsCopy {
   next: string;
   owned: string;
   inTheMaking: string;
-  available: string;
 }
 
 export function WorldsCarousel({ worlds, copy }: { worlds: CarouselWorld[]; copy: WorldsCopy }) {
@@ -61,12 +60,15 @@ export function WorldsCarousel({ worlds, copy }: { worlds: CarouselWorld[]; copy
         </button>
       </div>
 
-      <p className="wc__lock">
+      {/* Said only when it tells the parent something: the world is already theirs, or not on sale yet. */}
+      {world.owned || !world.available ? <p className="wc__lock">
         {world.owned ? <span className="wc__owned"><Icon name="check" strokeWidth={2.6} />{copy.owned}</span> : null}
-        <span className="wc__state">{world.available ? copy.available : copy.inTheMaking}</span>
-      </p>
+        {world.available ? null : <span className="wc__state">{copy.inTheMaking}</span>}
+      </p> : null}
 
-      <div className="worlds">
+      {/* "places", not "worlds": the wizard's world step owns .worlds (a column), and sharing the name
+          stretched every place here into one full-width card (2026-11-26). */}
+      <div className="places">
         {world.tiles.map((tile, i) => (
           <Reveal as="article" key={tile.key} className="world" delay={(i % 3) * 60}>
             <div className="world__destination">

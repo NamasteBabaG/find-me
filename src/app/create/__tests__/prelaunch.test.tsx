@@ -19,14 +19,15 @@ beforeEach(() => { vi.clearAllMocks(); vi.stubGlobal("React", React); f.appEnv =
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
 describe("prelaunch creation display", () => {
-  it.each(["en", "he"] as const)("%s shows a disabled creation action and available demo before asking for a photo", async locale => {
+  it.each(["en", "he"] as const)("%s says ordering opens soon and offers the demo and how it works, never a dead button, before asking for a photo", async locale => {
     f.locale = locale;
     const t = getDict(locale);
     render(await CreationPrelaunch({}));
     expect(screen.getByRole("heading", { name: t.create.prelaunch.title })).toBeTruthy();
-    expect(screen.getByText(t.errors.PURCHASING_CLOSED!)).toBeTruthy();
-    expect((screen.getByRole("button", { name: t.create.prelaunch.action }) as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByText(t.create.prelaunch.lead)).toBeTruthy();
+    expect(screen.queryAllByRole("button").filter(b => (b as HTMLButtonElement).disabled)).toHaveLength(0);
     expect(screen.getByRole("link", { name: t.nav.demo }).getAttribute("href")).toBe("/#demo");
+    expect(screen.getByRole("link", { name: t.nav.how }).getAttribute("href")).toBe("/#how");
     expect(screen.queryByRole("textbox")).toBeNull(); expect(screen.queryByTestId("stepper")).toBeNull();
   });
 
